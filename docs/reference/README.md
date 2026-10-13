@@ -1,5 +1,7 @@
 # Reference
 
+- [Dataset and replay contracts](datasets.md)
+
 Use this section for durable technical references:
 
 - API contracts

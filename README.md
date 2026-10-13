@@ -28,6 +28,17 @@ a 95.00 stop. Its synthetic realized loss is 60.00. Filling at the observed gap
 price rather than the stop threshold is intentional. Fees and slippage are
 zero in this fixture model; these results have no qualification credit.
 
+To replay the fixture at explicit information cutoffs:
+
+```bash
+./bin/mantik replay --cutoffs 2026-01-05T15:01:00Z,2026-01-05T15:03:00Z
+```
+
+The first frame contains the entry; the second contains the stop-gap exit.
+Replay runs locally with its own clock and memory store. It does not submit
+observations to a service. See [dataset and replay contracts](docs/reference/datasets.md)
+for file export, content pins, provenance, and data-quality behavior.
+
 ## Run the persistent service
 
 Docker Compose uses project `mantik-dev`, its own named volume, and loopback
@@ -75,6 +86,9 @@ execution, API requests, and disposable integration tests.
   updates; this is not a multi-strategy portfolio allocator.
 - Status returns the complete small fixture history. Pagination is needed
   before continuous ingestion.
+- Dataset replay supports the synthetic fixture quote schema. Corrections,
+  missing inputs, and quarantined inputs block further replay admission and
+  remain visible as evidence; historical/provider adapters are future work.
 - Bearer authentication is available. A non-loopback bind requires a token of
   at least 16 characters. TLS and remote operator access are not configured.
 - No external feed, copytrading connector, LLM workflow, dynamic code runner,

@@ -8,6 +8,8 @@
 - [Architecture decisions](adr/README.md): durable implementation choices.
 - [Research references](research/README.md): outside projects and design ideas.
 - [Stack reference](reference/stack.md): toolchain and persistence.
+- [Dataset contracts](reference/datasets.md): content pins, provenance, replay
+  cutoffs, and quality admission.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed

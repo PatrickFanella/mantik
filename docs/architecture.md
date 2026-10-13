@@ -115,10 +115,17 @@ or a bounded strategy. It still needs Mantik's sizing and safety policy.
 ## Current implementation
 
 `cmd/mantik` assembles signal handling and CLI commands. `internal/cli` offers
-`serve`, `demo`, `status`, and `observe`. `internal/service` exposes health,
+`serve`, `demo`, `status`, `observe`, and `replay`. `internal/service` exposes health,
 readiness, status, and fixture ingestion. `internal/workflow` evaluates and
 finalizes decisions; `internal/operations` rechecks authority and simulates
 fills. `internal/storage` provides memory and PostgreSQL implementations.
+
+`internal/replay` seals provenance-bearing datasets and runs the registered
+fixture through a separate memory store at explicit cutoffs. The CLI's `replay`
+command exports the synthetic dataset or reads a file pinned by SHA-256. See
+[dataset contracts](reference/datasets.md) for correction and quality admission
+rules. Dataset artifacts are files outside Git; the service database schema is
+unchanged.
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00
@@ -144,7 +151,7 @@ a database transaction cannot make an external order atomic.
 
 - Additional library implementations and reproducible experiment recipes.
 - Independent timers and missing-feed detection for decision obligations.
-- Recorded-input replay and research-attempt history, including failures.
+- Historical dataset adapters and research-attempt history, including failures.
 - A real feed adapter with provenance and time-aware routing.
 - LLM tools and research workers behind explicit application interfaces.
 - Multi-case portfolio allocation and paginated/event-stream readbacks.

@@ -25,6 +25,11 @@ Library regressions cover contract and check versions, complete safety
 declarations, exact dependencies and cycles, immutable registry readbacks,
 required-check admission, and fixture configuration compatibility. Workflow
 tests preserve entry, stop-gap, target, deadline, and abstention behavior.
+Replay regressions cover cutoff leakage, availability/receipt ordering,
+repeatability, cutoff partition equivalence, late arrivals, correction review,
+same-timestamp quality gaps, duplicate revisions, content pins, and CLI file
+round trips. See [dataset contracts](../reference/datasets.md) for the local
+command and artifact boundaries.
 
 ## Native service
 
