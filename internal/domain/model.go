@@ -47,9 +47,10 @@ type StrategyVersion struct {
 }
 
 type EvaluationResult struct {
-	Check  string `json:"check"`
-	Passed bool   `json:"passed"`
-	Code   string `json:"code"`
+	Check   string `json:"check"`
+	Version string `json:"version,omitempty"`
+	Passed  bool   `json:"passed"`
+	Code    string `json:"code"`
 }
 
 type Decision struct {

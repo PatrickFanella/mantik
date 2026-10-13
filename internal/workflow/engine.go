@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/library"
 	"git.subcult.tv/subculture-collective/mantik/internal/operations"
 )
 
@@ -16,12 +17,8 @@ var identifier = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
 func InitialState() domain.State {
 	return domain.State{
-		Strategy: domain.StrategyVersion{
-			ID: "demo-threshold-v1", Symbol: "DEMO", EntryAtOrBelowCents: 10000, Quantity: 10,
-			Hypothesis: domain.Hypothesis{ID: "demo-hypothesis-v1", ClaimCode: "fixture_threshold", RefutationCode: "fixture_stop", EvidenceClass: "synthetic_unqualified"},
-			Safety:     domain.Safety{MaxNotionalCents: 100000, StopCents: 9500, TargetCents: 11000, MaxHoldingSeconds: 3600, MaxQuoteAgeSeconds: 60},
-		},
-		Case: domain.DecisionCase{ID: "demo-case-v1", StrategyVersionID: "demo-threshold-v1", Status: "waiting"},
+		Strategy: library.FixtureStrategy(),
+		Case:     domain.DecisionCase{ID: "demo-case-v1", StrategyVersionID: "demo-threshold-v1", Status: "waiting"},
 	}
 }
 
@@ -29,7 +26,7 @@ func Validate(o domain.Observation) error {
 	if !identifier.MatchString(o.ID) {
 		return errors.New("observation id must contain 1–128 letters, digits, underscores, or hyphens")
 	}
-	if o.Kind != "quote" || o.Source != "fixture" || o.Symbol != "DEMO" {
+	if !library.FixtureEntry().AcceptsQuote(o) {
 		return errors.New("bootstrap accepts only fixture quotes for DEMO")
 	}
 	if o.PriceCents <= 0 || o.PriceCents > 100000000 {
@@ -49,12 +46,13 @@ func Apply(state domain.State, o domain.Observation) (domain.State, []domain.Eve
 	}
 	events := []domain.Event{{ID: o.ID + "-observed", Kind: "observation.recorded", ObservationID: o.ID, At: o.ReceivedAt}}
 	s := state.Strategy
-	if s.Quantity <= 0 || s.Quantity > 10000 || s.Safety.MaxQuoteAgeSeconds <= 0 || s.Safety.MaxQuoteAgeSeconds > 86400 || s.Safety.MaxHoldingSeconds <= 0 || s.Safety.MaxHoldingSeconds > 31536000 || s.Safety.StopCents <= 0 || s.Safety.TargetCents <= s.EntryAtOrBelowCents || s.Safety.MaxNotionalCents <= 0 {
-		return state, nil, errors.New("strategy safety definition is invalid")
+	entry, err := library.ResolveFixture(s)
+	if err != nil {
+		return state, nil, err
 	}
 	checks := []domain.EvaluationResult{
-		{Check: "quote_freshness", Passed: o.ReceivedAt.Sub(o.OccurredAt) <= time.Duration(s.Safety.MaxQuoteAgeSeconds)*time.Second, Code: "quote_age"},
-		{Check: "event_order", Passed: state.LastOccurredAt.IsZero() || o.OccurredAt.After(state.LastOccurredAt), Code: "strictly_newer_quote"},
+		{Check: "quote_freshness", Version: "v1", Passed: o.ReceivedAt.Sub(o.OccurredAt) <= time.Duration(s.Safety.MaxQuoteAgeSeconds)*time.Second, Code: "quote_age"},
+		{Check: "event_order", Version: "v1", Passed: state.LastOccurredAt.IsZero() || o.OccurredAt.After(state.LastOccurredAt), Code: "strictly_newer_quote"},
 	}
 	valid := checks[0].Passed && checks[1].Passed
 	if !valid {
@@ -73,8 +71,8 @@ func Apply(state domain.State, o domain.Observation) (domain.State, []domain.Eve
 		}
 		action, reason = "enter", "entry_threshold"
 		checks = append(checks,
-			domain.EvaluationResult{Check: "notional_limit", Passed: o.PriceCents*s.Quantity <= s.Safety.MaxNotionalCents, Code: "within_max_notional"},
-			domain.EvaluationResult{Check: "protective_levels", Passed: s.Safety.StopCents < o.PriceCents && o.PriceCents < s.Safety.TargetCents, Code: "stop_below_entry_below_target"})
+			domain.EvaluationResult{Check: "notional_limit", Version: "v1", Passed: o.PriceCents*s.Quantity <= s.Safety.MaxNotionalCents, Code: "within_max_notional"},
+			domain.EvaluationResult{Check: "protective_levels", Version: "v1", Passed: s.Safety.StopCents < o.PriceCents && o.PriceCents < s.Safety.TargetCents, Code: "stop_below_entry_below_target"})
 	} else {
 		switch {
 		case o.PriceCents <= s.Safety.StopCents:
@@ -92,11 +90,8 @@ func Apply(state domain.State, o domain.Observation) (domain.State, []domain.Eve
 		trigger.Behavior = "act"
 	}
 	events = append(events, domain.Event{ID: trigger.ID, Kind: "trigger.fired", ObservationID: o.ID, At: o.ReceivedAt, Trigger: &trigger})
-	for _, check := range checks {
-		if !check.Passed {
-			action, reason = "abstain", "evaluation_failed"
-			break
-		}
+	if err := entry.Admit(action, checks); err != nil {
+		action, reason = "abstain", "evaluation_failed"
 	}
 	d := decision(state, o, action, reason, checks)
 	events = append(events, decisionEvent(o, d))

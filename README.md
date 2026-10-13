@@ -64,7 +64,10 @@ execution, API requests, and disposable integration tests.
 ## Current boundaries
 
 - Only fixture quotes for the synthetic `DEMO` instrument are accepted.
-- The registered library has one fixed, unqualified example strategy.
+- The versioned library declares typed inputs, instruments, outputs, exact
+  dependencies, evidence classes, safety requirements, and mandatory evaluation
+  recipes. It registers one immutable, unqualified fixture strategy. See the
+  [library contract](docs/architecture.md#versioned-library).
 - Stop, target, and holding-deadline checks run on usable incoming quotes.
   There is no independent deadline scheduler or missing-feed monitor yet.
 - The synchronous simulator fills at the observed quote with zero costs.
