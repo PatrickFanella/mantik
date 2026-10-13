@@ -21,6 +21,10 @@ DATABASE_URL or touch existing database volumes.
 The PostgreSQL contract tests cover concurrent retries, conflicting content,
 transaction rollback, state readback after reopening the pool, and migration
 checksum rejection. The race suite also exercises local/HTTP CLI workflows.
+Library regressions cover contract and check versions, complete safety
+declarations, exact dependencies and cycles, immutable registry readbacks,
+required-check admission, and fixture configuration compatibility. Workflow
+tests preserve entry, stop-gap, target, deadline, and abstention behavior.
 
 ## Native service
 

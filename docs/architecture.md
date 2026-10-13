@@ -57,8 +57,44 @@ found during explanation opens a review case.
   fill assumptions, and resulting economic effects.
 
 The current Go records are intentionally small. Rich source claims, tool
-contracts, multi-instrument identities, and evaluation versions will extend
-them through explicit schema changes.
+contracts, and multi-instrument identities will extend them through explicit
+schema changes.
+
+## Versioned library
+
+`internal/library` defines `mantik-library-v1` entries for strategies and
+components. Each entry declares an immutable version ID, implementation
+identity, typed input schemas and sources, supported instruments, outputs,
+exact dependency versions, evidence class, safety requirements, and a versioned
+evaluation recipe. Registry construction rejects incomplete declarations,
+duplicate versions, missing dependencies, and dependency cycles. Readbacks are
+copies; callers cannot mutate a registered contract.
+
+Every entry declares notional, stop, target, holding-time, and quote-age safety
+requirements. The executable fixture additionally binds its complete numeric
+configuration and hypothesis to `demo-threshold-v1`; changing those values under
+the same ID is an explicit compatibility error. Registration describes a
+method's contract, not its qualification or permission to execute generated
+code. Additional executable implementations still need their own adapter and
+validation.
+
+Recipes separate mandatory checks from optional investigator tools. Required
+checks declare exact versions and applicable outputs. `Admit` rejects missing,
+failed, duplicate, unknown, or incompatible evaluation results and undeclared
+outputs. An optional tool cannot replace a mandatory check. Evaluation results
+carry a check version; retained bootstrap results without that field mean `v1`
+only. This additive JSON field needs no database migration.
+
+The fixture requires freshness and event-order checks for both entry and exit,
+plus notional and protective-level checks for entry. Workflow finalization and
+operations use the same declared recipe; operations independently resolves the
+immutable strategy and retains its own quote, position, validity, and numeric
+safety checks. Failed evaluations still produce structured abstentions with
+their original results. They cannot admit an executable action.
+
+The sole registered executable remains `synthetic_unqualified`. Contracts can
+describe stress, historical, and prospective evidence, but registration and
+passing contract tests confer no paper qualification.
 
 ## Trigger scope
 
@@ -106,7 +142,7 @@ a database transaction cannot make an external order atomic.
 
 ## Next capabilities
 
-- A registered library/component interface with evaluation recipes.
+- Additional library implementations and reproducible experiment recipes.
 - Independent timers and missing-feed detection for decision obligations.
 - Recorded-input replay and research-attempt history, including failures.
 - A real feed adapter with provenance and time-aware routing.

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/library"
 )
 
 // ExecutePaper is a synchronous fixture adapter. Its fill price is the observed
@@ -17,19 +18,17 @@ func ExecutePaper(state domain.State, o domain.Observation, d domain.Decision) (
 	if d.Status != "finalized" || d.Action != "enter" && d.Action != "exit" || d.ObservationID != o.ID || d.CaseID != state.Case.ID || d.StrategyVersionID != state.Strategy.ID || d.Quantity != state.Strategy.Quantity || d.Safety != state.Strategy.Safety || o.ReceivedAt.Before(d.FinalizedAt) || !o.ReceivedAt.Before(d.ValidUntil) {
 		return domain.ExecutionOutcome{}, errors.New("paper action does not match a valid finalized decision")
 	}
-	checks := make(map[string]bool)
-	for _, check := range d.Evaluations {
-		if !check.Passed {
-			return domain.ExecutionOutcome{}, errors.New("paper action has a failed evaluation")
-		}
-		if checks[check.Check] {
-			return domain.ExecutionOutcome{}, errors.New("duplicate evaluation")
-		}
-		checks[check.Check] = true
+	entry, err := library.ResolveFixture(state.Strategy)
+	if err != nil {
+		return domain.ExecutionOutcome{}, err
 	}
-	if !checks["quote_freshness"] || !checks["event_order"] || d.Action == "enter" && (!checks["notional_limit"] || !checks["protective_levels"]) {
-		return domain.ExecutionOutcome{}, errors.New("paper action lacks evaluations")
+	if !entry.AcceptsQuote(o) {
+		return domain.ExecutionOutcome{}, errors.New("observation does not match library inputs")
 	}
+	if err := entry.Admit(d.Action, d.Evaluations); err != nil {
+		return domain.ExecutionOutcome{}, err
+	}
+
 	if d.Safety.MaxQuoteAgeSeconds <= 0 || d.Safety.MaxQuoteAgeSeconds > 86400 || d.Safety.MaxHoldingSeconds <= 0 || d.Safety.MaxHoldingSeconds > 31536000 || o.OccurredAt.After(o.ReceivedAt) || o.ReceivedAt.Sub(o.OccurredAt) > time.Duration(d.Safety.MaxQuoteAgeSeconds)*time.Second || !state.LastOccurredAt.Equal(o.OccurredAt) {
 		return domain.ExecutionOutcome{}, errors.New("paper action lacks a current usable quote")
 	}
