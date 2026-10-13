@@ -1,27 +1,38 @@
+name: mantik-dev
+
 services:
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-app}
-      POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: mantik
+      POSTGRES_USER: mantik
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mantik-local-development}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-45432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-app} -d $${POSTGRES_DB:-app}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U mantik -d mantik"]
+      interval: 2s
       timeout: 5s
-      retries: 5
+      retries: 15
 
-  worker:
+  mantik:
     build: .
+    command: ["serve", "--listen", "0.0.0.0:40880"]
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-app}?sslmode=disable
+      DATABASE_URL: postgres://mantik:${POSTGRES_PASSWORD:-mantik-local-development}@postgres:5432/mantik?sslmode=disable
+      MANTIK_API_TOKEN: ${MANTIK_API_TOKEN:-mantik-local-development}
+    ports:
+      - "127.0.0.1:${MANTIK_PORT:-40880}:40880"
     depends_on:
       postgres:
         condition: service_healthy
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
 
 volumes:
   postgres-data:

@@ -1,4 +1,4 @@
-name: template-check
+name: CI
 
 on:
   push:
@@ -18,7 +18,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Verify template baseline
+      - name: Verify Mantik
         run: make verify
+      - name: Race checks
+        run: make test-race
+      - name: PostgreSQL lifecycle contracts
+        run: make test-integration
       - name: Build container images
         run: make compose-build

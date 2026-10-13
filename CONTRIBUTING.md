@@ -1,73 +1,19 @@
-# Contributing
+# Contributing to Mantik
 
-This repository is a base template for derived SUBCULT projects. Keep changes small, reviewable, and useful across stacks.
+Use Go 1.26.9 from `mise.toml`. Read [AGENTS.md](AGENTS.md) and the
+[architecture](docs/architecture.md) before changing application contracts.
 
-## Development flow
+1. Create or select a bounded issue and work on a feature branch.
+2. Implement the smallest complete user-visible flow.
+3. Run `mise exec -- make verify`. Run race and disposable database checks
+   when their boundaries are affected; run `make compose-build` for image
+   changes.
+4. Update affected maintained documentation.
+5. Open a Gitea PR with behavior, validation, limitations, and the issue link.
 
-1. Create or pick an issue before making non-trivial changes.
-2. Create a branch from `main`.
-3. Make the smallest change that satisfies the issue.
-4. Run verification:
+Use concise conventional commit subjects. Preserve unrelated changes and do
+not commit generated evidence, credentials, local data, or binaries.
 
-   ```bash
-   make verify
-   ```
-
-5. Open a pull request using the PR template.
-6. Link the issue with `Closes #N` when appropriate.
-
-## Commit style
-
-Prefer concise conventional-style subjects:
-
-```text
-feat: add stack recipe
-docs: update Open Pilot guidance
-fix: correct make target detection
-chore: refresh template metadata
-```
-
-## Open Pilot issues
-
-Use the draft task, bug, feature, or documentation form to prepare work. Each form requires a goal, context, acceptance criteria, and a deterministic test command.
-
-The portable pickup contract uses:
-
-- `ready-for-agent`
-- `agent:queued`
-- a deterministic `Test Command`
-
-Draft forms add `status:needs-review` and do not opt into pickup. After review, apply both pickup labels or use the ready-for-pickup form, which applies them at submission. A deployment may accept `ready-for-agent` alone or assignment to `open-pilot`; neither should be used for unfinished work.
-
-Good Open Pilot tasks are:
-
-- one focused outcome
-- clear context and constraints
-- explicit out-of-scope notes
-- verifiable from the repository root
-
-## Verification commands
-
-Use the narrowest deterministic command that proves the change.
-
-Default full check:
-
-```bash
-make verify
-```
-
-Examples for derived templates:
-
-```bash
-go test ./...
-pnpm --dir web run test
-uv run pytest
-cargo test --all
-docker compose config --quiet
-```
-
-## Template boundaries
-
-This base template should stay stack-neutral. Do not add application scaffolding here unless the issue explicitly changes the role of this repository.
-
-Stack-specific scaffolds should live in derived template repositories.
+The bootstrap has no real-provider or live-trading authorization path. Add
+capabilities through explicit contracts, evidence, and appropriate tests.
+Open Pilot issue preparation is documented in [docs/open-pilot.md](docs/open-pilot.md).
