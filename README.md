@@ -1,32 +1,91 @@
-# Go Worker Postgres Docker Template
+# Mantik
 
-Go worker/service template with Postgres, Docker Compose, migrations, tests, and Open Pilot conventions.
+Mantik is a terminal-first foundation for autonomous paper-trading research.
+It separates research, structured decision-making, and operations. Humans
+supervise the service through a CLI; a TUI and conversational direction are
+planned interfaces.
 
-Created from `subculture-collective/project-template`.
+The bootstrap implements one deterministic synthetic workflow. It accepts
+fixture quotes for `DEMO`, evaluates an entry, finalizes a decision with safety
+conditions, simulates an entry and stop/target/deadline exit, and retains the
+records in PostgreSQL. It does not connect to markets, use an LLM, or qualify a
+profitable strategy.
 
-## Quick start
+## Run the local demo
 
-```bash
-make verify
-```
-
-Rename package or module identifiers, CLI names, and this README after creating your repository. Bootstrap labels on the new repository, using its owner and name.
-
-## Open Pilot
-
-This repository includes draft, bug, feature, documentation, and reviewed ready-for-pickup issue forms, plus the PR template. Draft forms do not approve automation.
-Bootstrap labels after creating a repo from this template:
+Install Go 1.26.9, or use the repository's `mise.toml`:
 
 ```bash
-open-pilot labels bootstrap OWNER/REPO
+mise install
+mise exec -- make verify
+mise exec -- make demo
 ```
 
-## License
+`make demo` needs no database or provider credentials. It prints structured
+JSON: four observations, two finalized action decisions, and two execution
+outcomes. The fixture buys 10 units at 100.00 and exits at 94.00 after crossing
+a 95.00 stop. Its synthetic realized loss is 60.00. Filling at the observed gap
+price rather than the stop threshold is intentional. Fees and slippage are
+zero in this fixture model; these results have no qualification credit.
 
-GPL-3.0-only. See `LICENSE`.
+## Run the persistent service
 
-## Local containers
+Docker Compose uses project `mantik-dev`, its own named volume, and loopback
+ports 45432 for PostgreSQL and 40880 for the service. Check that these ports are
+available; change `.env` if needed.
 
-Compose is a local development configuration. Copy `.env.example` to `.env` and set local values before starting services. `docker compose config --quiet` validates configuration without starting containers. The Postgres password default is for local development; choose deployment credentials before exposing services.
+```bash
+cp .env.example .env
+make compose-build
+docker compose up -d
+mise exec -- make build
+export MANTIK_API_TOKEN=mantik-local-development
+./bin/mantik demo --api-url http://127.0.0.1:40880
+./bin/mantik status
+./bin/mantik status --format json
+```
 
-Run `make compose-build` to check image builds without starting services. CI runs this after `make verify`.
+Compose reads `.env`; the native CLI does not load it. The token above matches
+the example's local-only default. Export your chosen token if you change it.
+Identical demo retries return the original receipts without new actions.
+Restarting the service preserves the case and event history. A fresh demo
+starts with the in-memory command; the persistent fixture intentionally does
+not expose a destructive reset operation.
+
+To stop local services while retaining the database:
+
+```bash
+docker compose down
+```
+
+See [development and verification](docs/runbooks/development.md) for native
+execution, API requests, and disposable integration tests.
+
+## Current boundaries
+
+- Only fixture quotes for the synthetic `DEMO` instrument are accepted.
+- The registered library has one fixed, unqualified example strategy.
+- Stop, target, and holding-deadline checks run on usable incoming quotes.
+  There is no independent deadline scheduler or missing-feed monitor yet.
+- The synchronous simulator fills at the observed quote with zero costs.
+- One case and one aggregate are supported. PostgreSQL serializes their
+  updates; this is not a multi-strategy portfolio allocator.
+- Status returns the complete small fixture history. Pagination is needed
+  before continuous ingestion.
+- Bearer authentication is available. A non-loopback bind requires a token of
+  at least 16 characters. TLS and remote operator access are not configured.
+- No external feed, copytrading connector, LLM workflow, dynamic code runner,
+  TUI, or live trading path is implemented.
+
+## Design and source
+
+- [Architecture and agreed product model](docs/architecture.md)
+- [Documentation index](docs/README.md)
+- [Open-source design references](docs/research/README.md)
+- [Bootstrap architecture decision](docs/adr/0002-mantik-bootstrap.md)
+
+Derived from SUBCULT's `project-template-go-worker-postgres-docker`. The existing
+Augr repository remains a separate reference implementation; Mantik does not
+access its services, database, or credentials.
+
+GPL-3.0-only. See [LICENSE](LICENSE).

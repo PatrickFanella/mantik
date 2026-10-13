@@ -7,10 +7,10 @@ SHELL := /usr/bin/env bash
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*##"; printf "Commands:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-verify: fmt-check lint test compose-config open-pilot-check ## Run all checks
+verify: fmt-check lint test build compose-config open-pilot-check ## Run all checks
 
 fmt: ## Format Go files
-	@git ls-files -z --cached --others --exclude-standard '*.go' | xargs -0 -r gofmt -w
+	@find cmd internal migrations -name '*.go' -print0 | xargs -0 -r gofmt -w
 
 lint: ## Run Go vet
 	go vet ./...
@@ -33,9 +33,22 @@ open-pilot-check: ## Check all issue forms and label definitions
 
 .PHONY: fmt-check
 fmt-check: ## Check formatting without changing sources
-	@set -e; unformatted=$$(git ls-files -z --cached --others --exclude-standard '*.go' | xargs -0 -r gofmt -l); \
+	@set -e; unformatted=$$(find cmd internal migrations -name '*.go' -print0 | xargs -0 -r gofmt -l); \
 	if [ -n "$$unformatted" ]; then printf '%s\n' "$$unformatted"; exit 1; fi
 
 .PHONY: compose-build
 compose-build: ## Build local container images without starting services
 	docker compose build
+
+.PHONY: build demo test-race test-integration
+build: ## Build the Mantik CLI/service
+	go build -trimpath -o bin/mantik ./cmd/mantik
+
+demo: build ## Run the synthetic paper lifecycle without dependencies
+	./bin/mantik demo
+
+test-race: ## Verify concurrent operation with the race detector
+	go test -race ./...
+
+test-integration: ## Verify persistence using a new disposable PostgreSQL container
+	python3 scripts/test-integration.py

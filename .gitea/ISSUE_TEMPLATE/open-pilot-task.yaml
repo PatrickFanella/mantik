@@ -29,7 +29,7 @@ body:
     label: Context
     description: Links, files, existing behavior, constraints, and any product or
       domain background needed.
-    placeholder: '- Relevant files: README.md, docs/stacks.md
+    placeholder: '- Relevant files: README.md, docs/architecture.md
 
       - Keep this docs-only; do not add application scaffolding.
 

@@ -30,7 +30,7 @@ body:
     label: Context
     description: Reproduction steps, affected version, relevant files, and evidence.
       Keep credentials and private data out.
-    placeholder: '- Relevant files: README.md, docs/stacks.md
+    placeholder: '- Relevant files: README.md, docs/architecture.md
 
       - Keep this docs-only; do not add application scaffolding.
 
