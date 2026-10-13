@@ -7,6 +7,8 @@
 - [Development](runbooks/development.md): local service, CLI, API, and checks.
 - [Architecture decisions](adr/README.md): durable implementation choices.
 - [Research references](research/README.md): outside projects and design ideas.
+- [Augr corpus assessment](research/augr-corpus-assessment.md): recovered source
+  locations, hashes, candidate mappings, and reproduction gaps.
 - [Stack reference](reference/stack.md): toolchain and persistence.
 - [Dataset contracts](reference/datasets.md): content pins, provenance, replay
   cutoffs, and quality admission.
