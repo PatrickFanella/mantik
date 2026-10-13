@@ -1,0 +1,61 @@
+labels:
+- name: agent:approved
+  color: 0e8a16
+  description: Open Pilot review passed
+  exclusive: false
+- name: agent:changes-pushed
+  color: fbca04
+  description: Open Pilot pushed review fixes
+  exclusive: false
+- name: agent:failed
+  color: d73a4a
+  description: Open Pilot implementation failed
+  exclusive: false
+- name: agent:merge-blocked
+  color: d73a4a
+  description: Open Pilot could not safely merge the PR
+  exclusive: false
+- name: agent:merged
+  color: 0e8a16
+  description: Open Pilot merged the PR
+  exclusive: false
+- name: agent:pr-opened
+  color: 5319e7
+  description: Implementation PR has been opened
+  exclusive: false
+- name: agent:queued
+  color: f9d423
+  description: Queued for Open Pilot automation
+  exclusive: false
+- name: agent:reviewing
+  color: 1d76db
+  description: Open Pilot is reviewing an implementation PR
+  exclusive: false
+- name: agent:running
+  color: 1d76db
+  description: Currently being implemented by Open Pilot
+  exclusive: false
+- name: ready-for-agent
+  color: 0e8a16
+  description: Ready for Open Pilot to pick up
+  exclusive: false
+- name: status:needs-review
+  color: fbca04
+  description: Issue scope or verification needs human review before agent pickup
+  exclusive: false
+- name: type:bug
+  color: d73a4a
+  description: A defect in existing behavior
+  exclusive: false
+- name: type:feature
+  color: a2eeef
+  description: A new product capability
+  exclusive: false
+- name: type:docs
+  color: 0075ca
+  description: Documentation changes
+  exclusive: false
+- name: type:maintenance
+  color: cfd3d7
+  description: Maintenance or technical cleanup
+  exclusive: false
