@@ -26,5 +26,8 @@ results:
 - [VectorBT](https://github.com/polakowo/vectorbt): fast candidate screening
   before more detailed execution evaluation.
 
-The original Augr research corpus has not been recovered or imported. Preserve
-its provenance and assess its relevance before adding library entries.
+The [Augr corpus assessment](augr-corpus-assessment.md) locates the original
+reports, paper tracker and downloaded files, records relevant source history,
+and maps literature and implementations to candidate library work. Original
+papers, reports and operational data remain outside Mantik Git. Recovery and
+source inspection do not establish reproduction or performance.
