@@ -79,6 +79,8 @@ execution, API requests, and disposable integration tests.
 
 ## Design and source
 
+- [Roadmap and milestones](docs/roadmap.md)
+- [Project board](https://git.subcult.tv/subculture-collective/mantik/projects/5)
 - [Architecture and agreed product model](docs/architecture.md)
 - [Documentation index](docs/README.md)
 - [Open-source design references](docs/research/README.md)

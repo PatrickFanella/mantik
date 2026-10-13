@@ -1,5 +1,7 @@
 # Mantik documentation
 
+- [Roadmap](roadmap.md): milestones, issue links, dependencies, and exit gates.
+- [Delivery model](delivery.md): board workflow and evidence requirements.
 - [Architecture](architecture.md): product model, responsibilities, contracts,
   implemented boundaries, and next capabilities.
 - [Development](runbooks/development.md): local service, CLI, API, and checks.
