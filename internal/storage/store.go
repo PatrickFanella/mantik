@@ -32,6 +32,8 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 
 type Memory struct {
 	mu           sync.Mutex
+	queued       bool
+	effects      map[string]domain.ActionEffect
 	state        domain.State
 	observations map[string][]byte
 	receipts     map[string]domain.Receipt
@@ -39,8 +41,11 @@ type Memory struct {
 }
 
 func NewMemory() *Memory {
-	return &Memory{state: workflow.InitialState(), observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
+	return &Memory{state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
 }
+
+// NewQueuedMemory exercises the persistent delivery contract without a database.
+func NewQueuedMemory() *Memory { m := NewMemory(); m.queued = true; return m }
 
 // NewMemoryFor selects a registered immutable method for an isolated replay.
 // Service/PostgreSQL startup continues to select the original demo explicitly.
@@ -72,7 +77,11 @@ func (m *Memory) Ingest(ctx context.Context, o domain.Observation) (domain.Recei
 		r.Duplicate = true
 		return r, nil
 	}
-	state, events, err := workflow.Apply(m.state, o)
+	apply := workflow.Apply
+	if m.queued {
+		apply = workflow.Queue
+	}
+	state, events, err := apply(m.state, o)
 	if err != nil {
 		return domain.Receipt{}, err
 	}

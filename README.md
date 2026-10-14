@@ -61,14 +61,18 @@ make compose-build
 docker compose up -d
 mise exec -- make build
 export MANTIK_API_TOKEN=mantik-local-development
-./bin/mantik demo --api-url http://127.0.0.1:40880
 ./bin/mantik status
 ./bin/mantik status --format json
 ```
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.
-Identical demo retries return the original receipts without new actions.
+Service ingestion now queues finalized actions for an independent worker.
+The fixed demo uses historical times; its pending service actions expire against
+the real worker clock. Use current-time fixture observations as described in
+[development](docs/runbooks/development.md), and inspect `status --format json`
+for delivery results. Use local `demo` or `replay` for deterministic economics.
+Identical observation retries return the original receipts without new actions.
 Restarting the service preserves the case and event history. A fresh demo
 starts with the in-memory command; the persistent fixture intentionally does
 not expose a destructive reset operation.
@@ -95,6 +99,11 @@ and expected missing events. It recovers overdue work after restart through
 fenced leases. A protective deadline uses usable retained price evidence or
 records an operational exception. See [timer contracts](docs/reference/timers.md),
 including the real-clock boundary for the historical fixed demo.
+
+Finalized actions are delivered through a durable queue and independent fixture
+effect ledger. Restart reconciles uncertain results before attempting delivery,
+and stale lease generations cannot submit another effect. See
+[action contracts](docs/reference/actions.md) for status and recovery behavior.
 
 ## Current boundaries
 

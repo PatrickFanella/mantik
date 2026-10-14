@@ -3,11 +3,13 @@
 package workflow
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/actions"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/library"
 	"git.subcult.tv/subculture-collective/mantik/internal/operations"
@@ -21,6 +23,7 @@ func InitialState() domain.State {
 		Strategy: library.FixtureStrategy(),
 		Case:     domain.DecisionCase{ID: "demo-case-v1", StrategyVersionID: "demo-threshold-v1", Status: "waiting"},
 		Routing:  routing.NewState(),
+		Actions:  actions.NewState(),
 	}
 }
 
@@ -32,7 +35,7 @@ func InitialStateFor(id string) (domain.State, error) {
 	if id == library.FixtureStrategy().ID {
 		return InitialState(), nil
 	}
-	return domain.State{Strategy: s, Case: domain.DecisionCase{ID: id + "-case", StrategyVersionID: id, Status: "waiting"}, Routing: routing.NewState()}, nil
+	return domain.State{Strategy: s, Case: domain.DecisionCase{ID: id + "-case", StrategyVersionID: id, Status: "waiting"}, Routing: routing.NewState(), Actions: actions.NewState()}, nil
 }
 
 func Validate(o domain.Observation) error {
@@ -54,7 +57,24 @@ func Validate(o domain.Observation) error {
 // Apply records rejected observations without allowing them to alter the last
 // usable quote or create an economic action. The store owns retry deduplication.
 func Apply(state domain.State, o domain.Observation) (domain.State, []domain.Event, error) {
-	next, events, err := applyFixture(state, o)
+	return apply(state, o, false)
+}
+
+// Queue atomically prepares finalized intent without enacting it.
+func Queue(state domain.State, o domain.Observation) (domain.State, []domain.Event, error) {
+	raw, err := json.Marshal(state)
+	if err != nil {
+		return state, nil, err
+	}
+	var next domain.State
+	if err := json.Unmarshal(raw, &next); err != nil {
+		return state, nil, err
+	}
+	return apply(next, o, true)
+}
+
+func apply(state domain.State, o domain.Observation, queued bool) (domain.State, []domain.Event, error) {
+	next, events, err := applyFixture(state, o, queued)
 	if err != nil {
 		return state, nil, err
 	}
@@ -77,7 +97,7 @@ func Apply(state domain.State, o domain.Observation) (domain.State, []domain.Eve
 	return next, events, nil
 }
 
-func applyFixture(state domain.State, o domain.Observation) (domain.State, []domain.Event, error) {
+func applyFixture(state domain.State, o domain.Observation, queued bool) (domain.State, []domain.Event, error) {
 	if err := Validate(o); err != nil {
 		return state, nil, err
 	}
@@ -100,7 +120,7 @@ func applyFixture(state domain.State, o domain.Observation) (domain.State, []dom
 	state.LastOccurredAt = o.OccurredAt
 	quote := o
 	state.LastQuote = &quote
-	if state.Case.Status == "closed" {
+	if state.Case.Status == "closed" || queued && actions.Active(state) {
 		return state, events, nil
 	}
 	action, reason := "", ""
@@ -136,6 +156,14 @@ func applyFixture(state domain.State, o domain.Observation) (domain.State, []dom
 	events = append(events, decisionEvent(o, d))
 	// The synthetic operations adapter enforces the finalized contract again.
 	if action == "abstain" {
+		return state, events, nil
+	}
+	if queued {
+		id, err := actions.Enqueue(&state, d, o, "quote", "")
+		if err != nil {
+			return state, nil, err
+		}
+		events[len(events)-1].ActionID = id
 		return state, events, nil
 	}
 	outcome, err := operations.ExecutePaper(state, o, d)

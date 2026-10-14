@@ -58,10 +58,10 @@ func (p *Postgres) migrate(ctx context.Context) error {
 	if err = tx.QueryRow(ctx, "SELECT count(*),coalesce(max(version),0),coalesce(min(version),0) FROM mantik_schema").Scan(&count, &maximum, &minimum); err != nil {
 		return err
 	}
-	if maximum > 3 || count != maximum || count > 0 && minimum != 1 {
+	if maximum > 4 || count != maximum || count > 0 && minimum != 1 {
 		return errors.New("unsupported or incomplete schema version")
 	}
-	for index, sql := range []string{migrations.Bootstrap, migrations.TriggerRouting, migrations.IndependentTimers} {
+	for index, sql := range []string{migrations.Bootstrap, migrations.TriggerRouting, migrations.IndependentTimers, migrations.DurableActions} {
 		version := index + 1
 		digest := fmt.Sprintf("%x", sha256.Sum256([]byte(sql)))
 		var existing string
@@ -142,7 +142,7 @@ func (p *Postgres) Ingest(ctx context.Context, o domain.Observation) (domain.Rec
 	if err = json.Unmarshal(stateRaw, &state); err != nil {
 		return domain.Receipt{}, err
 	}
-	state, events, err := workflow.Apply(state, o)
+	state, events, err := workflow.Queue(state, o)
 	if err != nil {
 		return domain.Receipt{}, err
 	}

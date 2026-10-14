@@ -228,7 +228,12 @@ func serve(ctx context.Context, listen string) error {
 		defer close(workerDone)
 		service.RunTimerWorker(workerCtx, store, workerID, service.WallClock{}, interval, 30*time.Second)
 	}()
-	defer func() { stopWorker(); <-workerDone }()
+	actionDone := make(chan struct{})
+	go func() {
+		defer close(actionDone)
+		service.RunActionWorker(workerCtx, store, workerID+"-actions", service.WallClock{}, interval, 30*time.Second)
+	}()
+	defer func() { stopWorker(); <-workerDone; <-actionDone }()
 	server := &http.Server{Handler: service.Handler(store, token), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	finished := make(chan error, 1)
 	go func() { finished <- server.Serve(listener) }()

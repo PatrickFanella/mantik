@@ -20,6 +20,8 @@
   windows, case routing, retries, and finalized protection.
 - [Timer contracts](reference/timers.md): independent deadlines, missing events,
   fenced recovery, clock changes, and price-unavailable exceptions.
+- [Action contracts](reference/actions.md): finalized intent, durable delivery,
+  adapter effects, uncertain outcomes, and reconciliation.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed

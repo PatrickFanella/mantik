@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/actions"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/operations"
 	"git.subcult.tv/subculture-collective/mantik/internal/routing"
@@ -36,6 +37,15 @@ func ProtectionClock(state domain.State) time.Time {
 // CompleteTimer finalizes one leased clock obligation and its protective effect.
 // Storage commits the state, retained receipt, and audit events atomically.
 func CompleteTimer(state domain.State, claim domain.TimerClaim, now time.Time) (domain.State, domain.TimerReceipt, error) {
+	return completeTimer(state, claim, now, false)
+}
+
+// CompleteTimerQueued prepares a protected exit for durable delivery.
+func CompleteTimerQueued(state domain.State, claim domain.TimerClaim, now time.Time) (domain.State, domain.TimerReceipt, error) {
+	return completeTimer(state, claim, now, true)
+}
+
+func completeTimer(state domain.State, claim domain.TimerClaim, now time.Time, queued bool) (domain.State, domain.TimerReceipt, error) {
 	retained, err := routing.CheckClaim(state.Routing, claim, now)
 	if err != nil {
 		return state, domain.TimerReceipt{}, err
@@ -63,6 +73,9 @@ func CompleteTimer(state domain.State, claim domain.TimerClaim, now time.Time) (
 		return state, domain.TimerReceipt{}, routing.ErrNotFound
 	}
 	receipt := domain.TimerReceipt{DefinitionID: definition.ID, At: now, Events: []domain.Event{}}
+	if queued && definition.Behavior == "act" && actions.Active(next) {
+		return state, receipt, errors.New("protection awaits action reconciliation")
+	}
 	if definition.Behavior == "act" && (next.Case.Status != "open" || next.Case.Exit != nil) {
 		receipt.Status = "superseded"
 	} else {
@@ -71,13 +84,15 @@ func CompleteTimer(state domain.State, claim domain.TimerClaim, now time.Time) (
 			return state, receipt, err
 		}
 		if receipt.Status == "matched" && definition.Behavior == "act" {
-			events, err := enforceDeadline(&next, definition, now)
+			events, err := enforceDeadline(&next, definition, now, queued)
 			if err != nil {
 				return state, receipt, err
 			}
 			receipt.Events = append(receipt.Events, events...)
 			if next.Case.Exit != nil {
 				receipt.Status = "executed"
+			} else if queued && actions.Active(next) {
+				receipt.Status = "queued"
 			} else {
 				receipt.Status = "exception"
 			}
@@ -88,7 +103,7 @@ func CompleteTimer(state domain.State, claim domain.TimerClaim, now time.Time) (
 	return next, receipt, nil
 }
 
-func enforceDeadline(state *domain.State, d domain.TriggerDefinition, now time.Time) ([]domain.Event, error) {
+func enforceDeadline(state *domain.State, d domain.TriggerDefinition, now time.Time, queued bool) ([]domain.Event, error) {
 	if state.Case.Entry == nil || d.SourceDecisionID != state.Case.Entry.DecisionID || d.SubjectCaseID != state.Case.ID || d.Condition.Kind != "deadline" || !d.Condition.DueAt.Equal(state.Case.ExitBy) {
 		return nil, errors.New("protective timer does not bind current finalized entry")
 	}
@@ -103,6 +118,13 @@ func enforceDeadline(state *domain.State, d domain.TriggerDefinition, now time.T
 	checks := []domain.EvaluationResult{{Check: "quote_freshness", Version: "v1", Passed: true, Code: "retained_quote_age_at_deadline"}, {Check: "event_order", Version: "v1", Passed: state.LastOccurredAt.Equal(quote.OccurredAt), Code: "current_retained_quote"}}
 	decision := decision(*state, *quote, "exit", "holding_deadline", checks)
 	decision.ID, decision.FinalizedAt, decision.ValidUntil = prefix+"-decision", now, now.Add(30*time.Second)
+	if queued {
+		id, err := actions.Enqueue(state, decision, *quote, "deadline", d.ID)
+		if err != nil {
+			return nil, err
+		}
+		return []domain.Event{{ID: decision.ID, Kind: "decision.finalized", ActionID: id, TimerID: d.ID, At: now, Decision: &decision}}, nil
+	}
 	outcome, err := operations.ExecuteDeadline(*state, *quote, decision, now)
 	if err != nil {
 		return nil, err

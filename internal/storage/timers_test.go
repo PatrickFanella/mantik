@@ -79,6 +79,7 @@ func timerContracts(t *testing.T, factory func(*testing.T, string) timerBackend)
 		if _, err := store.Ingest(ctx, workflow.Fixtures()[1]); err != nil {
 			t.Fatal(err)
 		}
+		drainFixtureActions(t, store, workflow.Fixtures()[1].ReceivedAt)
 		snapshot, err := store.Snapshot(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -166,6 +167,7 @@ func timerContracts(t *testing.T, factory func(*testing.T, string) timerBackend)
 		if _, err := store.Ingest(ctx, q); err != nil {
 			t.Fatal(err)
 		}
+		drainFixtureActions(t, store, q.ReceivedAt)
 		after, err = store.Snapshot(ctx)
 		if err != nil || after.State.Case.Exit == nil {
 			t.Fatal("late quote failed safe exit", err)
@@ -182,6 +184,7 @@ func timerContracts(t *testing.T, factory func(*testing.T, string) timerBackend)
 		if _, err := store.Ingest(ctx, workflow.Fixtures()[1]); err != nil {
 			t.Fatal(err)
 		}
+		drainFixtureActions(t, store, workflow.Fixtures()[1].ReceivedAt)
 		snapshot, err := store.Snapshot(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -199,9 +202,10 @@ func timerContracts(t *testing.T, factory func(*testing.T, string) timerBackend)
 			t.Fatal("no deadline claim", err)
 		}
 		receipt, err := store.CompleteTimer(ctx, claims[0], due)
-		if err != nil || receipt.Status != "executed" {
+		if err != nil || receipt.Status != "executed" && receipt.Status != "queued" {
 			t.Fatalf("retained-price execution: %+v %v", receipt, err)
 		}
+		drainFixtureActions(t, store, due)
 		snapshot, err = store.Snapshot(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -262,6 +266,7 @@ func TestPostgresContractsTimerRollback(t *testing.T) {
 	if _, err := store.Ingest(ctx, workflow.Fixtures()[1]); err != nil {
 		t.Fatal(err)
 	}
+	drainFixtureActions(t, store, workflow.Fixtures()[1].ReceivedAt)
 	before, err := store.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -302,6 +307,7 @@ func TestPostgresContractsV2TimerUpgrade(t *testing.T) {
 	if _, err := store.Ingest(ctx, workflow.Fixtures()[1]); err != nil {
 		t.Fatal(err)
 	}
+	drainFixtureActions(t, store, workflow.Fixtures()[1].ReceivedAt)
 	snapshot, err := store.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -315,16 +321,28 @@ func TestPostgresContractsV2TimerUpgrade(t *testing.T) {
 			delete(state.Routing.Runtime, id)
 		}
 	}
+	state.Actions = nil
 	state.Routing.Timers = nil
 	state.LastQuote = nil
 	raw, err := json.Marshal(state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, "ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_timers; ALTER TABLE mantik_events DROP CONSTRAINT mantik_event_requires_source; ALTER TABLE mantik_events ALTER COLUMN observation_id SET NOT NULL; DELETE FROM mantik_schema WHERE version=3"); err != nil {
+	if _, err := store.pool.Exec(ctx, "ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_actions; DROP TABLE mantik_fixture_effects; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_timers; ALTER TABLE mantik_events DROP CONSTRAINT mantik_event_requires_source; UPDATE mantik_events SET observation_id='demo-quote-2' WHERE observation_id IS NULL; ALTER TABLE mantik_events ALTER COLUMN observation_id SET NOT NULL; DELETE FROM mantik_schema WHERE version>=3"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, "UPDATE mantik_state SET payload=$1::jsonb #- '{routing,timers}'", raw); err != nil {
+	if _, err := store.pool.Exec(ctx, "UPDATE mantik_state SET payload=($1::jsonb #- '{routing,timers}')-'actions'", raw); err != nil {
+		t.Fatal(err)
+	}
+	legacyEvents := []domain.Event{}
+	for _, event := range snapshot.Events {
+		if event.Kind != "action.submitting" {
+			event.ActionID = ""
+			legacyEvents = append(legacyEvents, event)
+		}
+	}
+	snapshot.Events = legacyEvents
+	if _, err := store.pool.Exec(ctx, "DELETE FROM mantik_events WHERE payload->>'kind'='action.submitting'"); err != nil {
 		t.Fatal(err)
 	}
 	for index := range snapshot.Events {

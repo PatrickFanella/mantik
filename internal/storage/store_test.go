@@ -114,6 +114,7 @@ func contracts(t *testing.T, store Store) {
 		})
 	}
 	wg.Wait()
+	drainFixtureActions(t, store, quotes[1].ReceivedAt)
 	conflict := quotes[1]
 	conflict.PriceCents++
 	if _, err := store.Ingest(ctx, conflict); !errors.Is(err, ErrConflict) {
@@ -123,12 +124,17 @@ func contracts(t *testing.T, store Store) {
 		if _, err := store.Ingest(ctx, o); err != nil {
 			t.Fatal(err)
 		}
+		drainFixtureActions(t, store, o.ReceivedAt)
 	}
 	snapshot, err := store.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.ObservationCount != 4 || snapshot.State.Case.Status != "closed" || len(snapshot.Events) != 10 {
+	expectedEvents := 10
+	if _, ok := store.(*Postgres); ok {
+		expectedEvents = 12
+	}
+	if snapshot.ObservationCount != 4 || snapshot.State.Case.Status != "closed" || len(snapshot.Events) != expectedEvents {
 		t.Fatalf("duplicate side effects: %+v", snapshot)
 	}
 	if snapshot.State.Case.Exit.RealizedPnLCents != -6000 {

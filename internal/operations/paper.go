@@ -15,6 +15,11 @@ func ExecutePaper(state domain.State, o domain.Observation, d domain.Decision) (
 	return executePaperAt(state, o, d, o.ReceivedAt)
 }
 
+// ExecuteAt rechecks quote and decision authority at independent delivery time.
+func ExecuteAt(state domain.State, o domain.Observation, d domain.Decision, at time.Time) (domain.ExecutionOutcome, error) {
+	return executePaperAt(state, o, d, at)
+}
+
 // ExecuteDeadline uses retained price evidence at an independent execution time.
 // It never changes the observation timestamp or fills from stale evidence.
 func ExecuteDeadline(state domain.State, o domain.Observation, d domain.Decision, at time.Time) (domain.ExecutionOutcome, error) {
