@@ -125,6 +125,7 @@ including the real-clock boundary for the historical fixed demo.
 ## Design and source
 
 - [Roadmap and milestones](docs/roadmap.md)
+- [First running-app pilot checkpoint](docs/runbooks/first-pilot.md)
 - [Project board](https://git.subcult.tv/subculture-collective/mantik/projects/5)
 - [Architecture and agreed product model](docs/architecture.md)
 - [Documentation index](docs/README.md)
