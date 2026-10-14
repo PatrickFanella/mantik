@@ -44,13 +44,13 @@ func RunTimerCycle(ctx context.Context, store storage.TimerStore, worker string,
 	}
 	for _, claim := range claims {
 		if err := ctx.Err(); err != nil {
-			return err
+			return &workerFailure{cause: err, ref: "timer:" + claim.DefinitionID}
 		}
 		completeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		_, err := store.CompleteTimer(completeCtx, claim, clock.Now())
 		cancel()
 		if err != nil {
-			return err
+			return &workerFailure{cause: err, ref: "timer:" + claim.DefinitionID}
 		}
 	}
 	return nil
@@ -59,11 +59,20 @@ func RunTimerCycle(ctx context.Context, store storage.TimerStore, worker string,
 // RunTimerWorker recovers overdue jobs immediately on startup, then polls until
 // cancellation. Models, incoming quotes, and HTTP clients are not prerequisites.
 func RunTimerWorker(ctx context.Context, store storage.TimerStore, worker string, clock Clock, interval, lease time.Duration) {
+	pending := pendingFailure{}
+	defer func() {
+		recordWorkerCycle(context.Background(), store, worker, "protective_monitoring", clock, interval, nil, true, &pending)
+	}()
 	for {
 		if ctx.Err() != nil {
 			return
 		}
-		if err := RunTimerCycle(ctx, store, worker, clock, lease); err != nil && !errors.Is(err, context.Canceled) {
+		err := RunTimerCycle(ctx, store, worker, clock, lease)
+		if ctx.Err() != nil {
+			return
+		}
+		recordWorkerCycle(ctx, store, worker, "protective_monitoring", clock, interval, err, false, &pending)
+		if err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("timer cycle failed", "error", err)
 		}
 		if err := clock.Wait(ctx, interval); err != nil {

@@ -35,6 +35,11 @@ Action regressions exercise crashes before/after the independent adapter effect,
 lease fencing, expiry and changed authority, accepted/partial reconciliation,
 idempotent acknowledgment, and rollback that preserves the effect. Disposable
 version 3 upgrade checks preserve original history without reenactment.
+Operational regressions cover scoped readiness, dependency outage/recovery,
+stale workers, missing protection, API/CLI inspection, recovery idempotency and
+limits, live-lease preservation, and new protective decisions that leave expired
+authority intact. Disposable checks preserve recovery history through restart
+and rollback and upgrade version 4 exception metadata without rewriting events.
 Library regressions cover contract and check versions, complete safety
 declarations, exact dependencies and cycles, immutable registry readbacks,
 required-check admission, and fixture configuration compatibility. Workflow
@@ -64,7 +69,7 @@ mise exec -- make build
 Use a second terminal with the same token for `status` and the current-time
 fixture ingestion example below. Change credentials and ports to match
 `.env` if customized. `serve` applies embedded migrations through schema version
-4 at startup. It rejects an unsupported database name or changed migration
+5 at startup. It rejects an unsupported database name or changed migration
 checksum. Version 2 preserves retained events and derives protection for an
 existing open fixture position; missing finalized evidence aborts the upgrade.
 Older binaries cannot write this schema safely. See the
@@ -76,12 +81,21 @@ the poll interval. See [timer contracts](../reference/timers.md) for historical
 demo inputs, exceptions, and clock recovery. Version 4 adds the action queue and
 independent fixture effect ledger. Its worker uses the same poll interval and
 reconciles effects before delivery. See [action contracts](../reference/actions.md).
+Version 5 retains worker cycle observations and operational metadata. Inspect
+`readiness --scope fixture_operation`, `operations`, and their JSON formats;
+see [operational contracts](../reference/operations.md) for bounded recovery.
 SIGINT/SIGTERM drains HTTP requests before the pool closes.
 
 ## API and fixture ingestion
 
 - `GET /healthz`: process liveness, public.
-- `GET /readyz`: storage reachability.
+- `GET /readyz`: storage scope by default; `?scope=NAME` selects a capability
+  and returns 503 when that scope is unavailable.
+- `GET /v1/readiness/{scope}`: inspect the scoped report without a healthcheck
+  HTTP failure for a degraded result.
+- `GET /v1/operations`: retained worker observations and exception history.
+- `POST /v1/operations/exceptions/{id}/recover`: a bounded, idempotent recovery
+  request evaluated at service time.
 - `GET /v1/status`: consistent state and event history.
 - `POST /v1/observations`: one fixture observation; 201 for new input, 200 for
   an identical retry, 409 for conflicting content, 422 for invalid fields.

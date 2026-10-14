@@ -105,6 +105,12 @@ effect ledger. Restart reconciles uncertain results before attempting delivery,
 and stale lease generations cannot submit another effect. See
 [action contracts](docs/reference/actions.md) for status and recovery behavior.
 
+Use `readiness --scope fixture_operation` and `operations` to inspect worker
+progress, missing protection, and retained exceptions. `recover` supports bounded
+rechecking, action reconciliation, and evidence-backed overdue protection.
+See [operational contracts](docs/reference/operations.md). Real feed coverage
+remains unavailable and is reported separately from fixture readiness.
+
 ## Current boundaries
 
 - Only fixture quotes for the synthetic `DEMO` instrument are accepted.

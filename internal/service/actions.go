@@ -23,7 +23,7 @@ func RunActionCycle(ctx context.Context, store storage.ActionStore, worker strin
 		a, err := store.ReconcileAction(stepCtx, claim, clock.Now())
 		cancel()
 		if err != nil {
-			return err
+			return &workerFailure{cause: err, ref: "action:" + claim.ID}
 		}
 		if actions.Terminal(a.Status) || a.Status == "accepted" || a.Status == "partial" {
 			continue
@@ -32,7 +32,7 @@ func RunActionCycle(ctx context.Context, store storage.ActionStore, worker strin
 		a, err = store.BeginAction(stepCtx, claim, clock.Now())
 		cancel()
 		if err != nil {
-			return err
+			return &workerFailure{cause: err, ref: "action:" + claim.ID}
 		}
 		if actions.Terminal(a.Status) {
 			continue
@@ -41,13 +41,13 @@ func RunActionCycle(ctx context.Context, store storage.ActionStore, worker strin
 		_, err = store.SubmitAction(stepCtx, claim, clock.Now())
 		cancel()
 		if err != nil {
-			return err
+			return &workerFailure{cause: err, ref: "action:" + claim.ID}
 		}
 		stepCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
 		_, err = store.ReconcileAction(stepCtx, claim, clock.Now())
 		cancel()
 		if err != nil {
-			return err
+			return &workerFailure{cause: err, ref: "action:" + claim.ID}
 		}
 	}
 	return nil
@@ -55,11 +55,20 @@ func RunActionCycle(ctx context.Context, store storage.ActionStore, worker strin
 
 // RunActionWorker recovers durable delivery independently of models and requests.
 func RunActionWorker(ctx context.Context, store storage.ActionStore, worker string, clock Clock, interval, lease time.Duration) {
+	pending := pendingFailure{}
+	defer func() {
+		recordWorkerCycle(context.Background(), store, worker, "action_delivery", clock, interval, nil, true, &pending)
+	}()
 	for {
 		if ctx.Err() != nil {
 			return
 		}
-		if err := RunActionCycle(ctx, store, worker, clock, lease); err != nil && !errors.Is(err, context.Canceled) {
+		err := RunActionCycle(ctx, store, worker, clock, lease)
+		if ctx.Err() != nil {
+			return
+		}
+		recordWorkerCycle(ctx, store, worker, "action_delivery", clock, interval, err, false, &pending)
+		if err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("action cycle failed", "error", err)
 		}
 		if err := clock.Wait(ctx, interval); err != nil {

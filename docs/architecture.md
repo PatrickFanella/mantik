@@ -182,6 +182,16 @@ and reconciliation guarantees; a database transaction cannot make an external
 order atomic. Schema version 4 preserves historical outcomes and initializes an
 empty queue without resubmitting them.
 
+Operational records preserve worker cycle observations and exception identity,
+capability, severity, evidence, recovery attempts, and terminal outcomes.
+Readiness exposes process, storage, feed coverage, action delivery, and protective
+monitoring separately; a fixture scope does not imply real feed coverage.
+Authenticated recovery rechecks conditions, reconciles existing effects, or
+reevaluates an overdue safety obligation with current evidence. It cannot widen
+validity, steal live leases, or force a fill. Schema version 5 preserves older
+audit payloads while adding worker state and exception metadata. See
+[operational contracts](reference/operations.md).
+
 ## Next capabilities
 
 - Additional library implementations and reproducible experiment recipes.

@@ -17,19 +17,23 @@ import (
 )
 
 func Handler(store storage.Store, token string) http.Handler {
+	return HandlerWithClock(store, token, WallClock{})
+}
+
+// HandlerWithClock uses an explicit operational clock for readiness and recovery.
+func HandlerWithClock(store storage.Store, token string, clock Clock) http.Handler {
 	mux := http.NewServeMux()
 	routingRoutes(mux, store)
+	operationalRoutes(mux, store, clock)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]string{"status": "up", "mode": "paper_fixture"})
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-		if err := store.Ping(ctx); err != nil {
-			write(w, 503, map[string]string{"error": "storage unavailable"})
-			return
+		scope := r.URL.Query().Get("scope")
+		if scope == "" {
+			scope = "storage"
 		}
-		write(w, 200, map[string]string{"status": "ready", "mode": "paper_fixture"})
+		readinessResponse(w, r, store, clock, scope, true)
 	})
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)

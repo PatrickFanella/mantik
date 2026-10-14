@@ -12,6 +12,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/actions"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/library"
+	"git.subcult.tv/subculture-collective/mantik/internal/operational"
 	"git.subcult.tv/subculture-collective/mantik/internal/operations"
 	"git.subcult.tv/subculture-collective/mantik/internal/routing"
 )
@@ -23,7 +24,7 @@ func InitialState() domain.State {
 		Strategy: library.FixtureStrategy(),
 		Case:     domain.DecisionCase{ID: "demo-case-v1", StrategyVersionID: "demo-threshold-v1", Status: "waiting"},
 		Routing:  routing.NewState(),
-		Actions:  actions.NewState(),
+		Actions:  actions.NewState(), Operations: operational.NewState(),
 	}
 }
 
@@ -35,7 +36,7 @@ func InitialStateFor(id string) (domain.State, error) {
 	if id == library.FixtureStrategy().ID {
 		return InitialState(), nil
 	}
-	return domain.State{Strategy: s, Case: domain.DecisionCase{ID: id + "-case", StrategyVersionID: id, Status: "waiting"}, Routing: routing.NewState(), Actions: actions.NewState()}, nil
+	return domain.State{Strategy: s, Case: domain.DecisionCase{ID: id + "-case", StrategyVersionID: id, Status: "waiting"}, Routing: routing.NewState(), Actions: actions.NewState(), Operations: operational.NewState()}, nil
 }
 
 func Validate(o domain.Observation) error {

@@ -26,6 +26,9 @@ import (
 const defaultURL = "http://127.0.0.1:40880"
 
 func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
+	if len(args) > 0 && (args[0] == "operations" || args[0] == "readiness" || args[0] == "recover") {
+		return runOperational(ctx, args[0], args[1:], out, errOut)
+	}
 	if len(args) > 0 && (args[0] == "trigger-register" || args[0] == "route-input" || args[0] == "close-routing-case") {
 		return runRouting(ctx, args[0], args[1:], out, errOut)
 	}
@@ -33,7 +36,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return runExperiment(ctx, args[1:], out, errOut)
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		_, err := fmt.Fprintln(out, "Mantik — autonomous paper research bootstrap\n\nCommands:\n  serve    Persistent PostgreSQL-backed loopback service\n  demo     Run synthetic entry/stop lifecycle (memory, or --api-url URL)\n  status   Inspect service state (--format table|json)\n  observe  Submit fixture observation JSON from stdin\n  replay   Run a sealed synthetic dataset at explicit cutoffs\n  experiment  Compare synthetic baselines and retain attempts\n  trigger-register  Register a fixture trigger from --file JSON\n  route-input  Submit fixture routing input from --file JSON\n  close-routing-case  Close an operator-owned case explicitly\n\nUse COMMAND --help for flags. All execution is synthetic paper.")
+		_, err := fmt.Fprintln(out, "Mantik — autonomous paper research bootstrap\n\nCommands:\n  serve    Persistent PostgreSQL-backed loopback service\n  demo     Run synthetic entry/stop lifecycle (memory, or --api-url URL)\n  status   Inspect service state (--format table|json)\n  observe  Submit fixture observation JSON from stdin\n  replay   Run a sealed synthetic dataset at explicit cutoffs\n  experiment  Compare synthetic baselines and retain attempts\n  trigger-register  Register a fixture trigger from --file JSON\n  route-input  Submit fixture routing input from --file JSON\n  close-routing-case  Close an operator-owned case explicitly\n  operations  Inspect persisted exceptions and recovery attempts\n  readiness  Inspect a specific capability scope\n  recover  Attempt bounded exception recovery\n\nUse COMMAND --help for flags. All execution is synthetic paper.")
 		return err
 	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
