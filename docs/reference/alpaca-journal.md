@@ -201,6 +201,10 @@ byte and contract checks. Ongoing collection and off-host archive/restore
 qualification remain separate work. A finite session supplies acquisition and
 retention evidence, not real-feed readiness or profitability proof.
 
+[Retained regular-session coverage](alpaca-coverage.md) can inspect the latest
+calendar and quote evidence without credentials or requests. Its local result
+does not establish collector liveness or global feed readiness.
+
 ## Receiver identity and bounded readback
 
 Schema 7 adds a persistent, opaque research-receiver identity for each logical
