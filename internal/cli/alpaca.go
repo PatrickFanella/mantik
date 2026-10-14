@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"io"
-	"os"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 )
@@ -28,21 +27,11 @@ func runAlpaca(ctx context.Context, args []string, out, errOut io.Writer) error 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	file, err := os.Open(path)
+	record, err := readAlpacaRecording(path, digest)
 	if err != nil {
 		return err
 	}
-	record, readErr := alpaca.Read(file)
-	closeErr := file.Close()
-	if readErr != nil {
-		return readErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if record.SHA256 != digest {
-		return errors.New("recording does not match expected raw identity")
-	}
+
 	result, err := alpaca.Normalize(record)
 	if err != nil {
 		return err

@@ -6,9 +6,9 @@ state, deadline, and missing-event contracts. Fixture observation ingestion and
 paper execution keep their existing `fixture/DEMO` boundary.
 
 This is the input-contract slice of issue #11. Alpaca is selected; [recorded normalization and a bounded read client](alpaca.md)
-are available. Authorized access, durable capture retention, collection,
-calendar revision reconciliation, continuous ingestion, and real-provider
-readback remain subsequent work. The service does not fetch raw references or contact a
+are available. [Durable capture retention and fenced manual submission](alpaca-journal.md)
+are available. Authorized access, collection, calendar revision reconciliation,
+continuous ingestion, and real-provider readback remain subsequent work. The service does not fetch raw references or contact a
 provider. This change does not deploy a new revision to a running pilot.
 
 ## Attribution and identity

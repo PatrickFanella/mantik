@@ -33,6 +33,9 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if len(args) > 0 && (args[0] == "trigger-register" || args[0] == "route-input" || args[0] == "close-routing-case") {
 		return runRouting(ctx, args[0], args[1:], out, errOut)
 	}
+	if len(args) > 0 && (args[0] == "alpaca-retain" || args[0] == "alpaca-submit" || args[0] == "alpaca-journal") {
+		return runAlpacaJournal(ctx, args[0], args[1:], out, errOut)
+	}
 	if len(args) > 0 && args[0] == "alpaca-normalize" {
 		return runAlpaca(ctx, args[1:], out, errOut)
 	}
@@ -40,7 +43,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return runExperiment(ctx, args[1:], out, errOut)
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		_, err := fmt.Fprintln(out, "Mantik — autonomous paper research bootstrap\n\nCommands:\n  serve    Persistent PostgreSQL-backed loopback service\n  demo     Run synthetic entry/stop lifecycle (memory, or --api-url URL)\n  status   Inspect service state (--format table|json)\n  observe  Submit fixture observation JSON from stdin\n  replay   Run a sealed synthetic dataset at explicit cutoffs\n  alpaca-normalize  Normalize retained Alpaca price/calendar recordings\n  experiment  Compare synthetic baselines and retain attempts\n  trigger-register  Register a fixture trigger from --file JSON\n  route-input  Submit attributed routing input from --file JSON\n  close-routing-case  Close an operator-owned case explicitly\n  operations  Inspect persisted exceptions and recovery attempts\n  readiness  Inspect a specific capability scope\n  recover  Attempt bounded exception recovery\n\nUse COMMAND --help for flags. All execution is synthetic paper.")
+		_, err := fmt.Fprintln(out, "Mantik — autonomous paper research bootstrap\n\nCommands:\n  serve    Persistent PostgreSQL-backed loopback service\n  demo     Run synthetic entry/stop lifecycle (memory, or --api-url URL)\n  status   Inspect service state (--format table|json)\n  observe  Submit fixture observation JSON from stdin\n  replay   Run a sealed synthetic dataset at explicit cutoffs\n  alpaca-retain  Durably retain an attributed recording in a private journal\n  alpaca-submit  Submit bounded pending research inputs to a pinned receiver\n  alpaca-journal  Inspect local retained and pending capture counts\n  alpaca-normalize  Normalize retained Alpaca price/calendar recordings\n  experiment  Compare synthetic baselines and retain attempts\n  trigger-register  Register a fixture trigger from --file JSON\n  route-input  Submit attributed routing input from --file JSON\n  close-routing-case  Close an operator-owned case explicitly\n  operations  Inspect persisted exceptions and recovery attempts\n  readiness  Inspect a specific capability scope\n  recover  Attempt bounded exception recovery\n\nUse COMMAND --help for flags. All execution is synthetic paper.")
 		return err
 	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
@@ -269,6 +272,9 @@ func serve(ctx context.Context, listen string) error {
 }
 
 func request(ctx context.Context, base, path string, input, output any) error {
+	return requestWithQuery(ctx, base, path, input, output, nil, 8<<20)
+}
+func requestWithQuery(ctx context.Context, base, path string, input, output any, query url.Values, limit int64) error {
 	method := http.MethodGet
 	var body io.Reader
 	if input != nil {
@@ -284,6 +290,9 @@ func request(ctx context.Context, base, path string, input, output any) error {
 		return err
 	}
 	u.Path = path
+	if query != nil {
+		u.RawQuery = query.Encode()
+	}
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
 		return err
@@ -305,7 +314,7 @@ func request(ctx context.Context, base, path string, input, output any) error {
 		_ = json.NewDecoder(io.LimitReader(res.Body, 16384)).Decode(&failure)
 		return fmt.Errorf("Mantik HTTP %d: %s", res.StatusCode, failure.Error)
 	}
-	return json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(output)
+	return json.NewDecoder(io.LimitReader(res.Body, limit)).Decode(output)
 }
 
 func emit(out io.Writer, value any) error {

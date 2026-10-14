@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata"
+	"unicode/utf8"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/routing"
@@ -94,7 +95,7 @@ func Read(r io.Reader) (Recording, error) {
 func validTime(at time.Time) bool { return !at.IsZero() && at.Year() > 0 && at.Year() <= 9999 }
 
 func (r Recording) validate() error {
-	if r.Currency != "USD" || r.Schema != RecordingSchema || !capturePattern.MatchString(r.CaptureID) || r.Revision < 1 || r.Revision > 1000000 || !validTime(r.ReceivedAt) || len(r.Original) == 0 || len(r.Original) > MaxBytes || r.SHA256 != Digest(r.Original) || !json.Valid([]byte(r.Original)) || len(r.Symbols) < 1 || len(r.Symbols) > 10 || r.MaxQuoteAgeSeconds < 1 || r.MaxQuoteAgeSeconds > 86400 || !slices.Contains([]string{"synthetic_unqualified", "recorded_market_unqualified", "prospective_market_unqualified"}, r.EvidenceClass) {
+	if r.Currency != "USD" || r.Schema != RecordingSchema || !capturePattern.MatchString(r.CaptureID) || r.Revision < 1 || r.Revision > 1000000 || !validTime(r.ReceivedAt) || len(r.Original) == 0 || len(r.Original) > MaxBytes || r.SHA256 != Digest(r.Original) || !utf8.ValidString(r.Original) || !json.Valid([]byte(r.Original)) || len(r.Symbols) < 1 || len(r.Symbols) > 10 || r.MaxQuoteAgeSeconds < 1 || r.MaxQuoteAgeSeconds > 86400 || !slices.Contains([]string{"synthetic_unqualified", "recorded_market_unqualified", "prospective_market_unqualified"}, r.EvidenceClass) {
 		return errors.New("incomplete recording or mismatched raw digest")
 	}
 	seen := map[string]bool{}

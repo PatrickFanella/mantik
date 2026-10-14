@@ -37,11 +37,17 @@ func (m *Memory) RegisterTrigger(ctx context.Context, d domain.TriggerDefinition
 }
 
 func (m *Memory) RouteInput(ctx context.Context, i domain.RoutingInput) (domain.RoutingReceipt, error) {
+	return m.routeInput(ctx, "", i)
+}
+func (m *Memory) routeInput(ctx context.Context, receiver string, i domain.RoutingInput) (domain.RoutingReceipt, error) {
 	if err := ctx.Err(); err != nil {
 		return domain.RoutingReceipt{}, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if receiver != "" && receiver != m.receiverID {
+		return domain.RoutingReceipt{}, ErrReceiverMismatch
+	}
 	next, receipt, err := routing.Apply(m.state.Routing, i)
 	if err != nil {
 		return receipt, err
@@ -64,11 +70,23 @@ func (m *Memory) CloseRoutingCase(ctx context.Context, id, owner string, at time
 }
 
 func (p *Postgres) routingMutation(ctx context.Context, update func(*domain.RoutingState) (*domain.RoutingState, any, error)) (any, error) {
+	return p.routingMutationForReceiver(ctx, "", update)
+}
+func (p *Postgres) routingMutationForReceiver(ctx context.Context, receiver string, update func(*domain.RoutingState) (*domain.RoutingState, any, error)) (any, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
+	if receiver != "" {
+		var id string
+		if err := tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton").Scan(&id); err != nil {
+			return nil, err
+		}
+		if id != receiver {
+			return nil, ErrReceiverMismatch
+		}
+	}
 	var raw []byte
 	if err := tx.QueryRow(ctx, "SELECT payload FROM mantik_state WHERE id='demo' FOR UPDATE").Scan(&raw); err != nil {
 		return nil, err
@@ -115,7 +133,10 @@ func (p *Postgres) RegisterTrigger(ctx context.Context, d domain.TriggerDefiniti
 }
 
 func (p *Postgres) RouteInput(ctx context.Context, i domain.RoutingInput) (domain.RoutingReceipt, error) {
-	value, err := p.routingMutation(ctx, func(s *domain.RoutingState) (*domain.RoutingState, any, error) {
+	return p.routeInput(ctx, "", i)
+}
+func (p *Postgres) routeInput(ctx context.Context, receiver string, i domain.RoutingInput) (domain.RoutingReceipt, error) {
+	value, err := p.routingMutationForReceiver(ctx, receiver, func(s *domain.RoutingState) (*domain.RoutingState, any, error) {
 		next, receipt, err := routing.Apply(s, i)
 		return next, receipt, err
 	})

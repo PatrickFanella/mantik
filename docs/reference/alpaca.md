@@ -129,9 +129,10 @@ client and respect account-wide entitlements and limits too.
 Local HTTP tests use manufactured credentials and responses. They establish
 contracts, not real access or coverage. No real provider request was made.
 
-Collection still needs private non-overwriting raw/capture retention, explicit
-credential delivery, account/entitlement readback, and a bounded collector with
-pending-work retention and restart-safe submission. The service retains at most
+[The private capture journal](alpaca-journal.md) now retains validated recordings
+and supports fenced, bounded manual research submission and recovery. Collection
+still needs credential delivery, account/entitlement readback, and automatic
+acquisition with a reviewed retention policy. The service retains at most
 4,096 manual inputs; collection must stop or retain pending work externally at
 capacity. Continuous ingestion also needs retention and pagination policy.
 Real-feed readiness remains unconfigured. Profitable paper operation remains a
