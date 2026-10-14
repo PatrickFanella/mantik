@@ -32,3 +32,8 @@ var AttributedRouting string
 //
 //go:embed 0007_research_receiver.sql
 var ResearchReceiver string
+
+// FeedCollectors retains immutable registrations and fenced ownership receipts.
+//
+//go:embed 0008_feed_collectors.sql
+var FeedCollectors string

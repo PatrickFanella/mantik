@@ -25,6 +25,7 @@ func HandlerWithClock(store storage.Store, token string, clock Clock) http.Handl
 	mux := http.NewServeMux()
 	routingRoutes(mux, store)
 	researchRoutes(mux, store)
+	feedCollectorRoutes(mux, store, clock)
 	operationalRoutes(mux, store, clock)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]string{"status": "up", "mode": "paper_fixture"})

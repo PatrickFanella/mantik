@@ -24,6 +24,8 @@
   adapter effects, uncertain outcomes, and reconciliation.
 - [Operational inspection](reference/operations.md): scoped readiness,
   persistent exceptions, worker evidence, and bounded recovery.
+- [Feed collector contracts](reference/feed-collectors.md): immutable feed
+  declarations, durable lease ownership, retry receipts, and readiness limits.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed
