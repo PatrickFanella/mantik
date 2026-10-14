@@ -102,7 +102,9 @@ The [capture journal](docs/reference/alpaca-journal.md) retains validated record
 and supports receiver-bound submission and recovery through `alpaca-retain`,
 `alpaca-submit`, and `alpaca-journal`. `alpaca-collect` performs one explicit,
 bounded provider read with durable attempt evidence; `alpaca-collection` inspects
-its retained status. No provider connection or scheduler starts with the service.
+its retained status. `alpaca-session` runs a finite count within journal capacity,
+with inspection through `alpaca-session-status`. No provider connection or
+scheduler starts with the service.
 Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 

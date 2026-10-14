@@ -156,3 +156,69 @@ func TestCollectionCLICompleteFlowAndFailureInspection(t *testing.T) {
 		t.Fatal("failed collection not inspectable", out.String(), err)
 	}
 }
+
+func TestSessionCLICompleteFiniteFlowAndStatus(t *testing.T) {
+	var calls atomic.Int32
+	var last atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now().UnixNano()
+		previous := last.Swap(now)
+		if calls.Add(1) > 1 && time.Duration(now-previous) < time.Second {
+			t.Error("finite CLI session violated declared pacing")
+		}
+		_, _ = fmt.Fprintf(w, `{"quotes":{"SPY":{"t":%q,"ap":100.01,"bp":100,"as":10,"bs":10}}}`, time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano))
+	}))
+	defer server.Close()
+	base, _ := url.Parse(server.URL)
+	previous := http.DefaultTransport
+	http.DefaultTransport = collectionTestTransport{base, previous}
+	defer func() { http.DefaultTransport = previous }()
+	root := t.TempDir()
+	journal := filepath.Join(root, "journal")
+	specPath := filepath.Join(root, "session.json")
+	credentials := filepath.Join(root, "credentials.json")
+	if err := os.WriteFile(credentials, []byte(`{"key":"manufactured-key","secret":"manufactured-secret"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	spec := `{"id":"cli-session","count":2,"interval_seconds":1,"collection":{"capability":"latest_quotes","feed":"iex","symbols":["SPY"],"access_ref":"manufactured-access-contract","max_quote_age_seconds":60}}`
+	if err := os.WriteFile(specPath, []byte(spec), 0600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"alpaca-session", "--journal", journal, "--spec", specPath, "--credentials-file", credentials}
+	var out, errOut bytes.Buffer
+	if err := Run(context.Background(), args, &out, &errOut); err != nil || calls.Load() != 2 || !strings.Contains(out.String(), `"state": "completed"`) || !strings.Contains(out.String(), `"retained": 2`) {
+		t.Fatal("finite session did not complete", out.String(), err)
+	}
+	out.Reset()
+	if err := Run(context.Background(), []string{"alpaca-session-status", "--journal", journal, "--session-id", "cli-session"}, &out, &errOut); err != nil || !strings.Contains(out.String(), `"retained": 2`) {
+		t.Fatal("session inspection failed", out.String(), err)
+	}
+	out.Reset()
+	if err := Run(context.Background(), args, &out, &errOut); err != nil || calls.Load() != 2 {
+		t.Fatal("session CLI refetched completed identity", err)
+	}
+	out.Reset()
+	if err := Run(context.Background(), []string{"alpaca-journal", "--journal", journal}, &out, &errOut); err != nil || !strings.Contains(out.String(), `"pending": 2`) {
+		t.Fatal("session did not retain separate pending inputs", out.String(), err)
+	}
+}
+func TestSessionCLISpecAndHelpBoundaries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "spec.json")
+	for _, raw := range []string{`{"unexpected":true}`, `{} {}`, strings.Repeat("x", 16385)} {
+		if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readSessionSpec(path); err == nil {
+			t.Fatal("session parser admitted invalid JSON")
+		}
+	}
+	for _, command := range []string{"alpaca-session", "alpaca-session-status"} {
+		var out, errOut bytes.Buffer
+		if err := Run(context.Background(), []string{command, "--help"}, &out, &errOut); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(errOut.String(), "journal") {
+			t.Fatal("session help missing ownership contract")
+		}
+	}
+}

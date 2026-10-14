@@ -123,12 +123,82 @@ identity with the exact spec returns its verified receipt without another read.
 A changed spec conflicts. A failed or interrupted identity never refetches: latest
 quotes would be different evidence. Inspect the retained artifacts and actual
 runtime first; a deliberately new retrieval requires a new collection identity.
-There is no automatic salvage, replay, deletion, rotation, or scheduler.
+There is no automatic salvage, replay, deletion, rotation, or persistent scheduler.
+The finite session command below can perform a declared number of new reads.
 
 Acquisition checks capture/collection capacity and existing journal integrity
 before HTTP. It stops if publication fails, preserving partial work. A full journal
 requires a reviewed archive/retention policy before continuing; creating an
 unbounded chain of new journals is not continuous-feed readiness.
+
+## Finite collection sessions and retention budget
+
+`alpaca-session` automates a finite number of new acquisitions into one existing
+or explicitly created journal. The service does not start it automatically.
+A session spec declares an identity (at most 32 characters), 1–16 acquisitions,
+and a 1–300 second interval. Its collection template has no `id`; each retrieval
+gets a new identity such as `morning-001`, `morning-002`, and so on.
+
+```json
+{
+  "id": "morning",
+  "count": 16,
+  "interval_seconds": 60,
+  "collection": {
+    "capability": "latest_quotes",
+    "feed": "iex",
+    "symbols": ["SPY"],
+    "access_ref": "private-access-receipt-v1",
+    "max_quote_age_seconds": 60
+  }
+}
+```
+
+After private access is configured, run the explicit foreground process:
+
+```bash
+./bin/mantik alpaca-session --journal "$MANTIK_CAPTURE_JOURNAL" \
+  --spec /private/path/session-spec.json \
+  --credentials-file /private/path/alpaca-credentials.json
+./bin/mantik alpaca-session-status --journal "$MANTIK_CAPTURE_JOURNAL" \
+  --session-id morning
+```
+
+Before its first request, the session verifies available capture and collection
+slots for the entire declared count, checks for conflicting derived identities,
+and reserves directory-entry publication headroom. At most 128 session intents
+are allowed per journal in addition to the existing capture/collection limits.
+The journal stays exclusively owned during acquisition and pacing; another
+writer or inspection command returns a busy error while this process owns it.
+Use actual process/service handles to inspect liveness. Receipt files alone do
+not establish that a process is running. Status inspection works after ownership
+is released and verifies the session's exact collection history.
+
+Session intent is synced before the first acquisition. Each collection keeps its
+own intent, bounded HTTP attempts, response evidence, capture, and terminal
+receipt. The process waits the declared interval after each successful collection
+before starting the next. It does not backfill missed slots or represent a late
+quote as a historical observation. Each read has a two-minute deadline; the
+whole session has a two-hour maximum. Session terminal output reports counts and
+verified collection statuses without raw bodies or credentials.
+
+The first collection failure stops the session. Cancellation during pacing
+retains a stopped receipt and all earlier captures. Persistence uncertainty or a
+crash leaves it incomplete. Repeating a fully completed identity verifies its
+history without HTTP; repeating stopped or incomplete identities cannot resume,
+change the plan, or acquire different evidence. Missing/corrupt collection history
+blocks inspection and execution. Check actual runtime handles and retained
+artifacts before deliberately starting a new identity.
+
+The retention policy for this slice is **keep every artifact and stop at capacity**.
+There is no automatic pruning, rotation, archive creation, recurring task, or
+restart. After a session stops, take a coherent private copy of the entire journal
+with its writer absent, verify the copy's contents and recoverability, and retain
+its receiver binding and delivery history together. A new journal or resumed
+provider process requires an explicit operator decision; this command does not
+create a chain of journals to evade limits. Ongoing collection and archive/restore
+qualification remain separate work. A finite session supplies acquisition and
+retention evidence, not real-feed readiness or profitability proof.
 
 ## Receiver identity and bounded readback
 
@@ -196,7 +266,8 @@ research submission creates no finalized decision or economic authority.
 
 ## Backup, restore, and compatibility
 
-Journal collection intents/responses/receipts, captures, manifest, binding,
+Journal session intents/receipts, collection intents/responses/receipts,
+captures, manifest, binding,
 submission attempts, and acknowledgements form one
 recovery set. Take a coherent copy while no journal writer owns it. Keep private
 raw/license references and credentials out of Git. Restoring a database preserves
