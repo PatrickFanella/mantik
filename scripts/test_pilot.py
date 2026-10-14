@@ -63,5 +63,31 @@ class PilotGuards(unittest.TestCase):
                 prepare.assert_not_called()
 
 
+class RoutingEvidenceGuards(unittest.TestCase):
+    def fixture(self):
+        return {'observation_count': 0, 'state': {'case': {'status': 'waiting'}, 'actions': {'items': {}},
+            'routing': {'cases': [{'case_key': 'pilot-missing-case', 'match_count': 1}], 'timers': {'jobs': {
+                'pilot-missing-v1': {'status': 'completed', 'receipt': {'status': 'matched', 'routing': {'matches': [{}]}}},
+                'pilot-observed-v1': {'status': 'completed', 'receipt': {'status': 'event_observed', 'routing': {'matches': []}}}}}}}}
+
+    def test_suppression_must_have_no_match(self):
+        status = self.fixture()
+        status['state']['routing']['timers']['jobs']['pilot-observed-v1']['receipt']['routing']['matches'] = [{}]
+        with self.assertRaises(RuntimeError):
+            pilot.check_routing_scenario(status)
+
+    def test_multiple_deliveries_cannot_pass(self):
+        status = self.fixture()
+        status['state']['routing']['cases'][0]['match_count'] = 2
+        with self.assertRaises(RuntimeError):
+            pilot.check_routing_scenario(status)
+
+    def test_research_case_cannot_hide_an_economic_effect(self):
+        status = self.fixture()
+        status['state']['actions']['items'] = {'unexpected-action': {}}
+        with self.assertRaises(RuntimeError):
+            pilot.check_routing_scenario(status)
+
+
 if __name__ == '__main__':
     unittest.main()

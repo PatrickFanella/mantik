@@ -179,6 +179,76 @@ def smoke(root):
     snapshot(root)
 
 
+def check_routing_scenario(status):
+    routing = status['state']['routing']
+    jobs = routing['timers']['jobs']
+    for name, expected in [('pilot-missing-v1', 'matched'), ('pilot-observed-v1', 'event_observed')]:
+        job = jobs[name]
+        if job['status'] != 'completed' or job['receipt']['status'] != expected:
+            raise RuntimeError(f'{name}: unexpected timer completion')
+        matches = job['receipt']['routing']['matches'] or []
+        if len(matches) != (1 if expected == 'matched' else 0):
+            raise RuntimeError(f'{name}: unexpected routing matches')
+    cases = routing['cases']
+    if len(cases) != 1 or cases[0]['case_key'] != 'pilot-missing-case' or cases[0]['match_count'] != 1:
+        raise RuntimeError('Missing-event delivery multiplied or incorrectly suppressed research work')
+    if status['observation_count'] != 0 or status['state']['case']['status'] != 'waiting' or status['state']['actions']['items']:
+        raise RuntimeError('Research routing produced an unintended economic action')
+
+
+def routing_smoke(root):
+    initial = api(root, '/v1/status')
+    if initial['observation_count'] or initial['state']['routing']['definitions']:
+        raise ValueError('Routing smoke requires a fresh stack; retain failed attempts separately')
+    start = dt.datetime.now(dt.timezone.utc)
+    due = start + dt.timedelta(seconds=20)
+    save(root / 'routing-scenario-plan.json', {'declared_at': now(), 'due_at': due.isoformat(),
+        'expected': {'pilot-missing-v1': 'one research case', 'pilot-observed-v1': 'suppressed by timely evidence'},
+        'allowed_interruption': 'service restart after completed timer receipts',
+        'economic_actions_expected': 0, 'continuous_window_started': False})
+    for name, case, event in [('pilot-missing-v1', 'pilot-missing-case', 'absent'),
+                             ('pilot-observed-v1', 'pilot-observed-case', 'present')]:
+        definition = {'id': name, 'owner': 'operator', 'case_key': case, 'behavior': 'research',
+            'condition': {'kind': 'expected_event_missing', 'event_name': event, 'due_at': due.isoformat()},
+            'valid_from': (start - dt.timedelta(seconds=1)).isoformat(),
+            'valid_until': (start + dt.timedelta(minutes=5)).isoformat(), 'repeat_policy': 'once',
+            'requirements': {'source': 'fixture', 'symbol': 'DEMO',
+                             'evidence_class': 'synthetic_unqualified', 'max_age_seconds': 60}}
+        api(root, '/v1/triggers', definition)
+        api(root, '/v1/triggers', definition)
+        api(root, '/v1/triggers', dict(definition, case_key='changed-case'), 409)
+    stamp = now()
+    event = {'id': 'pilot-timely-event-v1', 'kind': 'event', 'source': 'fixture', 'symbol': 'DEMO',
+             'evidence_class': 'synthetic_unqualified', 'occurred_at': stamp, 'received_at': stamp, 'event_name': 'present'}
+    if dt.datetime.now(dt.timezone.utc) >= due:
+        raise RuntimeError('Setup missed the declared timely-event deadline; retain this failed attempt')
+    api(root, '/v1/routing-inputs', event)
+    if not api(root, '/v1/routing-inputs', event)['duplicate']:
+        raise RuntimeError('Routing input retry was not recognized')
+    api(root, '/v1/routing-inputs', dict(event, event_name='changed'), 409)
+    deadline = time.monotonic() + 35
+    while time.monotonic() < deadline:
+        status = api(root, '/v1/status')
+        jobs = status['state']['routing']['timers']['jobs']
+        if all(jobs[name]['status'] == 'completed' for name in ['pilot-missing-v1', 'pilot-observed-v1']):
+            break
+        time.sleep(1)
+    else:
+        raise RuntimeError('Expected-event timers did not complete')
+    check_routing_scenario(status)
+    retained_jobs = status['state']['routing']['timers']['jobs']
+    compose(root, 'restart', 'mantik')
+    wait_ready(root)
+    time.sleep(3)  # Multiple additional worker cycles must not deliver completed timers again.
+    after = snapshot(root)
+    check_routing_scenario(after)
+    if after['state']['routing']['timers']['jobs'] != retained_jobs:
+        raise RuntimeError('Completed timer generations or receipts changed after restart')
+    save(root / 'routing-smoke-result.json', {'at': now(), 'passed': True,
+        'scenarios': ['missing event once', 'timely event suppression', 'definition and input retries/conflicts',
+                      'completed timer restart retention'], 'qualification_credit': False})
+
+
 def backup(root):
     path = root / f'backup-{time.time_ns()}.dump'
     # One pg_dump snapshot includes aggregate, audit, observations, migrations, effect ledger.
@@ -247,7 +317,7 @@ def observe(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['prepare', 'start', 'smoke', 'snapshot', 'backup', 'restore', 'observe', 'stop'])
+    parser.add_argument('command', choices=['prepare', 'start', 'smoke', 'routing-smoke', 'snapshot', 'backup', 'restore', 'observe', 'stop'])
     parser.add_argument('--dir', type=Path, required=True)
     parser.add_argument('--port', type=int, default=41880)
     parser.add_argument('--target', type=Path)
@@ -265,6 +335,8 @@ def main():
             snapshot(root)
         elif args.command == 'smoke':
             smoke(root)
+        elif args.command == 'routing-smoke':
+            routing_smoke(root)
         elif args.command == 'snapshot':
             snapshot(root)
         elif args.command == 'backup':
