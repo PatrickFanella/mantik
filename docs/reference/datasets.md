@@ -35,8 +35,9 @@ retain earlier artifacts and use a new dataset version when publishing a change.
 
 ## Clock and decision behavior
 
-Every run pins the dataset fingerprint, `demo-threshold-v1`,
-`mantik-library-v1`, and `demo-evaluation` recipe version `v1`. Unsupported
+Every run pins the dataset fingerprint, a registered strategy version,
+`mantik-library-v1`, and `demo-evaluation` recipe version `v1`. The CLI selects
+`demo-threshold-v1`; experiment replay also supports `demo-half-size-v1`. Unsupported
 strategy or recipe pins fail explicitly. The replay clock starts empty and
 advances through nonzero, strictly increasing cutoffs supplied by the caller.
 It never falls back to wall-clock time.

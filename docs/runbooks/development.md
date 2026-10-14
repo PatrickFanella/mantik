@@ -30,6 +30,10 @@ repeatability, cutoff partition equivalence, late arrivals, correction review,
 same-timestamp quality gaps, duplicate revisions, content pins, and CLI file
 round trips. See [dataset contracts](../reference/datasets.md) for the local
 command and artifact boundaries.
+Experiment regressions cover immutable parameters and benchmark bindings,
+repeatable fixture comparisons, missing/invalid input failures, concurrent
+artifact retention, conflicting retries, and window marks without invented
+liquidation. The CLI requires an artifact directory and an attempt ID for runs.
 
 ## Native service
 

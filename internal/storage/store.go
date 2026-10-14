@@ -42,6 +42,18 @@ func NewMemory() *Memory {
 	return &Memory{state: workflow.InitialState(), observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
 }
 
+// NewMemoryFor selects a registered immutable method for an isolated replay.
+// Service/PostgreSQL startup continues to select the original demo explicitly.
+func NewMemoryFor(id string) (*Memory, error) {
+	state, err := workflow.InitialStateFor(id)
+	if err != nil {
+		return nil, err
+	}
+	m := NewMemory()
+	m.state = state
+	return m, nil
+}
+
 func (m *Memory) Ingest(ctx context.Context, o domain.Observation) (domain.Receipt, error) {
 	if err := ctx.Err(); err != nil {
 		return domain.Receipt{}, err

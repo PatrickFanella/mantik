@@ -32,16 +32,51 @@ func FixtureEntry() Entry {
 // ResolveFixture binds the persisted version to its immutable executable config.
 // New versions must be explicitly registered rather than reusing an existing ID.
 func ResolveFixture(s domain.StrategyVersion) (Entry, error) {
-	r, err := New(FixtureEntry())
-	if err != nil {
-		return Entry{}, err
-	}
-	e, err := r.Resolve(s.ID, ContractVersion)
-	if err != nil {
-		return Entry{}, err
-	}
 	if s != FixtureStrategy() {
 		return Entry{}, fmt.Errorf("incompatible configuration for immutable strategy %q", s.ID)
 	}
+	return ResolveStrategy(s)
+}
+
+const HalfSizeID = "demo-half-size-v1"
+
+func Strategy(id string) (domain.StrategyVersion, error) {
+	s := FixtureStrategy()
+	switch id {
+	case s.ID:
+	case HalfSizeID:
+		s.ID, s.Quantity, s.Safety.MaxNotionalCents = HalfSizeID, 5, 50000
+		s.Hypothesis.ID = "demo-half-size-hypothesis-v1"
+	default:
+		return domain.StrategyVersion{}, fmt.Errorf("unknown built-in strategy %q", id)
+	}
+	return s, nil
+}
+
+func StrategyEntry(id string) (Entry, error) {
+	if _, err := Strategy(id); err != nil {
+		return Entry{}, err
+	}
+	e := FixtureEntry()
+	e.ID = id
 	return e, nil
+}
+
+func ResolveStrategy(s domain.StrategyVersion) (Entry, error) {
+	expected, err := Strategy(s.ID)
+	if err != nil {
+		return Entry{}, err
+	}
+	if s != expected {
+		return Entry{}, fmt.Errorf("incompatible configuration for immutable strategy %q", s.ID)
+	}
+	e, err := StrategyEntry(s.ID)
+	if err != nil {
+		return Entry{}, err
+	}
+	r, err := New(e)
+	if err != nil {
+		return Entry{}, err
+	}
+	return r.Resolve(s.ID, ContractVersion)
 }

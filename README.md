@@ -39,6 +39,16 @@ Replay runs locally with its own clock and memory store. It does not submit
 observations to a service. See [dataset and replay contracts](docs/reference/datasets.md)
 for file export, content pins, provenance, and data-quality behavior.
 
+To compare the threshold baseline, its half-size variant, and passive/no-action
+controls while retaining a declared recipe and results:
+
+```bash
+./bin/mantik experiment --attempt demo-1 --out-dir data/experiments
+```
+
+See [experiment contracts](docs/reference/experiments.md) for recipe export,
+parameter and benchmark pins, failure retention, and the synthetic cost model.
+
 ## Run the persistent service
 
 Docker Compose uses project `mantik-dev`, its own named volume, and loopback
@@ -77,7 +87,8 @@ execution, API requests, and disposable integration tests.
 - Only fixture quotes for the synthetic `DEMO` instrument are accepted.
 - The versioned library declares typed inputs, instruments, outputs, exact
   dependencies, evidence classes, safety requirements, and mandatory evaluation
-  recipes. It registers one immutable, unqualified fixture strategy. See the
+  recipes. It registers two immutable, unqualified fixture strategies for
+  experiments; the service uses the original threshold method. See the
   [library contract](docs/architecture.md#versioned-library).
 - Stop, target, and holding-deadline checks run on usable incoming quotes.
   There is no independent deadline scheduler or missing-feed monitor yet.
