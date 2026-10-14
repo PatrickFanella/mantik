@@ -104,7 +104,8 @@ and supports receiver-bound submission and recovery through `alpaca-retain`,
 bounded provider read with durable attempt evidence; `alpaca-collection` inspects
 its retained status. `alpaca-session` runs a finite count within journal capacity,
 with inspection through `alpaca-session-status`. No provider connection or
-scheduler starts with the service.
+scheduler starts with the service. [Journal archive and restore](docs/reference/alpaca-archives.md)
+commands preserve private evidence and verify an isolated recovery copy.
 Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 

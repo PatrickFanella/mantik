@@ -23,6 +23,8 @@ import (
 const MaxCaptures = 128
 const maxJournalFile = 8 << 20
 
+var ErrRestorePending = errors.New("journal restore is incomplete or unverified; inspect isolated restore evidence")
+
 var ErrJournalBusy = errors.New("capture journal is already owned by another process")
 var ErrJournalConflict = errors.New("capture journal identity conflicts with retained content")
 var journalReceiverPattern = regexp.MustCompile(`^receiver-[a-zA-Z0-9_-]{16,64}$`)
@@ -106,13 +108,25 @@ func openJournal(path string, create bool) (*Journal, error) {
 	if err != nil {
 		return nil, err
 	}
+	if _, err := root.Lstat("restore-pending"); err == nil {
+		_ = root.Close()
+		return nil, ErrRestorePending
+	} else if !errors.Is(err, os.ErrNotExist) {
+		_ = root.Close()
+		return nil, err
+	}
+	lockLeaf, leafErr := root.Lstat("lock")
+	if leafErr == nil && !lockLeaf.Mode().IsRegular() || leafErr != nil && !errors.Is(leafErr, os.ErrNotExist) {
+		_ = root.Close()
+		return nil, errors.New("invalid journal lock leaf")
+	}
 	lock, err := root.OpenFile("lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
 	if err != nil {
 		_ = root.Close()
 		return nil, err
 	}
 	lockInfo, statErr := lock.Stat()
-	if statErr != nil || !lockInfo.Mode().IsRegular() || lockInfo.Mode().Perm() != 0600 {
+	if statErr != nil || !lockInfo.Mode().IsRegular() || lockInfo.Mode().Perm() != 0600 || lockLeaf != nil && !os.SameFile(lockLeaf, lockInfo) {
 		_ = lock.Close()
 		_ = root.Close()
 		return nil, errors.New("invalid journal lock artifact")
@@ -146,6 +160,16 @@ func (j *Journal) Close() error {
 	return errors.Join(a, b, c)
 }
 func (j *Journal) read(name string, max int64) ([]byte, error) {
+	// Root.OpenFile may resolve a link inside its root before the final open.
+	// Inspect the leaf itself, then verify the opened inode matches it. The
+	// journal owner holds the writer lock throughout this operation.
+	leaf, err := j.root.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !leaf.Mode().IsRegular() {
+		return nil, errors.New("journal artifact must be a regular non-symlink leaf")
+	}
 	f, err := j.root.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, err
@@ -156,7 +180,7 @@ func (j *Journal) read(name string, max int64) ([]byte, error) {
 		return nil, err
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || !ok || stat.Uid != uint32(os.Getuid()) || info.Size() > max {
+	if !os.SameFile(leaf, info) || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || !ok || stat.Uid != uint32(os.Getuid()) || info.Size() > max {
 		return nil, errors.New("invalid journal artifact permissions, type or size")
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, max+1))
