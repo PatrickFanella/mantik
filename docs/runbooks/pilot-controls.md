@@ -122,7 +122,10 @@ python3 scripts/pilot.py restore --dir "$pilot_dir" \
 
 Restore checks the checksum and source identity before creating resources. It
 starts only the new database, restores with error checking, captures the aggregate
-before starting workers, and then starts the same application image. Inspect
+before starting workers, and then starts the same application image. Readiness confirms
+worker/capability health; it does not mean every pending action has finished.
+A restored live lease must expire before a new worker can claim it. Wait for
+the declared terminal action state before asserting recovery completion. Inspect
 `restored-before-workers.jsonl`, the restore receipt, status, operations, and logs.
 For a completed lifecycle, compare input/decision/action/outcome identities,
 observation count, audit events, and effect ledger against the backup. For pending
