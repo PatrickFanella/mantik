@@ -152,3 +152,11 @@ Augr repository remains a separate reference implementation; Mantik does not
 access its services, database, or credentials.
 
 GPL-3.0-only. See [LICENSE](LICENSE).
+
+## Prepare the isolated operational pilot
+
+M2 is implemented. Use the [pilot controls](docs/runbooks/pilot-controls.md)
+to build an exact-revision image, rehearse a current-time fixture lifecycle, and
+restore a coherent backup into separate resources. The [24-hour pilot contract](docs/runbooks/first-pilot.md)
+requires additional interruption and deadline scenarios before qualification.
+Preparation and a passing smoke check do not complete that pilot.
