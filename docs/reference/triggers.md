@@ -1,12 +1,13 @@
 # Persistent triggers and routing cases
 
-Trigger definitions describe fixture evidence that should open or update a
+Trigger definitions describe attributed evidence that should open or update a
 routing case. They carry an immutable ID, owner, case key, behavior, condition,
 validity interval, repeat policy, and source requirements. Owner names identify
 records; they are not authentication roles. The service bearer token controls
 access to the API.
 
-Operator definitions support `research` and `decide`. A match records work in a
+Fixture operator definitions support `research` and `decide`. Market-source
+definitions support `research` only. A match records work in a
 case; it does not dispatch a worker, call a model, or authorize an order. The
 `act` behavior, `operations` owner, parent-decision bindings, and `future-` ID
 prefix are reserved for protective conditions derived from finalized fixture
@@ -14,8 +15,11 @@ entry decisions.
 
 ## Conditions and evidence
 
-Every input must declare `source: fixture`, `symbol: DEMO`, and
-`evidence_class: synthetic_unqualified`. Occurrence and receipt times are
+Fixture inputs declare `source: fixture`, `symbol: DEMO`, and
+`evidence_class: synthetic_unqualified`. Attributed market inputs use the
+[market provenance contract](market-inputs.md). Matching requires exact source,
+symbol, and evidence-class agreement with the definition, including for
+expected-event suppression. Occurrence and receipt times are
 explicit simulation inputs; occurrence cannot be after receipt. Definitions
 declare a maximum evidence age in seconds. Matching uses those times, rather
 than the machine's wall clock.
@@ -52,7 +56,9 @@ Closing a research or decision case requires its recorded owner and an explicit
 closure time. An operator cannot close an action case. Reopening produces a
 new deterministic case ID and preserves the earlier generation.
 
-Manual routing inputs retain receipts by immutable input ID. Identical retries
+Manual routing inputs retain receipts by immutable input ID. Market IDs are
+derived from the source record revision; all its provenance participates in
+retry conflict checks. Identical retries
 return the original receipt with `duplicate: true`; changed content returns a
 conflict. Quote ingestion retains its existing observation deduplication fence.
 The `routing:` and `quote:` input-reference namespaces prevent cross-endpoint
@@ -92,6 +98,13 @@ removing the constraint is not a rollback procedure. A future deployment needs
 a database snapshot and a compatible rollback revision. Local integration
 tests use disposable databases; this source change is not a deployment.
 
+Schema version 6 adds `routing.input_contract: attributed-routing-v1` and a
+constraint that prevents binaries without the market-provenance contract from
+silently discarding it. It retains existing checksums and adds the marker to
+version 5 state without changing its records. Older binaries reject schema 6.
+Restore a coherent pre-upgrade backup into separate resources when testing an
+older revision; do not remove the schema fence to perform a rollback.
+
 ## API and CLI
 
 All three endpoints use the service's existing bearer authentication and strict
@@ -100,7 +113,7 @@ JSON bodies of at most 16 KiB:
 | Endpoint | Body | Success |
 | --- | --- | --- |
 | `POST /v1/triggers` | Operator definition | Definition, including identical registration retries |
-| `POST /v1/routing-inputs` | Fixture input | Retained routing receipt |
+| `POST /v1/routing-inputs` | Fixture or attributed research input | Retained routing receipt |
 | `POST /v1/routing-cases/{id}/close` | `owner` and RFC3339 `at` | Closed status |
 
 Conflicting IDs return 409, invalid contracts 422, unknown cases 404, and

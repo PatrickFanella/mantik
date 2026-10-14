@@ -3,6 +3,7 @@
 - [Dataset and replay contracts](datasets.md)
 - [Synthetic baseline experiments](experiments.md)
 - [Persistent triggers and routing cases](triggers.md)
+- [Attributed market research inputs](market-inputs.md)
 - [Independent deadlines and missing events](timers.md)
 - [Durable fixture actions](actions.md)
 - [Operational inspection and recovery](operations.md)

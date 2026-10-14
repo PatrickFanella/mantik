@@ -22,3 +22,8 @@ var DurableActions string
 //
 //go:embed 0005_operational_readiness.sql
 var OperationalReadiness string
+
+// AttributedRouting fences writers that cannot retain market-input provenance.
+//
+//go:embed 0006_attributed_routing.sql
+var AttributedRouting string

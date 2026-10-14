@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,19 +12,24 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/routing"
 )
 
 func runRouting(ctx context.Context, command string, args []string, out, errOut io.Writer) error {
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	var apiURL, filePath, id, owner, atText string
+	var deriveMarketID bool
+	if command == "route-input" {
+		fs.BoolVar(&deriveMarketID, "derive-market-id", false, "derive immutable identity from market provenance")
+	}
 	fs.StringVar(&apiURL, "api-url", defaultURL, "service HTTP origin")
 	if command == "close-routing-case" {
 		fs.StringVar(&id, "id", "", "routing case id")
 		fs.StringVar(&owner, "owner", "", "recorded case owner")
 		fs.StringVar(&atText, "at", "", "explicit RFC3339 closure time")
 	} else {
-		fs.StringVar(&filePath, "file", "", "definition or fixture input JSON file (required)")
+		fs.StringVar(&filePath, "file", "", "definition or attributed input JSON file (required)")
 	}
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -86,6 +92,29 @@ func runRouting(ctx context.Context, command string, args []string, out, errOut 
 			return err
 		}
 		return emit(out, result)
+	}
+	if deriveMarketID {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		var input domain.RoutingInput
+		if err := decoder.Decode(&input); err != nil {
+			return errors.New("invalid attributed input JSON")
+		}
+		if err := decoder.Decode(new(any)); err != io.EOF {
+			return errors.New("expected one attributed input")
+		}
+		expected := routing.MarketInputID(input)
+		if expected == "" || input.ID != "" && input.ID != expected {
+			return errors.New("market identity conflicts with source record revision")
+		}
+		input.ID = expected
+		if err := routing.ValidateInput(input); err != nil {
+			return err
+		}
+		body, err = json.Marshal(input)
+		if err != nil {
+			return err
+		}
 	}
 	var result domain.RoutingReceipt
 	if err := request(ctx, apiURL, "/v1/routing-inputs", body, &result); err != nil {

@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,11 +23,66 @@ import (
 
 func TestMemoryRoutingContracts(t *testing.T) { routingContracts(t, NewMemory()) }
 
+func marketRoutingContracts(t *testing.T, store interface {
+	Store
+	RoutingStore
+}) {
+	t.Helper()
+	ctx := context.Background()
+	at := time.Date(2026, 1, 5, 15, 5, 0, 0, time.UTC)
+	before, err := store.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := domain.TriggerDefinition{ID: "market-storage", Owner: "operator", CaseKey: "market-storage", Behavior: "research", Condition: domain.Condition{Kind: "threshold", Comparison: "at_or_below", PriceCents: 10000}, ValidFrom: at.Add(-time.Minute), ValidUntil: at.Add(time.Hour), RepeatPolicy: "coalesce", Requirements: domain.SourceRequirements{Source: "example-feed", Symbol: "SPY", EvidenceClass: "synthetic_unqualified", MaxAgeSeconds: 60}}
+	if _, err := store.RegisterTrigger(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	i := domain.RoutingInput{Kind: "quote", Source: "example-feed", Symbol: "SPY", EvidenceClass: "synthetic_unqualified", OccurredAt: at, ReceivedAt: at, PriceCents: 9400, Provenance: &domain.InputProvenance{RecordKey: "quote-1", Revision: 1, RawRef: "artifact:quote-1", SHA256: strings.Repeat("a", 64), AvailableAt: at, SourceSymbol: "SPY", MappingVersion: "equities-v1", AccessRef: "test-fixture-v1", Quality: "usable"}}
+	i.ID = routing.MarketInputID(i)
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			if _, err := store.RouteInput(ctx, i); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	after, err := store.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(after.State.Case, before.State.Case) || !reflect.DeepEqual(after.State.Actions, before.State.Actions) || after.ObservationCount != before.ObservationCount || len(after.Events) != len(before.Events) {
+		t.Fatal("research routing changed execution state")
+	}
+	retained := after.State.Routing.Inputs[i.ID]
+	if !reflect.DeepEqual(retained.Input, i) || len(retained.Receipt.Matches) != 1 {
+		t.Fatal("provenance or receipt lost")
+	}
+	if _, err := store.Ingest(ctx, domain.Observation{ID: "market-cannot-execute", Kind: "quote", Source: i.Source, Symbol: i.Symbol, OccurredAt: at, ReceivedAt: at, PriceCents: 9400}); err == nil {
+		t.Fatal("market quote entered fixture execution")
+	}
+	retained.Input.Provenance.RawRef = "mutated-copy"
+	fresh, err := store.Snapshot(ctx)
+	if err != nil || fresh.State.Routing.Inputs[i.ID].Input.Provenance.RawRef != i.Provenance.RawRef {
+		t.Fatal("readback mutated provenance")
+	}
+	changed := i
+	p := *i.Provenance
+	p.AccessRef = "changed"
+	changed.Provenance = &p
+	if _, err := store.RouteInput(ctx, changed); !errors.Is(err, routing.ErrConflict) {
+		t.Fatal("changed provenance replaced original")
+	}
+}
+
 func routingContracts(t *testing.T, store interface {
 	Store
 	RoutingStore
 }) {
 	t.Helper()
+	defer marketRoutingContracts(t, store)
 	ctx := context.Background()
 	at := time.Date(2026, 1, 5, 15, 5, 0, 0, time.UTC)
 	d := domain.TriggerDefinition{ID: "persisted-event-v1", Owner: "operator", CaseKey: "persistent-research", Behavior: "research", Condition: domain.Condition{Kind: "event", EventName: "signal"}, ValidFrom: at.Add(-time.Minute), ValidUntil: at.Add(time.Hour), RepeatPolicy: "reopen", Requirements: domain.SourceRequirements{Source: "fixture", Symbol: "DEMO", EvidenceClass: "synthetic_unqualified", MaxAgeSeconds: 60}}
