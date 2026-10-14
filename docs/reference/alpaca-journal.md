@@ -196,7 +196,8 @@ restart. After a session stops, take a coherent private copy of the entire journ
 with its writer absent, verify the copy's contents and recoverability, and retain
 its receiver binding and delivery history together. A new journal or resumed
 provider process requires an explicit operator decision; this command does not
-create a chain of journals to evade limits. Ongoing collection and archive/restore
+create a chain of journals to evade limits. Explicit [archive and isolated restore commands](alpaca-archives.md) provide
+byte and contract checks. Ongoing collection and off-host archive/restore
 qualification remain separate work. A finite session supplies acquisition and
 retention evidence, not real-feed readiness or profitability proof.
 
