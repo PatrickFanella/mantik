@@ -50,6 +50,13 @@ class PilotGuards(unittest.TestCase):
                     pilot.compose(root, 'stop')
                 run.assert_not_called()
 
+    def test_gated_stack_cannot_claim_continuous_qualification(self):
+        with patch.object(pilot, 'load', return_value={'fixture_gate': 'after_submit'}):
+            with patch.object(pilot, 'api') as api:
+                with self.assertRaises(ValueError):
+                    pilot.observe(Path('/private/pilot'))
+                api.assert_not_called()
+
     def test_bad_backup_cannot_create_restore_resources(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

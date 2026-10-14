@@ -268,6 +268,7 @@ def delivery_smoke(root, scenario):
     expected_gate = 'after_submit' if scenario == 'post-crash' else 'before_submit'
     if load(root).get('fixture_gate') != expected_gate:
         raise ValueError(f'{scenario} requires a fresh stack prepared with --gate {expected_gate}')
+    wait_ready(root)
     if api(root, '/v1/status')['observation_count']:
         raise ValueError('Delivery smoke requires a fresh aggregate')
     save(root / 'delivery-scenario-plan.json', {'declared_at': now(), 'scenario': scenario,
