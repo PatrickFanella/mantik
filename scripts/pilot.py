@@ -79,7 +79,7 @@ def wait_ready(root):
     raise RuntimeError('Fixture readiness did not recover within 90 seconds')
 
 
-def prepare(root, port, image=None, source=None):
+def prepare(root, port, image=None, source=None, gate=None):
     if root == REPO or REPO in root.parents:
         raise ValueError('Evidence directory must be outside the repository')
     if not 1024 <= port <= 65535:
@@ -122,11 +122,18 @@ def prepare(root, port, image=None, source=None):
             'security_opt': ['no-new-privileges:true'], 'cap_drop': ['ALL'],
             'depends_on': {'postgres': {'condition': 'service_healthy'}}}},
         'volumes': {'postgres-data': {}}}
+    if gate:
+        gate_dir = root / 'gate'
+        gate_dir.mkdir()
+        gate_dir.chmod(0o777)  # Container UID writes markers; parent evidence directory stays 0700.
+        config['services']['mantik']['volumes'] = [f'{gate_dir}:/pilot-gate']
+        config['services']['mantik']['environment'].update({
+            'MANTIK_FIXTURE_GATE_DIR': '/pilot-gate', 'MANTIK_FIXTURE_ACTION_GATE': gate})
     save(root / 'compose.json', config)
     save(root / 'manifest.json', {'config_sha256': hashlib.sha256((root / 'compose.json').read_bytes()).hexdigest(),
          'root': str(root), 'project': project, 'port': port,
          'launcher_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-         'source_sha': source, 'image': image, 'postgres_image': postgres,
+         'fixture_gate': gate, 'source_sha': source, 'image': image, 'postgres_image': postgres,
          'prepared_at': now(), 'mode': 'synthetic_unqualified', 'window_started_during_preparation': False})
     compose(root, 'config', '--quiet')
     print(f'Prepared {root} ({project}); observation window has not started')
@@ -249,6 +256,97 @@ def routing_smoke(root):
                       'completed timer restart retention'], 'qualification_credit': False})
 
 
+def ledger(root):
+    result = compose(root, 'exec', '-T', 'postgres', 'psql', '-U', 'mantik', '-d', 'mantik', '-At', '-c',
+        'SELECT payload FROM mantik_fixture_effects ORDER BY idempotency_key;', capture_output=True, text=True)
+    rows = [json.loads(line) for line in result.stdout.splitlines() if line]
+    save(root / f'effect-ledger-{time.time_ns()}.json', {'at': now(), 'rows': rows})
+    return rows
+
+
+def delivery_smoke(root, scenario):
+    expected_gate = 'after_submit' if scenario == 'post-crash' else 'before_submit'
+    if load(root).get('fixture_gate') != expected_gate:
+        raise ValueError(f'{scenario} requires a fresh stack prepared with --gate {expected_gate}')
+    wait_ready(root)
+    if api(root, '/v1/status')['observation_count']:
+        raise ValueError('Delivery smoke requires a fresh aggregate')
+    save(root / 'delivery-scenario-plan.json', {'declared_at': now(), 'scenario': scenario,
+        'gate': expected_gate, 'expected': 'completed once' if scenario == 'post-crash' else 'no economic effect',
+        'allowed_interruptions': ['SIGKILL and service start'] if 'crash' in scenario else [],
+        'original_validity_and_lease_seconds': 30, 'continuous_window_started': False})
+    stamp = now()
+    quote = {'id': 'pilot-delivery-entry-v1', 'kind': 'quote', 'source': 'fixture', 'symbol': 'DEMO',
+             'occurred_at': stamp, 'received_at': stamp, 'price_cents': 10000}
+    api(root, '/v1/observations', quote, 201)
+    deadline = time.monotonic() + 10
+    marker_path = root / 'gate' / 'reached.json'
+    while time.monotonic() < deadline:
+        try:
+            marker = json.loads(marker_path.read_text())
+            break
+        except (FileNotFoundError, json.JSONDecodeError):
+            time.sleep(.05)
+    else:
+        raise RuntimeError('Worker did not reach the declared delivery boundary')
+    before = snapshot(root)
+    action = before['state']['actions']['items'][marker['action_id']]
+    if marker['stage'] != expected_gate or action['status'] != 'unknown' or before['state']['case'].get('entry'):
+        raise RuntimeError('Delivery was not paused before acknowledgment')
+    effects = ledger(root)
+    if len(effects) != (1 if scenario == 'post-crash' else 0):
+        raise RuntimeError('Independent ledger does not match the declared crash boundary')
+    if scenario in ['pre-crash', 'post-crash']:
+        container = compose(root, 'ps', '-a', '-q', 'mantik', capture_output=True, text=True).stdout.strip()
+        if not container or '\n' in container:
+            raise RuntimeError('Expected exactly one owned application container')
+        compose(root, 'kill', '-s', 'SIGKILL', 'mantik')
+        stopped = run('docker', 'wait', container, capture_output=True, text=True, timeout=15)
+        save(root / 'kill-receipt.json', {'at': now(), 'container': container, 'exit_status': stopped.stdout.strip()})
+        if stopped.stdout.strip() != '137':
+            raise RuntimeError('Application did not exit from the declared SIGKILL')
+        compose(root, 'start', 'mantik')
+    elif scenario == 'changed-authority':
+        stamp = now()
+        api(root, '/v1/observations', dict(quote, id='pilot-changed-price-v1', price_cents=10300,
+            occurred_at=stamp, received_at=stamp), 201)
+        (root / 'gate' / 'release').touch(exist_ok=False)
+    else:
+        valid_until = dt.datetime.fromisoformat(action['intent']['decision']['valid_until'].replace('Z', '+00:00'))
+        while dt.datetime.now(dt.timezone.utc) <= valid_until:
+            time.sleep(.5)
+        (root / 'gate' / 'release').touch(exist_ok=False)
+    expected = 'completed' if scenario == 'post-crash' else 'rejected' if scenario == 'changed-authority' else 'expired'
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        try:
+            after = api(root, '/v1/status')
+            if after['state']['actions']['items'][marker['action_id']]['status'] == expected:
+                break
+        except (OSError, RuntimeError):
+            pass
+        time.sleep(.5)
+    else:
+        raise RuntimeError(f'Delivery did not reach {expected} under original authority')
+    if after['state']['actions']['items'][marker['action_id']]['intent'] != action['intent']:
+        raise RuntimeError('Recovery rewrote original intent')
+    outcomes = [e for e in after['events'] if e.get('outcome')]
+    effects = ledger(root)
+    economic_effects = [e for e in effects if e.get('outcome')]
+    expected_effects = 1 if scenario == 'post-crash' else 0
+    if len(outcomes) != expected_effects or len(economic_effects) != expected_effects:
+        raise RuntimeError('Delivery lost or duplicated an economic effect')
+    if (after['state']['case'].get('entry') is not None) != bool(expected_effects):
+        raise RuntimeError('Aggregate position does not match the effect ledger')
+    time.sleep(3)
+    stable = snapshot(root)
+    if stable['state']['actions']['items'][marker['action_id']] != after['state']['actions']['items'][marker['action_id']]:
+        raise RuntimeError('Terminal action changed during later worker cycles')
+    save(root / 'delivery-smoke-result.json', {'at': now(), 'passed': True, 'scenario': scenario,
+        'terminal_status': expected, 'economic_effect_count': expected_effects,
+        'intent_preserved': True, 'qualification_credit': False})
+
+
 def backup(root):
     path = root / f'backup-{time.time_ns()}.dump'
     # One pg_dump snapshot includes aggregate, audit, observations, migrations, effect ledger.
@@ -281,6 +379,8 @@ def restore(root, target, port, dump):
 
 
 def observe(root):
+    if load(root).get('fixture_gate'):
+        raise ValueError('A deliberately gated stack cannot run the continuous qualification window')
     start = dt.datetime.now(dt.timezone.utc)
     save(root / 'window.json', {'start': start.isoformat(), 'end': (start + dt.timedelta(hours=24)).isoformat(),
          'interval_seconds': 30, 'allowed_interruptions': [],
@@ -317,16 +417,18 @@ def observe(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['prepare', 'start', 'smoke', 'routing-smoke', 'snapshot', 'backup', 'restore', 'observe', 'stop'])
+    parser.add_argument('command', choices=['prepare', 'start', 'smoke', 'routing-smoke', 'delivery-smoke', 'snapshot', 'backup', 'restore', 'observe', 'stop'])
     parser.add_argument('--dir', type=Path, required=True)
     parser.add_argument('--port', type=int, default=41880)
+    parser.add_argument('--gate', choices=['before_submit', 'after_submit'])
+    parser.add_argument('--scenario', choices=['pre-crash', 'post-crash', 'changed-authority', 'expiry'])
     parser.add_argument('--target', type=Path)
     parser.add_argument('--dump', type=Path)
     args = parser.parse_args()
     root = args.dir.expanduser().resolve()
     os.umask(0o077)
     if args.command == 'prepare':
-        prepare(root, args.port)
+        prepare(root, args.port, gate=args.gate)
     else:
         load(root)
         if args.command == 'start':
@@ -337,6 +439,10 @@ def main():
             smoke(root)
         elif args.command == 'routing-smoke':
             routing_smoke(root)
+        elif args.command == 'delivery-smoke':
+            if not args.scenario:
+                parser.error('delivery-smoke requires --scenario')
+            delivery_smoke(root, args.scenario)
         elif args.command == 'snapshot':
             snapshot(root)
         elif args.command == 'backup':

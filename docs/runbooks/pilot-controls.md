@@ -62,6 +62,49 @@ and case match counts remain unchanged across further worker cycles. The stack
 must have no observations or registered definitions before the command starts.
 Failed or partially completed attempts remain in their own directories.
 
+## Controlled action-delivery boundaries
+
+Normal stacks have no delivery gate. Deliberate interruption rehearsals use
+`prepare --gate before_submit` or `prepare --gate after_submit` in separate fresh
+resources. The application pauses outside database transactions after retaining
+write-ahead intent, either before submission or after the independent fixture
+ledger commits and before aggregate acknowledgment. `reached.json` records the
+stage and original intent; the rehearsal also reads the independent ledger to
+establish the economic boundary. A `release` file resumes the worker without
+changing its clock, lease, validity, price, or safety checks.
+
+```bash
+delivery_dir="$HOME/.local/state/mantik/delivery-$(date -u +%Y%m%dT%H%M%SZ)"
+python3 scripts/pilot.py prepare --dir "$delivery_dir" --port 41893 --gate after_submit
+python3 scripts/pilot.py start --dir "$delivery_dir"
+python3 scripts/pilot.py delivery-smoke --dir "$delivery_dir" --scenario post-crash
+python3 scripts/pilot.py stop --dir "$delivery_dir"
+```
+
+Run each of the following in a different new directory/stack:
+
+| Scenario | Preparation gate | Expected result |
+| --- | --- | --- |
+| `pre-crash` | `before_submit` | SIGKILL before the ledger commit; restarted worker waits for the original lease, then expires the original 30-second decision with no economic effect |
+| `post-crash` | `after_submit` | SIGKILL after the ledger commit; restarted worker reconciles exactly one entry even after original decision expiry, without submitting it again |
+| `changed-authority` | `before_submit` | A new quote changes applicability while the original action is paused; releasing it rejects the original intent with no economic effect |
+| `expiry` | `before_submit` | Wait past original validity, release, and retain terminal expiry with no economic effect |
+
+The command checks original intent preservation, terminal action stability,
+economic event/ledger counts, and position consistency. The gate has no reset;
+its marker is never overwritten. Erroring or crashed attempts remain retained.
+The private parent directory stays mode 0700; only the mounted gate directory is
+writable by the container UID. Marker content is readable within that private
+parent so the host can collect it. Do not put secrets in the gate directory.
+
+These gates deliberately interrupt delivery and can make action readiness
+stale or unhealthy. Expired/rejected actions remain visible as exceptions.
+`observe` refuses gated stacks. Set neither `MANTIK_FIXTURE_GATE_DIR` nor
+`MANTIK_FIXTURE_ACTION_GATE` in an ordinary deployment. Invalid gate configuration
+fails startup; enabled gates log a warning and refuse non-fixture intent. Gates
+cannot force an effect or widen original authority. The user-selected future
+Alpaca live path must not reuse this fixture-only qualification mechanism.
+
 ## Backup and isolated restore
 
 `backup` prints the dump path. A single PostgreSQL custom-format snapshot covers
@@ -79,7 +122,10 @@ python3 scripts/pilot.py restore --dir "$pilot_dir" \
 
 Restore checks the checksum and source identity before creating resources. It
 starts only the new database, restores with error checking, captures the aggregate
-before starting workers, and then starts the same application image. Inspect
+before starting workers, and then starts the same application image. Readiness confirms
+worker/capability health; it does not mean every pending action has finished.
+A restored live lease must expire before a new worker can claim it. Wait for
+the declared terminal action state before asserting recovery completion. Inspect
 `restored-before-workers.jsonl`, the restore receipt, status, operations, and logs.
 For a completed lifecycle, compare input/decision/action/outcome identities,
 observation count, audit events, and effect ledger against the backup. For pending
@@ -109,11 +155,10 @@ outcomes, commands, identities, and allowed interruptions for the remaining case
 - Restart only this directory's project to inspect retained state and overdue
   work. Test a database outage through this project's `postgres` service, inspect
   capability readiness, then restore it and account for the recorded faults.
-- Exact pre/post-enactment worker interruption and expired/changed action
-  authority need a controlled, reproducible synchronization point. Existing
-  disposable integration tests cover these boundaries, but those test results
-  are separate from pilot runtime evidence. Do not label a random restart as proof
-  of a specific crash boundary or modify stored authority to manufacture proof.
+- Run the four controlled delivery scenarios above and retain their boundary
+  markers, independent ledger readbacks, original intent, terminal outcomes, and
+  interruption logs. A random restart alone does not prove a specific crash
+  boundary. Disposable integration tests remain separate evidence.
 
 For manual Compose operations, use both `--project-name` from `manifest.json` and
 `--file /absolute/evidence/directory/compose.json`. Never substitute the development
