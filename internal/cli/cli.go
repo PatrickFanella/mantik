@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -209,6 +210,13 @@ func serve(ctx context.Context, listen string) error {
 			return errors.New("MANTIK_TIMER_INTERVAL must be between 100ms and 1m")
 		}
 	}
+	gate, err := service.NewFixtureActionGate(os.Getenv("MANTIK_FIXTURE_GATE_DIR"), os.Getenv("MANTIK_FIXTURE_ACTION_GATE"))
+	if err != nil {
+		return err
+	}
+	if gate != nil {
+		slog.Warn("fixture action gate enabled; delivery may deliberately stall", "stage", os.Getenv("MANTIK_FIXTURE_ACTION_GATE"))
+	}
 	workerID := "worker-" + rand.Text()
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -234,7 +242,7 @@ func serve(ctx context.Context, listen string) error {
 	actionDone := make(chan struct{})
 	go func() {
 		defer close(actionDone)
-		service.RunActionWorker(workerCtx, store, workerID+"-actions", service.WallClock{}, interval, 30*time.Second)
+		service.RunActionWorkerWithFixtureGate(workerCtx, store, workerID+"-actions", service.WallClock{}, interval, 30*time.Second, gate)
 	}()
 	defer func() { stopWorker(); <-workerDone; <-actionDone }()
 	server := &http.Server{Handler: service.Handler(store, token), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}

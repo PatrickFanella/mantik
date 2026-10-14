@@ -149,3 +149,11 @@ does not provide a destructive reset after closure.
 is an explicit destructive development action and is not part of verification.
 Do not point Mantik at an Augr database, copy existing credentials, or reuse
 production data to populate the fixture.
+
+## Deliberate fixture interruption
+
+The isolated [pilot controls](pilot-controls.md#controlled-action-delivery-boundaries)
+support opt-in delivery gates for crash qualification. Normal services leave
+`MANTIK_FIXTURE_GATE_DIR` and `MANTIK_FIXTURE_ACTION_GATE` unset. A gate stalls
+fixture actions outside transactions without changing authority or expiry; it
+can make readiness unhealthy and is forbidden for the continuous pilot window.

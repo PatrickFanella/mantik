@@ -12,6 +12,10 @@ import (
 
 // RunActionCycle reconciles every claimed key before attempting submission.
 func RunActionCycle(ctx context.Context, store storage.ActionStore, worker string, clock Clock, lease time.Duration) error {
+	return runActionCycle(ctx, store, worker, clock, lease, nil)
+}
+
+func runActionCycle(ctx context.Context, store storage.ActionStore, worker string, clock Clock, lease time.Duration, gate *FixtureActionGate) error {
 	claimCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	claims, err := store.ClaimActions(claimCtx, worker, clock.Now(), lease)
 	cancel()
@@ -37,10 +41,16 @@ func RunActionCycle(ctx context.Context, store storage.ActionStore, worker strin
 		if actions.Terminal(a.Status) {
 			continue
 		}
+		if err := gate.pause(ctx, "before_submit", a.Intent); err != nil {
+			return &workerFailure{cause: err, ref: "action:" + claim.ID}
+		}
 		stepCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
 		_, err = store.SubmitAction(stepCtx, claim, clock.Now())
 		cancel()
 		if err != nil {
+			return &workerFailure{cause: err, ref: "action:" + claim.ID}
+		}
+		if err := gate.pause(ctx, "after_submit", a.Intent); err != nil {
 			return &workerFailure{cause: err, ref: "action:" + claim.ID}
 		}
 		stepCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
@@ -55,6 +65,11 @@ func RunActionCycle(ctx context.Context, store storage.ActionStore, worker strin
 
 // RunActionWorker recovers durable delivery independently of models and requests.
 func RunActionWorker(ctx context.Context, store storage.ActionStore, worker string, clock Clock, interval, lease time.Duration) {
+	RunActionWorkerWithFixtureGate(ctx, store, worker, clock, interval, lease, nil)
+}
+
+// RunActionWorkerWithFixtureGate is for deliberately interrupted synthetic qualification stacks.
+func RunActionWorkerWithFixtureGate(ctx context.Context, store storage.ActionStore, worker string, clock Clock, interval, lease time.Duration, gate *FixtureActionGate) {
 	pending := pendingFailure{}
 	defer func() {
 		recordWorkerCycle(context.Background(), store, worker, "action_delivery", clock, interval, nil, true, &pending)
@@ -63,7 +78,7 @@ func RunActionWorker(ctx context.Context, store storage.ActionStore, worker stri
 		if ctx.Err() != nil {
 			return
 		}
-		err := RunActionCycle(ctx, store, worker, clock, lease)
+		err := runActionCycle(ctx, store, worker, clock, lease, gate)
 		if ctx.Err() != nil {
 			return
 		}
