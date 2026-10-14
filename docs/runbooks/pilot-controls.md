@@ -183,9 +183,64 @@ is empty; run disruptive scenario rehearsals separately. Keep the supervising
 terminal/process alive. Cancellation leaves an incomplete window without a
 success receipt. Each sample retains the worker health and capability report;
 finish also captures full state, exceptions, and logs. Unhealthy or unavailable
-samples and supervision gaps longer than 45 seconds count as failures. Even a clean observation result explicitly leaves
-all-scenario qualification false: a human must compare the complete acceptance
-table against retained evidence and report any gaps or failures.
+samples, supervision gaps longer than 45 seconds on either clock, backwards
+clocks, and wall/monotonic discrepancies greater than five seconds count as
+failures. Both monotonic elapsed time and the declared UTC duration must reach
+24 hours. Wall-clock checks catch host suspend even when monotonic time excludes
+it. Operational exceptions observed during the window also count as failures,
+including faults that resolved between readiness samples and recurrences under
+an older retained identity. Past resolved faults are kept as history.
+
+The result separates unhealthy samples, the aggregate failure count, distinct
+observed fault IDs, and elapsed time on both clocks. A clean result still leaves
+all-scenario qualification false. Completion requires comparing the complete
+acceptance table against retained evidence and reporting gaps or failures.
+
+### Detached supervision on Linux
+
+On a host with a user systemd manager, run the existing foreground observer in
+an owned transient unit. Verify `loginctl show-user "$USER" -p Linger` reports
+`Linger=yes` if it must survive logout. Use a fresh prepared window directory,
+finish entry checks, and declare the scenario plan before starting. Keep a
+private copy of the observer so later checkout changes cannot alter its code.
+The copy and pin files below are created exclusively and cannot replace an
+earlier attempt.
+
+```bash
+window_dir=/absolute/path/to/prepared-window-stack
+python3 - "$window_dir" <<'PYCODE'
+import hashlib, json, os, pathlib, sys
+os.umask(0o077)
+root = pathlib.Path(sys.argv[1])
+source = pathlib.Path("scripts/pilot.py").read_bytes()
+with (root / "observer.py").open("xb") as stream:
+    stream.write(source)
+with (root / "observer-pin.json").open("x") as stream:
+    json.dump({"sha256": hashlib.sha256(source).hexdigest(),
+               "application_source_sha": json.loads((root / "manifest.json").read_text())["source_sha"]}, stream)
+PYCODE
+observer_unit="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["project"]+"-observer")' "$window_dir/manifest.json")"
+systemd-run --user --collect --unit "$observer_unit" \
+  --property=Restart=no --property=UMask=0077 \
+  --property=NoNewPrivileges=yes --property=RuntimeMaxSec=25h \
+  /usr/bin/python3 "$window_dir/observer.py" observe --dir "$window_dir"
+systemctl --user show "$observer_unit" --property=ActiveState --property=MainPID
+journalctl --user -u "$observer_unit" --no-pager
+```
+
+Record the unit name, invocation identity, runner checksum, start declaration,
+and source/image/schema/CI receipts in the evidence directory. The unit does
+not restart a failed or interrupted observer. After its process finishes, require
+`window-result.json` and review the collected evidence; unit exit alone is not
+qualification. Missing completion evidence means incomplete work. Do not restart
+an incomplete window in place or overwrite its files.
+
+For a disposable supervision probe, deliberately stop only the owned unit after
+at least two new sample sets (`systemctl --user stop "$observer_unit"`). Confirm
+that it was active and collecting evidence before stopping, then require that no
+success result appeared. Preserve that probe separately and use another fresh
+stack for the qualification window. An observation timeout alone is not grounds
+to stop or restart a process; inspect its actual unit/PID and evidence first.
 
 Use `snapshot` at scenario boundaries and `stop` after retaining the final
 readbacks. To stop during an outage, use the exact project/file Compose command
