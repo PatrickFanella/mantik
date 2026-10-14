@@ -216,7 +216,9 @@ the integrated safety, execution, recovery, and operator workflows.
 
 ## Decisions owned by future issues
 
-- First authorized market/calendar provider, data coverage, and adapter limits.
+- Alpaca is selected for the first price/calendar feed. Account access, data
+  entitlements, collection limits, and real-provider coverage still require
+  verification; the recorded adapter does not connect an account.
 - Where the original research corpus resides and which sources may be retained.
 - Initial baseline strategy families, benchmarks, instruments, and dataset scope.
 - Watched accounts/traders and whether each supplies research, decision inputs,

@@ -94,7 +94,10 @@ and migration compatibility. Matches record case work; research-worker dispatch 
 future work. Attributed market inputs can open research cases with exact source
 and evidence-class matching; `route-input --derive-market-id` preserves revision
 identity. See [market input contracts](docs/reference/market-inputs.md). Provider
-transport and authorization remain separate adapter work. Finalized entry decisions retain their protective definitions
+collection and authorization remain separate work. `alpaca-normalize` converts
+retained Alpaca quote/calendar recordings offline; the bounded read client is
+tested against local servers. See [Alpaca contracts](docs/reference/alpaca.md).
+Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 
 An independent service worker now handles deadlines, elapsed-time conditions,
