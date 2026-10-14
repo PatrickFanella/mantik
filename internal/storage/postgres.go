@@ -54,32 +54,46 @@ func (p *Postgres) migrate(ctx context.Context) error {
 	if _, err = tx.Exec(ctx, "CREATE TABLE IF NOT EXISTS mantik_schema (version integer PRIMARY KEY, sha256 text NOT NULL)"); err != nil {
 		return err
 	}
-	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(migrations.Bootstrap)))
-	var existing string
-	err = tx.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=1").Scan(&existing)
-	if errors.Is(err, pgx.ErrNoRows) {
-		if _, err = tx.Exec(ctx, migrations.Bootstrap); err != nil {
-			return err
-		}
-		raw, _ := json.Marshal(workflow.InitialState())
-		if _, err = tx.Exec(ctx, "INSERT INTO mantik_state(id,payload) VALUES('demo',$1)", raw); err != nil {
-			return err
-		}
-		if _, err = tx.Exec(ctx, "INSERT INTO mantik_schema VALUES(1,$1)", digest); err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	} else if existing != digest {
-		return errors.New("migration checksum mismatch")
-	}
-	var max int
-	if err = tx.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&max); err != nil {
+	var count, maximum, minimum int
+	if err = tx.QueryRow(ctx, "SELECT count(*),coalesce(max(version),0),coalesce(min(version),0) FROM mantik_schema").Scan(&count, &maximum, &minimum); err != nil {
 		return err
 	}
-	if max != 1 {
-		return errors.New("unsupported schema version")
+	if maximum > 2 || count != maximum || count > 0 && minimum != 1 {
+		return errors.New("unsupported or incomplete schema version")
 	}
+	for index, sql := range []string{migrations.Bootstrap, migrations.TriggerRouting} {
+		version := index + 1
+		digest := fmt.Sprintf("%x", sha256.Sum256([]byte(sql)))
+		var existing string
+		err = tx.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=$1", version).Scan(&existing)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if _, err = tx.Exec(ctx, sql); err != nil {
+				return err
+			}
+			if version == 1 {
+				raw, err := json.Marshal(workflow.InitialState())
+				if err != nil {
+					return err
+				}
+				if _, err = tx.Exec(ctx, "INSERT INTO mantik_state(id,payload) VALUES('demo',$1)", raw); err != nil {
+					return err
+				}
+			}
+			if version == 2 {
+				if err := backfillRouting(ctx, tx); err != nil {
+					return err
+				}
+			}
+			if _, err = tx.Exec(ctx, "INSERT INTO mantik_schema VALUES($1,$2)", version, digest); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		} else if existing != digest {
+			return errors.New("migration checksum mismatch")
+		}
+	}
+
 	return tx.Commit(ctx)
 }
 

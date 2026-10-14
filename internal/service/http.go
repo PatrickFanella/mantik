@@ -18,6 +18,7 @@ import (
 
 func Handler(store storage.Store, token string) http.Handler {
 	mux := http.NewServeMux()
+	routingRoutes(mux, store)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]string{"status": "up", "mode": "paper_fixture"})
 	})

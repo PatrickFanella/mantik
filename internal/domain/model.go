@@ -54,18 +54,19 @@ type EvaluationResult struct {
 }
 
 type Decision struct {
-	ID                string             `json:"id"`
-	CaseID            string             `json:"case_id"`
-	StrategyVersionID string             `json:"strategy_version_id"`
-	ObservationID     string             `json:"observation_id"`
-	Action            string             `json:"action"`
-	ReasonCode        string             `json:"reason_code"`
-	Status            string             `json:"status"`
-	FinalizedAt       time.Time          `json:"finalized_at"`
-	ValidUntil        time.Time          `json:"valid_until"`
-	Quantity          int64              `json:"quantity"`
-	Safety            Safety             `json:"safety"`
-	Evaluations       []EvaluationResult `json:"evaluations"`
+	ID                string              `json:"id"`
+	CaseID            string              `json:"case_id"`
+	StrategyVersionID string              `json:"strategy_version_id"`
+	ObservationID     string              `json:"observation_id"`
+	Action            string              `json:"action"`
+	ReasonCode        string              `json:"reason_code"`
+	Status            string              `json:"status"`
+	FinalizedAt       time.Time           `json:"finalized_at"`
+	ValidUntil        time.Time           `json:"valid_until"`
+	Quantity          int64               `json:"quantity"`
+	Safety            Safety              `json:"safety"`
+	Evaluations       []EvaluationResult  `json:"evaluations"`
+	FutureConditions  []TriggerDefinition `json:"future_conditions,omitempty"`
 }
 
 type ExecutionOutcome struct {
@@ -104,6 +105,7 @@ type State struct {
 	Strategy       StrategyVersion `json:"strategy"`
 	Case           DecisionCase    `json:"case"`
 	LastOccurredAt time.Time       `json:"last_occurred_at"`
+	Routing        *RoutingState   `json:"routing"`
 }
 
 type Snapshot struct {

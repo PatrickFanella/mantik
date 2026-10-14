@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
@@ -30,6 +31,52 @@ func TestDemoLocalAndRemote(t *testing.T) {
 		}
 		if snapshot.State.Case.Status != "closed" || snapshot.ObservationCount != 4 {
 			t.Fatal("CLI lifecycle incomplete")
+		}
+	}
+}
+
+func TestRoutingCLIFlow(t *testing.T) {
+	t.Setenv("MANTIK_API_TOKEN", "owner-token")
+	server := httptest.NewServer(service.Handler(storage.NewMemory(), "owner-token"))
+	defer server.Close()
+	at := time.Date(2026, 1, 5, 15, 0, 0, 0, time.UTC)
+	d := domain.TriggerDefinition{ID: "cli-event-v1", Owner: "operator", CaseKey: "cli-case", Behavior: "research", Condition: domain.Condition{Kind: "event", EventName: "signal"}, ValidFrom: at.Add(-time.Minute), ValidUntil: at.Add(time.Hour), RepeatPolicy: "reopen", Requirements: domain.SourceRequirements{Source: "fixture", Symbol: "DEMO", EvidenceClass: "synthetic_unqualified", MaxAgeSeconds: 60}}
+	root := t.TempDir()
+	definitionPath := filepath.Join(root, "definition.json")
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(definitionPath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	if err := Run(context.Background(), []string{"trigger-register", "--file", definitionPath, "--api-url", server.URL}, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	i := domain.RoutingInput{ID: "cli-input", Kind: "event", Source: "fixture", Symbol: "DEMO", EvidenceClass: "synthetic_unqualified", OccurredAt: at, ReceivedAt: at, EventName: "signal"}
+	inputPath := filepath.Join(root, "input.json")
+	raw, err = json.Marshal(i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inputPath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := Run(context.Background(), []string{"route-input", "--file", inputPath, "--api-url", server.URL}, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	var receipt domain.RoutingReceipt
+	if err := json.Unmarshal(out.Bytes(), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(context.Background(), []string{"close-routing-case", "--id", receipt.Matches[0].CaseID, "--owner", "operator", "--at", "2026-01-05T15:00:01Z", "--api-url", server.URL}, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"trigger-register"}, {"route-input", "--file", inputPath, "--api-url", "file:///tmp"}, {"close-routing-case", "--id", "../bad", "--owner", "operator", "--at", "2026-01-05T15:00:01Z"}} {
+		if err := Run(context.Background(), args, &out, &errOut); err == nil {
+			t.Fatal("invalid routing CLI request admitted")
 		}
 	}
 }

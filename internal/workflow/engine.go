@@ -11,6 +11,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/library"
 	"git.subcult.tv/subculture-collective/mantik/internal/operations"
+	"git.subcult.tv/subculture-collective/mantik/internal/routing"
 )
 
 var identifier = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
@@ -19,6 +20,7 @@ func InitialState() domain.State {
 	return domain.State{
 		Strategy: library.FixtureStrategy(),
 		Case:     domain.DecisionCase{ID: "demo-case-v1", StrategyVersionID: "demo-threshold-v1", Status: "waiting"},
+		Routing:  routing.NewState(),
 	}
 }
 
@@ -30,7 +32,7 @@ func InitialStateFor(id string) (domain.State, error) {
 	if id == library.FixtureStrategy().ID {
 		return InitialState(), nil
 	}
-	return domain.State{Strategy: s, Case: domain.DecisionCase{ID: id + "-case", StrategyVersionID: id, Status: "waiting"}}, nil
+	return domain.State{Strategy: s, Case: domain.DecisionCase{ID: id + "-case", StrategyVersionID: id, Status: "waiting"}, Routing: routing.NewState()}, nil
 }
 
 func Validate(o domain.Observation) error {
@@ -52,6 +54,29 @@ func Validate(o domain.Observation) error {
 // Apply records rejected observations without allowing them to alter the last
 // usable quote or create an economic action. The store owns retry deduplication.
 func Apply(state domain.State, o domain.Observation) (domain.State, []domain.Event, error) {
+	next, events, err := applyFixture(state, o)
+	if err != nil {
+		return state, nil, err
+	}
+	for _, event := range events {
+		if event.Decision != nil && event.Decision.Action == "enter" {
+			next.Routing, err = routing.BindFuture(next.Routing, *event.Decision, next.Strategy.Symbol)
+			if err != nil {
+				return state, nil, err
+			}
+		}
+	}
+	next.Routing, _, err = routing.ApplyQuote(next.Routing, o)
+	if err != nil {
+		return state, nil, err
+	}
+	if next.Case.Exit != nil {
+		routing.CloseApplied(next.Routing, next.Case.ID, next.Case.Exit.ExecutedAt)
+	}
+	return next, events, nil
+}
+
+func applyFixture(state domain.State, o domain.Observation) (domain.State, []domain.Event, error) {
 	if err := Validate(o); err != nil {
 		return state, nil, err
 	}
@@ -125,7 +150,9 @@ func Apply(state domain.State, o domain.Observation) (domain.State, []domain.Eve
 }
 
 func decision(state domain.State, o domain.Observation, action, reason string, checks []domain.EvaluationResult) domain.Decision {
-	return domain.Decision{ID: o.ID + "-decision", CaseID: state.Case.ID, StrategyVersionID: state.Strategy.ID, ObservationID: o.ID, Action: action, ReasonCode: reason, Status: "finalized", FinalizedAt: o.ReceivedAt, ValidUntil: o.ReceivedAt.Add(30 * time.Second), Quantity: state.Strategy.Quantity, Safety: state.Strategy.Safety, Evaluations: checks}
+	d := domain.Decision{ID: o.ID + "-decision", CaseID: state.Case.ID, StrategyVersionID: state.Strategy.ID, ObservationID: o.ID, Action: action, ReasonCode: reason, Status: "finalized", FinalizedAt: o.ReceivedAt, ValidUntil: o.ReceivedAt.Add(30 * time.Second), Quantity: state.Strategy.Quantity, Safety: state.Strategy.Safety, Evaluations: checks}
+	d.FutureConditions = routing.FutureDefinitions(d, state.Strategy.Symbol)
+	return d
 }
 
 func decisionEvent(o domain.Observation, d domain.Decision) domain.Event {
