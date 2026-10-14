@@ -203,5 +203,11 @@ audit payloads while adding worker state and exception metadata. See
 - Isolated generated-code evaluation and admission.
 - TUI supervision and explanations derived from finalized records.
 
-Live trading is outside the product roadmap. A healthy service or successful
-fixture creates no real-market qualification evidence.
+The intended future live execution adapter is Alpaca, after paper qualification
+and a separate live-admission review. Current operations remain paper-only. A
+live adapter must preserve allocator ownership, finalized-decision safety,
+environment/account isolation, and reconciliation of unknown or partial effects.
+Paper decisions and fixture effect records cannot authorize live orders. See
+[the planned live stage](roadmap.md#planned-m8-alpaca-live-admission-and-bounded-rollout).
+A healthy service or successful fixture creates no real-market qualification
+evidence.

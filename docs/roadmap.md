@@ -6,8 +6,10 @@ information, opens decision cases when conditions warrant, tests hypotheses,
 allocates paper capital under explicit rules, and records outcomes.
 
 The goal is dependable, measurable paper operation with evidence of strategy
-value. Profitability must be established empirically. Live trading is outside
-the roadmap.
+value. Profitability must be established empirically. The intended destination
+is live trading through Alpaca with real capital, after prospective paper
+profitability and operational safety meet predeclared admission gates. Mantik
+is currently paper-only; the live stage below is future planning work.
 
 ## Planning and delivery
 
@@ -127,17 +129,64 @@ A TUI, conversational application tools, and evidence-linked explanations and at
 
 Recovery evidence, deployment receipts, and natural paper evaluation against declared baselines.
 
-**Exit gate:** The exact release passes restore/restart checks and a predeclared prospective observation window; incomplete evidence and failed performance gates are reported honestly. Live trading remains outside scope.
+**Exit gate:** The exact release passes restore/restart checks and a predeclared prospective observation window; incomplete evidence and failed performance gates are reported honestly. M7 remains paper-only; passing it supplies evidence for a
+separate live-admission review and does not enable live orders.
 
 - [#25: Qualify backup, restore, restart, and protective recovery](https://git.subcult.tv/subculture-collective/mantik/issues/25). Depends on #10, #20.
 - [#26: Prepare an isolated paper release with rollback and capability receipts](https://git.subcult.tv/subculture-collective/mantik/issues/26). Depends on #25, #21, #23.
 - [#27: Run a predeclared prospective paper qualification window](https://git.subcult.tv/subculture-collective/mantik/issues/27). Depends on #26, #24.
 
+## Planned M8: Alpaca live admission and bounded rollout
+
+The user selected Alpaca as the intended real-money execution destination.
+This stage follows M5's realistic execution/account allocation and M7's
+prospective paper qualification (#19–#21 and #25–#27). It is a planning stage;
+its native milestone and bounded implementation issues remain to be reviewed.
+It does not change the current fixture pilot or the paper-only acceptance
+criteria of existing issues.
+
+**Entry gate:** Predeclare paper profitability criteria before measuring the
+qualification window. Specify the admitted strategy/version, instruments,
+capital assumptions, benchmark, net return after realistic costs/slippage,
+maximum drawdown and exposure, sample size, observation duration, uncertainty,
+and out-of-sample/prospective method. Preserve failed attempts and account for
+selection bias. Set the numeric thresholds in the admission specification;
+none are established by this roadmap update. Positive synthetic P&L, an
+attractive backtest, or a short winning run is insufficient evidence.
+
+**Required work before live activation:**
+
+- Define an Alpaca adapter contract against the provider's current documentation
+  and qualify its separate paper environment first. Verify account/environment
+  identity, supported instruments, market-data coverage, order lifecycle,
+  idempotency, unknown-outcome reconciliation, partial fills, cancellations,
+  reconnects, and positions/cash reconciliation. Do not assume provider paper
+  fills establish live execution quality.
+- Separate paper and live credentials, endpoints, account IDs, balances, and
+  evidence. Fail closed on an environment/account mismatch. Existing finalized
+  paper decisions cannot be replayed into the live account.
+- Keep allocator and safety authority independent of research/model availability.
+  Define permitted instruments/order types, capital and position limits,
+  exposure/daily-loss/drawdown stops, stale-data behavior, independent protection,
+  manual halt, and controlled recovery. Reject unqualified strategies.
+- Qualify outages, ambiguous submissions, restart, backup/restore, reconciliation,
+  and operator controls against provider behavior, retaining the exact source,
+  image, adapter, and account receipts.
+- Require an explicit operator activation specifying the account, capital budget,
+  strategy versions, limits, and monitoring plan. Begin with a bounded live pilot;
+  expansion requires a separate review of execution, economics, and risk evidence.
+
+**Exit gate:** The explicitly authorized bounded Alpaca live pilot operates within
+its declared controls, reconciles every economic effect, and has retained
+recovery and operator-halt evidence. Paper profitability is an admission input;
+it does not establish that live trading will be profitable. No live account is
+connected and no real-money orders are authorized by recording this direction.
+
 ## First implementation sequence
 
 The first running-app checkpoint is an **isolated operational pilot after M2**,
 once #7–#10 are merged and their integrated recovery behavior is verified.
-Finish durable action delivery (#9) and operational inspection/readiness (#10),
+M2 implementation (#7–#10) is merged. Verify the remaining runtime scenarios,
 then run the persistent service with controlled, current-time synthetic inputs
 for a declared 24-hour window. Do not defer this feedback loop until the full
 research, portfolio, or terminal roadmap is complete.
