@@ -151,6 +151,15 @@ identical content return the retained receipt; changed content conflicts.
 Status uses a consistent read transaction. Bootstrap migrations run under an
 advisory lock and verify their checksum and schema version at startup.
 
+Persistent definitions route fixture events, thresholds, state changes, and
+combined evidence into bounded research or decision cases. Repeat policies
+control coalescing and reopening. Routing records do not dispatch workers or
+authorize execution. Finalized entry decisions retain exact stop and target
+definitions in the same transaction as their execution records. Schema version
+2 upgrades retained open positions using the original finalized decision and
+fences incompatible older writers. See [trigger contracts](reference/triggers.md)
+for evidence windows, deduplication, API commands, and compatibility boundaries.
+
 The operations adapter is synchronous and synthetic. External executions will
 need durable action delivery, uncertain-outcome handling, and reconciliation;
 a database transaction cannot make an external order atomic.

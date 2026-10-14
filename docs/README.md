@@ -14,6 +14,8 @@
   cutoffs, and quality admission.
 - [Experiment contracts](reference/experiments.md): baseline methods, controls,
   declared recipes, metrics, and retained attempts.
+- [Trigger contracts](reference/triggers.md): persistent conditions, evidence
+  windows, case routing, retries, and finalized protection.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed

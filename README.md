@@ -82,6 +82,14 @@ docker compose down
 See [development and verification](docs/runbooks/development.md) for native
 execution, API requests, and disposable integration tests.
 
+The service also persists fixture event, threshold, state-change, and combined
+trigger definitions. `trigger-register`, `route-input`, and `close-routing-case`
+manage research and decision cases with deduplication and explicit repeat
+policies. See [trigger contracts](docs/reference/triggers.md) for JSON examples
+and migration compatibility. Matches record case work; worker dispatch is
+future work. Finalized entry decisions retain their protective definitions
+atomically with the fixture execution records.
+
 ## Current boundaries
 
 - Only fixture quotes for the synthetic `DEMO` instrument are accepted.
@@ -93,8 +101,9 @@ execution, API requests, and disposable integration tests.
 - Stop, target, and holding-deadline checks run on usable incoming quotes.
   There is no independent deadline scheduler or missing-feed monitor yet.
 - The synchronous simulator fills at the observed quote with zero costs.
-- One case and one aggregate are supported. PostgreSQL serializes their
-  updates; this is not a multi-strategy portfolio allocator.
+- One executable fixture case and bounded research/decision routing cases
+  share one aggregate. PostgreSQL serializes their updates; portfolio
+  allocation is future work.
 - Status returns the complete small fixture history. Pagination is needed
   before continuous ingestion.
 - Dataset replay supports the synthetic fixture quote schema. Corrections,

@@ -21,6 +21,11 @@ DATABASE_URL or touch existing database volumes.
 The PostgreSQL contract tests cover concurrent retries, conflicting content,
 transaction rollback, state readback after reopening the pool, and migration
 checksum rejection. The race suite also exercises local/HTTP CLI workflows.
+Routing regressions cover concurrent registration and input retries, crossing
+and state baselines, combined evidence windows, coalescing, reopening, expiry,
+owner checks, and action-authority rejection. Disposable PostgreSQL checks
+upgrade an open version 1 position without rewriting its original events,
+reject older writers, and verify entry/future-condition transaction rollback.
 Library regressions cover contract and check versions, complete safety
 declarations, exact dependencies and cycles, immutable registry readbacks,
 required-check admission, and fixture configuration compatibility. Workflow
@@ -49,8 +54,13 @@ mise exec -- make build
 
 Use a second terminal with the same token for `status` or
 `demo --api-url http://127.0.0.1:40880`. Change credentials and ports to match
-`.env` if customized. `serve` applies the embedded bootstrap migration at
-startup. It rejects an unsupported database name or changed migration checksum.
+`.env` if customized. `serve` applies embedded migrations through schema version
+2 at startup. It rejects an unsupported database name or changed migration
+checksum. Version 2 preserves retained events and derives protection for an
+existing open fixture position; missing finalized evidence aborts the upgrade.
+Older binaries cannot write this schema safely. See the
+[trigger compatibility contract](../reference/triggers.md#finalized-protection-and-persistence)
+before planning a deployment or rollback.
 SIGINT/SIGTERM drains HTTP requests before the pool closes.
 
 ## API and fixture ingestion
@@ -60,6 +70,13 @@ SIGINT/SIGTERM drains HTTP requests before the pool closes.
 - `GET /v1/status`: consistent state and event history.
 - `POST /v1/observations`: one fixture observation; 201 for new input, 200 for
   an identical retry, 409 for conflicting content, 422 for invalid fields.
+- `POST /v1/triggers`: register an immutable operator definition.
+- `POST /v1/routing-inputs`: match a fixture input and retain its receipt.
+- `POST /v1/routing-cases/{id}/close`: close a research/decision routing case
+  with its owner and explicit time.
+
+See [trigger contracts](../reference/triggers.md) for CLI files and complete
+condition, retry, validity, and authority rules.
 
 All routes except health require the configured Bearer token when one is set.
 Compose sets a token and publishes only loopback ports. Do not expose this

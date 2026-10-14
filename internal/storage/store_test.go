@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -23,7 +24,25 @@ func TestPostgresContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	initial, err := store.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "ALTER TABLE mantik_events ADD CONSTRAINT test_entry_rollback CHECK (id <> 'demo-quote-2-decision')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Ingest(ctx, workflow.Fixtures()[1]); err == nil {
+		t.Fatal("forced entry event failure was accepted")
+	}
+	failedEntry, err := store.Snapshot(ctx)
+	if err != nil || !reflect.DeepEqual(initial, failedEntry) {
+		t.Fatalf("failed entry left partial decision or future conditions: %v", err)
+	}
+	if _, err := store.pool.Exec(ctx, "ALTER TABLE mantik_events DROP CONSTRAINT test_entry_rollback"); err != nil {
+		t.Fatal(err)
+	}
 	contracts(t, store)
+	routingContracts(t, store)
 	before, err := store.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +57,7 @@ func TestPostgresContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.State.Case.Status != "closed" || after.ObservationCount != before.ObservationCount || len(after.Events) != len(before.Events) {
+	if after.State.Case.Status != "closed" || after.ObservationCount != before.ObservationCount || len(after.Events) != len(before.Events) || !reflect.DeepEqual(after.State.Routing, before.State.Routing) {
 		t.Fatal("restart lost state")
 	}
 	if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_events ADD CONSTRAINT test_rollback CHECK (id <> 'rollback-quote-observed')"); err != nil {
@@ -55,7 +74,7 @@ func TestPostgresContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rolledBack.ObservationCount != after.ObservationCount || len(rolledBack.Events) != len(after.Events) || !rolledBack.State.LastOccurredAt.Equal(after.State.LastOccurredAt) {
+	if rolledBack.ObservationCount != after.ObservationCount || len(rolledBack.Events) != len(after.Events) || !reflect.DeepEqual(rolledBack.State, after.State) {
 		t.Fatal("failed transaction left partial observation/state")
 	}
 	if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_events DROP CONSTRAINT test_rollback"); err != nil {
