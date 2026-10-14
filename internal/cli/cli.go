@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -198,6 +199,14 @@ func serve(ctx context.Context, listen string) error {
 	if !net.ParseIP(host).IsLoopback() && len(token) < 16 {
 		return errors.New("non-loopback serve requires MANTIK_API_TOKEN of at least 16 characters")
 	}
+	interval := time.Second
+	if value := os.Getenv("MANTIK_TIMER_INTERVAL"); value != "" {
+		interval, err = time.ParseDuration(value)
+		if err != nil || interval < 100*time.Millisecond || interval > time.Minute {
+			return errors.New("MANTIK_TIMER_INTERVAL must be between 100ms and 1m")
+		}
+	}
+	workerID := "worker-" + rand.Text()
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		return errors.New("DATABASE_URL is required for serve")
@@ -213,6 +222,13 @@ func serve(ctx context.Context, listen string) error {
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		service.RunTimerWorker(workerCtx, store, workerID, service.WallClock{}, interval, 30*time.Second)
+	}()
+	defer func() { stopWorker(); <-workerDone }()
 	server := &http.Server{Handler: service.Handler(store, token), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	finished := make(chan error, 1)
 	go func() { finished <- server.Serve(listener) }()

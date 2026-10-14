@@ -23,6 +23,7 @@ services:
     environment:
       DATABASE_URL: postgres://mantik:${POSTGRES_PASSWORD:-mantik-local-development}@postgres:5432/mantik?sslmode=disable
       MANTIK_API_TOKEN: ${MANTIK_API_TOKEN:-mantik-local-development}
+      MANTIK_TIMER_INTERVAL: ${MANTIK_TIMER_INTERVAL:-1s}
     ports:
       - "127.0.0.1:${MANTIK_PORT:-40880}:40880"
     depends_on:

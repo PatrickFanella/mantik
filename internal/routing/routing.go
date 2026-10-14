@@ -23,7 +23,7 @@ var key = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,80}$`)
 var inputID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
 func NewState() *domain.RoutingState {
-	return &domain.RoutingState{Definitions: []domain.TriggerDefinition{}, Runtime: map[string]domain.TriggerRuntime{}, Cases: []domain.RoutingCase{}, Inputs: map[string]domain.RetainedRoutingInput{}}
+	return &domain.RoutingState{Definitions: []domain.TriggerDefinition{}, Runtime: map[string]domain.TriggerRuntime{}, Cases: []domain.RoutingCase{}, Inputs: map[string]domain.RetainedRoutingInput{}, Timers: NewTimers()}
 }
 
 func copyState(s *domain.RoutingState) (*domain.RoutingState, error) {
@@ -43,6 +43,9 @@ func copyState(s *domain.RoutingState) (*domain.RoutingState, error) {
 	}
 	if result.Inputs == nil {
 		result.Inputs = map[string]domain.RetainedRoutingInput{}
+	}
+	if result.Timers == nil {
+		result.Timers = NewTimers()
 	}
 	return &result, nil
 }
@@ -86,7 +89,11 @@ func ValidateDefinition(d domain.TriggerDefinition) error {
 		if d.CombinationWindowSeconds != 0 {
 			return errors.New("combination window applies only to combined conditions")
 		}
-		if err := validateLeaf(d.Condition); err != nil {
+		if IsTimed(d.Condition) {
+			if err := validateTimed(d); err != nil {
+				return err
+			}
+		} else if err := validateLeaf(d.Condition); err != nil {
 			return err
 		}
 	}
@@ -125,6 +132,9 @@ func validateLeaf(c domain.Condition) error {
 
 func Register(s *domain.RoutingState, d domain.TriggerDefinition) (*domain.RoutingState, error) {
 	d.ValidFrom, d.ValidUntil = d.ValidFrom.UTC(), d.ValidUntil.UTC()
+	if !d.Condition.DueAt.IsZero() {
+		d.Condition.DueAt = d.Condition.DueAt.UTC()
+	}
 	if err := ValidateOperatorDefinition(d); err != nil {
 		return s, fmt.Errorf("%w: %s", ErrInvalid, err)
 	}
@@ -154,6 +164,7 @@ func Register(s *domain.RoutingState, d domain.TriggerDefinition) (*domain.Routi
 	}
 	next.Definitions = append(next.Definitions, d)
 	next.Runtime[d.ID] = domain.TriggerRuntime{Status: "active", Facts: map[string]domain.ConditionFact{}}
+	SyncTimers(next)
 	return next, nil
 }
 
@@ -241,13 +252,18 @@ func apply(s *domain.RoutingState, i domain.RoutingInput, retain bool) (*domain.
 		if runtime.Facts == nil {
 			runtime.Facts = map[string]domain.ConditionFact{}
 		}
-		if !i.ReceivedAt.Before(d.ValidUntil) {
+		if !IsTimed(d.Condition) && !i.ReceivedAt.Before(d.ValidUntil) {
 			runtime.Status = "expired"
 			next.Runtime[d.ID] = runtime
 			r.ExpiredDefinitions = append(r.ExpiredDefinitions, d.ID)
 			continue
 		}
-		if i.ReceivedAt.Before(d.ValidFrom) || runtime.Status == "expired" || d.RepeatPolicy == "once" && runtime.Fired || i.ReceivedAt.Sub(i.OccurredAt) > time.Duration(d.Requirements.MaxAgeSeconds)*time.Second {
+		if i.ReceivedAt.Before(d.ValidFrom) || !i.OccurredAt.Before(d.ValidUntil) || runtime.Status == "expired" || d.RepeatPolicy == "once" && runtime.Fired || i.ReceivedAt.Sub(i.OccurredAt) > time.Duration(d.Requirements.MaxAgeSeconds)*time.Second {
+			continue
+		}
+		if IsTimed(d.Condition) {
+			observeExpected(d, i, ref, runtime.Facts)
+			next.Runtime[d.ID] = runtime
 			continue
 		}
 		matched := evaluate(d, i, ref, runtime.Facts)

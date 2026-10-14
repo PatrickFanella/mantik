@@ -232,7 +232,7 @@ func TestFinalizedFutureConditionsAndFixtureParity(t *testing.T) {
 			entry = *event.Decision
 		}
 	}
-	if len(entry.FutureConditions) != 2 || len(state.Routing.Definitions) != 2 {
+	if len(entry.FutureConditions) != 3 || len(state.Routing.Definitions) != 3 {
 		t.Fatal("entry lacked retained future conditions")
 	}
 	proposed := entry

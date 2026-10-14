@@ -34,8 +34,9 @@ than the machine's wall clock.
 
 Older occurrence times cannot rewind a condition's baseline. Validity includes
 `valid_from` and excludes `valid_until`. An input received at or after expiry
-marks the definition expired. Expiry is input-driven; there is no independent
-timer or missing-feed monitor yet.
+marks an incoming-evidence definition expired. The service timer worker also
+expires these definitions without another input. Deadline, elapsed-time, and
+expected-missing-event definitions use the [timer contract](timers.md).
 
 ## Cases and retries
 
@@ -67,14 +68,15 @@ state, including definitions, runtime facts, cases, and manual receipts.
 
 ## Finalized protection and persistence
 
-Each finalized fixture entry decision contains its exact future stop and target
+Each finalized fixture entry decision contains its exact future stop, target, and deadline
 definitions. They bind the decision ID, subject case, safety conditions, and
 holding deadline. They commit with the observation, decision events, execution
 outcome, and aggregate under the same PostgreSQL row lock. A failed transaction
 retains none of them. A match alone grants no execution authority: operations
 continues to enforce the finalized safety contract independently of models.
-The existing fixture exit closes its applied action cases. The holding deadline
-still requires an incoming usable observation.
+The existing fixture exit closes its applied action cases. The independent
+deadline worker uses a retained usable quote or records an operational exception;
+it cannot invent a price or fill.
 
 Schema version 2 adds routing state and a constraint that prevents an older
 writer from silently removing it. Startup verifies both migration checksums and
@@ -83,7 +85,9 @@ version 1 fixture position derives protection from its retained finalized entry
 event. Missing or incompatible evidence aborts the upgrade. Original events and
 receipts are preserved. The bootstrap migration checksum remains unchanged.
 
-An older binary rejects schema version 2 at startup. Downgrading metadata or
+Schema version 3 adds timer state and timer-sourced audit records while retaining
+version 1 and 2 checksums. See [timer compatibility](timers.md#schema-compatibility).
+An older binary rejects the newer schema at startup. Downgrading metadata or
 removing the constraint is not a rollback procedure. A future deployment needs
 a database snapshot and a compatible rollback revision. Local integration
 tests use disposable databases; this source change is not a deployment.

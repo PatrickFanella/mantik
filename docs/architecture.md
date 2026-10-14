@@ -154,11 +154,20 @@ advisory lock and verify their checksum and schema version at startup.
 Persistent definitions route fixture events, thresholds, state changes, and
 combined evidence into bounded research or decision cases. Repeat policies
 control coalescing and reopening. Routing records do not dispatch workers or
-authorize execution. Finalized entry decisions retain exact stop and target
-definitions in the same transaction as their execution records. Schema version
-2 upgrades retained open positions using the original finalized decision and
-fences incompatible older writers. See [trigger contracts](reference/triggers.md)
+authorize execution. Finalized entry decisions retain exact stop, target, and
+holding-deadline definitions in the same transaction as their execution records.
+Schema versions 2 and 3 upgrade retained open positions using the original
+finalized decision and fence incompatible older writers. See [trigger contracts](reference/triggers.md)
 for evidence windows, deduplication, API commands, and compatibility boundaries.
+
+The service's independent timer worker leases due definitions and commits their
+routing and protective effects atomically. Restart recovers overdue or expired
+claims with generation fencing. A backward UTC change pauses scheduler work
+until the durable clock watermark catches up. Holding-deadline exits require a
+usable retained quote at execution time; otherwise an operational exception
+preserves the open position without inventing a fill. Expected-event conditions
+record missing evidence without relying on a new input or model. See
+[timer contracts](reference/timers.md) for the clock, lease, and evidence rules.
 
 The operations adapter is synchronous and synthetic. External executions will
 need durable action delivery, uncertain-outcome handling, and reconciliation;
@@ -167,7 +176,7 @@ a database transaction cannot make an external order atomic.
 ## Next capabilities
 
 - Additional library implementations and reproducible experiment recipes.
-- Independent timers and missing-feed detection for decision obligations.
+- Real-feed availability policies built on declared missing-event obligations.
 - Historical dataset adapters and research-attempt history, including failures.
 - A real feed adapter with provenance and time-aware routing.
 - LLM tools and research workers behind explicit application interfaces.
