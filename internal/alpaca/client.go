@@ -96,6 +96,13 @@ func (c *Client) target(q Query) (string, error) {
 // at most three attempts, and at most 1 MiB per response. The caller must retain
 // response bytes and attribution before normalization or any service submission.
 func (c *Client) Fetch(ctx context.Context, q Query) (Response, error) {
+	return c.fetch(ctx, q, nil)
+}
+
+// The private observer durably records each attempt before a request and its
+// bounded response before retrying or returning success. Observer failure stops
+// acquisition immediately; it is never treated as a transport retry.
+func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) error) (Response, error) {
 	if err := ctx.Err(); err != nil {
 		return Response{}, err
 	}
@@ -113,6 +120,11 @@ func (c *Client) Fetch(ctx context.Context, q Query) (Response, error) {
 		if err := wait(ctx, time.Until(c.last.Add(c.interval))); err != nil {
 			return Response{}, err
 		}
+		if observe != nil {
+			if err := observe(ReadAttempt{Number: attempt, State: "started", At: time.Now().UTC()}); err != nil {
+				return Response{}, err
+			}
+		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 		if err != nil {
 			return Response{}, errors.New("invalid Alpaca read request")
@@ -122,6 +134,11 @@ func (c *Client) Fetch(ctx context.Context, q Query) (Response, error) {
 		c.last = time.Now()
 		res, err := c.http.Do(req)
 		if err != nil {
+			if observe != nil {
+				if e := observe(ReadAttempt{Number: attempt, State: "transport_failed", At: time.Now().UTC()}); e != nil {
+					return Response{}, e
+				}
+			}
 			if ctx.Err() != nil {
 				return Response{}, ctx.Err()
 			}
@@ -132,11 +149,21 @@ func (c *Client) Fetch(ctx context.Context, q Query) (Response, error) {
 		}
 		raw, readErr := io.ReadAll(io.LimitReader(res.Body, MaxBytes+1))
 		_ = res.Body.Close()
+		receivedAt := time.Now().UTC()
+		if observe != nil {
+			bounded := raw
+			if len(bounded) > MaxBytes {
+				bounded = bounded[:MaxBytes]
+			}
+			if err := observe(ReadAttempt{Number: attempt, State: "response", At: receivedAt, HTTPStatus: res.StatusCode, Raw: bounded, Partial: readErr != nil || len(raw) > MaxBytes}); err != nil {
+				return Response{}, err
+			}
+		}
 		if len(raw) > MaxBytes {
 			return Response{}, errors.New("alpaca response exceeds 1 MiB")
 		}
 		if res.StatusCode == 200 && readErr == nil {
-			return Response{Original: string(raw), SHA256: Digest(string(raw)), ReceivedAt: time.Now().UTC(), Attempts: attempt}, nil
+			return Response{Original: string(raw), SHA256: Digest(string(raw)), ReceivedAt: receivedAt, Attempts: attempt}, nil
 		}
 		retry := res.StatusCode == 429 || res.StatusCode >= 500 && res.StatusCode <= 599 || res.StatusCode == 200 && readErr != nil
 		if !retry || attempt == 3 {

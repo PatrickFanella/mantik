@@ -123,3 +123,26 @@ func TestCalendarClientOnlyUsesPaperReadEndpoint(t *testing.T) {
 		t.Fatal("production client endpoints or rate changed")
 	}
 }
+
+func TestClientObserverFailureStopsWithoutRetry(t *testing.T) {
+	for _, state := range []string{"started", "response"} {
+		t.Run(state, func(t *testing.T) {
+			var calls atomic.Int32
+			c := testClient(t, func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) })
+			fault := errors.New("durability failed")
+			_, err := c.fetch(context.Background(), Query{Capability: "latest_quotes", Symbols: []string{"SPY"}}, func(a ReadAttempt) error {
+				if a.State == state {
+					return fault
+				}
+				return nil
+			})
+			want := int32(0)
+			if state == "response" {
+				want = 1
+			}
+			if !errors.Is(err, fault) || calls.Load() != want {
+				t.Fatal("observer failure retried", calls.Load(), err)
+			}
+		})
+	}
+}
