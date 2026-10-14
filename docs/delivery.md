@@ -70,4 +70,8 @@ conversation cannot self-grant capital or rewrite evidence classifications.
 Synthetic/stress results do not become scored or prospective evidence. Existing
 Augr source can be assessed for reuse, but its services, credentials, and
 financial data are outside this plan's development scope. Mantik remains a
-paper-only project; live trading is outside the roadmap.
+paper-only implementation. Alpaca real-money execution is a planned stage after
+paper profitability qualification and an explicit bounded live-admission review.
+Recording this direction does not activate a live account or authorize orders;
+existing paper issue acceptance gates remain unchanged. See
+[the planned live stage](roadmap.md#planned-m8-alpaca-live-admission-and-bounded-rollout).
