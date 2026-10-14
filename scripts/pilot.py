@@ -406,6 +406,7 @@ def observe(root):
     if load(root).get('fixture_gate'):
         raise ValueError('A deliberately gated stack cannot run the continuous qualification window')
     wait_ready(root)
+    monotonic_start = time.monotonic()
     start = dt.datetime.now(dt.timezone.utc)
     end = start + dt.timedelta(hours=24)
     save(root / 'window.json', {'start': start.isoformat(), 'end': end.isoformat(),
@@ -416,9 +417,8 @@ def observe(root):
     failures = 0
     unhealthy_samples = 0
     observed_fault_ids = set()
-    previous_sample = time.monotonic()
+    previous_sample = monotonic_start
     previous_wall = start
-    monotonic_start = previous_sample
     deadline = monotonic_start + 86400
     while time.monotonic() < deadline or dt.datetime.now(dt.timezone.utc) < end:
         sample = time.monotonic()
