@@ -108,6 +108,8 @@ commands preserve private evidence and verify an isolated recovery copy.
 The [first real-feed rehearsal](docs/runbooks/first-real-feed.md) verified
 IEX/calendar ingestion and restart retention without economic effects; usable
 fresh quote coverage and continuous-feed readiness remain separate gates.
+`alpaca-coverage` provides a [read-only regular-session evidence report](docs/reference/alpaca-coverage.md)
+from the journal without configuring global readiness.
 Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 
