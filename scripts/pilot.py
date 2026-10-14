@@ -297,7 +297,14 @@ def delivery_smoke(root, scenario):
     if len(effects) != (1 if scenario == 'post-crash' else 0):
         raise RuntimeError('Independent ledger does not match the declared crash boundary')
     if scenario in ['pre-crash', 'post-crash']:
+        container = compose(root, 'ps', '-a', '-q', 'mantik', capture_output=True, text=True).stdout.strip()
+        if not container or '\n' in container:
+            raise RuntimeError('Expected exactly one owned application container')
         compose(root, 'kill', '-s', 'SIGKILL', 'mantik')
+        stopped = run('docker', 'wait', container, capture_output=True, text=True, timeout=15)
+        save(root / 'kill-receipt.json', {'at': now(), 'container': container, 'exit_status': stopped.stdout.strip()})
+        if stopped.stdout.strip() != '137':
+            raise RuntimeError('Application did not exit from the declared SIGKILL')
         compose(root, 'start', 'mantik')
     elif scenario == 'changed-authority':
         stamp = now()
