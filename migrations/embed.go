@@ -27,3 +27,8 @@ var OperationalReadiness string
 //
 //go:embed 0006_attributed_routing.sql
 var AttributedRouting string
+
+// ResearchReceiver installs persistent identity for fenced research submission.
+//
+//go:embed 0007_research_receiver.sql
+var ResearchReceiver string

@@ -105,6 +105,10 @@ version 5 state without changing its records. Older binaries reject schema 6.
 Restore a coherent pre-upgrade backup into separate resources when testing an
 older revision; do not remove the schema fence to perform a rollback.
 
+Schema version 7 adds the logical research receiver used by
+[fenced journal submission](alpaca-journal.md). It preserves original records
+and prior migration checksums.
+
 ## API and CLI
 
 All three endpoints use the service's existing bearer authentication and strict

@@ -125,3 +125,9 @@ type RoutingState struct {
 	Inputs        map[string]RetainedRoutingInput `json:"inputs"`
 	Timers        *TimerState                     `json:"timers"`
 }
+
+// ResearchSnapshot binds retained research inputs to a logical storage receiver.
+type ResearchSnapshot struct {
+	ID     string                          `json:"id"`
+	Inputs map[string]RetainedRoutingInput `json:"inputs"`
+}

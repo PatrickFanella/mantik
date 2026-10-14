@@ -22,7 +22,7 @@ func TestPostgresContractsMarketUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Simulate an actual v5 payload and metadata without changing old checksums.
-	if _, err := s.pool.Exec(ctx, "ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_input_contract; DELETE FROM mantik_schema WHERE version=6; UPDATE mantik_state SET payload=payload #- '{routing,input_contract}'"); err != nil {
+	if _, err := s.pool.Exec(ctx, "ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_input_contract; DELETE FROM mantik_schema WHERE version>=6; UPDATE mantik_state SET payload=payload #- '{routing,input_contract}'"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
