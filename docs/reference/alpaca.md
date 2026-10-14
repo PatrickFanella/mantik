@@ -1,10 +1,10 @@
 # Alpaca price and calendar adapter
 
 Alpaca is the selected first market-data provider. This slice normalizes retained
-recordings and supplies a bounded GET-only client for subsequent collection
-work. The CLI exposes offline normalization. It does not read Alpaca credentials,
-fetch data, start a collector, install session timers, or submit inputs
-automatically. Existing pilot services keep their pinned revisions.
+recordings and supplies a bounded GET-only client for explicit collection. `alpaca-normalize` remains an offline command. Separate journal commands
+now perform explicit bounded collection, finite sessions, and fenced submission;
+none starts with the service. Calendar inputs do not install session timers.
+Existing pilot services keep their pinned revisions.
 
 ## Supported provider contracts
 
@@ -127,13 +127,15 @@ bodies and credentials. These limits apply per client; a collector must own one
 client and respect account-wide entitlements and limits too.
 
 Local HTTP tests use manufactured credentials and responses. They establish
-contracts, not real access or coverage. No real provider request was made.
+contracts, not real access or coverage. Those tests made no real provider requests.
 
 [The private capture journal](alpaca-journal.md) now retains validated recordings
-and supports fenced, bounded manual research submission and recovery. Collection
-still needs credential delivery, account/entitlement readback, and automatic
-acquisition with a reviewed retention policy. The service retains at most
-4,096 manual inputs; collection must stop or retain pending work externally at
+and supports explicit collection, finite sessions, fenced submission, and isolated
+archive/restore checks. The [first real-feed rehearsal](../runbooks/first-real-feed.md)
+verified paper-account and IEX read access, real calendar routing, and unusable
+quote suppression. Credentials and raw evidence remain private. Continuous
+acquisition still needs an approved cadence and qualified retention policy.
+The service retains at most 4,096 manual inputs; collection must stop or retain pending work externally at
 capacity. Continuous ingestion also needs retention and pagination policy.
 Real-feed readiness remains unconfigured. Profitable paper operation remains a
 later qualification gate.
