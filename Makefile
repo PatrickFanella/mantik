@@ -7,7 +7,7 @@ SHELL := /usr/bin/env bash
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*##"; printf "Commands:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-verify: fmt-check lint test build compose-config open-pilot-check ## Run all checks
+verify: fmt-check lint test build compose-config open-pilot-check pilot-check ## Run all checks
 
 fmt: ## Format Go files
 	@find cmd internal migrations -name '*.go' -print0 | xargs -0 -r gofmt -w
@@ -52,3 +52,7 @@ test-race: ## Verify concurrent operation with the race detector
 
 test-integration: ## Verify persistence using a new disposable PostgreSQL container
 	python3 scripts/test-integration.py
+
+.PHONY: pilot-check
+pilot-check: ## Check pilot resource and evidence guards without starting Docker
+	python3 -m unittest discover -s scripts -p 'test_pilot.py'

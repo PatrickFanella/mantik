@@ -13,10 +13,14 @@ early development pilot, with operator supervision and fixture economics.
 Real-feed behavior, profitability, and autonomous research remain separate
 claims with their own acceptance gates.
 
-The next implementation work is #9, followed by #10. A full TUI, news/social
+M2 implementation (#7–#10) is merged. The operational pilot is the next
+checkpoint. A full TUI, news/social
 ingestion, copytrading, generated strategies, and conversational control are
 not prerequisites for this checkpoint. The CLI/API must be sufficient to
 inspect the case, action state, protective obligations, exceptions, and results.
+
+See [pilot controls](pilot-controls.md) for the launcher, rehearsal commands,
+and the remaining scenario work before starting the window.
 
 ## Entry criteria
 

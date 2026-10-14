@@ -10,3 +10,7 @@
 **/*.tsbuildinfo
 /app
 /backend/app
+
+data/
+tmp/
+__pycache__/
