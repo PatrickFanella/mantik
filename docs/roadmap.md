@@ -135,6 +135,21 @@ Recovery evidence, deployment receipts, and natural paper evaluation against dec
 
 ## First implementation sequence
 
+The first running-app checkpoint is an **isolated operational pilot after M2**,
+once #7–#10 are merged and their integrated recovery behavior is verified.
+Finish durable action delivery (#9) and operational inspection/readiness (#10),
+then run the persistent service with controlled, current-time synthetic inputs
+for a declared 24-hour window. Do not defer this feedback loop until the full
+research, portfolio, or terminal roadmap is complete.
+
+The pilot must demonstrate a traceable lifecycle, no duplicate effects after
+interruption, independent protection or a visible price-unavailable exception,
+bounded operator recovery, and preserved state after restart and isolated
+restore. See the [first pilot acceptance plan](runbooks/first-pilot.md).
+This proves operational behavior within the fixture contract. Real-feed
+validation follows through #11; economic and strategy qualification retain
+their M5/M7 gates.
+
 After the foundation is accepted, start with the library/evaluation contract
 and recovery of the original research corpus. Build versioned datasets and
 replay against those contracts. Trigger routing can then proceed alongside

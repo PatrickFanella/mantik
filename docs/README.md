@@ -5,6 +5,8 @@
 - [Architecture](architecture.md): product model, responsibilities, contracts,
   implemented boundaries, and next capabilities.
 - [Development](runbooks/development.md): local service, CLI, API, and checks.
+- [First running-app pilot](runbooks/first-pilot.md): the post-M2 checkpoint,
+  24-hour observation window, recovery scenarios, and evidence requirements.
 - [Architecture decisions](adr/README.md): durable implementation choices.
 - [Research references](research/README.md): outside projects and design ideas.
 - [Augr corpus assessment](research/augr-corpus-assessment.md): recovered source
