@@ -196,7 +196,7 @@ func TestRegistrationCompatibilityAndAuthority(t *testing.T) {
 			case "reserved":
 				d.ID = "future-reserved"
 			case "source":
-				d.Requirements.Source = "real-provider"
+				d.Requirements.Source = "invalid/source"
 			case "expiry":
 				d.ValidUntil = d.ValidFrom
 			case "shape":

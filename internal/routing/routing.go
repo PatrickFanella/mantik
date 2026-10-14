@@ -23,7 +23,7 @@ var key = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,80}$`)
 var inputID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
 func NewState() *domain.RoutingState {
-	return &domain.RoutingState{Definitions: []domain.TriggerDefinition{}, Runtime: map[string]domain.TriggerRuntime{}, Cases: []domain.RoutingCase{}, Inputs: map[string]domain.RetainedRoutingInput{}, Timers: NewTimers()}
+	return &domain.RoutingState{InputContract: "attributed-routing-v1", Definitions: []domain.TriggerDefinition{}, Runtime: map[string]domain.TriggerRuntime{}, Cases: []domain.RoutingCase{}, Inputs: map[string]domain.RetainedRoutingInput{}, Timers: NewTimers()}
 }
 
 func copyState(s *domain.RoutingState) (*domain.RoutingState, error) {
@@ -37,6 +37,9 @@ func copyState(s *domain.RoutingState) (*domain.RoutingState, error) {
 	var result domain.RoutingState
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, err
+	}
+	if result.InputContract == "" {
+		result.InputContract = "attributed-routing-v1"
 	}
 	if result.Runtime == nil {
 		result.Runtime = map[string]domain.TriggerRuntime{}
@@ -64,8 +67,11 @@ func ValidateDefinition(d domain.TriggerDefinition) error {
 		return errors.New("incomplete or unsupported trigger definition")
 	}
 	r := d.Requirements
-	if r.Source != "fixture" || r.Symbol != "DEMO" || r.EvidenceClass != "synthetic_unqualified" || r.MaxAgeSeconds < 1 || r.MaxAgeSeconds > 86400 {
-		return errors.New("trigger requires bounded fixture evidence")
+	if !validSource(r.Source, r.Symbol, r.EvidenceClass) || r.MaxAgeSeconds < 1 || r.MaxAgeSeconds > 86400 {
+		return errors.New("trigger requires bounded, attributed evidence")
+	}
+	if r.Source != "fixture" && d.Behavior != "research" {
+		return errors.New("market evidence can only open research work")
 	}
 	if d.Condition.Kind == "all" {
 		if len(d.Condition.All) < 2 || len(d.Condition.All) > 4 || d.CombinationWindowSeconds < 1 || d.CombinationWindowSeconds > 86400 {
@@ -179,10 +185,13 @@ func ValidateOperatorDefinition(d domain.TriggerDefinition) error {
 }
 
 func ValidateInput(i domain.RoutingInput) error {
-	if !inputID.MatchString(i.ID) || i.Source != "fixture" || i.Symbol != "DEMO" || i.EvidenceClass != "synthetic_unqualified" || !validTime(i.OccurredAt) || !validTime(i.ReceivedAt) || i.OccurredAt.After(i.ReceivedAt) {
-		return errors.New("routing requires a causal, attributed fixture input")
+	if !inputID.MatchString(i.ID) || !validSource(i.Source, i.Symbol, i.EvidenceClass) || !validTime(i.OccurredAt) || !validTime(i.ReceivedAt) || i.OccurredAt.After(i.ReceivedAt) {
+		return errors.New("routing requires a causal, attributed input")
 	}
-	base := domain.RoutingInput{ID: i.ID, Kind: i.Kind, Source: i.Source, Symbol: i.Symbol, EvidenceClass: i.EvidenceClass, OccurredAt: i.OccurredAt, ReceivedAt: i.ReceivedAt}
+	if err := validateProvenance(i); err != nil {
+		return err
+	}
+	base := domain.RoutingInput{Provenance: i.Provenance, ID: i.ID, Kind: i.Kind, Source: i.Source, Symbol: i.Symbol, EvidenceClass: i.EvidenceClass, OccurredAt: i.OccurredAt, ReceivedAt: i.ReceivedAt}
 	switch i.Kind {
 	case "quote":
 		if i.PriceCents < 1 || i.PriceCents > 100000000 {
@@ -221,6 +230,11 @@ func ApplyQuote(s *domain.RoutingState, o domain.Observation) (*domain.RoutingSt
 
 func apply(s *domain.RoutingState, i domain.RoutingInput, retain bool) (*domain.RoutingState, domain.RoutingReceipt, error) {
 	i.OccurredAt, i.ReceivedAt = i.OccurredAt.UTC(), i.ReceivedAt.UTC()
+	if i.Provenance != nil {
+		p := *i.Provenance
+		p.AvailableAt = p.AvailableAt.UTC()
+		i.Provenance = &p
+	}
 	if err := ValidateInput(i); err != nil {
 		return s, domain.RoutingReceipt{}, fmt.Errorf("%w: %s", ErrInvalid, err)
 	}
@@ -247,6 +261,9 @@ func apply(s *domain.RoutingState, i domain.RoutingInput, retain bool) (*domain.
 	for _, d := range next.Definitions {
 		if err := ValidateDefinition(d); err != nil {
 			return s, r, err
+		}
+		if d.Requirements.Source != i.Source || d.Requirements.Symbol != i.Symbol || d.Requirements.EvidenceClass != i.EvidenceClass || i.Provenance != nil && i.Provenance.Quality != "usable" {
+			continue
 		}
 		runtime := next.Runtime[d.ID]
 		if runtime.Facts == nil {

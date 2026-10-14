@@ -86,12 +86,15 @@ docker compose down
 See [development and verification](docs/runbooks/development.md) for native
 execution, API requests, and disposable integration tests.
 
-The service also persists fixture event, threshold, state-change, and combined
+The service also persists event, threshold, state-change, and combined
 trigger definitions. `trigger-register`, `route-input`, and `close-routing-case`
 manage research and decision cases with deduplication and explicit repeat
 policies. See [trigger contracts](docs/reference/triggers.md) for JSON examples
 and migration compatibility. Matches record case work; research-worker dispatch is
-future work. Finalized entry decisions retain their protective definitions
+future work. Attributed market inputs can open research cases with exact source
+and evidence-class matching; `route-input --derive-market-id` preserves revision
+identity. See [market input contracts](docs/reference/market-inputs.md). Provider
+transport and authorization remain separate adapter work. Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 
 An independent service worker now handles deadlines, elapsed-time conditions,

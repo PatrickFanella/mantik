@@ -36,18 +36,34 @@ type TriggerDefinition struct {
 	SubjectCaseID            string             `json:"subject_case_id,omitempty"`
 }
 
+// InputProvenance refers to privately retained source bytes; routing never fetches RawRef.
+// Availability and quality remain distinct from occurrence and receipt.
+type InputProvenance struct {
+	RecordKey      string    `json:"record_key"`
+	Revision       int       `json:"revision"`
+	RawRef         string    `json:"raw_ref"`
+	SHA256         string    `json:"sha256"`
+	AvailableAt    time.Time `json:"available_at"`
+	SourceSymbol   string    `json:"source_symbol"`
+	MappingVersion string    `json:"mapping_version"`
+	AccessRef      string    `json:"access_ref"`
+	Quality        string    `json:"quality"`
+	Reason         string    `json:"reason,omitempty"`
+}
+
 type RoutingInput struct {
-	ID            string    `json:"id"`
-	Kind          string    `json:"kind"`
-	Source        string    `json:"source"`
-	Symbol        string    `json:"symbol"`
-	EvidenceClass string    `json:"evidence_class"`
-	OccurredAt    time.Time `json:"occurred_at"`
-	ReceivedAt    time.Time `json:"received_at"`
-	PriceCents    int64     `json:"price_cents,omitempty"`
-	EventName     string    `json:"event_name,omitempty"`
-	StateKey      string    `json:"state_key,omitempty"`
-	StateValue    string    `json:"state_value,omitempty"`
+	Provenance    *InputProvenance `json:"provenance,omitempty"`
+	ID            string           `json:"id"`
+	Kind          string           `json:"kind"`
+	Source        string           `json:"source"`
+	Symbol        string           `json:"symbol"`
+	EvidenceClass string           `json:"evidence_class"`
+	OccurredAt    time.Time        `json:"occurred_at"`
+	ReceivedAt    time.Time        `json:"received_at"`
+	PriceCents    int64            `json:"price_cents,omitempty"`
+	EventName     string           `json:"event_name,omitempty"`
+	StateKey      string           `json:"state_key,omitempty"`
+	StateValue    string           `json:"state_value,omitempty"`
 }
 
 type ConditionFact struct {
@@ -102,9 +118,10 @@ type RetainedRoutingInput struct {
 }
 
 type RoutingState struct {
-	Definitions []TriggerDefinition             `json:"definitions"`
-	Runtime     map[string]TriggerRuntime       `json:"runtime"`
-	Cases       []RoutingCase                   `json:"cases"`
-	Inputs      map[string]RetainedRoutingInput `json:"inputs"`
-	Timers      *TimerState                     `json:"timers"`
+	InputContract string                          `json:"input_contract"`
+	Definitions   []TriggerDefinition             `json:"definitions"`
+	Runtime       map[string]TriggerRuntime       `json:"runtime"`
+	Cases         []RoutingCase                   `json:"cases"`
+	Inputs        map[string]RetainedRoutingInput `json:"inputs"`
+	Timers        *TimerState                     `json:"timers"`
 }
