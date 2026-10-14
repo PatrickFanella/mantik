@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
 	"git.subcult.tv/subculture-collective/mantik/internal/workflow"
 )
 
@@ -32,6 +33,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	collectors   feedcollector.State
 	receiverID   string
 	mu           sync.Mutex
 	queued       bool
@@ -43,7 +45,7 @@ type Memory struct {
 }
 
 func NewMemory() *Memory {
-	return &Memory{receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
+	return &Memory{collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
 }
 
 // NewQueuedMemory exercises the persistent delivery contract without a database.

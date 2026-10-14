@@ -110,6 +110,9 @@ IEX/calendar ingestion and restart retention without economic effects; usable
 fresh quote coverage and continuous-feed readiness remain separate gates.
 `alpaca-coverage` provides a [read-only regular-session evidence report](docs/reference/alpaca-coverage.md)
 from the journal without configuring global readiness.
+The [feed-collector API](docs/reference/feed-collectors.md) retains immutable
+registrations and fenced ownership leases. It does not start a collector or
+configure feed readiness.
 Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 
@@ -132,7 +135,8 @@ remains unavailable and is reported separately from fixture readiness.
 
 ## Current boundaries
 
-- Only fixture quotes for the synthetic `DEMO` instrument are accepted.
+- Executable observations are limited to fixture quotes for the synthetic
+  `DEMO` instrument. Attributed market inputs enter research routing separately.
 - The versioned library declares typed inputs, instruments, outputs, exact
   dependencies, evidence classes, safety requirements, and mandatory evaluation
   recipes. It registers two immutable, unqualified fixture strategies for
@@ -140,8 +144,8 @@ remains unavailable and is reported separately from fixture readiness.
   [library contract](docs/architecture.md#versioned-library).
 - Stop and target checks run on usable incoming quotes. Holding deadlines also
   run independently; missing usable price evidence leaves an explicit exception.
-  Expected-event detection uses declared fixture obligations; real feed adapters
-  and their availability policies remain future work.
+  Expected-event detection uses declared fixture obligations; continuous real
+  feed availability policies remain future work.
 - The synchronous simulator fills at the observed quote with zero costs.
 - One executable fixture case and bounded research/decision routing cases
   share one aggregate. PostgreSQL serializes their updates; portfolio
@@ -153,8 +157,9 @@ remains unavailable and is reported separately from fixture readiness.
   remain visible as evidence; historical/provider adapters are future work.
 - Bearer authentication is available. A non-loopback bind requires a token of
   at least 16 characters. TLS and remote operator access are not configured.
-- No external feed, copytrading connector, LLM workflow, dynamic code runner,
-  TUI, or live trading path is implemented.
+- External reads require explicit bounded Alpaca commands. Continuous collection,
+  a copytrading connector, LLM workflow, dynamic code runner, TUI, and live trading
+  remain future work.
 
 ## Design and source
 
