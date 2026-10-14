@@ -169,9 +169,18 @@ preserves the open position without inventing a fill. Expected-event conditions
 record missing evidence without relying on a new input or model. See
 [timer contracts](reference/timers.md) for the clock, lease, and evidence rules.
 
-The operations adapter is synchronous and synthetic. External executions will
-need durable action delivery, uncertain-outcome handling, and reconciliation;
-a database transaction cannot make an external order atomic.
+Persistent ingestion and protective timers now atomically queue finalized
+actions instead of enacting them inside their source transaction. A separate
+worker reconciles each stable idempotency key, rechecks current applicability,
+records submission intent, and commits the synthetic adapter effect separately
+from acknowledgment. Leases fence crashed workers. Accepted, partial, and unknown
+results remain distinct from completed effects. Local replay retains synchronous
+fixture execution. See [action contracts](reference/actions.md).
+
+The adapter remains synthetic. Real providers need their own verified delivery
+and reconciliation guarantees; a database transaction cannot make an external
+order atomic. Schema version 4 preserves historical outcomes and initializes an
+empty queue without resubmitting them.
 
 ## Next capabilities
 

@@ -12,3 +12,8 @@ var TriggerRouting string
 //
 //go:embed 0003_independent_timers.sql
 var IndependentTimers string
+
+// DurableActions installs fenced delivery and independent fixture effects.
+//
+//go:embed 0004_durable_actions.sql
+var DurableActions string

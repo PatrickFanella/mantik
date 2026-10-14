@@ -31,6 +31,10 @@ cover overdue startup, missing-event evidence, backward/forward clock changes,
 expired-lease fencing, concurrent claim/completion, price-unavailable exceptions,
 and later protective resolution. Disposable PostgreSQL tests also cover version
 2 upgrade, retained receipts, restart recovery, and timer-audit rollback.
+Action regressions exercise crashes before/after the independent adapter effect,
+lease fencing, expiry and changed authority, accepted/partial reconciliation,
+idempotent acknowledgment, and rollback that preserves the effect. Disposable
+version 3 upgrade checks preserve original history without reenactment.
 Library regressions cover contract and check versions, complete safety
 declarations, exact dependencies and cycles, immutable registry readbacks,
 required-check admission, and fixture configuration compatibility. Workflow
@@ -57,10 +61,10 @@ mise exec -- make build
 ./bin/mantik serve
 ```
 
-Use a second terminal with the same token for `status` or
-`demo --api-url http://127.0.0.1:40880`. Change credentials and ports to match
+Use a second terminal with the same token for `status` and the current-time
+fixture ingestion example below. Change credentials and ports to match
 `.env` if customized. `serve` applies embedded migrations through schema version
-3 at startup. It rejects an unsupported database name or changed migration
+4 at startup. It rejects an unsupported database name or changed migration
 checksum. Version 2 preserves retained events and derives protection for an
 existing open fixture position; missing finalized evidence aborts the upgrade.
 Older binaries cannot write this schema safely. See the
@@ -69,7 +73,9 @@ before planning a deployment or rollback. Version 3 adds durable deadlines and
 timer-sourced events; the worker runs immediately at startup and then every
 second by default. Set `MANTIK_TIMER_INTERVAL` between `100ms` and `1m` to change
 the poll interval. See [timer contracts](../reference/timers.md) for historical
-demo inputs, exceptions, and clock recovery.
+demo inputs, exceptions, and clock recovery. Version 4 adds the action queue and
+independent fixture effect ledger. Its worker uses the same poll interval and
+reconciles effects before delivery. See [action contracts](../reference/actions.md).
 SIGINT/SIGTERM drains HTTP requests before the pool closes.
 
 ## API and fixture ingestion
@@ -98,9 +104,30 @@ printf '%s\n' '{"id":"manual-1","kind":"quote","source":"fixture","symbol":"DEMO
 ```
 
 Times are simulation inputs. Freshness compares occurrence against receipt,
-not wall-clock age. This endpoint is not a real-market ingestion path.
+while the delivery worker also checks age and decision expiry at real execution
+time. This endpoint is not a real-market ingestion path.
 The fixed demo uses deterministic IDs and times; use a fresh in-memory demo
 rather than expecting it to reset a persistent case.
+
+For a service entry fixture, create and retain a current-time input outside Git:
+
+```bash
+mkdir -p data
+python3 - <<'PY' > data/current-entry.json
+import datetime, json
+at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+json.dump({"id": "current-entry-1", "kind": "quote", "source": "fixture",
+           "symbol": "DEMO", "occurred_at": at, "received_at": at,
+           "price_cents": 10000}, __import__("sys").stdout)
+PY
+./bin/mantik observe < data/current-entry.json
+./bin/mantik status --format json
+```
+
+The service receipt retains admission events; inspect status again after the
+worker poll for the outcome. Retry the retained file unchanged. Regenerating
+timestamps under the same ID creates a content conflict. The one-case fixture
+does not provide a destructive reset after closure.
 
 ## Local data and cleanup
 

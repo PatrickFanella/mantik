@@ -4,6 +4,7 @@
 - [Synthetic baseline experiments](experiments.md)
 - [Persistent triggers and routing cases](triggers.md)
 - [Independent deadlines and missing events](timers.md)
+- [Durable fixture actions](actions.md)
 
 Use this section for durable technical references:
 

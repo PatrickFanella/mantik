@@ -86,7 +86,10 @@ At a deadline, the worker can finalize and apply a synthetic exit using the
 last admitted quote only when that quote remains within the safety contract's
 maximum age at the execution time. The observation keeps its original occurrence
 and receipt times; the decision and outcome record the timer's execution time.
-The fill remains `observed_quote_zero_cost_v1`, with no qualification credit.
+The persistent timer now queues that finalized exit for the independent action
+worker and reports `queued`. Delivery rechecks applicability and quote age;
+its retained outcome uses `observed_quote_zero_cost_v1`, with no qualification
+credit. See [action contracts](actions.md).
 
 Missing or stale price evidence produces `deadline_price_unavailable` in
 `state.routing.timers.exceptions`. The exception stays open, the position stays
@@ -98,7 +101,8 @@ retained as unusable and cannot undo that protection.
 `GET /v1/status` and `status --format json` expose jobs, lease generations,
 completion receipts, and exceptions. These are structured operational records;
 capability-scoped readiness and operator exception workflows remain issue #10.
-External delivery and uncertain-outcome reconciliation remain issue #9.
+Durable fixture delivery and uncertain-outcome reconciliation use the action
+contract. Real provider adapters remain future work.
 
 The service uses real UTC while the fixed demo uses January 2026 simulation
 inputs. An open fixed-demo position is therefore overdue to the service worker.

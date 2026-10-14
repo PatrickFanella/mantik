@@ -45,7 +45,11 @@ func (m *Memory) CompleteTimer(ctx context.Context, claim domain.TimerClaim, now
 	if retained != nil {
 		return clone(*retained), nil
 	}
-	next, receipt, err := workflow.CompleteTimer(m.state, claim, now)
+	complete := workflow.CompleteTimer
+	if m.queued {
+		complete = workflow.CompleteTimerQueued
+	}
+	next, receipt, err := complete(m.state, claim, now)
 	if err != nil {
 		return receipt, err
 	}
@@ -88,7 +92,7 @@ func (p *Postgres) CompleteTimer(ctx context.Context, claim domain.TimerClaim, n
 	if retained != nil {
 		return *retained, tx.Commit(ctx)
 	}
-	next, receipt, err := workflow.CompleteTimer(state, claim, now)
+	next, receipt, err := workflow.CompleteTimerQueued(state, claim, now)
 	if err != nil {
 		return receipt, err
 	}

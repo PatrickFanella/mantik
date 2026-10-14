@@ -99,6 +99,7 @@ type Event struct {
 	Trigger       *Trigger              `json:"trigger,omitempty"`
 	Decision      *Decision             `json:"decision,omitempty"`
 	Outcome       *ExecutionOutcome     `json:"outcome,omitempty"`
+	ActionID      string                `json:"action_id,omitempty"`
 	TimerID       string                `json:"timer_id,omitempty"`
 	Exception     *OperationalException `json:"exception,omitempty"`
 }
@@ -108,6 +109,7 @@ type State struct {
 	Case           DecisionCase    `json:"case"`
 	LastOccurredAt time.Time       `json:"last_occurred_at"`
 	Routing        *RoutingState   `json:"routing"`
+	Actions        *ActionState    `json:"actions"`
 	LastQuote      *Observation    `json:"last_quote,omitempty"`
 }
 
