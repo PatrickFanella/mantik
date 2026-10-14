@@ -216,9 +216,12 @@ the integrated safety, execution, recovery, and operator workflows.
 
 ## Decisions owned by future issues
 
-- Alpaca is selected for the first price/calendar feed. Account access, data
-  entitlements, collection limits, and real-provider coverage still require
-  verification; the recorded adapter does not connect an account.
+- Alpaca is selected for the first price/calendar feed. The bounded
+  [real-feed rehearsal](runbooks/first-real-feed.md) verified an active paper
+  endpoint, IEX read access, real calendar routing, and unusable quote suppression.
+  SIP access was denied for the tested credentials. Usable fresh quote coverage,
+  continuous collection, licensing scope, and real-feed readiness still require
+  their own evidence.
 - Where the original research corpus resides and which sources may be retained.
 - Initial baseline strategy families, benchmarks, instruments, and dataset scope.
 - Watched accounts/traders and whether each supplies research, decision inputs,

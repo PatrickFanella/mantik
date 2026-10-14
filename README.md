@@ -94,10 +94,9 @@ and migration compatibility. Matches record case work; research-worker dispatch 
 future work. Attributed market inputs can open research cases with exact source
 and evidence-class matching; `route-input --derive-market-id` preserves revision
 identity. See [market input contracts](docs/reference/market-inputs.md). Provider
-authorization and continuous collection remain separate work. `alpaca-normalize`
-converts
-retained Alpaca quote/calendar recordings offline; the bounded read client is
-tested against local servers. See [Alpaca contracts](docs/reference/alpaca.md).
+authorization for each credential/account and continuous collection remain
+separate work. `alpaca-normalize` converts retained Alpaca quote/calendar
+recordings offline; the bounded read client is tested against local servers. See [Alpaca contracts](docs/reference/alpaca.md).
 The [capture journal](docs/reference/alpaca-journal.md) retains validated recordings
 and supports receiver-bound submission and recovery through `alpaca-retain`,
 `alpaca-submit`, and `alpaca-journal`. `alpaca-collect` performs one explicit,
@@ -106,6 +105,9 @@ its retained status. `alpaca-session` runs a finite count within journal capacit
 with inspection through `alpaca-session-status`. No provider connection or
 scheduler starts with the service. [Journal archive and restore](docs/reference/alpaca-archives.md)
 commands preserve private evidence and verify an isolated recovery copy.
+The [first real-feed rehearsal](docs/runbooks/first-real-feed.md) verified
+IEX/calendar ingestion and restart retention without economic effects; usable
+fresh quote coverage and continuous-feed readiness remain separate gates.
 Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 
