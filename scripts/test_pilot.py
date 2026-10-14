@@ -1,4 +1,5 @@
 """Resource and evidence guards for the pilot utility (no Docker required)."""
+import datetime as dt
 import json
 from pathlib import Path
 import tempfile
@@ -94,6 +95,114 @@ class RoutingEvidenceGuards(unittest.TestCase):
         status['state']['actions']['items'] = {'unexpected-action': {}}
         with self.assertRaises(RuntimeError):
             pilot.check_routing_scenario(status)
+
+
+class ObservationClockGuards(unittest.TestCase):
+    def setUp(self):
+        self.start = dt.datetime(2026, 10, 14, tzinfo=dt.timezone.utc)
+
+    def test_host_suspend_is_not_hidden_by_monotonic_clock(self):
+        gap = pilot.observation_gap(100, 130, self.start, self.start + dt.timedelta(hours=3))
+        self.assertIsNotNone(gap)
+        self.assertEqual(gap['reason'], 'supervision_gap')
+        self.assertEqual(gap['wall_gap_seconds'], 10800)
+
+    def test_scheduler_stall_is_a_gap(self):
+        gap = pilot.observation_gap(100, 160, self.start, self.start + dt.timedelta(seconds=60))
+        self.assertEqual(gap['reason'], 'supervision_gap')
+
+    def test_clock_step_cannot_be_hidden_inside_sample_interval(self):
+        gap = pilot.observation_gap(100, 130, self.start, self.start + dt.timedelta(seconds=20))
+        self.assertEqual(gap['reason'], 'clock_discontinuity')
+
+    def test_backwards_wall_clock_is_a_failure(self):
+        gap = pilot.observation_gap(100, 130, self.start, self.start - dt.timedelta(seconds=1))
+        self.assertEqual(gap['reason'], 'clock_backwards')
+
+    def test_ordinary_sampling_jitter_is_allowed(self):
+        self.assertIsNone(pilot.observation_gap(100, 131, self.start, self.start + dt.timedelta(seconds=31.1)))
+
+
+class WindowFaultEvidence(unittest.TestCase):
+    def setUp(self):
+        self.start = dt.datetime(2026, 10, 14, tzinfo=dt.timezone.utc)
+
+    def test_fault_resolved_between_samples_still_fails_window(self):
+        fault = {'id': 'database-outage', 'status': 'resolved', 'at': '2026-10-14T00:00:05Z'}
+        self.assertEqual(pilot.window_faults([fault], self.start), [fault])
+
+    def test_old_resolved_history_does_not_fail_new_window(self):
+        fault = {'id': 'old-outage', 'status': 'resolved', 'at': '2026-10-13T23:00:00Z',
+                 'last_observed_at': '2026-10-13T23:00:05Z'}
+        self.assertEqual(pilot.window_faults([fault], self.start), [])
+
+    def test_recurrence_under_retained_identity_is_detected(self):
+        fault = {'id': 'recurrent-outage', 'status': 'resolved', 'at': '2026-10-13T23:00:00Z',
+                 'last_observed_at': '2026-10-14T00:00:05Z'}
+        self.assertEqual(pilot.window_faults([fault], self.start), [fault])
+
+
+class ObservationLoopContracts(unittest.TestCase):
+    def run_window(self, first_clock_step=0, fault=False):
+        real_datetime = dt.datetime
+        wall = real_datetime(2026, 10, 14, tzinfo=dt.timezone.utc)
+        monotonic = 0
+        slept = False
+
+        class FakeDatetime(real_datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return wall
+
+        def sleep(seconds):
+            nonlocal wall, monotonic, slept
+            monotonic += seconds
+            wall += dt.timedelta(seconds=seconds + (first_clock_step if not slept else 0))
+            slept = True
+
+        def api(root, path):
+            if path == '/v1/readiness/fixture_operation':
+                return {'ready': True}
+            if path == '/v1/operations':
+                return {'exceptions': [{'id': 'brief-outage', 'status': 'resolved',
+                    'at': '2026-10-14T00:00:10Z'}] if fault and monotonic >= 30 else []}
+            return {}
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(pilot, 'load', return_value={'fixture_gate': None}), \
+                 patch.object(pilot, 'wait_ready'), patch.object(pilot, 'snapshot'), \
+                 patch.object(pilot, 'api', side_effect=api), \
+                 patch.object(pilot.dt, 'datetime', FakeDatetime), \
+                 patch.object(pilot.time, 'monotonic', side_effect=lambda: monotonic), \
+                 patch.object(pilot.time, 'sleep', side_effect=sleep):
+                pilot.observe(root)
+            return json.loads((root / 'window-result.json').read_text())
+
+    def test_suspend_cannot_produce_a_success_receipt(self):
+        result = self.run_window(first_clock_step=3600)
+        self.assertFalse(result['continuous_readiness_passed'])
+        self.assertGreater(result['failure_count'], 0)
+        self.assertGreaterEqual(result['monotonic_elapsed_seconds'], 86400)
+
+    def test_backward_step_waits_for_both_declared_durations(self):
+        result = self.run_window(first_clock_step=-10)
+        self.assertFalse(result['continuous_readiness_passed'])
+        self.assertGreaterEqual(result['wall_elapsed_seconds'], 86400)
+        self.assertGreaterEqual(result['monotonic_elapsed_seconds'], 86410)
+
+    def test_resolved_outage_fails_even_when_every_readiness_sample_is_healthy(self):
+        result = self.run_window(fault=True)
+        self.assertEqual(result['unhealthy_samples'], 0)
+        self.assertEqual(result['observed_fault_ids'], ['brief-outage'])
+        self.assertFalse(result['continuous_readiness_passed'])
+
+    def test_full_healthy_virtual_window_does_not_claim_all_scenarios(self):
+        result = self.run_window()
+        self.assertTrue(result['continuous_readiness_passed'])
+        self.assertFalse(result['all_scenarios_qualified'])
+        self.assertEqual(result['failure_count'], 0)
+        self.assertGreaterEqual(result['wall_elapsed_seconds'], 86400)
 
 
 if __name__ == '__main__':

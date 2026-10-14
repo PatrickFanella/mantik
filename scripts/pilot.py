@@ -378,40 +378,84 @@ def restore(root, target, port, dump):
     snapshot(target)
 
 
+def observation_gap(previous_monotonic, current_monotonic, previous_wall, current_wall):
+    monotonic_gap = current_monotonic - previous_monotonic
+    wall_gap = (current_wall - previous_wall).total_seconds()
+    if monotonic_gap < 0 or wall_gap < 0:
+        reason = 'clock_backwards'
+    elif monotonic_gap > 45 or wall_gap > 45:
+        reason = 'supervision_gap'
+    elif abs(wall_gap - monotonic_gap) > 5:
+        reason = 'clock_discontinuity'
+    else:
+        return None
+    return {'reason': reason, 'monotonic_gap_seconds': monotonic_gap, 'wall_gap_seconds': wall_gap}
+
+
+def window_faults(exceptions, start):
+    # Resolved faults between samples still disprove an uninterrupted window.
+    result = []
+    for exception in exceptions:
+        timestamps = [exception.get('at'), exception.get('last_observed_at')]
+        if any(value and dt.datetime.fromisoformat(value.replace('Z', '+00:00')) >= start for value in timestamps):
+            result.append(exception)
+    return result
+
+
 def observe(root):
     if load(root).get('fixture_gate'):
         raise ValueError('A deliberately gated stack cannot run the continuous qualification window')
+    wait_ready(root)
+    monotonic_start = time.monotonic()
     start = dt.datetime.now(dt.timezone.utc)
-    save(root / 'window.json', {'start': start.isoformat(), 'end': (start + dt.timedelta(hours=24)).isoformat(),
-         'interval_seconds': 30, 'allowed_interruptions': [],
+    end = start + dt.timedelta(hours=24)
+    save(root / 'window.json', {'start': start.isoformat(), 'end': end.isoformat(),
+         'interval_seconds': 30, 'maximum_gap_seconds': 45, 'maximum_clock_discontinuity_seconds': 5,
+         'allowed_interruptions': [],
          'purpose': 'continuous fixture readiness; acceptance scenarios tracked separately'})
     # Foreground supervision: termination leaves an incomplete window, never a success claim.
     failures = 0
-    previous_sample = time.monotonic()
-    deadline = previous_sample + 86400
-    while time.monotonic() < deadline:
+    unhealthy_samples = 0
+    observed_fault_ids = set()
+    previous_sample = monotonic_start
+    previous_wall = start
+    deadline = monotonic_start + 86400
+    while time.monotonic() < deadline or dt.datetime.now(dt.timezone.utc) < end:
         sample = time.monotonic()
-        if sample - previous_sample > 45:
+        wall_sample = dt.datetime.now(dt.timezone.utc)
+        gap = observation_gap(previous_sample, sample, previous_wall, wall_sample)
+        if gap:
             failures += 1
-            save(root / f'observation-gap-{time.time_ns()}.json',
-                 {'at': now(), 'gap_seconds': sample - previous_sample})
-        previous_sample = sample
+            save(root / f'observation-gap-{time.time_ns()}.json', {'at': now(), **gap})
+        previous_sample, previous_wall = sample, wall_sample
         try:
             status = api(root, '/v1/readiness/fixture_operation')
-            api(root, '/v1/operations')
+            operations = api(root, '/v1/operations')
             api(root, '/v1/status')
             if not status['ready']:
                 failures += 1
+                unhealthy_samples += 1
+            new_faults = [fault for fault in window_faults(operations['exceptions'], start)
+                          if fault['id'] not in observed_fault_ids]
+            if new_faults:
+                failures += len(new_faults)
+                observed_fault_ids.update(fault['id'] for fault in new_faults)
+                save(root / f'observed-faults-{time.time_ns()}.json', {'at': now(), 'faults': new_faults})
         except (OSError, RuntimeError) as error:
             failures += 1
+            unhealthy_samples += 1
             save(root / f'observation-error-{time.time_ns()}.json', {'at': now(), 'error': str(error)})
-        time.sleep(min(30, max(0, deadline - time.monotonic())))
-    if time.monotonic() - previous_sample > 45:
+        remaining = max(deadline - time.monotonic(), (end - dt.datetime.now(dt.timezone.utc)).total_seconds())
+        time.sleep(min(30, max(0, remaining)))
+    gap = observation_gap(previous_sample, time.monotonic(), previous_wall, dt.datetime.now(dt.timezone.utc))
+    if gap:
         failures += 1
-        save(root / f'observation-gap-{time.time_ns()}.json',
-             {'at': now(), 'gap_seconds': time.monotonic() - previous_sample})
+        save(root / f'observation-gap-{time.time_ns()}.json', {'at': now(), **gap})
     snapshot(root)
-    save(root / 'window-result.json', {'finished_at': now(), 'unhealthy_samples': failures,
+    save(root / 'window-result.json', {'finished_at': now(), 'failure_count': failures, 'unhealthy_samples': unhealthy_samples,
+        'observed_fault_ids': sorted(observed_fault_ids),
+        'monotonic_elapsed_seconds': time.monotonic() - monotonic_start,
+        'wall_elapsed_seconds': (dt.datetime.now(dt.timezone.utc) - start).total_seconds(),
         'continuous_readiness_passed': failures == 0, 'all_scenarios_qualified': False})
 
 
