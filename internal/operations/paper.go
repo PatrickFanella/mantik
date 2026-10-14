@@ -18,7 +18,7 @@ func ExecutePaper(state domain.State, o domain.Observation, d domain.Decision) (
 	if d.Status != "finalized" || d.Action != "enter" && d.Action != "exit" || d.ObservationID != o.ID || d.CaseID != state.Case.ID || d.StrategyVersionID != state.Strategy.ID || d.Quantity != state.Strategy.Quantity || d.Safety != state.Strategy.Safety || o.ReceivedAt.Before(d.FinalizedAt) || !o.ReceivedAt.Before(d.ValidUntil) {
 		return domain.ExecutionOutcome{}, errors.New("paper action does not match a valid finalized decision")
 	}
-	entry, err := library.ResolveFixture(state.Strategy)
+	entry, err := library.ResolveStrategy(state.Strategy)
 	if err != nil {
 		return domain.ExecutionOutcome{}, err
 	}

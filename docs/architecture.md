@@ -92,7 +92,9 @@ immutable strategy and retains its own quote, position, validity, and numeric
 safety checks. Failed evaluations still produce structured abstentions with
 their original results. They cannot admit an executable action.
 
-The sole registered executable remains `synthetic_unqualified`. Contracts can
+Both registered executables remain `synthetic_unqualified`. The service selects
+`demo-threshold-v1`; experiment replay can also select the immutable
+`demo-half-size-v1` configuration. Contracts can
 describe stress, historical, and prospective evidence, but registration and
 passing contract tests confer no paper qualification.
 
@@ -115,7 +117,8 @@ or a bounded strategy. It still needs Mantik's sizing and safety policy.
 ## Current implementation
 
 `cmd/mantik` assembles signal handling and CLI commands. `internal/cli` offers
-`serve`, `demo`, `status`, `observe`, and `replay`. `internal/service` exposes health,
+`serve`, `demo`, `status`, `observe`, `replay`, and `experiment`.
+`internal/service` exposes health,
 readiness, status, and fixture ingestion. `internal/workflow` evaluates and
 finalizes decisions; `internal/operations` rechecks authority and simulates
 fills. `internal/storage` provides memory and PostgreSQL implementations.
@@ -126,6 +129,11 @@ command exports the synthetic dataset or reads a file pinned by SHA-256. See
 [dataset contracts](reference/datasets.md) for correction and quality admission
 rules. Dataset artifacts are files outside Git; the service database schema is
 unchanged.
+
+`internal/experiment` declares dataset/window/method/benchmark/metric pins before
+running independent memory replays. It retains declarations, supplied inputs,
+and successes or failures as immutable local artifacts. Passive and no-action
+controls are nonexecuting components. See [experiment contracts](reference/experiments.md).
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00

@@ -26,6 +26,14 @@ func FixturePins() Pins {
 	return Pins{e.ID, e.ContractVersion, e.Evaluation.ID, e.Evaluation.Version}
 }
 
+func StrategyPins(id string) (Pins, error) {
+	e, err := library.StrategyEntry(id)
+	if err != nil {
+		return Pins{}, err
+	}
+	return Pins{e.ID, e.ContractVersion, e.Evaluation.ID, e.Evaluation.Version}, nil
+}
+
 type Exposure struct {
 	Key         string    `json:"key"`
 	Revision    int       `json:"revision"`
@@ -69,7 +77,8 @@ func Run(ctx context.Context, d Dataset, pins Pins, cutoffs []time.Time) (Result
 	if err := d.Validate(); err != nil {
 		return Result{}, err
 	}
-	if pins != FixturePins() {
+	expected, err := StrategyPins(pins.StrategyID)
+	if err != nil || pins != expected {
 		return Result{}, errors.New("unsupported strategy or evaluation pins")
 	}
 	if len(cutoffs) == 0 || len(cutoffs) > 10000 {
@@ -96,7 +105,10 @@ func Run(ctx context.Context, d Dataset, pins Pins, cutoffs []time.Time) (Result
 		}
 		return a.Revision - b.Revision
 	})
-	store := storage.NewMemory()
+	store, err := storage.NewMemoryFor(pins.StrategyID)
+	if err != nil {
+		return Result{}, err
+	}
 	defer store.Close()
 	result := Result{DatasetID: d.ID, DatasetVersion: d.Version, DatasetSHA256: d.SHA256, EvidenceClass: d.EvidenceClass, Pins: pins, Frames: []Frame{}}
 	seen := map[string]bool{}
@@ -141,14 +153,12 @@ func Run(ctx context.Context, d Dataset, pins Pins, cutoffs []time.Time) (Result
 				case blocked:
 					disposition = "admission_blocked"
 				default:
-					o, err := r.quote()
+					o, err := r.ExecutionObservation()
 					if err != nil {
 						return Result{}, err
 					}
-					o.ID = id
 					// Preserve original times in the dataset. Operational freshness uses
 					// when this replay could first consume the observation.
-					o.ReceivedAt = r.visibleAt().UTC()
 					if _, err := store.Ingest(ctx, o); err != nil {
 						return Result{}, err
 					}

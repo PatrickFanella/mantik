@@ -12,6 +12,8 @@
 - [Stack reference](reference/stack.md): toolchain and persistence.
 - [Dataset contracts](reference/datasets.md): content pins, provenance, replay
   cutoffs, and quality admission.
+- [Experiment contracts](reference/experiments.md): baseline methods, controls,
+  declared recipes, metrics, and retained attempts.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed

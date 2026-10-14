@@ -1,6 +1,7 @@
 # Reference
 
 - [Dataset and replay contracts](datasets.md)
+- [Synthetic baseline experiments](experiments.md)
 
 Use this section for durable technical references:
 

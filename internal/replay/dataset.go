@@ -96,6 +96,16 @@ func (d Dataset) Validate() error {
 }
 
 func Read(input io.Reader) (Dataset, error) {
+	d, err := Decode(input)
+	if err != nil {
+		return Dataset{}, err
+	}
+	return d, d.Validate()
+}
+
+// Decode only checks JSON shape and size. Execution must still call Validate;
+// experiment admission uses this to retain failures of a declared dataset.
+func Decode(input io.Reader) (Dataset, error) {
 	raw, err := io.ReadAll(io.LimitReader(input, maxDatasetBytes+1))
 	if err != nil {
 		return Dataset{}, err
@@ -107,7 +117,7 @@ func Read(input io.Reader) (Dataset, error) {
 	if err := decode(string(raw), &d); err != nil {
 		return Dataset{}, err
 	}
-	return d, d.Validate()
+	return d, nil
 }
 
 func decode(raw string, value any) error {
@@ -181,4 +191,20 @@ func (r Record) visibleAt() time.Time {
 		return r.ReceivedAt
 	}
 	return r.AvailableAt
+}
+
+func (r Record) VisibleAt() time.Time { return r.visibleAt() }
+
+// ExecutionObservation derives an isolated input; original bytes remain intact.
+func (r Record) ExecutionObservation() (domain.Observation, error) {
+	if r.Quality != "usable" || r.Revision != 1 {
+		return domain.Observation{}, errors.New("record requires data-quality review")
+	}
+	o, err := r.quote()
+	if err != nil {
+		return o, err
+	}
+	o.ID = fmt.Sprintf("%s-r%d", r.Key, r.Revision)
+	o.ReceivedAt = r.visibleAt().UTC()
+	return o, nil
 }

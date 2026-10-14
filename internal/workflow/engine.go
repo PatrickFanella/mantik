@@ -22,6 +22,17 @@ func InitialState() domain.State {
 	}
 }
 
+func InitialStateFor(id string) (domain.State, error) {
+	s, err := library.Strategy(id)
+	if err != nil {
+		return domain.State{}, err
+	}
+	if id == library.FixtureStrategy().ID {
+		return InitialState(), nil
+	}
+	return domain.State{Strategy: s, Case: domain.DecisionCase{ID: id + "-case", StrategyVersionID: id, Status: "waiting"}}, nil
+}
+
 func Validate(o domain.Observation) error {
 	if !identifier.MatchString(o.ID) {
 		return errors.New("observation id must contain 1–128 letters, digits, underscores, or hyphens")
@@ -46,7 +57,7 @@ func Apply(state domain.State, o domain.Observation) (domain.State, []domain.Eve
 	}
 	events := []domain.Event{{ID: o.ID + "-observed", Kind: "observation.recorded", ObservationID: o.ID, At: o.ReceivedAt}}
 	s := state.Strategy
-	entry, err := library.ResolveFixture(s)
+	entry, err := library.ResolveStrategy(s)
 	if err != nil {
 		return state, nil, err
 	}

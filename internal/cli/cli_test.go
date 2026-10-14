@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
 	"git.subcult.tv/subculture-collective/mantik/internal/replay"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -67,6 +68,81 @@ func TestReplayExportAndFile(t *testing.T) {
 	for _, args := range [][]string{{"replay"}, {"replay", "--cutoffs", "now"}, {"replay", "--dataset", path}, {"replay", "--dataset", path, "--dataset-sha256", "wrong", "--cutoffs", "2026-01-05T15:03:00Z"}, {"replay", "--export-dataset", "--cutoffs", "2026-01-05T15:03:00Z"}} {
 		if err := Run(context.Background(), args, &bytes.Buffer{}, &errOut); err == nil {
 			t.Fatal("invalid replay request accepted")
+		}
+	}
+}
+
+func TestExperimentRetentionAndPinnedRecipe(t *testing.T) {
+	var exported, errOut bytes.Buffer
+	if err := Run(context.Background(), []string{"experiment", "--export-recipe"}, &exported, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	r, err := experiment.ReadRecipe(bytes.NewReader(exported.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	path := filepath.Join(root, "recipe.json")
+	if err := os.WriteFile(path, exported.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	args := []string{"experiment", "--recipe", path, "--recipe-sha256", r.SHA256, "--attempt", "cli-1", "--out-dir", filepath.Join(root, "artifacts")}
+	if err := Run(context.Background(), args, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	var a experiment.Attempt
+	if err := json.Unmarshal(out.Bytes(), &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.Status != "completed" || len(a.Results) != 4 || a.Qualified {
+		t.Fatal("CLI experiment incomplete")
+	}
+	if _, err := os.Stat(filepath.Join(root, "artifacts", "attempts", "cli-1.json")); err != nil {
+		t.Fatal(err)
+	}
+	// A declared experiment with incomplete input retains a failed attempt and
+	// gives scripts a nonzero exit instead of hiding failure in successful JSON.
+	d, err := replay.FixtureDataset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.Records = d.Records[:3]
+	d, err = replay.Seal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.DatasetSHA256 = d.SHA256
+	r, err = experiment.Seal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	datasetPath := filepath.Join(root, "incomplete.json")
+	raw, err = json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(datasetPath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	failedArgs := []string{"experiment", "--recipe", path, "--recipe-sha256", r.SHA256, "--dataset", datasetPath, "--attempt", "cli-failed", "--out-dir", filepath.Join(root, "artifacts")}
+	out.Reset()
+	if err := Run(context.Background(), failedArgs, &out, &errOut); err == nil {
+		t.Fatal("failed attempt returned success")
+	}
+	if _, err := os.Stat(filepath.Join(root, "artifacts", "attempts", "cli-failed.json")); err != nil {
+		t.Fatal("failed CLI attempt missing")
+	}
+	for _, args := range [][]string{{"experiment"}, {"experiment", "--export-recipe", "--attempt", "x"}, {"experiment", "--recipe", path, "--attempt", "x", "--out-dir", root}, {"experiment", "--attempt", "../x", "--out-dir", root}} {
+		if err := Run(context.Background(), args, &bytes.Buffer{}, &errOut); err == nil {
+			t.Fatal("invalid experiment accepted")
 		}
 	}
 }
