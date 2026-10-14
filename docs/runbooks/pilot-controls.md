@@ -40,6 +40,28 @@ It retains every HTTP request/response and logs. A failed attempt is retained;
 create another directory rather than resetting its database. Never retry a
 partially completed smoke against the same aggregate.
 
+## Missing-event routing rehearsal
+
+Use another new directory and free loopback port. This rehearsal leaves the
+executable case untouched and opens only a research case.
+
+```bash
+routing_dir="$HOME/.local/state/mantik/routing-$(date -u +%Y%m%dT%H%M%SZ)"
+python3 scripts/pilot.py prepare --dir "$routing_dir" --port 41891
+python3 scripts/pilot.py start --dir "$routing_dir"
+python3 scripts/pilot.py routing-smoke --dir "$routing_dir"
+```
+
+`routing-smoke` declares a real-time deadline 20 seconds ahead, registers two
+missing-event obligations, and supplies timely matching evidence for one.
+It checks definition/input retries and conflicts, waits for both timer receipts,
+and requires exactly one research case for the absent event and no match for
+the observed event. It verifies no economic actions were created, restarts only
+this stack's application, and checks that completed timer generations/receipts
+and case match counts remain unchanged across further worker cycles. The stack
+must have no observations or registered definitions before the command starts.
+Failed or partially completed attempts remain in their own directories.
+
 ## Backup and isolated restore
 
 `backup` prints the dump path. A single PostgreSQL custom-format snapshot covers
@@ -68,7 +90,9 @@ to establish that the restore did not change it.
 
 ## Remaining acceptance scenarios
 
-The automated smoke covers the normal lifecycle and input retry/conflict cases.
+The automated smoke covers the normal lifecycle and input retry/conflict cases;
+`routing-smoke` adds missing-event delivery, timely-event suppression, and
+completed timer restart retention.
 It does not automate the entire acceptance table in [first-pilot.md](first-pilot.md).
 Before starting a qualification window, retain a scenario plan with expected
 outcomes, commands, identities, and allowed interruptions for the remaining cases:
@@ -80,9 +104,8 @@ outcomes, commands, identities, and allowed interruptions for the remaining case
   price-unavailable exception. Do not alter timestamps or database state to speed
   up the test. A later fresh quote or bounded `retry-protection` request must
   resolve protection with evidence under the existing safety contract.
-- Register `expected_event_missing` research triggers through `/v1/triggers`;
-  exercise one due missing event and a separate expectation satisfied by a timely
-  `/v1/routing-inputs` event. Retain timer/routing receipts and retry checks.
+- Run `routing-smoke` in a separate fresh stack and retain its timer/routing
+  receipts, retry evidence, and restart readbacks.
 - Restart only this directory's project to inspect retained state and overdue
   work. Test a database outage through this project's `postgres` service, inspect
   capability readiness, then restore it and account for the recorded faults.
