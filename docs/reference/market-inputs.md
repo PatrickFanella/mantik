@@ -5,10 +5,10 @@ market sources. They open research cases through the existing threshold, event,
 state, deadline, and missing-event contracts. Fixture observation ingestion and
 paper execution keep their existing `fixture/DEMO` boundary.
 
-This is the input-contract slice of issue #11. Provider selection, transport,
-authorized access, polling limits/retries, raw artifact retention, calendar
-normalization and revisions, continuous ingestion, and real-provider readback
-remain adapter work. The service does not fetch raw references or contact a
+This is the input-contract slice of issue #11. Alpaca is selected; [recorded normalization and a bounded read client](alpaca.md)
+are available. Authorized access, durable capture retention, collection,
+calendar revision reconciliation, continuous ingestion, and real-provider
+readback remain subsequent work. The service does not fetch raw references or contact a
 provider. This change does not deploy a new revision to a running pilot.
 
 ## Attribution and identity
