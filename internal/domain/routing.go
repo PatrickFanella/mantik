@@ -3,13 +3,15 @@ package domain
 import "time"
 
 type Condition struct {
-	Kind       string      `json:"kind"`
-	EventName  string      `json:"event_name,omitempty"`
-	StateKey   string      `json:"state_key,omitempty"`
-	StateValue string      `json:"state_value,omitempty"`
-	Comparison string      `json:"comparison,omitempty"`
-	PriceCents int64       `json:"price_cents,omitempty"`
-	All        []Condition `json:"all,omitempty"`
+	Kind         string      `json:"kind"`
+	EventName    string      `json:"event_name,omitempty"`
+	StateKey     string      `json:"state_key,omitempty"`
+	StateValue   string      `json:"state_value,omitempty"`
+	Comparison   string      `json:"comparison,omitempty"`
+	PriceCents   int64       `json:"price_cents,omitempty"`
+	All          []Condition `json:"all,omitempty"`
+	DueAt        time.Time   `json:"due_at,omitzero"`
+	AfterSeconds int64       `json:"after_seconds,omitempty"`
 }
 
 type SourceRequirements struct {
@@ -104,4 +106,5 @@ type RoutingState struct {
 	Runtime     map[string]TriggerRuntime       `json:"runtime"`
 	Cases       []RoutingCase                   `json:"cases"`
 	Inputs      map[string]RetainedRoutingInput `json:"inputs"`
+	Timers      *TimerState                     `json:"timers"`
 }

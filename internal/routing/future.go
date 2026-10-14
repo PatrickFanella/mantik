@@ -24,6 +24,9 @@ func FutureDefinitions(d domain.Decision, symbol string) []domain.TriggerDefinit
 		hash := sha256.Sum256([]byte(d.ID + "/" + level.name))
 		definitions = append(definitions, domain.TriggerDefinition{ID: fmt.Sprintf("future-%x", hash[:]), Owner: "operations", CaseKey: caseKey, Behavior: "act", Condition: domain.Condition{Kind: "threshold", Comparison: level.comparison, PriceCents: level.price}, ValidFrom: d.FinalizedAt.UTC(), ValidUntil: d.FinalizedAt.Add(time.Duration(d.Safety.MaxHoldingSeconds) * time.Second).UTC(), RepeatPolicy: "once", Requirements: domain.SourceRequirements{Source: "fixture", Symbol: symbol, EvidenceClass: "synthetic_unqualified", MaxAgeSeconds: d.Safety.MaxQuoteAgeSeconds}, SourceDecisionID: d.ID, SubjectCaseID: d.CaseID})
 	}
+	hash := sha256.Sum256([]byte(d.ID + "/deadline"))
+	deadline := d.FinalizedAt.Add(time.Duration(d.Safety.MaxHoldingSeconds) * time.Second).UTC()
+	definitions = append(definitions, domain.TriggerDefinition{ID: fmt.Sprintf("future-%x", hash[:]), Owner: "operations", CaseKey: caseKey, Behavior: "act", Condition: domain.Condition{Kind: "deadline", DueAt: deadline}, ValidFrom: d.FinalizedAt.UTC(), ValidUntil: deadline.Add(time.Hour), RepeatPolicy: "once", Requirements: domain.SourceRequirements{Source: "fixture", Symbol: symbol, EvidenceClass: "synthetic_unqualified", MaxAgeSeconds: d.Safety.MaxQuoteAgeSeconds}, SourceDecisionID: d.ID, SubjectCaseID: d.CaseID})
 	return definitions
 }
 
@@ -71,6 +74,7 @@ func BindFuture(s *domain.RoutingState, d domain.Decision, symbol string) (*doma
 			next.Runtime[definition.ID] = domain.TriggerRuntime{Status: "active", Facts: map[string]domain.ConditionFact{}}
 		}
 	}
+	SyncTimers(next)
 	return next, nil
 }
 

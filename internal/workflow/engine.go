@@ -72,6 +72,7 @@ func Apply(state domain.State, o domain.Observation) (domain.State, []domain.Eve
 	}
 	if next.Case.Exit != nil {
 		routing.CloseApplied(next.Routing, next.Case.ID, next.Case.Exit.ExecutedAt)
+		ResolveProtection(&next, next.Case.Exit.ExecutedAt)
 	}
 	return next, events, nil
 }
@@ -88,7 +89,7 @@ func applyFixture(state domain.State, o domain.Observation) (domain.State, []dom
 	}
 	checks := []domain.EvaluationResult{
 		{Check: "quote_freshness", Version: "v1", Passed: o.ReceivedAt.Sub(o.OccurredAt) <= time.Duration(s.Safety.MaxQuoteAgeSeconds)*time.Second, Code: "quote_age"},
-		{Check: "event_order", Version: "v1", Passed: state.LastOccurredAt.IsZero() || o.OccurredAt.After(state.LastOccurredAt), Code: "strictly_newer_quote"},
+		{Check: "event_order", Version: "v1", Passed: (state.LastOccurredAt.IsZero() || o.OccurredAt.After(state.LastOccurredAt)) && !o.ReceivedAt.Before(ProtectionClock(state)), Code: "strictly_newer_quote_and_protection_clock"},
 	}
 	valid := checks[0].Passed && checks[1].Passed
 	if !valid {
@@ -97,6 +98,8 @@ func applyFixture(state domain.State, o domain.Observation) (domain.State, []dom
 		return state, events, nil
 	}
 	state.LastOccurredAt = o.OccurredAt
+	quote := o
+	state.LastQuote = &quote
 	if state.Case.Status == "closed" {
 		return state, events, nil
 	}

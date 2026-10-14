@@ -140,6 +140,7 @@ func TestPostgresContractsV1RoutingUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	delete(oldPayload, "routing")
+	delete(oldPayload, "last_quote")
 	stateRaw, err = json.Marshal(oldPayload)
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +188,7 @@ func TestPostgresContractsV1RoutingUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.State.Case.Status != "open" || len(snapshot.State.Routing.Definitions) != 2 || snapshot.State.Case.Entry.PriceCents != 10000 || snapshot.ObservationCount != 1 {
+	if snapshot.State.Case.Status != "open" || len(snapshot.State.Routing.Definitions) != 3 || snapshot.State.Case.Entry.PriceCents != 10000 || snapshot.ObservationCount != 1 {
 		t.Fatal("upgrade lost original position or protection")
 	}
 	for _, event := range snapshot.Events {

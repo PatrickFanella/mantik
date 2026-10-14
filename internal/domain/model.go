@@ -92,13 +92,15 @@ type DecisionCase struct {
 
 // Event is an audit record, not narrative evaluation input.
 type Event struct {
-	ID            string            `json:"id"`
-	Kind          string            `json:"kind"`
-	ObservationID string            `json:"observation_id"`
-	At            time.Time         `json:"at"`
-	Trigger       *Trigger          `json:"trigger,omitempty"`
-	Decision      *Decision         `json:"decision,omitempty"`
-	Outcome       *ExecutionOutcome `json:"outcome,omitempty"`
+	ID            string                `json:"id"`
+	Kind          string                `json:"kind"`
+	ObservationID string                `json:"observation_id"`
+	At            time.Time             `json:"at"`
+	Trigger       *Trigger              `json:"trigger,omitempty"`
+	Decision      *Decision             `json:"decision,omitempty"`
+	Outcome       *ExecutionOutcome     `json:"outcome,omitempty"`
+	TimerID       string                `json:"timer_id,omitempty"`
+	Exception     *OperationalException `json:"exception,omitempty"`
 }
 
 type State struct {
@@ -106,6 +108,7 @@ type State struct {
 	Case           DecisionCase    `json:"case"`
 	LastOccurredAt time.Time       `json:"last_occurred_at"`
 	Routing        *RoutingState   `json:"routing"`
+	LastQuote      *Observation    `json:"last_quote,omitempty"`
 }
 
 type Snapshot struct {

@@ -3,6 +3,7 @@
 - [Dataset and replay contracts](datasets.md)
 - [Synthetic baseline experiments](experiments.md)
 - [Persistent triggers and routing cases](triggers.md)
+- [Independent deadlines and missing events](timers.md)
 
 Use this section for durable technical references:
 

@@ -86,9 +86,15 @@ The service also persists fixture event, threshold, state-change, and combined
 trigger definitions. `trigger-register`, `route-input`, and `close-routing-case`
 manage research and decision cases with deduplication and explicit repeat
 policies. See [trigger contracts](docs/reference/triggers.md) for JSON examples
-and migration compatibility. Matches record case work; worker dispatch is
+and migration compatibility. Matches record case work; research-worker dispatch is
 future work. Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
+
+An independent service worker now handles deadlines, elapsed-time conditions,
+and expected missing events. It recovers overdue work after restart through
+fenced leases. A protective deadline uses usable retained price evidence or
+records an operational exception. See [timer contracts](docs/reference/timers.md),
+including the real-clock boundary for the historical fixed demo.
 
 ## Current boundaries
 
@@ -98,8 +104,10 @@ atomically with the fixture execution records.
   recipes. It registers two immutable, unqualified fixture strategies for
   experiments; the service uses the original threshold method. See the
   [library contract](docs/architecture.md#versioned-library).
-- Stop, target, and holding-deadline checks run on usable incoming quotes.
-  There is no independent deadline scheduler or missing-feed monitor yet.
+- Stop and target checks run on usable incoming quotes. Holding deadlines also
+  run independently; missing usable price evidence leaves an explicit exception.
+  Expected-event detection uses declared fixture obligations; real feed adapters
+  and their availability policies remain future work.
 - The synchronous simulator fills at the observed quote with zero costs.
 - One executable fixture case and bounded research/decision routing cases
   share one aggregate. PostgreSQL serializes their updates; portfolio
