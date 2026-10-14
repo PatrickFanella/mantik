@@ -7,6 +7,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/actions"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/library"
 	"git.subcult.tv/subculture-collective/mantik/internal/operations"
 	"git.subcult.tv/subculture-collective/mantik/internal/routing"
 )
@@ -107,15 +108,28 @@ func enforceDeadline(state *domain.State, d domain.TriggerDefinition, now time.T
 	if state.Case.Entry == nil || d.SourceDecisionID != state.Case.Entry.DecisionID || d.SubjectCaseID != state.Case.ID || d.Condition.Kind != "deadline" || !d.Condition.DueAt.Equal(state.Case.ExitBy) {
 		return nil, errors.New("protective timer does not bind current finalized entry")
 	}
-	prefix := "timer-" + d.ID
+	return enforceDeadlineWithID(state, d, now, queued, "timer-"+d.ID)
+}
+
+func enforceDeadlineWithID(state *domain.State, d domain.TriggerDefinition, now time.Time, queued bool, prefix string) ([]domain.Event, error) {
+	if state.Case.Entry == nil || d.SourceDecisionID != state.Case.Entry.DecisionID || d.SubjectCaseID != state.Case.ID || d.Condition.Kind != "deadline" || !d.Condition.DueAt.Equal(state.Case.ExitBy) {
+		return nil, errors.New("protective recovery lacks current finalized authority")
+	}
 	quote := state.LastQuote
 	usable := quote != nil && !quote.ReceivedAt.After(now) && !quote.OccurredAt.After(now) && now.Sub(quote.OccurredAt) <= time.Duration(state.Strategy.Safety.MaxQuoteAgeSeconds)*time.Second
 	if !usable {
-		exception := domain.OperationalException{ID: prefix + "-exception", CaseID: state.Case.ID, DefinitionID: d.ID, Code: "deadline_price_unavailable", Status: "open", At: now}
+		exception := domain.OperationalException{ID: prefix + "-exception", CaseID: state.Case.ID, DefinitionID: d.ID, Code: "deadline_price_unavailable", Capability: "protective_monitoring", Severity: "critical", EvidenceRefs: []string{"timer:" + d.ID, "case:" + state.Case.ID}, LastObservedAt: now, Status: "open", At: now}
 		state.Routing.Timers.Exceptions[exception.ID] = exception
 		return []domain.Event{{ID: exception.ID, Kind: "operations.exception", TimerID: d.ID, At: now, Exception: &exception}}, nil
 	}
 	checks := []domain.EvaluationResult{{Check: "quote_freshness", Version: "v1", Passed: true, Code: "retained_quote_age_at_deadline"}, {Check: "event_order", Version: "v1", Passed: state.LastOccurredAt.Equal(quote.OccurredAt), Code: "current_retained_quote"}}
+	entry, err := library.ResolveStrategy(state.Strategy)
+	if err != nil {
+		return nil, err
+	}
+	if err := entry.Admit("exit", checks); err != nil {
+		return nil, err
+	}
 	decision := decision(*state, *quote, "exit", "holding_deadline", checks)
 	decision.ID, decision.FinalizedAt, decision.ValidUntil = prefix+"-decision", now, now.Add(30*time.Second)
 	if queued {
@@ -141,9 +155,54 @@ func ResolveProtection(state *domain.State, at time.Time) {
 		return
 	}
 	for id, e := range state.Routing.Timers.Exceptions {
-		if e.CaseID == state.Case.ID && e.Status == "open" {
-			e.Status, e.ResolvedAt = "resolved", at.UTC()
+		if e.CaseID == state.Case.ID && e.Status == "open" && e.Code == "deadline_price_unavailable" {
+			e.Status, e.ResolvedAt, e.TerminalOutcome = "resolved", at.UTC(), "protective_exit_applied"
 			state.Routing.Timers.Exceptions[id] = e
 		}
 	}
+}
+
+// RecoverProtection reevaluates an existing overdue safety obligation using
+// current retained evidence. It never rewrites an expired decision's validity.
+func RecoverProtection(state domain.State, definitionID, requestID string, now time.Time) (domain.State, []domain.Event, string, error) {
+	raw, err := json.Marshal(state)
+	if err != nil {
+		return state, nil, "", err
+	}
+	var next domain.State
+	if err := json.Unmarshal(raw, &next); err != nil {
+		return state, nil, "", err
+	}
+	if next.Case.Exit != nil {
+		return next, nil, "already_exited", nil
+	}
+	if _, err := library.ResolveStrategy(next.Strategy); err != nil {
+		return next, nil, "blocked_authority_unavailable", nil
+	}
+	if actions.Active(next) {
+		return next, nil, "blocked_unresolved_action", nil
+	}
+	var definition domain.TriggerDefinition
+	for _, d := range next.Routing.Definitions {
+		if d.ID == definitionID {
+			definition = d
+			break
+		}
+	}
+	if definition.ID == "" || definition.Condition.Kind != "deadline" || routing.ValidateDefinition(definition) != nil || now.Before(definition.Condition.DueAt) {
+		return next, nil, "blocked_obligation_unavailable", nil
+	}
+	quote := next.LastQuote
+	if quote == nil || quote.ReceivedAt.After(now) || now.Sub(quote.OccurredAt) > time.Duration(next.Strategy.Safety.MaxQuoteAgeSeconds)*time.Second {
+		return next, nil, "blocked_price_unavailable", nil
+	}
+	if !next.LastOccurredAt.Equal(quote.OccurredAt) || next.Case.Entry == nil || definition.SourceDecisionID != next.Case.Entry.DecisionID || definition.SubjectCaseID != next.Case.ID || !definition.Condition.DueAt.Equal(next.Case.ExitBy) {
+		return next, nil, "blocked_authority_unavailable", nil
+	}
+	// Reuse the same safety evaluator, with a new recovery decision identity.
+	events, err := enforceDeadlineWithID(&next, definition, now, true, "recovery-"+requestID)
+	if err != nil {
+		return state, nil, "", err
+	}
+	return next, events, "queued", nil
 }

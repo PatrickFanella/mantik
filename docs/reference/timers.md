@@ -100,7 +100,8 @@ retained as unusable and cannot undo that protection.
 
 `GET /v1/status` and `status --format json` expose jobs, lease generations,
 completion receipts, and exceptions. These are structured operational records;
-capability-scoped readiness and operator exception workflows remain issue #10.
+capability-scoped readiness and bounded operator recovery are described in the
+[operational contract](operations.md).
 Durable fixture delivery and uncertain-outcome reconciliation use the action
 contract. Real provider adapters remain future work.
 

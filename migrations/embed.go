@@ -17,3 +17,8 @@ var IndependentTimers string
 //
 //go:embed 0004_durable_actions.sql
 var DurableActions string
+
+// OperationalReadiness adds worker evidence and guards exception metadata.
+//
+//go:embed 0005_operational_readiness.sql
+var OperationalReadiness string

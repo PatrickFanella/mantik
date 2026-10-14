@@ -141,6 +141,8 @@ func TestPostgresContractsV1RoutingUpgrade(t *testing.T) {
 	}
 	delete(oldPayload, "routing")
 	delete(oldPayload, "last_quote")
+	delete(oldPayload, "actions")
+	delete(oldPayload, "operations")
 	stateRaw, err = json.Marshal(oldPayload)
 	if err != nil {
 		t.Fatal(err)

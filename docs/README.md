@@ -22,6 +22,8 @@
   fenced recovery, clock changes, and price-unavailable exceptions.
 - [Action contracts](reference/actions.md): finalized intent, durable delivery,
   adapter effects, uncertain outcomes, and reconciliation.
+- [Operational inspection](reference/operations.md): scoped readiness,
+  persistent exceptions, worker evidence, and bounded recovery.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed

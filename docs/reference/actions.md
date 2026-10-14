@@ -102,5 +102,6 @@ ledger together; deleting either is not a recovery procedure.
 
 Crash, expiry, authority-change, concurrent delivery, status reconciliation,
 acknowledgment rollback, and version 3 upgrade checks use disposable databases.
-Operational exception recovery/readiness remains issue #10. The post-M2 pilot
+Operational exception recovery and readiness use the
+[operational contract](operations.md). The post-M2 pilot
 still needs its declared runtime evidence before its checkpoint is complete.

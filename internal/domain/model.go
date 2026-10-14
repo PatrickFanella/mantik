@@ -101,16 +101,19 @@ type Event struct {
 	Outcome       *ExecutionOutcome     `json:"outcome,omitempty"`
 	ActionID      string                `json:"action_id,omitempty"`
 	TimerID       string                `json:"timer_id,omitempty"`
+	Recovery      *RecoveryAttempt      `json:"recovery,omitempty"`
+	ExceptionID   string                `json:"exception_id,omitempty"`
 	Exception     *OperationalException `json:"exception,omitempty"`
 }
 
 type State struct {
-	Strategy       StrategyVersion `json:"strategy"`
-	Case           DecisionCase    `json:"case"`
-	LastOccurredAt time.Time       `json:"last_occurred_at"`
-	Routing        *RoutingState   `json:"routing"`
-	Actions        *ActionState    `json:"actions"`
-	LastQuote      *Observation    `json:"last_quote,omitempty"`
+	Strategy       StrategyVersion   `json:"strategy"`
+	Case           DecisionCase      `json:"case"`
+	LastOccurredAt time.Time         `json:"last_occurred_at"`
+	Routing        *RoutingState     `json:"routing"`
+	Operations     *OperationalState `json:"operations"`
+	Actions        *ActionState      `json:"actions"`
+	LastQuote      *Observation      `json:"last_quote,omitempty"`
 }
 
 type Snapshot struct {

@@ -366,10 +366,10 @@ func TestPostgresContractsV3ActionUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, "ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_actions; DROP TABLE mantik_fixture_effects; DELETE FROM mantik_schema WHERE version=4"); err != nil {
+	if _, err := store.pool.Exec(ctx, "ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_operations; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_actions; DROP TABLE mantik_fixture_effects; DELETE FROM mantik_schema WHERE version>=4"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, "UPDATE mantik_state SET payload=$1::jsonb-'actions'", raw); err != nil {
+	if _, err := store.pool.Exec(ctx, "UPDATE mantik_state SET payload=$1::jsonb-'actions'-'operations'", raw); err != nil {
 		t.Fatal(err)
 	}
 	qr, err := json.Marshal(q)

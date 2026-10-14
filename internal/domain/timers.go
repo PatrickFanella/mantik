@@ -40,11 +40,18 @@ type TimerReceipt struct {
 
 // OperationalException records protection that could not obtain usable evidence.
 type OperationalException struct {
-	ID           string    `json:"id"`
-	CaseID       string    `json:"case_id"`
-	DefinitionID string    `json:"definition_id"`
-	Code         string    `json:"code"`
-	Status       string    `json:"status"`
-	At           time.Time `json:"at"`
-	ResolvedAt   time.Time `json:"resolved_at,omitzero"`
+	ID               string            `json:"id"`
+	CaseID           string            `json:"case_id"`
+	DefinitionID     string            `json:"definition_id"`
+	Code             string            `json:"code"`
+	Capability       string            `json:"capability,omitempty"`
+	Severity         string            `json:"severity,omitempty"`
+	EvidenceRefs     []string          `json:"evidence_refs,omitempty"`
+	ActionID         string            `json:"action_id,omitempty"`
+	LastObservedAt   time.Time         `json:"last_observed_at,omitzero"`
+	RecoveryAttempts []RecoveryAttempt `json:"recovery_attempts,omitempty"`
+	TerminalOutcome  string            `json:"terminal_outcome,omitempty"`
+	Status           string            `json:"status"`
+	At               time.Time         `json:"at"`
+	ResolvedAt       time.Time         `json:"resolved_at,omitzero"`
 }
