@@ -174,7 +174,13 @@ canonical input pins, bounded artifacts and a cooperative context. The
 attestation false. `internal/workerlaunch` provides an explicit local Docker
 launcher with pre-start acquisition/profile receipts, bounded artifact capture,
 ownership checks and reconciliation without automatic re-execution. It supplies
-no service dispatch or external library implementation.
+no service dispatch. `research/backtesting` provides a separate fixed-fixture
+Python adapter and finite container rehearsal. It binds exact dataset, recipe
+and native-reference artifacts, records conversion assumptions and compares
+Backtesting.py results without importing them into service trials. Its Python
+environment/result contract is separate from the native worker v1 contract;
+launcher transport and service integration remain unfinished. See the
+[external fixture comparison](reference/backtesting-fixture.md).
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00
