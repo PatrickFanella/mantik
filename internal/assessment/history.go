@@ -78,6 +78,11 @@ func ReadHistory(ctx context.Context, reader HistoryReader, id string) (History,
 	if index.Validate() != nil || index.TrialID != id {
 		return History{}, trial.ErrInvalid
 	}
+	return readHistoryAtIndex(ctx, reader, index)
+}
+
+func readHistoryAtIndex(ctx context.Context, reader HistoryReader, index trial.EvidenceIndex) (History, error) {
+	var err error
 	h := History{Schema: HistorySchema, Index: index, AttemptCount: len(index.Attempts), Reasons: map[string]int{}, Assessments: []Result{}, Authority: "synthetic_condition_comparison_only"}
 	for _, ref := range index.Attempts {
 		if err = ctx.Err(); err != nil {
@@ -111,7 +116,7 @@ func ReadHistory(ctx context.Context, reader HistoryReader, id string) (History,
 	}
 	// Catch changed/cancelled/finished attempts and additions anywhere in the
 	// catalogue, including after their individual evidence was read.
-	latest, err := reader.TrialEvidenceIndex(ctx, id)
+	latest, err := reader.TrialEvidenceIndex(ctx, index.TrialID)
 	if err != nil {
 		return History{}, err
 	}

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/assessment"
 	"git.subcult.tv/subculture-collective/mantik/internal/experimentplan"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
@@ -37,6 +38,19 @@ func runTrial(ctx context.Context, command string, args []string, out, errOut io
 	u, err := url.Parse(*base)
 	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" || fs.NArg() != 0 {
 		return errors.New("trial commands require an HTTP origin without credentials, path or positional arguments")
+	}
+	if command == "hypothesis-assessments" {
+		if !hypothesis.QuestionID.MatchString(*id) {
+			return trial.ErrInvalid
+		}
+		var history assessment.QuestionHistory
+		if err = request(ctx, *base, "/v1/hypotheses/"+*id+"/assessments", nil, &history); err != nil {
+			return err
+		}
+		if history.Validate() != nil || history.HypothesisID != *id {
+			return errors.New("invalid hypothesis assessment history receipt")
+		}
+		return emit(out, history)
 	}
 	if command == "hypothesis-trials" {
 		if !hypothesis.QuestionID.MatchString(*id) {

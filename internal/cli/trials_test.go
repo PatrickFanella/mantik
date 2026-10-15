@@ -85,6 +85,10 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 		return out.Bytes()
 	}
 	args := []string{"hypothesis-trial-register", "--id", "first", "--receiver-id", catalog.ReceiverID, "--publication", publication.ID, "--recipe", file, "--recipe-sha256", recipe.SHA256}
+	var questionHistory assessment.QuestionHistory
+	if err = json.Unmarshal(run("hypothesis-assessments", "--id", publication.Sealed.ID), &questionHistory); err != nil || questionHistory.Validate() != nil || questionHistory.PlanCount != 0 {
+		t.Fatal(questionHistory, err)
+	}
 	var first, repeated, actual trial.Registration
 	if err = json.Unmarshal(run(args...), &first); err != nil || first.Validate() != nil {
 		t.Fatal(err)
@@ -155,6 +159,13 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	if err = json.Unmarshal(run("trial-assessments", "--id", first.ID), &assessmentHistory); err != nil || assessmentHistory.Validate() != nil || assessmentHistory.AttemptCount != 2 || assessmentHistory.Compared != 1 || assessmentHistory.NotEvaluable != 1 {
 		t.Fatal(assessmentHistory, err)
 	}
+	for _, p := range []struct{ id, parent string }{{"child", "first"}, {"sibling", "first"}, {"never-attempted", "child"}} {
+		run("hypothesis-trial-register", "--id", p.id, "--receiver-id", catalog.ReceiverID, "--publication", publication.ID, "--recipe", file, "--recipe-sha256", recipe.SHA256, "--parent", p.parent)
+	}
+	questionHistory = assessment.QuestionHistory{}
+	if err = json.Unmarshal(run("hypothesis-assessments", "--id", publication.Sealed.ID), &questionHistory); err != nil || questionHistory.Validate() != nil || questionHistory.PlanCount != 4 || questionHistory.NeverAttemptedPlans != 3 || questionHistory.AttemptCount != 2 || questionHistory.Compared != 1 {
+		t.Fatal(questionHistory, err)
+	}
 	run("trial-attempt-start", "--id", "pending-for-history", "--trial", first.ID, "--receiver-id", catalog.ReceiverID)
 	changing := &changingHistoryStore{Memory: s, before: func() {
 		if _, err := s.CancelTrialAttempt(ctx, catalog.ReceiverID, "pending-for-history", time.Now); err != nil {
@@ -166,6 +177,18 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	var changedOut bytes.Buffer
 	if err = Run(ctx, []string{"trial-assessments", "--api-url", changedServer.URL, "--id", first.ID}, &changedOut, &changedOut); err == nil || !strings.Contains(err.Error(), "HTTP 409") || changedOut.Len() != 0 {
 		t.Fatal("mixed history was accepted or printed", err, changedOut.String())
+	}
+	run("trial-attempt-start", "--id", "question-pending", "--trial", first.ID, "--receiver-id", catalog.ReceiverID)
+	changingQuestion := &changingHistoryStore{Memory: s, before: func() {
+		if _, err := s.CancelTrialAttempt(ctx, catalog.ReceiverID, "question-pending", time.Now); err != nil {
+			t.Error(err)
+		}
+	}}
+	changedQuestionServer := httptest.NewServer(service.Handler(changingQuestion, "trial-cli-token"))
+	defer changedQuestionServer.Close()
+	changedOut.Reset()
+	if err = Run(ctx, []string{"hypothesis-assessments", "--api-url", changedQuestionServer.URL, "--id", publication.Sealed.ID}, &changedOut, &changedOut); err == nil || !strings.Contains(err.Error(), "HTTP 409") || changedOut.Len() != 0 {
+		t.Fatal("partial question report accepted or printed", err, changedOut.String())
 	}
 	command := trial.Command{ReceiverID: catalog.ReceiverID, RequestID: "second", PublicationID: publication.ID, Recipe: recipe}
 	body, _ := json.Marshal(command)
@@ -205,6 +228,11 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	call("GET", "/v1/hypothesis-trials/first/assessments?best=true", "", true, 422)
 	call("GET", "/v1/hypothesis-trials/missing/assessments", "", true, 404)
 	call("POST", "/v1/hypothesis-trials/first/assessments", `{}`, true, 405)
+	call("GET", "/v1/hypotheses/"+publication.Sealed.ID+"/assessments", "", false, 401)
+	call("GET", "/v1/hypotheses/"+publication.Sealed.ID+"/assessments?best=true", "", true, 422)
+	call("GET", "/v1/hypotheses/missing/assessments", "", true, 422)
+	call("GET", "/v1/hypotheses/hypothesis-"+strings.Repeat("0", 64)+"/assessments", "", true, 404)
+	call("POST", "/v1/hypotheses/"+publication.Sealed.ID+"/assessments", `{}`, true, 405)
 	call("POST", "/v1/hypothesis-trials", string(body), false, 401)
 	call("GET", "/v1/hypothesis-trials/first", "", false, 401)
 	call("POST", "/v1/hypothesis-trials", strings.Replace(string(body), `"request_id":`, `"request_id":"changed","request_id":`, 1), true, 422)

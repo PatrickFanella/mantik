@@ -70,7 +70,7 @@ existing attempt-history API.
 Authority is `synthetic_condition_comparison_only`; `qualification_credit` is
 always false. A scalar condition match does not establish a mechanism, source
 truth, statistical significance, research validity, prospective paper
-profitability or permission to trade. Cross-plan search-history assessment,
+profitability or permission to trade. Statistical search-history assessment,
 multiple-testing controls and promotion remain separate work.
 
 ## History for one registered trial
@@ -111,8 +111,61 @@ and intent identities, cancellation before acquisition, and monotonic run transi
 there is no operation for reverting an attempt to a previous state.
 
 This history describes the current retained state of all attempts for one plan.
-It does not retain every intermediate assessment snapshot, infer active worker
-processes, or combine sibling/parent plans into a hypothesis-wide search report.
+It does not retain every intermediate assessment snapshot or infer active worker
+processes. The hypothesis-wide view below combines sibling and parent plans.
 Existing intent, registration and run records are preserved. Reading the history
 does not resolve or execute work, select a winner, grant qualification or alter
 operational state. PostgreSQL schema 16 is unchanged.
+
+## History across a hypothesis's plans
+
+```sh
+./bin/mantik hypothesis-assessments --api-url http://127.0.0.1:40880 \
+  --id HYPOTHESIS_ID
+```
+
+The authenticated endpoint is `GET /v1/hypotheses/{id}/assessments`. The ID is an
+exact retained hypothesis identity, as returned by publication. It accepts no
+query parameters or write commands. Invalid IDs or queries return 422, unknown
+hypotheses 404, changing history 409, and unavailable or inconsistent retained
+evidence 503. The CLI validates the response's source references, lineage,
+counters and hashes before printing anything.
+
+The `mantik-hypothesis-assessment-history-v1` response contains every registered
+plan for that exact question in registration-time/ID order. Each entry includes
+the registration summary, full registration/publication/recipe identity hashes,
+parent registration ID and receipt hash, and complete per-plan assessment
+history. Parent receipt links, parent-before-child times and complete acyclic
+ancestry are checked, including for plans without attempts. Full recipes and
+raw result/replay bodies remain available through targeted inspection commands.
+Plans are included across publications of the same exact question; declaration
+and publication hashes remain distinct. Different exact question IDs are not
+combined by prose similarity or instrument.
+
+The report includes plan count, count of plans never attempted, total attempts,
+compared/not-evaluable counts and counts by reason. These are counts of retained
+records, without pooled financial metrics, a best-result pointer, or a winning
+plan selection. A known hypothesis with no registered plans returns a pinned
+empty catalogue. A plan with only cancelled intents has attempts and is not
+counted as never attempted.
+
+The service first pins the registration catalogue and each plan's attempt/run
+index. It validates full registration receipts one at a time, then reads bounded
+native results one at a time using the same per-plan assessment rules. Before
+returning anything, it rechecks the registration catalogue and every plan index,
+including plans whose bodies were already read and plans with no attempts.
+Detected additions or state changes return the same 409 retry-whole-request
+error as the per-plan view, with no partial report and no automatic retry. The
+report carries the registration catalogue hash, all per-plan index/history
+hashes and a hash of the complete response. Repeating a stable read produces the
+same output and hash. The request has a five-second context, the existing
+32-plan and global 32-intent limits, and no transaction or mutation lock held
+across result comparisons.
+
+This is a readback of server-admitted registrations and retained native attempts.
+It does not re-open decision cases, re-evaluate publication applicability, inspect
+original news sources, or verify claim truth. Its scope excludes unregistered
+experiments and review-stage abstentions without a published hypothesis/trial
+link. It neither proves that a search was exhaustive nor establishes research
+validity, statistical significance, qualification or trading authority. Schema
+16 and existing receipts are unchanged.
