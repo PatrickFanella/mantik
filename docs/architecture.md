@@ -171,8 +171,10 @@ shared experiment-plan contract, without depending on storage or an execution
 engine. `internal/researchworker` supplies a native-fixture adapter with raw and
 canonical input pins, bounded artifacts and a cooperative context. The
 [worker protocol](reference/research-workers.md) leaves image/isolation
-attestation false and does not provide a host launcher, service dispatch or an
-external library implementation.
+attestation false. `internal/workerlaunch` provides an explicit local Docker
+launcher with pre-start acquisition/profile receipts, bounded artifact capture,
+ownership checks and reconciliation without automatic re-execution. It supplies
+no service dispatch or external library implementation.
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00

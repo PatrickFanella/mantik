@@ -263,5 +263,7 @@ without selecting a winning result.
 
 The [offline worker protocol](docs/reference/research-workers.md) pins jobs and
 validates native-fixture results through `worker-job`, `worker-execute` and
-`worker-result`. Host-controlled isolation, durable dispatch and an external
-research-library adapter remain the next worker implementation units.
+`worker-result`. `worker-launch` runs an explicit local container attempt with
+host-verified settings and durable evidence; `worker-reconcile` inspects or
+explicitly cancels that owned attempt after interruption. Automatic service
+dispatch and an external research-library adapter remain separate work.
