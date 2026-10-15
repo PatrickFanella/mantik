@@ -122,6 +122,11 @@ identity. See [market input contracts](docs/reference/market-inputs.md). Provide
 authorization for each credential/account and continuous collection remain
 separate work. `alpaca-normalize` converts retained Alpaca quote/calendar
 recordings offline; the bounded read client is tested against local servers. See [Alpaca contracts](docs/reference/alpaca.md).
+The [recorded news boundary](docs/reference/news.md) validates operator-supplied
+claims against exact source excerpts, with causal timestamps, explicit uncertainty
+and revision declarations. `news-normalize` is offline; news retention and case
+routing remain separate work.
+
 The [capture journal](docs/reference/alpaca-journal.md) retains validated recordings
 and supports receiver-bound submission and recovery through `alpaca-retain`,
 `alpaca-submit`, and `alpaca-journal`. `alpaca-collect` performs one explicit,
