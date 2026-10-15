@@ -66,8 +66,9 @@ later revisions and their notices.
 
 ## Remaining routing work
 
-Service-side news admission, persisted event-to-case links, acknowledged review
-work and correction/retraction case reopening are separate implementation units.
-This view provides their attributable input boundary without claiming that any
-case was reopened. It makes no provider, model, HTTP, database, decision or
-execution calls and grants no qualification credit.
+[Receiver-bound news admission](news-cases.md) separately retains originals and
+routes declared events to dedicated service research cases with version-fenced
+closure. This local view does not mutate or acknowledge those cases, and its
+journal-scoped group IDs differ from receiver-scoped case IDs. The view makes no
+provider, model, HTTP, database, decision or execution calls and grants no
+qualification credit.

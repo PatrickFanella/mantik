@@ -43,3 +43,6 @@ var CollectorAdmissions string
 
 //go:embed 0010_feed_evidence.sql
 var FeedEvidence string
+
+//go:embed 0011_news_cases.sql
+var NewsCases string
