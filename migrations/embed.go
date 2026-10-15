@@ -37,3 +37,6 @@ var ResearchReceiver string
 //
 //go:embed 0008_feed_collectors.sql
 var FeedCollectors string
+
+//go:embed 0009_collector_admissions.sql
+var CollectorAdmissions string

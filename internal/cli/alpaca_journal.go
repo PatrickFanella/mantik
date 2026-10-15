@@ -11,6 +11,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
 )
 
 func readAlpacaRecording(path, digest string) (alpaca.Recording, error) {
@@ -32,7 +33,10 @@ func readAlpacaRecording(path, digest string) (alpaca.Recording, error) {
 	return record, nil
 }
 
-type remoteResearchReceiver struct{ base string }
+type remoteResearchReceiver struct {
+	base  string
+	fence *feedcollector.Fence
+}
 
 func (r remoteResearchReceiver) Snapshot(ctx context.Context, ids []string) (domain.ResearchSnapshot, error) {
 	query := url.Values{}
@@ -44,6 +48,16 @@ func (r remoteResearchReceiver) Snapshot(ctx context.Context, ids []string) (dom
 	return out, err
 }
 func (r remoteResearchReceiver) Submit(ctx context.Context, receiver string, i domain.RoutingInput) (domain.RoutingReceipt, error) {
+	if r.fence != nil {
+		body := struct {
+			ReceiverID string              `json:"receiver_id"`
+			Fence      feedcollector.Fence `json:"fence"`
+			Input      domain.RoutingInput `json:"input"`
+		}{receiver, *r.fence, i}
+		var receipt domain.RoutingReceipt
+		err := request(ctx, r.base, "/v1/collector-inputs", body, &receipt)
+		return receipt, err
+	}
 	body := struct {
 		ReceiverID string              `json:"receiver_id"`
 		Input      domain.RoutingInput `json:"input"`
@@ -58,6 +72,7 @@ func runAlpacaJournal(ctx context.Context, command string, args []string, out, e
 	fs.SetOutput(errOut)
 	var root, path, digest, base, receiver, retryMissing string
 	var limit int
+	var fence feedcollector.Fence
 	fs.StringVar(&root, "journal", "", "absolute private journal directory (required)")
 	if command == "alpaca-retain" {
 		fs.StringVar(&path, "recording", "", "retained recording JSON file")
@@ -68,6 +83,9 @@ func runAlpacaJournal(ctx context.Context, command string, args []string, out, e
 		fs.StringVar(&receiver, "receiver-id", "", "expected research receiver identity (required)")
 		fs.StringVar(&retryMissing, "retry-missing-id", "", "explicitly retry this pending identity when server history is absent (max 3 attempts)")
 		fs.IntVar(&limit, "limit", 16, "maximum pending inputs to process (1–16)")
+		fs.StringVar(&fence.RegistrationID, "collector-registration-id", "", "immutable collector registration for fenced submission")
+		fs.StringVar(&fence.OwnerID, "collector-owner-id", "", "current collector owner (requires registration and generation)")
+		fs.Uint64Var(&fence.Generation, "collector-generation", 0, "current lease generation (requires registration and owner)")
 	}
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -77,6 +95,13 @@ func runAlpacaJournal(ctx context.Context, command string, args []string, out, e
 	}
 	if fs.NArg() != 0 || root == "" {
 		return errors.New("journal command requires an absolute journal directory and no positional arguments")
+	}
+	var collectorFence *feedcollector.Fence
+	if fence.RegistrationID != "" || fence.OwnerID != "" || fence.Generation != 0 {
+		if err := feedcollector.ValidateFence(fence); err != nil {
+			return err
+		}
+		collectorFence = &fence
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
@@ -104,7 +129,7 @@ func runAlpacaJournal(ctx context.Context, command string, args []string, out, e
 		}
 		return emit(out, result)
 	case "alpaca-submit":
-		result, err := journal.FlushWithRecovery(ctx, alpaca.Binding{APIURL: base, ReceiverID: receiver}, remoteResearchReceiver{base: base}, limit, retryMissing)
+		result, err := journal.FlushWithRecovery(ctx, alpaca.Binding{APIURL: base, ReceiverID: receiver, CollectorRegistrationID: fence.RegistrationID}, remoteResearchReceiver{base: base, fence: collectorFence}, limit, retryMissing)
 		if err != nil {
 			return err
 		}

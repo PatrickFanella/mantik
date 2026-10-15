@@ -26,6 +26,8 @@
   persistent exceptions, worker evidence, and bounded recovery.
 - [Feed collector contracts](reference/feed-collectors.md): immutable feed
   declarations, durable lease ownership, retry receipts, and readiness limits.
+- [Collector submission](reference/collector-submission.md): atomic lease-fenced
+  research admission, journal delivery, and historical replay.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed

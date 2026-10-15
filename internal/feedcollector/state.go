@@ -75,13 +75,14 @@ type RetainedCommand struct {
 }
 
 type State struct {
-	LastClock time.Time                  `json:"last_clock"`
-	Entries   map[string]Entry           `json:"entries"`
-	Commands  map[string]RetainedCommand `json:"commands"`
+	LastClock  time.Time                  `json:"last_clock"`
+	Entries    map[string]Entry           `json:"entries"`
+	Commands   map[string]RetainedCommand `json:"commands"`
+	Admissions map[string]Admission       `json:"admissions"`
 }
 
 func InitialState() State {
-	return State{Entries: map[string]Entry{}, Commands: map[string]RetainedCommand{}}
+	return State{Entries: map[string]Entry{}, Commands: map[string]RetainedCommand{}, Admissions: map[string]Admission{}}
 }
 
 func Validate(c Command) error {
