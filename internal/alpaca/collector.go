@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -214,9 +215,20 @@ func (j *Journal) runCollector(ctx context.Context, c *Client, s CollectorSpec, 
 	if initial.Pending != 0 || initial.Uncertain != 0 || (initial.Binding != nil && *initial.Binding != s.Binding) {
 		return out, errors.New("collector requires an empty or fully acknowledged journal with the same fenced binding")
 	}
-	names, err := j.names()
+	directory, err := j.root.Open(".")
 	if err != nil {
 		return out, err
+	}
+	names, err := directory.Readdirnames(20001)
+	closeErr := directory.Close()
+	if err != nil && !errors.Is(err, io.EOF) {
+		return out, err
+	}
+	if closeErr != nil {
+		return out, closeErr
+	}
+	if len(names) > 20000 {
+		return out, errors.New("journal artifact count exceeds bound")
 	}
 	collections, sessions := 0, 0
 	for _, name := range names {
