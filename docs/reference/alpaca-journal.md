@@ -54,6 +54,10 @@ target binding, and at most 16 pending identities with attempt counts. It does
 not prove server liveness, feed coverage, or completed application work. Status
 and submission require an existing journal; they never recreate a missing one.
 Authentication environment variables are not copied into journal metadata.
+For delivery under a collector lease, use the three explicit collector options
+described in [collector-fenced submission](collector-submission.md). The
+registration becomes part of the immutable target binding; delivery cannot
+silently fall back to the manual endpoint.
 
 ## One bounded acquisition
 

@@ -126,10 +126,10 @@ history. Exact retries still work when capacity is full. There is no pruning,
 reset, or automatic expansion; a full registry blocks new ownership commands.
 This bounded contract must be extended before unattended continuous collection.
 
-Ownership fences these lease commands only. The existing manual research-input
-and journal-submission APIs retain their own receiver and provenance contracts;
-they do not yet require a collector lease. Connecting a collector client,
-fencing its submission, and combining ownership with independently validated
+Ownership fences lease commands and the [collector submission endpoint](collector-submission.md).
+Manual research-input submission retains its own receiver and provenance
+contract. The bounded journal client can select collector-fenced submission;
+automatic lease acquisition/renewal during collection and combining ownership with independently validated
 [regular-session coverage](alpaca-coverage.md) are subsequent implementation
 units. Registration never enables trading or establishes profitability.
 
@@ -151,3 +151,8 @@ Unit, API, race, and disposable PostgreSQL checks cover lease boundaries,
 competing claims, stale generations, retry retention, clock rollback, command
 capacity, isolated aggregate writes, migration, restart, and persistence failure.
 Provider and runtime qualification require their own retained evidence.
+
+Schema 9 adds collector admission history and a guard against older lease
+writers discarding it. Upgrade preserves schema 8 registrations, owners,
+generations, expiry, and command receipts. Backups must retain admission history
+and its corresponding research inputs together.

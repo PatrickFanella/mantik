@@ -28,6 +28,7 @@ var ErrRestorePending = errors.New("journal restore is incomplete or unverified;
 var ErrJournalBusy = errors.New("capture journal is already owned by another process")
 var ErrJournalConflict = errors.New("capture journal identity conflicts with retained content")
 var journalReceiverPattern = regexp.MustCompile(`^receiver-[a-zA-Z0-9_-]{16,64}$`)
+var journalCollectorPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 var ErrResearchOutcomeUnknown = errors.New("research input outcome is unavailable; inspect receiver history or explicitly retry the retained input identity")
 var ErrTargetChanged = errors.New("research receiver or retained delivery history changed")
 
@@ -48,8 +49,9 @@ type capture struct {
 	SHA256      string    `json:"sha256"`
 }
 type Binding struct {
-	APIURL     string `json:"api_url"`
-	ReceiverID string `json:"receiver_id"`
+	APIURL                  string `json:"api_url"`
+	ReceiverID              string `json:"receiver_id"`
+	CollectorRegistrationID string `json:"collector_registration_id,omitempty"`
 }
 type acknowledgement struct {
 	Binding     Binding               `json:"binding"`
@@ -435,6 +437,9 @@ func validateBinding(b Binding) error {
 	u, err := url.Parse(b.APIURL)
 	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || !journalReceiverPattern.MatchString(b.ReceiverID) {
 		return errors.New("journal requires a receiver identity and exact HTTP origin")
+	}
+	if b.CollectorRegistrationID != "" && !journalCollectorPattern.MatchString(b.CollectorRegistrationID) {
+		return errors.New("invalid collector registration binding")
 	}
 	return nil
 }

@@ -113,6 +113,9 @@ from the journal without configuring global readiness.
 The [feed-collector API](docs/reference/feed-collectors.md) retains immutable
 registrations and fenced ownership leases. It does not start a collector or
 configure feed readiness.
+`alpaca-submit` can [fence journal delivery](docs/reference/collector-submission.md)
+with an explicit registration, owner, and generation; input and admission
+receipts commit together.
 Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 
