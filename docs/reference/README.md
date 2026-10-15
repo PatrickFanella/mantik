@@ -37,3 +37,4 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Bounded native trial execution](native-trial-runs.md)
 - [Native trial condition assessments](trial-assessments.md)
+- [Research worker protocol and native adapter](research-workers.md)
