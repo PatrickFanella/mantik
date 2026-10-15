@@ -28,14 +28,7 @@ type FeedEvidenceRecord struct {
 	PublishedAt    time.Time           `json:"published_at"`
 	Recording      json.RawMessage     `json:"recording"`
 }
-type FeedEvidenceReceipt struct {
-	RegistrationID  string              `json:"registration_id"`
-	Key             string              `json:"key"`
-	Fence           feedcollector.Fence `json:"fence"`
-	PublishedAt     time.Time           `json:"published_at"`
-	RecordingSHA256 string              `json:"recording_sha256"`
-	Duplicate       bool                `json:"duplicate"`
-}
+type FeedEvidenceReceipt = feedcollector.EvidenceReceipt
 type FeedEvidenceSnapshot struct {
 	ReceiverID string
 	Collectors feedcollector.State
@@ -55,7 +48,7 @@ func evidenceReceipt(r FeedEvidenceRecord, duplicate bool) FeedEvidenceReceipt {
 	var value any
 	_ = json.Unmarshal(r.Recording, &value)
 	canonical, _ := json.Marshal(value)
-	return FeedEvidenceReceipt{r.RegistrationID, r.Key, r.Fence, r.PublishedAt, fmt.Sprintf("%x", sha256.Sum256(canonical)), duplicate}
+	return FeedEvidenceReceipt{RegistrationID: r.RegistrationID, Key: r.Key, Fence: r.Fence, PublishedAt: r.PublishedAt, RecordingSHA256: fmt.Sprintf("%x", sha256.Sum256(canonical)), Duplicate: duplicate}
 }
 func evidenceRequest(receiver, registration, key string, f feedcollector.Fence, raw json.RawMessage) error {
 	if !ValidReceiverID(receiver) || !evidenceKey.MatchString(registration) || !evidenceKey.MatchString(key) || f.RegistrationID != registration || feedcollector.ValidateFence(f) != nil || len(raw) == 0 || len(raw) > 2<<20 || !json.Valid(raw) {
