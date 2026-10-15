@@ -64,6 +64,50 @@ Two driver assumptions were corrected: trigger registration returns HTTP 200,
 and the schema table is `mantik_schema`. Actual committed state was inspected
 before continuing; those harness failures were not application defects.
 
+## Closed-session readiness rehearsal, October 15, 2026 UTC
+
+Merged source `2c24ebf2d1f96f4b888b02cb32b142b78e2ea3ad` passed hosted main CI
+and a separate committed-image rehearsal of the
+[explicit feed-readiness policy](../reference/feed-readiness.md). The rehearsal
+restored the retained schema-10 evidence backup into a new PostgreSQL volume and
+unique Compose project on loopback 41917. The source backup checksum and
+source-manifest receipt were verified, and the source stack's actual containers
+remained stopped throughout. No provider credentials were mounted or provider
+requests made.
+
+The policy pinned the restored receiver and required `spy-iex`. At actual
+service times 03:05:17–03:05:20 UTC, the retained real calendar classified the
+regular session as closed with `after_regular_close`. Observed transitions were:
+
+| State | Feed readiness | Evidence |
+| --- | --- | --- |
+| Restored stopped generation 2 | HTTP 503 | `stopped` |
+| Newly claimed generation 3 | HTTP 200 | `validated_feed_evidence_current` |
+| Generation 3 stopped | HTTP 503 | `stopped` |
+| Newly claimed generation 4 | HTTP 200 | Same closed-session calendar requirement |
+| One declared app restart under generation 4 | HTTP 200 | Same policy, receiver, registry and publications |
+| Generation 4 stopped | HTTP 503 | `stopped` |
+
+The two retained IEX quote captures remained unusable and quarantined. No quote
+was needed for this closed-session policy result; it grants no open-session
+fresh-price credit. A retained lease remains an authority declaration, not an
+inspection of a collector process.
+
+All three canonical raw publication receipts survived restart unchanged.
+Fixture readiness remained available, the case remained waiting, and fixture
+observations, actions and the independent economic-effect ledger remained empty.
+A coherent backup and SHA-256 receipt were retained with the policy file,
+configuration hashes, exact source/image and raw request/handle evidence. The
+private completion receipt is `feed-readiness-result.json`, with its audit in
+`completion-report.md`, beside the new runtime manifest.
+
+The disposable app and database were then stopped and independently confirmed
+inactive with PID 0. The existing services at 41890, 41906 and 41911 retained
+their original PIDs and images. No recurring collector or new 24-hour window was
+started. This short rehearsal establishes closed-session policy behavior and
+restart retention; it does not establish elapsed-time reliability, continuous
+feed service, usable real-price readiness, or profitability.
+
 ## Repeatable operator procedure
 
 1. Verify authorization for the credential pair, intended paper environment,
@@ -108,10 +152,12 @@ before continuing; those harness failures were not application defects.
 
 ## Current limits and next gate
 
-The `feed_coverage` readiness scope remains `not_configured`, even though this
-bounded routing rehearsal passed. Continuous collector ownership, coverage
-obligations, session-aware freshness, outage/recovery behavior, retention policy,
-licensing scope, and usable fresh quote evidence still need qualification.
+Existing services without a startup policy still report `feed_coverage` as
+`not_configured`. The isolated policy rehearsal above established finite
+closed-session behavior. Open-session readiness with a usable fresh real quote,
+continuous acquisition and calendar refresh, coverage obligations,
+outage/recovery operation, retention policy, and licensing scope still need
+qualification.
 
 The next price checkpoint needs a newly identified capture whose provider
 bid/ask, sizes, precision, and age satisfy the declared contract. A market-session
