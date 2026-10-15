@@ -2,6 +2,7 @@ package alpaca
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -40,9 +41,13 @@ func (c *testCollectorControl) Command(ctx context.Context, receiver string, com
 }
 
 type testCollectorReceiver struct {
-	store *storage.Memory
-	lose  bool
-	posts int
+	store              *storage.Memory
+	lose               bool
+	posts              int
+	publications       int
+	publicationFailure bool
+	lostPublication    bool
+	corruptPublication bool
 }
 
 func (r *testCollectorReceiver) Snapshot(ctx context.Context, ids []string) (domain.ResearchSnapshot, error) {
@@ -61,6 +66,22 @@ func (r *testCollectorReceiver) SubmitFenced(ctx context.Context, receiver strin
 	receipt, err := r.store.SubmitCollectorResearch(ctx, receiver, fence, input, time.Now)
 	if err == nil && r.lose {
 		return receipt, errors.New("lost delivery reply")
+	}
+	return receipt, err
+}
+
+func (r *testCollectorReceiver) Publish(ctx context.Context, receiver string, fence feedcollector.Fence, record Recording) (feedcollector.EvidenceReceipt, error) {
+	r.publications++
+	if r.publicationFailure {
+		return feedcollector.EvidenceReceipt{}, errors.New("publication unavailable")
+	}
+	raw, _ := json.Marshal(record)
+	receipt, err := r.store.PublishFeedEvidence(ctx, receiver, fence.RegistrationID, fmt.Sprintf("%s-r%d", record.CaptureID, record.Revision), fence, raw, time.Now, func(storage.FeedEvidenceSnapshot, time.Time, *storage.FeedEvidenceRecord) error { return nil })
+	if err == nil && r.lostPublication && r.publications == 1 {
+		return feedcollector.EvidenceReceipt{}, errors.New("lost publication reply")
+	}
+	if r.corruptPublication {
+		receipt.RecordingSHA256 = "wrong"
 	}
 	return receipt, err
 }
@@ -214,5 +235,111 @@ func TestCollectorPartialHistoryNeverReactivates(t *testing.T) {
 				t.Fatal("partial run activated work", err)
 			}
 		})
+	}
+}
+
+func TestCollectorPublicationRequiredAndBounded(t *testing.T) {
+	for _, mode := range []string{"success", "lost_reply", "unavailable", "invalid_receipt"} {
+		t.Run(mode, func(t *testing.T) {
+			j, s, control, receiver := collectorFixture(t)
+			receiver.lostPublication = mode == "lost_reply"
+			receiver.publicationFailure = mode == "unavailable"
+			receiver.corruptPublication = mode == "invalid_receipt"
+			calls := 0
+			client := testClient(t, func(w http.ResponseWriter, r *http.Request) { calls++; _, _ = fmt.Fprint(w, freshQuote()) })
+			out, err := j.runCollector(context.Background(), client, s, control, receiver, func(context.Context, time.Duration) error { return nil })
+			good := mode == "success" || mode == "lost_reply"
+			if !out.PublicationRequired || !out.StopConfirmed {
+				t.Fatal(out, err)
+			}
+			if good {
+				if err != nil || out.State != "completed" || out.Published != 2 || calls != 2 {
+					t.Fatal(out, err, calls)
+				}
+				evidence, _ := receiver.store.FeedEvidence(context.Background())
+				if len(evidence.Records) != 2 {
+					t.Fatal("duplicate economic publication", len(evidence.Records))
+				}
+			} else {
+				if err == nil || out.State != "stopped" || out.Published != 0 || calls != 1 || out.Delivery.Acknowledged != 1 {
+					t.Fatal(out, err, calls)
+				}
+				expected := 1
+				if mode == "unavailable" {
+					expected = 3
+				}
+				if receiver.publications != expected {
+					t.Fatal("publication retry bound", receiver.publications)
+				}
+			}
+			before := receiver.publications
+			_, _ = j.RunCollector(context.Background(), client, s, control, receiver)
+			if before != receiver.publications {
+				t.Fatal("terminal run repeated publication")
+			}
+		})
+	}
+}
+
+func TestCollectorCompletedPublicationRequiresRetainedReceipt(t *testing.T) {
+	j, s, control, receiver := collectorFixture(t)
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) { _, _ = fmt.Fprint(w, freshQuote()) })
+	if _, err := j.runCollector(context.Background(), client, s, control, receiver, func(context.Context, time.Duration) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.root.Remove(collectorName(s.Session.ID, "publication-001-receipt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := j.Collector(s.Session.ID); err == nil {
+		t.Fatal("completed run accepted missing publication receipt")
+	}
+}
+
+func TestCollectorLegacyCompletionDoesNotGainPublicationCredit(t *testing.T) {
+	j, s, control, receiver := collectorFixture(t)
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) { _, _ = fmt.Fprint(w, freshQuote()) })
+	if _, err := j.runCollector(context.Background(), client, s, control, receiver, func(context.Context, time.Duration) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	// Reconstruct the old protocol's intent/result, without publication artifacts.
+	var intent collectorIntent
+	var done collectorResult
+	if _, err := j.readCollection(collectorName(s.Session.ID, "intent"), &intent); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := j.readCollection(collectorName(s.Session.ID, "complete"), &done); err != nil {
+		t.Fatal(err)
+	}
+	intent.Schema = "mantik-alpaca-collector-v1"
+	if err := j.root.Remove(collectorName(s.Session.ID, "intent")); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.writeCollection(collectorName(s.Session.ID, "intent"), intent); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := j.readCollection(collectorName(s.Session.ID, "intent"), &intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done.Schema = "mantik-alpaca-collector-result-v1"
+	done.IntentSHA256 = digest
+	done.Published = 0
+	if err := j.root.Remove(collectorName(s.Session.ID, "complete")); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.writeCollection(collectorName(s.Session.ID, "complete"), done); err != nil {
+		t.Fatal(err)
+	}
+	for n := 1; n <= s.Session.Count; n++ {
+		for _, suffix := range []string{"request", "receipt"} {
+			if err := j.root.Remove(collectorName(s.Session.ID, fmt.Sprintf("publication-%03d-%s", n, suffix))); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	before := receiver.publications
+	out, err := j.RunCollector(context.Background(), client, s, control, receiver)
+	if err != nil || out.State != "completed" || out.PublicationRequired || out.Published != 0 || receiver.publications != before {
+		t.Fatal(out, err)
 	}
 }

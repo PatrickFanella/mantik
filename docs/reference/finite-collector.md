@@ -86,6 +86,19 @@ attempt intact. The existing [fenced submission recovery](collector-submission.m
 can reconcile an already accepted input after expiry or stop, without another
 submission.
 
+After each acknowledged delivery, the collector saves the exact raw publication
+request, posts it to `/v1/feed-evidence`, validates the canonical capture digest,
+registration and fixed owner/generation, then saves the receipt before another
+sample. Publication and delivery share a two-minute deadline. A lost publication
+response permits at most three identical publication attempts within that
+deadline; no new generation or provider read is used for a retry. A rejected,
+unconfirmed or mismatched publication stops further acquisition and preserves
+the request for explicit inspection. The known lease still receives bounded
+cleanup. An older server without this endpoint cannot complete a new run.
+Only captures acquired by this run are published automatically; older journal
+captures require explicit publication. Server publication capacity exhaustion
+also stops the run without deleting evidence or pruning history.
+
 Control requests and successful receipts are retained separately in the journal,
 before subsequent work. Request IDs include journal and run identity. A lost
 claim response allows no acquisition and has no trusted generation to stop.
@@ -99,7 +112,10 @@ delivery finished. A stop receipt declares lease release, not process liveness.
 Collector status reads the private intent, control history, session, and terminal
 receipt. It reports `completed`, `stopped`, or `incomplete`; it does not inspect
 processes or infer that an incomplete run is alive. Completion requires the
-declared captures, acknowledged delivery, and a verified stop receipt.
+declared captures, acknowledged delivery, validated raw publication receipts,
+and a verified stop receipt. `published` counts receipts for this run;
+`publication_required` distinguishes new v2 runs from historical v1 results.
+Historical v1 completion remains readable and does not imply raw publication.
 
 An exact completed invocation returns retained history without claiming,
 renewing, fetching, or submitting again. Changing the spec, owner, receiver, or

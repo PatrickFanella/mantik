@@ -27,6 +27,7 @@ type CollectorControl interface {
 	Command(context.Context, string, feedcollector.Command) (feedcollector.Receipt, error)
 }
 type CollectorReceiver interface {
+	Publish(context.Context, string, feedcollector.Fence, Recording) (feedcollector.EvidenceReceipt, error)
 	Snapshot(context.Context, []string) (domain.ResearchSnapshot, error)
 	SubmitFenced(context.Context, string, feedcollector.Fence, domain.RoutingInput) (domain.RoutingReceipt, error)
 }
@@ -55,11 +56,18 @@ type collectorIntent struct {
 	At            time.Time                  `json:"at"`
 	InitialInputs int                        `json:"initial_inputs"`
 }
+type collectorPublication struct {
+	ReceiverID string              `json:"receiver_id"`
+	Fence      feedcollector.Fence `json:"fence"`
+	Recording  Recording           `json:"recording"`
+}
+
 type collectorStep struct {
 	ReceiverID string                `json:"receiver_id"`
 	Command    feedcollector.Command `json:"command"`
 }
 type collectorResult struct {
+	Published     int           `json:"published"`
 	Schema        string        `json:"schema"`
 	IntentSHA256  string        `json:"intent_sha256"`
 	State         string        `json:"state"`
@@ -70,12 +78,14 @@ type collectorResult struct {
 	Delivery      JournalStatus `json:"delivery"`
 }
 type CollectorStatus struct {
-	ID            string        `json:"id"`
-	State         string        `json:"state"`
-	StopConfirmed bool          `json:"stop_confirmed"`
-	Steps         int           `json:"steps"`
-	Session       SessionStatus `json:"session"`
-	Delivery      JournalStatus `json:"delivery"`
+	Published           int           `json:"published"`
+	PublicationRequired bool          `json:"publication_required"`
+	ID                  string        `json:"id"`
+	State               string        `json:"state"`
+	StopConfirmed       bool          `json:"stop_confirmed"`
+	Steps               int           `json:"steps"`
+	Session             SessionStatus `json:"session"`
+	Delivery            JournalStatus `json:"delivery"`
 }
 
 func collectorName(id, suffix string) string { return "collector-" + id + "-" + suffix + ".json" }
@@ -108,9 +118,10 @@ func (j *Journal) Collector(id string) (CollectorStatus, error) {
 	if err != nil {
 		return out, err
 	}
-	if intent.Schema != "mantik-alpaca-collector-v1" || intent.JournalID != j.ID || intent.Spec.Session.ID != id || intent.Spec.validate() != nil || !validTime(intent.At) || intent.InitialInputs < 0 || intent.InitialInputs > MaxCaptures {
+	if (intent.Schema != "mantik-alpaca-collector-v1" && intent.Schema != "mantik-alpaca-collector-v2") || intent.JournalID != j.ID || intent.Spec.Session.ID != id || intent.Spec.validate() != nil || !validTime(intent.At) || intent.InitialInputs < 0 || intent.InitialInputs > MaxCaptures {
 		return out, ErrJournalConflict
 	}
+	out.PublicationRequired = intent.Schema == "mantik-alpaca-collector-v2"
 	var done collectorResult
 	_, err = j.readCollection(collectorName(id, "complete"), &done)
 	if errors.Is(err, os.ErrNotExist) {
@@ -119,7 +130,12 @@ func (j *Journal) Collector(id string) (CollectorStatus, error) {
 	if err != nil {
 		return out, err
 	}
-	if done.Schema != "mantik-alpaca-collector-result-v1" || done.IntentSHA256 != digest || !validTime(done.At) || done.At.Before(intent.At) || done.Steps < 1 || done.Steps > 256 || (done.State != "completed" && done.State != "stopped") {
+	required := intent.Schema == "mantik-alpaca-collector-v2"
+	expectedSchema := "mantik-alpaca-collector-result-v1"
+	if required {
+		expectedSchema = "mantik-alpaca-collector-result-v2"
+	}
+	if done.Schema != expectedSchema || done.Published < 0 || done.Published > intent.Spec.Session.Count || (!required && done.Published != 0) || done.IntentSHA256 != digest || !validTime(done.At) || done.At.Before(intent.At) || done.Steps < 1 || done.Steps > 256 || (done.State != "completed" && done.State != "stopped") {
 		return out, ErrJournalConflict
 	}
 	var last *feedcollector.Receipt
@@ -153,6 +169,38 @@ func (j *Journal) Collector(id string) (CollectorStatus, error) {
 	if done.StopConfirmed && (last == nil || last.Operation != "stop" || !last.Entry.Lease.Stopped) {
 		return out, ErrJournalConflict
 	}
+	if required {
+		if done.State == "completed" && done.Published != intent.Spec.Session.Count {
+			return out, ErrJournalConflict
+		}
+		records, err := j.PublicationRecordings()
+		if err != nil {
+			return out, err
+		}
+		for n := 1; n <= done.Published; n++ {
+			var request collectorPublication
+			var receipt feedcollector.EvidenceReceipt
+			if _, err := j.readCollection(collectorName(id, fmt.Sprintf("publication-%03d-request", n)), &request); err != nil {
+				return out, err
+			}
+			if _, err := j.readCollection(collectorName(id, fmt.Sprintf("publication-%03d-receipt", n)), &receipt); err != nil {
+				return out, err
+			}
+			spec := intent.Spec.Session.collection(n)
+			if request.ReceiverID != intent.Spec.Binding.ReceiverID || request.Fence.RegistrationID != intent.Registration.ID || request.Fence.OwnerID != intent.Spec.OwnerID || request.Recording.CaptureID != spec.ID || last == nil || request.Fence.Generation != last.Entry.Lease.Generation || validatePublicationReceipt(request.Recording, request.Fence, receipt) != nil {
+				return out, ErrJournalConflict
+			}
+			found := false
+			for _, record := range records {
+				if reflect.DeepEqual(record, request.Recording) {
+					found = true
+				}
+			}
+			if !found {
+				return out, ErrJournalConflict
+			}
+		}
+	}
 	if done.State == "completed" {
 		current, err := j.Session(id)
 		if err != nil {
@@ -165,7 +213,7 @@ func (j *Journal) Collector(id string) (CollectorStatus, error) {
 			return out, err
 		}
 	}
-	return CollectorStatus{ID: id, State: done.State, StopConfirmed: done.StopConfirmed, Steps: done.Steps, Session: done.Session, Delivery: done.Delivery}, nil
+	return CollectorStatus{Published: done.Published, PublicationRequired: required, ID: id, State: done.State, StopConfirmed: done.StopConfirmed, Steps: done.Steps, Session: done.Session, Delivery: done.Delivery}, nil
 }
 
 func (j *Journal) writeCollectionBinding(b Binding) error {
@@ -270,7 +318,7 @@ func (j *Journal) runCollector(ctx context.Context, c *Client, s CollectorSpec, 
 	if len(snapshot.State.Commands)+budget > feedcollector.MaxCommands || len(snapshot.State.Admissions)+s.Session.Count > feedcollector.MaxAdmissions {
 		return out, errors.New("collector registry capacity cannot cover declared run")
 	}
-	intent := collectorIntent{Schema: "mantik-alpaca-collector-v1", JournalID: j.ID, Spec: s, Registration: r, At: time.Now().UTC(), InitialInputs: initial.Inputs}
+	intent := collectorIntent{Schema: "mantik-alpaca-collector-v2", JournalID: j.ID, Spec: s, Registration: r, At: time.Now().UTC(), InitialInputs: initial.Inputs}
 	if err := j.writeCollection(collectorName(s.Session.ID, "intent"), intent); err != nil {
 		return out, err
 	}
@@ -284,6 +332,7 @@ func (j *Journal) runCollector(ctx context.Context, c *Client, s CollectorSpec, 
 		return out, err
 	}
 	steps := 0
+	published := 0
 	generation := uint64(0)
 	command := func(callCtx context.Context, operation string) (feedcollector.Receipt, error) {
 		steps++
@@ -347,7 +396,46 @@ func (j *Journal) runCollector(ctx context.Context, c *Client, s CollectorSpec, 
 			deliveryCtx, deliveryCancel := context.WithTimeout(callCtx, 2*time.Minute)
 			defer deliveryCancel()
 			_, err := j.Flush(deliveryCtx, s.Binding, bound, 16)
-			return err
+			if err != nil {
+				return err
+			}
+			records, err := j.PublicationRecordings()
+			if err != nil {
+				return err
+			}
+			spec := s.Session.collection(published + 1)
+			for _, record := range records {
+				if record.CaptureID != spec.ID || record.Revision != 1 {
+					continue
+				}
+				req := collectorPublication{s.Binding.ReceiverID, bound.fence, record}
+				if err := j.writeCollection(collectorName(s.Session.ID, fmt.Sprintf("publication-%03d-request", published+1)), req); err != nil {
+					return err
+				}
+				// Immutable retries use exactly the same fence and bytes; never reacquire authority.
+				var receipt feedcollector.EvidenceReceipt
+				for attempt := 0; attempt < 3; attempt++ {
+					receipt, err = receiver.Publish(deliveryCtx, req.ReceiverID, req.Fence, req.Recording)
+					if err == nil {
+						break
+					}
+					if deliveryCtx.Err() != nil {
+						break
+					}
+				}
+				if err != nil {
+					return err
+				}
+				if err := validatePublicationReceipt(record, bound.fence, receipt); err != nil {
+					return err
+				}
+				if err := j.writeCollection(collectorName(s.Session.ID, fmt.Sprintf("publication-%03d-receipt", published+1)), receipt); err != nil {
+					return err
+				}
+				published++
+				return nil
+			}
+			return ErrJournalConflict
 		}
 		out.Session, runErr = j.runControlledSession(ctx, c, s.Session, paced, renew, deliver)
 	}
@@ -364,10 +452,10 @@ func (j *Journal) runCollector(ctx context.Context, c *Client, s CollectorSpec, 
 	status, statusErr := j.Status()
 	runErr = errors.Join(runErr, statusErr)
 	state := "stopped"
-	if runErr == nil && stopConfirmed && out.Session.State == "completed" && status.Pending == 0 {
+	if runErr == nil && stopConfirmed && out.Session.State == "completed" && status.Pending == 0 && published == s.Session.Count {
 		state = "completed"
 	}
-	result := collectorResult{"mantik-alpaca-collector-result-v1", digest, state, time.Now().UTC(), stopConfirmed, steps, out.Session, status}
+	result := collectorResult{Schema: "mantik-alpaca-collector-result-v2", IntentSHA256: digest, State: state, At: time.Now().UTC(), StopConfirmed: stopConfirmed, Steps: steps, Session: out.Session, Delivery: status, Published: published}
 	if err := j.writeCollection(collectorName(s.Session.ID, "complete"), result); err != nil {
 		return out, errors.Join(runErr, err)
 	}

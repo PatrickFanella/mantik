@@ -117,7 +117,8 @@ configure feed readiness.
 with an explicit registration, owner, and generation; input and admission
 receipts commit together.
 The [finite leased collector](docs/reference/finite-collector.md) combines
-explicit ownership, bounded quote acquisition, fenced delivery, and release
+explicit ownership, bounded quote acquisition, fenced delivery, raw capture
+publication, and release
 through `alpaca-run-collector`. It has no automatic restart or catch-up schedule.
 `alpaca-publish` retains [validated server evidence](docs/reference/feed-evidence.md)
 for inspection with `feed-coverage`, separately from global readiness activation.

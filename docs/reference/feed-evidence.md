@@ -36,12 +36,13 @@ did not commit, current authority is still required. A successor may read an
 identical prior publication under current authority but cannot rewrite its first
 publisher or time.
 
-The finite collector currently delivers normalized inputs but does not publish
-raw captures automatically. Publish explicitly while holding its lease, or after
-acquiring a new generation for inspection/publication. Publishing an older
-generation's quote does not turn its admission into current-generation evidence.
-Automatic publication in the finite collector and an explicit global readiness
-policy remain subsequent implementation units.
+New [finite collector](finite-collector.md) runs publish each acquired capture
+under the run's fixed lease generation after normalized delivery and before
+releasing the lease. Historical v1 completed runs retain their original meaning
+and have no automatic publication proof. Manual publication remains available
+for explicit recovery; publishing an older capture does not make its quote
+admission belong to the current generation. Global readiness policy remains
+unconfigured.
 
 ## HTTP and validation
 

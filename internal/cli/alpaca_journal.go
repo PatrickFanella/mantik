@@ -43,6 +43,17 @@ func (r remoteResearchReceiver) SubmitFenced(ctx context.Context, receiver strin
 	return r.Submit(ctx, receiver, i)
 }
 
+func (r remoteResearchReceiver) Publish(ctx context.Context, receiver string, fence feedcollector.Fence, record alpaca.Recording) (feedcollector.EvidenceReceipt, error) {
+	body := struct {
+		ReceiverID string              `json:"receiver_id"`
+		Fence      feedcollector.Fence `json:"fence"`
+		Recording  alpaca.Recording    `json:"recording"`
+	}{receiver, fence, record}
+	var receipt feedcollector.EvidenceReceipt
+	err := request(ctx, r.base, "/v1/feed-evidence", body, &receipt)
+	return receipt, err
+}
+
 func (r remoteResearchReceiver) Snapshot(ctx context.Context, ids []string) (domain.ResearchSnapshot, error) {
 	query := url.Values{}
 	for _, id := range ids {

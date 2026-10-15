@@ -63,11 +63,25 @@ func TestFiniteCollectorCLIThroughAuthenticatedService(t *testing.T) {
 	if _, err := store.FeedCollectorCommand(context.Background(), snapshot.ReceiverID, feedcollector.Command{RequestID: "register", Operation: "register", RegistrationID: r.ID, Registration: &r}, time.Now); err != nil {
 		t.Fatal(err)
 	}
-	var controls, reads atomic.Int32
+	var controls, reads, publications atomic.Int32
 	handler := service.Handler(store, "collector-cli-api-token")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" && r.URL.Path == "/v1/feed-collectors" {
 			controls.Add(1)
+		}
+		if r.URL.Path == "/v1/feed-evidence" && publications.Add(1) == 1 {
+			saved := httptest.NewRecorder()
+			handler.ServeHTTP(saved, r)
+			if saved.Code != http.StatusOK {
+				t.Error(saved.Body.String())
+			}
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			_ = conn.Close()
+			return
 		}
 		handler.ServeHTTP(w, r)
 	}))
@@ -91,7 +105,7 @@ func TestFiniteCollectorCLIThroughAuthenticatedService(t *testing.T) {
 		t.Fatal(out.String(), err)
 	}
 	var result alpaca.CollectorStatus
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.State != "completed" || result.Delivery.Acknowledged != 1 || !result.StopConfirmed {
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.State != "completed" || !result.PublicationRequired || result.Published != 1 || result.Delivery.Acknowledged != 1 || !result.StopConfirmed {
 		t.Fatal(out.String(), err)
 	}
 	if strings.Contains(out.String(), "manufactured-provider-key") || strings.Contains(out.String(), "manufactured-provider-secret") {
@@ -105,6 +119,15 @@ func TestFiniteCollectorCLIThroughAuthenticatedService(t *testing.T) {
 	}
 	if _, err := run("alpaca-collector-status", "--journal", journal, "--collector-id", spec.ID); err != nil {
 		t.Fatal(err)
+	}
+	evidence, err := store.FeedEvidence(context.Background())
+	if err != nil || len(evidence.Records) != 1 || publications.Load() != 2 {
+		t.Fatal("missing or repeated raw publication", err, publications.Load())
+	}
+	for _, record := range evidence.Records {
+		if record.Fence.Generation != 1 || record.Fence.OwnerID != "finite-cli-owner" {
+			t.Fatal(record.Fence)
+		}
 	}
 	state, _ := store.Snapshot(context.Background())
 	if state.ObservationCount != 0 || len(state.State.Actions.Items) != 0 {
