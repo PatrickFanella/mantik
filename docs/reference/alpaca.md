@@ -137,5 +137,6 @@ quote suppression. Credentials and raw evidence remain private. Continuous
 acquisition still needs an approved cadence and qualified retention policy.
 The service retains at most 4,096 manual inputs; collection must stop or retain pending work externally at
 capacity. Continuous ingestion also needs retention and pagination policy.
-Real-feed readiness remains unconfigured. Profitable paper operation remains a
+Real-feed readiness requires an explicit [startup policy](feed-readiness.md)
+and validated server evidence. Profitable paper operation remains a
 later qualification gate.

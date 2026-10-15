@@ -121,7 +121,9 @@ explicit ownership, bounded quote acquisition, fenced delivery, raw capture
 publication, and release
 through `alpaca-run-collector`. It has no automatic restart or catch-up schedule.
 `alpaca-publish` retains [validated server evidence](docs/reference/feed-evidence.md)
-for inspection with `feed-coverage`, separately from global readiness activation.
+for inspection with `feed-coverage`. An explicit [startup policy](docs/reference/feed-readiness.md)
+can enable scoped feed readiness for a pinned receiver and required registrations;
+it does not start acquisition or alter fixture execution.
 Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 

@@ -73,8 +73,8 @@ query. Every report explicitly leaves `collector_liveness_verified`,
 `global_readiness_configured`, and `qualification_credit` false. There is no
 server heartbeat, entitlement recheck, licensing approval, or current receiver
 history check. A file receipt does not prove a process is live. Global readiness
-continues to report unconfigured until a separate durable collector/coverage
-contract is installed and qualified.
+requires the separate server evidence contract and an explicit
+[startup policy](feed-readiness.md); this local report does not activate it.
 
 Session classification is read-only. It does not install future obligations,
 change research cases, suppress existing operational deadlines, authorize a fill,

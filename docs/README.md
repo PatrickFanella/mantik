@@ -32,6 +32,8 @@
   bounded acquisition/delivery, cleanup, and retained outcomes.
 - [Validated feed evidence](reference/feed-evidence.md): immutable raw capture
   publication, normalized-history checks, and server-side coverage inspection.
+- [Feed readiness policy](reference/feed-readiness.md): opt-in receiver binding,
+  required registrations, validated evidence, and scoped failure behavior.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed

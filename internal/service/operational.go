@@ -11,7 +11,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
 
-func readinessResponse(w http.ResponseWriter, r *http.Request, store storage.Store, clock Clock, scope string, enforce bool) {
+func readinessResponse(w http.ResponseWriter, r *http.Request, store storage.Store, clock Clock, policy *FeedReadinessPolicy, scope string, enforce bool) {
 	if !slices.Contains(operational.Scopes, scope) {
 		write(w, 400, map[string]string{"error": "unknown readiness scope"})
 		return
@@ -19,7 +19,9 @@ func readinessResponse(w http.ResponseWriter, r *http.Request, store storage.Sto
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 	snapshot, err := store.Snapshot(ctx)
-	report := operational.Readiness(snapshot.State, clock.Now(), err == nil, scope)
+	at := clock.Now()
+	report := operational.Readiness(snapshot.State, at, err == nil, scope)
+	applyFeedReadiness(ctx, store, at, policy, err == nil, &report)
 	status := 200
 	if enforce && !report.Ready {
 		status = 503
@@ -27,9 +29,9 @@ func readinessResponse(w http.ResponseWriter, r *http.Request, store storage.Sto
 	write(w, status, report)
 }
 
-func operationalRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
+func operationalRoutes(mux *http.ServeMux, store storage.Store, clock Clock, policy *FeedReadinessPolicy) {
 	mux.HandleFunc("GET /v1/readiness/{scope}", func(w http.ResponseWriter, r *http.Request) {
-		readinessResponse(w, r, store, clock, r.PathValue("scope"), false)
+		readinessResponse(w, r, store, clock, policy, r.PathValue("scope"), false)
 	})
 	mux.HandleFunc("GET /v1/operations", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -39,7 +41,10 @@ func operationalRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			failed(w, err)
 			return
 		}
-		write(w, 200, operational.Inspect(snapshot.State, clock.Now()))
+		at := clock.Now()
+		report := operational.Inspect(snapshot.State, at)
+		applyFeedReadiness(ctx, store, at, policy, true, &report.Readiness)
+		write(w, 200, report)
 	})
 	backend, ok := store.(storage.OperationalStore)
 	if !ok {

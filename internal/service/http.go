@@ -22,12 +22,24 @@ func Handler(store storage.Store, token string) http.Handler {
 
 // HandlerWithClock uses an explicit operational clock for readiness and recovery.
 func HandlerWithClock(store storage.Store, token string, clock Clock) http.Handler {
+	return handlerWithPolicy(store, token, clock, nil)
+}
+
+func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/feed-readiness-policy", func(w http.ResponseWriter, r *http.Request) {
+		write(w, 200, struct {
+			Configured                bool                 `json:"configured"`
+			Policy                    *FeedReadinessPolicy `json:"policy"`
+			CollectorLivenessVerified bool                 `json:"collector_liveness_verified"`
+			QualificationCredit       bool                 `json:"qualification_credit"`
+		}{Configured: policy != nil, Policy: policy})
+	})
 	routingRoutes(mux, store)
 	researchRoutes(mux, store)
-	feedCollectorRoutes(mux, store, clock)
-	feedEvidenceRoutes(mux, store, clock)
-	operationalRoutes(mux, store, clock)
+	feedCollectorRoutes(mux, store, clock, policy)
+	feedEvidenceRoutes(mux, store, clock, policy)
+	operationalRoutes(mux, store, clock, policy)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]string{"status": "up", "mode": "paper_fixture"})
 	})
@@ -36,7 +48,7 @@ func HandlerWithClock(store storage.Store, token string, clock Clock) http.Handl
 		if scope == "" {
 			scope = "storage"
 		}
-		readinessResponse(w, r, store, clock, scope, true)
+		readinessResponse(w, r, store, clock, policy, scope, true)
 	})
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)

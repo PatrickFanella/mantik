@@ -66,10 +66,11 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fs.SetOutput(errOut)
-	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest string
+	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest, feedPolicyPath string
 	var exportDataset bool
 	switch args[0] {
 	case "serve":
+		fs.StringVar(&feedPolicyPath, "feed-readiness-policy", "", "optional receiver-bound feed readiness policy JSON file")
 		fs.StringVar(&listen, "listen", "127.0.0.1:40880", "listen address; non-loopback requires MANTIK_API_TOKEN")
 	case "demo":
 		fs.StringVar(&apiURL, "api-url", "", "service URL; omit for in-memory demo")
@@ -96,7 +97,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	if args[0] == "serve" {
-		return serve(ctx, listen)
+		return serve(ctx, listen, feedPolicyPath)
 	}
 	if args[0] == "replay" {
 		if exportDataset {
@@ -218,7 +219,21 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	return nil
 }
 
-func serve(ctx context.Context, listen string) error {
+func serve(ctx context.Context, listen, policyPath string) error {
+	var policy *service.FeedReadinessPolicy
+	if policyPath != "" {
+		file, err := os.Open(policyPath)
+		if err != nil {
+			return err
+		}
+		parsed, readErr := service.ReadFeedReadinessPolicy(file)
+		closeErr := file.Close()
+		if err := errors.Join(readErr, closeErr); err != nil {
+			return err
+		}
+		policy = parsed
+	}
+
 	host, _, err := net.SplitHostPort(listen)
 	token := os.Getenv("MANTIK_API_TOKEN")
 	if err != nil || net.ParseIP(host) == nil {
@@ -253,6 +268,10 @@ func serve(ctx context.Context, listen string) error {
 		return err
 	}
 	defer store.Close()
+	handler, err := service.HandlerWithFeedReadiness(store, token, service.WallClock{}, policy)
+	if err != nil {
+		return err
+	}
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
@@ -269,7 +288,7 @@ func serve(ctx context.Context, listen string) error {
 		service.RunActionWorkerWithFixtureGate(workerCtx, store, workerID+"-actions", service.WallClock{}, interval, 30*time.Second, gate)
 	}()
 	defer func() { stopWorker(); <-workerDone; <-actionDone }()
-	server := &http.Server{Handler: service.Handler(store, token), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	finished := make(chan error, 1)
 	go func() { finished <- server.Serve(listener) }()
 	select {

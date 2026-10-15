@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -201,5 +203,17 @@ func TestServeRequiresAuthority(t *testing.T) {
 		if err := Run(context.Background(), args, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
 			t.Fatalf("unexpected acceptance: %v", args)
 		}
+	}
+}
+
+func TestServeRejectsInvalidFeedPolicyBeforeDatabaseOrListen(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+	path := filepath.Join(t.TempDir(), "policy.json")
+	if err := os.WriteFile(path, []byte(`{"schema":"unknown"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := Run(context.Background(), []string{"serve", "--listen", "127.0.0.1:0", "--feed-readiness-policy", path}, io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "feed readiness policy") {
+		t.Fatal(err)
 	}
 }

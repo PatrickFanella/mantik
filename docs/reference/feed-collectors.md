@@ -115,10 +115,10 @@ history, check time, and a status per registration:
 | `stopped` | The matching owner recorded a stop |
 | `clock_uncertain` | Inspection time precedes the latest retained command |
 
-`process_liveness_verified`, `global_readiness_configured`, and
-`qualification_credit` remain false. A lease proves a declaration, not actual
-process health or usable market evidence. `feed_coverage` remains
-`not_configured`, and `/readyz?scope=feed_coverage` remains unavailable.
+`process_liveness_verified` and `qualification_credit` remain false.
+`global_readiness_configured` reflects the optional [startup policy](feed-readiness.md).
+A lease proves a declaration, not actual process health or usable market evidence.
+Without that policy, `feed_coverage` remains `not_configured` and unavailable.
 
 The registry retains at most 16 registrations and 4,096 successful distinct
 commands, including renewals. Conflicting or rejected commands do not consume
