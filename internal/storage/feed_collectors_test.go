@@ -170,7 +170,7 @@ func TestPostgresContractsFeedCollectorUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_hypothesis_publications; DROP TABLE mantik_news_reviews; DROP TABLE mantik_news_cases; DROP TABLE mantik_feed_evidence; DROP TABLE mantik_feed_collectors; DELETE FROM mantik_schema WHERE version>=8"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_hypothesis_trials; DROP TABLE mantik_hypothesis_publications; DROP TABLE mantik_news_reviews; DROP TABLE mantik_news_cases; DROP TABLE mantik_feed_evidence; DROP TABLE mantik_feed_collectors; DELETE FROM mantik_schema WHERE version>=8"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -188,7 +188,7 @@ func TestPostgresContractsFeedCollectorUpgrade(t *testing.T) {
 		t.Fatal("upgrade changed fixture aggregate", err)
 	}
 	var maximum int
-	if err := upgraded.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 13 {
+	if err := upgraded.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 14 {
 		t.Fatal(err)
 	}
 	if _, err := upgraded.pool.Exec(ctx, "UPDATE mantik_schema SET sha256='changed' WHERE version=8"); err != nil {

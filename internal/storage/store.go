@@ -14,6 +14,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/newscase"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
+	"git.subcult.tv/subculture-collective/mantik/internal/trial"
 	"git.subcult.tv/subculture-collective/mantik/internal/workflow"
 )
 
@@ -36,6 +37,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	trials       map[string]trial.Registration
 	publications map[string]hypothesis.Publication
 	reviews      map[string]review.Attempt
 	news         newscase.State
@@ -52,7 +54,7 @@ type Memory struct {
 }
 
 func NewMemory() *Memory {
-	return &Memory{publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
+	return &Memory{trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
 }
 
 // NewQueuedMemory exercises the persistent delivery contract without a database.
