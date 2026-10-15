@@ -108,6 +108,63 @@ started. This short rehearsal establishes closed-session policy behavior and
 restart retention; it does not establish elapsed-time reliability, continuous
 feed service, usable real-price readiness, or profitability.
 
+## Open-session readiness rehearsal, October 15, 2026 UTC
+
+Merged source `71964a727fd44b21986fffeefdc361ecbfc6bf7a` passed hosted main CI
+and a new isolated committed-image rehearsal during the regular session. A
+checksum-verified schema-10 backup from the stopped closed-session stack was
+restored into a unique project and new PostgreSQL volume. The source journal was
+archived, verified and restored as a separate copy, preserving its exact journal,
+receiver, registration and API-origin binding. The new project used the free
+loopback 41916 endpoint; prior source stacks remained stopped and their evidence
+was preserved.
+
+The finite collector performed two explicit SPY IEX quote acquisitions, twenty
+seconds apart, with two total HTTP attempts. Both responses normalized to usable
+`whole_cent_ask_v1` evidence. Each input was admitted under the collector's fixed
+generation 5, and each raw capture was automatically published with a matching
+validated receipt before the run completed.
+
+Ten readiness samples at actual service times from
+14:14:19.609971995 through 14:14:37.648645559 UTC reported:
+
+- The real calendar classified the regular session as open and required a price.
+- The quote was usable and fresh under the fixed server limits.
+- Its admission matched the current owner and generation.
+- The lease was current and `feed_coverage` returned
+  `validated_feed_evidence_current`.
+
+The collector then completed both acquisitions/publications and released its
+lease. Feed readiness returned to HTTP 503 with `stopped`, although the final
+quote remained usable. A completed replay in a network-disabled container
+returned the same retained history without another provider read or control
+request. The completed journal archive was verified and restored into another
+isolated directory; offline, credential-free collector inspection reproduced
+both v2 publication receipts and the completed status.
+
+All six journal inputs were acknowledged with zero pending inputs. Five raw
+publications were retained in the database: three restored records and the two
+new quotes. The fixture case remained waiting with zero observations, actions
+or independent economic effects. A coherent database backup and SHA-256 receipt
+were retained alongside the journal archive, policy/configuration hashes,
+source/image/CI receipts, raw acquisition evidence and readiness samples.
+Private completion files are `open-session-result.json`, `completion-audit.json`
+and `completion-report.md` beside the new runtime manifest.
+
+The disposable app, database and finite collector were independently confirmed
+inactive with PID 0 and exit code 0. The canonical source journal was unchanged,
+both source stacks stayed stopped, and the three original running services kept
+their exact PIDs and images. Credentials were mounted read-only only for the
+bounded market-read collector and its offline completed replay. No account or
+order endpoint, recurring collection, or new 24-hour window was used.
+
+This establishes finite open-session real-price acquisition, admission,
+automatic publication, scoped readiness and lease-release behavior. Ten samples
+across this short interval do not establish uninterrupted or long-duration
+operation. Strategy evaluation, realistic paper fills/costs, prospective
+profitability, and any broker execution remain separate gates. Existing running
+services have not been upgraded to this source or policy.
+
 ## Repeatable operator procedure
 
 1. Verify authorization for the credential pair, intended paper environment,
@@ -153,17 +210,18 @@ feed service, usable real-price readiness, or profitability.
 ## Current limits and next gate
 
 Existing services without a startup policy still report `feed_coverage` as
-`not_configured`. The isolated policy rehearsal above established finite
-closed-session behavior. Open-session readiness with a usable fresh real quote,
-continuous acquisition and calendar refresh, coverage obligations,
-outage/recovery operation, retention policy, and licensing scope still need
-qualification.
+`not_configured`. The isolated rehearsals above established finite closed- and
+open-session readiness behavior. A newly identified real IEX quote passed the
+price, attribution, age and current-generation contracts; its release transition
+and retained history were verified separately.
 
-The next price checkpoint needs a newly identified capture whose provider
-bid/ask, sizes, precision, and age satisfy the declared contract. A market-session
-window can be selected from retained calendar evidence. Do not loosen quote age,
-round unsupported prices, substitute synthetic values, or treat a missing quote
-as a fill to make that checkpoint pass.
+Continuous acquisition and calendar refresh, coverage obligations,
+outage/recovery operation, retention policy and licensing scope still need
+qualification. Future price captures must continue to satisfy the same contract;
+do not loosen quote age, round unsupported prices, substitute synthetic values,
+or treat missing evidence as a fill. The next operating checkpoint must
+declare acquisition cadence, calendar refresh, retention capacity, and stop
+conditions before extending collection beyond these finite runs.
 
 Research-worker dispatch, hypothesis evaluation, realistic paper execution and
 cost assumptions, prospective profitability proof, and the later Alpaca execution
