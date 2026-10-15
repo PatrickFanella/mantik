@@ -63,7 +63,14 @@ mise exec -- make build
 export MANTIK_API_TOKEN=mantik-local-development
 ./bin/mantik status
 ./bin/mantik status --format json
+./bin/mantik activity --limit 10
+./bin/mantik activity --limit 10 --format json
 ```
+
+The [bounded activity readback](docs/reference/activity.md) pages retained audit
+events with a fixed history boundary and structured JSON details. It is a
+read-only first step toward terminal supervision; the interactive TUI remains
+planned.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.
