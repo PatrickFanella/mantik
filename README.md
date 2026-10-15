@@ -129,7 +129,9 @@ and revision declarations. `news-normalize` is offline. The
 revisions with content conflicts, verified predecessors and explicit original
 inspection. The [event-group view](docs/reference/news-events.md) links declared
 events at an explicit receipt cutoff and flags revision review requirements.
-News case routing remains separate work.
+[Receiver-bound news admission](docs/reference/news-cases.md) retains each
+original and routes declared events to dedicated research cases, with revision
+reopening and evidence-version checks on closure.
 
 The [capture journal](docs/reference/alpaca-journal.md) retains validated recordings
 and supports receiver-bound submission and recovery through `alpaca-retain`,

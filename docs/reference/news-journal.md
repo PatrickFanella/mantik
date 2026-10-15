@@ -124,3 +124,6 @@ prospective qualification remain separate work.
 
 [Event groups](news-events.md) provide an audited view at an explicit receipt
 cutoff, including revision review notices and original-record references.
+
+[Receiver-bound submission](news-cases.md) admits one audited retained revision
+to dedicated service research cases and supports targeted server inspection.

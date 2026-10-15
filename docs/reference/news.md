@@ -9,8 +9,9 @@ or reopen cases. The [private news journal](news-journal.md) adds explicit local
 retention, verified predecessors and targeted inspection. Without that retention
 step, the caller must preserve input/original material privately; a normalized
 reference alone is not proof that its target exists or can be retrieved.
-Related-event routing and correction/retraction case policies remain separate
-units.
+[News research cases](news-cases.md) separately admit retained revisions to a
+pinned service receiver, link declared events and reopen affected cases under
+an explicit policy.
 
 ## Recording contract
 
