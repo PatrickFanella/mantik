@@ -166,6 +166,14 @@ parent receipt ancestry, includes plans with no attempts and retains per-plan
 histories without pooling financial metrics or selecting a winner.
 See [trial registration](reference/hypothesis-trials.md).
 
+`internal/workerplan` declares a versioned offline job/result boundary using the
+shared experiment-plan contract, without depending on storage or an execution
+engine. `internal/researchworker` supplies a native-fixture adapter with raw and
+canonical input pins, bounded artifacts and a cooperative context. The
+[worker protocol](reference/research-workers.md) leaves image/isolation
+attestation false and does not provide a host launcher, service dispatch or an
+external library implementation.
+
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00
 notional, a 95.00 stop, a 110.00 target, a one-hour holding limit, and quotes

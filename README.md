@@ -260,3 +260,8 @@ source boundary. A plan never attempted remains visible with zero attempts.
 `hypothesis-assessments --id HYPOTHESIS_ID` combines all registered plans for
 the exact question, including parent/sibling lineage and never-attempted plans,
 without selecting a winning result.
+
+The [offline worker protocol](docs/reference/research-workers.md) pins jobs and
+validates native-fixture results through `worker-job`, `worker-execute` and
+`worker-result`. Host-controlled isolation, durable dispatch and an external
+research-library adapter remain the next worker implementation units.
