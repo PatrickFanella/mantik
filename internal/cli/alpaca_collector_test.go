@@ -27,6 +27,11 @@ type collectorProviderTransport struct {
 }
 
 func (t collectorProviderTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Host == "paper-api.alpaca.markets" && r.URL.Path == "/v2/calendar" {
+		t.reads.Add(1)
+		body := fmt.Sprintf(`[{"date":%q,"open":"00:00","close":"23:59"}]`, r.URL.Query().Get("start"))
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+	}
 	if r.URL.Host != "data.alpaca.markets" {
 		return t.fallback.RoundTrip(r)
 	}
@@ -37,6 +42,18 @@ func (t collectorProviderTransport) RoundTrip(r *http.Request) (*http.Response, 
 }
 
 func TestFiniteCollectorCLIThroughAuthenticatedService(t *testing.T) {
+	testFiniteCollectorCLI(t, false)
+}
+func TestRegularSessionCollectorCLIThroughAuthenticatedService(t *testing.T) {
+	testFiniteCollectorCLI(t, true)
+}
+func testFiniteCollectorCLI(t *testing.T, regular bool) {
+	if regular {
+		zone, _ := time.LoadLocation("America/New_York")
+		if at := time.Now().In(zone); at.Hour() == 23 && at.Minute() == 59 {
+			t.Skip("manufactured same-day regular session ends at 23:59")
+		}
+	}
 	t.Setenv("MANTIK_API_TOKEN", "collector-cli-api-token")
 	root := t.TempDir()
 	journal := filepath.Join(root, "journal")
@@ -100,28 +117,34 @@ func TestFiniteCollectorCLIThroughAuthenticatedService(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := []string{"alpaca-run-collector", "--journal", journal, "--spec", path, "--credentials-file", credentials, "--api-url", server.URL, "--receiver-id", snapshot.ReceiverID, "--collector-registration-id", r.ID, "--collector-owner-id", "finite-cli-owner"}
+	if regular {
+		args = append(args, "--regular-session-seconds", "60")
+	}
 	out, err := run(args...)
 	if err != nil {
 		t.Fatal(out.String(), err)
 	}
 	var result alpaca.CollectorStatus
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.State != "completed" || !result.PublicationRequired || result.Published != 1 || result.Delivery.Acknowledged != 1 || !result.StopConfirmed {
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.State != "completed" || !result.PublicationRequired || result.Published != 1 || result.Delivery.Acknowledged != 1+boolInt(regular) || !result.StopConfirmed {
 		t.Fatal(out.String(), err)
+	}
+	if result.CalendarPublished != regular || (regular && (result.Calendar == nil || result.StopCode != "declared_count_completed")) {
+		t.Fatal(result)
 	}
 	if strings.Contains(out.String(), "manufactured-provider-key") || strings.Contains(out.String(), "manufactured-provider-secret") {
 		t.Fatal("terminal leaked credentials")
 	}
-	if reads.Load() != 1 || controls.Load() != 4 {
+	if reads.Load() != int32(1+boolInt(regular)) || controls.Load() != int32(4+2*boolInt(regular)) {
 		t.Fatal("unexpected finite acquisition/control count", reads.Load(), controls.Load())
 	}
-	if _, err := run(args...); err != nil || reads.Load() != 1 || controls.Load() != 4 {
+	if _, err := run(args...); err != nil || reads.Load() != int32(1+boolInt(regular)) || controls.Load() != int32(4+2*boolInt(regular)) {
 		t.Fatal("completed CLI repeated work", err)
 	}
 	if _, err := run("alpaca-collector-status", "--journal", journal, "--collector-id", spec.ID); err != nil {
 		t.Fatal(err)
 	}
 	evidence, err := store.FeedEvidence(context.Background())
-	if err != nil || len(evidence.Records) != 1 || publications.Load() != 2 {
+	if err != nil || len(evidence.Records) != 1+boolInt(regular) || publications.Load() != int32(2+boolInt(regular)) {
 		t.Fatal("missing or repeated raw publication", err, publications.Load())
 	}
 	for _, record := range evidence.Records {
@@ -133,4 +156,11 @@ func TestFiniteCollectorCLIThroughAuthenticatedService(t *testing.T) {
 	if state.ObservationCount != 0 || len(state.State.Actions.Items) != 0 {
 		t.Fatal("real-feed collector reached fixture execution")
 	}
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }

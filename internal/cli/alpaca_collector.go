@@ -30,10 +30,12 @@ func runAlpacaCollector(ctx context.Context, command string, args []string, out,
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	var root, path, credentials, base, receiver, registration, owner, id string
+	var windowSeconds int
 	fs.StringVar(&root, "journal", "", "absolute private journal directory")
 	if command == "alpaca-collector-status" {
 		fs.StringVar(&id, "collector-id", "", "retained finite collector identity")
 	} else {
+		fs.IntVar(&windowSeconds, "regular-session-seconds", 0, "opt in to calendar-first regular-session quotes for 1–3600 seconds (max quote interval 30s)")
 		fs.StringVar(&path, "spec", "", "finite quote session spec JSON")
 		fs.StringVar(&credentials, "credentials-file", "", "private mode-0600 provider credentials file")
 		fs.StringVar(&base, "api-url", defaultURL, "exact receiver service origin")
@@ -62,6 +64,9 @@ func runAlpacaCollector(ctx context.Context, command string, args []string, out,
 		}
 		return emit(out, status)
 	}
+	if windowSeconds < 0 || windowSeconds > 3600 {
+		return errors.New("regular-session-seconds must be 0 (disabled) or 1–3600")
+	}
 	if path == "" || credentials == "" || receiver == "" || registration == "" || owner == "" {
 		return errors.New("collector requires spec, credentials-file, receiver, registration and owner")
 	}
@@ -83,6 +88,10 @@ func runAlpacaCollector(ctx context.Context, command string, args []string, out,
 	}
 	defer func() { _ = j.Close() }()
 	control := remoteCollectorControl{base: base}
-	status, runErr := j.RunCollector(ctx, client, alpaca.CollectorSpec{Session: session, Binding: alpaca.Binding{APIURL: base, ReceiverID: receiver, CollectorRegistrationID: registration}, OwnerID: owner}, control, remoteResearchReceiver{base: base})
+	spec := alpaca.CollectorSpec{Session: session, Binding: alpaca.Binding{APIURL: base, ReceiverID: receiver, CollectorRegistrationID: registration}, OwnerID: owner}
+	if windowSeconds != 0 {
+		spec.RegularSession = &alpaca.RegularSessionWindow{MaxDurationSeconds: windowSeconds}
+	}
+	status, runErr := j.RunCollector(ctx, client, spec, control, remoteResearchReceiver{base: base})
 	return errors.Join(emit(out, status), runErr)
 }

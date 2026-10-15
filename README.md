@@ -119,7 +119,9 @@ receipts commit together.
 The [finite leased collector](docs/reference/finite-collector.md) combines
 explicit ownership, bounded quote acquisition, fenced delivery, raw capture
 publication, and release
-through `alpaca-run-collector`. It has no automatic restart or catch-up schedule.
+through `alpaca-run-collector`. Its optional `--regular-session-seconds` mode
+refreshes and publishes a calendar first, then bounds quotes by count, deadline,
+and regular-session close. It has no automatic restart or catch-up schedule.
 `alpaca-publish` retains [validated server evidence](docs/reference/feed-evidence.md)
 for inspection with `feed-coverage`. An explicit [startup policy](docs/reference/feed-readiness.md)
 can enable scoped feed readiness for a pinned receiver and required registrations;
