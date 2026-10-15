@@ -58,9 +58,71 @@ credentials in the spec, API registration, terminal arguments, or Git.
 Receiver and registration placeholders must match actual readbacks. The first
 collector supports one registered stock symbol and `latest_quotes`, with
 1–16 acquisitions and 1–300 seconds of pacing after each retained/delivered
-sample. Calendar collection remains a separate bounded command. A run has a
+sample. Calendar collection is separate by default; the opt-in mode below coordinates
+a fresh calendar with its quote window. A run has a
 two-hour deadline; each acquisition and delivery has at most two minutes.
 Control requests have five-second deadlines.
+
+## Optional regular-session window
+
+Add `--regular-session-seconds 300` to the same invocation to opt into
+calendar-first collection. The value is a wall-clock limit of 1–3,600 seconds
+starting at the retained collector intent. The quote spec still declares
+1–16 samples, with pacing restricted to 1–30 seconds in this mode. Omitting the
+flag, or passing zero, preserves the existing quote-only behavior. A new run
+identity is required when changing the mode or duration.
+
+After claiming the fixed generation, the collector acquires one fresh calendar
+for the intent's New York date through the deadline's New York date, at most two
+dates. It uses the registered symbol/access reference and derives the calendar
+capture identity as `RUN_ID-calendar`. It retains, admits and publishes the
+calendar before any quote request. A known closed session ends the run without
+waiting for a future open or making a quote request. Unknown/failed calendar
+history, failed admission or publication, and uncertain time stop the run.
+
+A valid open calendar bounds quote activity by both the declared deadline and
+its regular-session close, including an early close. The collector checks the
+calendar before and after renewal and pacing. Acquisition and delivery contexts
+also inherit the earlier deadline. A quote that becomes unusable or stale by
+post-publication inspection is retained and published as evidence, then stops
+further acquisition. Session classification and freshness use the existing
+normalizer/coverage contract; the client does not invent session times or
+loosen age/price requirements. A response interrupted by a deadline retains its
+original attempt history rather than claiming successful acquisition.
+
+Preflight budgets include one extra journal capture/collection, up to two extra
+admissions, calendar control requests, and artifact headroom before claiming.
+The journal remains exclusively owned, but other server writers can consume
+shared capacity after preflight. Server admission and raw-publication limits
+remain authoritative at mutation: exhaustion
+stops the run and retains the acquisition; no history is pruned or replaced.
+The existing server-wide bounds still apply. The maximum duration does not
+expand the declared count or retention capacity. Longer operation requires a
+new explicitly named run within remaining capacity, never automatic rollover.
+Each new regular-session run refreshes its own calendar once. There is no
+mid-window calendar refetch, overnight wait, scheduler, automatic restart,
+catch-up, or capacity reset.
+
+Regular-session intent/result artifacts use v3; v1/v2 history remains readable.
+`calendar` reports the retained calendar collection, `calendar_published`
+requires its validated publication receipt, and `published` continues to count
+**quote** publication receipts only. Full completion requires the calendar,
+all declared quotes and acknowledgements, publication receipts, and confirmed
+lease release. The calendar may normalize to zero inputs for an empty date
+range response; its raw publication is still required.
+
+`stop_code` distinguishes `declared_count_completed`, `regular_session_closed`,
+`window_deadline`, `calendar_unavailable`, `clock_backwards`, `quote_unusable`,
+`cancelled`, and `collector_failed`. Ending at close/deadline before the declared
+count is `stopped`, not full completion. The CLI returns a nonzero result for
+stopped runs, including a known closed session: inspect the retained code and
+actual runtime/lease before deciding on a new run. Known-lease cleanup still has
+its independent five-second deadline; an unconfirmed release stays unconfirmed.
+A stopped or incomplete identity never resumes automatically.
+
+These windows coordinate evidence acquisition only. They do not prove
+continuous feed availability, collector OS liveness, strategy performance,
+profitability, or authority to execute an order.
 
 ## Ownership and delivery
 
@@ -114,7 +176,8 @@ receipt. It reports `completed`, `stopped`, or `incomplete`; it does not inspect
 processes or infer that an incomplete run is alive. Completion requires the
 declared captures, acknowledged delivery, validated raw publication receipts,
 and a verified stop receipt. `published` counts receipts for this run;
-`publication_required` distinguishes new v2 runs from historical v1 results.
+`publication_required` distinguishes receipt-requiring v2/v3 runs from
+historical v1 results.
 Historical v1 completion remains readable and does not imply raw publication.
 
 An exact completed invocation returns retained history without claiming,

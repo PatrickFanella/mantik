@@ -70,7 +70,10 @@ looser limits or another clock. Readiness does not recheck provider entitlement.
 
 A finite collector releases its lease when done, so its completed run is not
 continuing feed readiness. It can satisfy the scope while it holds authority
-and has the required evidence. Persistent acquisition and calendar refresh need
+and has the required evidence. The optional
+[regular-session collector window](finite-collector.md#optional-regular-session-window)
+refreshes one calendar and bounds quotes by session/count/deadline. Persistent
+acquisition, calendar changes during a window, and retention rollover still need
 separate orchestration; this policy does not install that orchestration.
 A current lease is a retained declaration, not inspection of the collector's OS
 process. Ready means current validated evidence under this policy; it does not
