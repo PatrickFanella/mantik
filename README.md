@@ -265,5 +265,8 @@ The [offline worker protocol](docs/reference/research-workers.md) pins jobs and
 validates native-fixture results through `worker-job`, `worker-execute` and
 `worker-result`. `worker-launch` runs an explicit local container attempt with
 host-verified settings and durable evidence; `worker-reconcile` inspects or
-explicitly cancels that owned attempt after interruption. Automatic service
-dispatch and an external research-library adapter remain separate work.
+explicitly cancels that owned attempt after interruption. The separate
+[Backtesting.py adapter](docs/reference/backtesting-fixture.md) compares the
+four built-in synthetic methods in a pinned Python container. Its versioned
+comparison artifact is not yet accepted by `worker-launch` or service trials.
+Automatic service dispatch remains separate work.
