@@ -66,13 +66,18 @@ export MANTIK_API_TOKEN=mantik-local-development
 ./bin/mantik activity --limit 10
 ./bin/mantik activity --limit 10 --format json
 ./bin/mantik supervise --limit 10
+./bin/mantik cases
+./bin/mantik cases --id demo-case-v1
 ```
 
 The [bounded activity readback](docs/reference/activity.md) pages retained audit
 events with a fixed history boundary and structured JSON details. It is a
 read-only activity view. `supervise` adds interactive page navigation, event
 details, and explicit stale/retry behavior using short commands followed by
-Enter. The remaining case, research, portfolio and exception screens are planned.
+Enter. The [case inspection commands](docs/reference/cases.md) expose the current
+fixture/routing catalogue and one case's latest retained references. Interactive
+case navigation and the remaining research, portfolio and exception screens
+are planned.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.

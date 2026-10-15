@@ -84,6 +84,7 @@ func TestPostgresContracts(t *testing.T) {
 	if err != nil || !receipt.Duplicate {
 		t.Fatalf("restart retry: %+v %v", receipt, err)
 	}
+	caseContracts(t, reopened)
 	activityContracts(t, reopened)
 	if _, err := reopened.pool.Exec(ctx, "UPDATE mantik_schema SET sha256='changed' WHERE version=1"); err != nil {
 		t.Fatal(err)
