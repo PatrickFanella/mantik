@@ -49,3 +49,6 @@ var NewsCases string
 
 //go:embed 0012_news_reviews.sql
 var NewsReviews string
+
+//go:embed 0013_hypothesis_publications.sql
+var HypothesisPublications string

@@ -28,3 +28,5 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Retained service-case reviews](retained-reviews.md)
 
 - [Pre-test hypothesis declarations](hypothesis-declarations.md)
+
+- [Retained hypothesis publications](retained-hypotheses.md)

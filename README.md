@@ -241,3 +241,6 @@ to build an exact-revision image, rehearse a current-time fixture lifecycle, and
 restore a coherent backup into separate resources. The [24-hour pilot contract](docs/runbooks/first-pilot.md)
 requires additional interruption and deadline scenarios before qualification.
 Preparation and a passing smoke check do not complete that pilot.
+
+See [retained hypothesis publications](docs/reference/retained-hypotheses.md) for
+current-review binding, exact-question reuse and retained attribution.
