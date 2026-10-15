@@ -113,6 +113,8 @@ quantity, validity and action required by operations. Existing fixture operation
 reject an attempted conversion. No explanation generator is included; any future
 explanation must consume a finalized record without changing its outcome.
 
-Service-case/version binding, retained review attempts, worker leases/restarts,
-provider clients, hypothesis publication, evaluation recipes and additional
-decision types remain separate implementation units.
+[Retained service reviews](retained-reviews.md) separately bind case versions
+and preserve recorded-model attempts and stale completions. The local command
+does not write that ledger. Automatic dispatch, worker leases, provider clients,
+hypothesis publication, evaluation recipes and additional decision types remain
+separate implementation units.
