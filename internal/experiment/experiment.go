@@ -66,7 +66,7 @@ func MethodByID(id string) (Method, error) {
 
 func Registry() (*library.Registry, error) {
 	var entries []library.Entry
-	for _, id := range []string{library.FixtureStrategy().ID, library.HalfSizeID, NoActionID, PassiveID} {
+	for _, id := range builtinMethodIDs() {
 		m, err := MethodByID(id)
 		if err != nil {
 			return nil, err
@@ -223,22 +223,18 @@ func DefaultRecipe(d replay.Dataset) (Recipe, error) {
 		}
 	}
 	slices.Sort(r.RequiredKeys)
-	for _, id := range []string{library.FixtureStrategy().ID, library.HalfSizeID, NoActionID, PassiveID} {
-		m, err := MethodByID(id)
-		if err != nil {
-			return Recipe{}, err
-		}
-		hash, err := digest(m)
-		if err != nil {
-			return Recipe{}, err
-		}
-		pin := MethodPin{ID: id, SHA256: hash, Definition: m}
-		if m.Strategy != nil {
+	catalog, err := BuiltinCatalog()
+	if err != nil {
+		return Recipe{}, err
+	}
+	for _, pin := range catalog.Methods {
+		if pin.Definition.Strategy != nil {
 			r.Methods = append(r.Methods, pin)
 		} else {
 			r.Benchmarks = append(r.Benchmarks, pin)
 		}
 	}
+
 	return Seal(r)
 }
 
