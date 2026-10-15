@@ -257,3 +257,6 @@ comparisons grant no qualification or trading authority.
 `trial-assessments --id TRIAL_ID` reads all retained attempt assessments for one
 registered plan, with explicit failure/missing-result counts and a consistent
 source boundary. A plan never attempted remains visible with zero attempts.
+`hypothesis-assessments --id HYPOTHESIS_ID` combines all registered plans for
+the exact question, including parent/sibling lineage and never-attempted plans,
+without selecting a winning result.

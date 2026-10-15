@@ -160,6 +160,10 @@ evaluation and promotion remain separate work. A per-plan assessment history
 pins a bounded metadata index, checks each targeted result against it, and
 rejects the entire read if the final index changes. It loads result bodies one
 at a time and returns every retained attempt without a winner projection.
+The hypothesis-wide view pins every plan's index before reading results and
+rechecks the whole registered catalogue and all indices afterward. It validates
+parent receipt ancestry, includes plans with no attempts and retains per-plan
+histories without pooling financial metrics or selecting a winner.
 See [trial registration](reference/hypothesis-trials.md).
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and

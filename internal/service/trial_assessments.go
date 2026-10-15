@@ -7,11 +7,36 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/assessment"
+	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/trial"
 )
 
 func trialAssessmentRoutes(mux *http.ServeMux, store storage.Store) {
+	if reader, ok := store.(assessment.QuestionReader); ok {
+		mux.HandleFunc("GET /v1/hypotheses/{id}/assessments", func(w http.ResponseWriter, r *http.Request) {
+			if len(r.URL.Query()) != 0 || !hypothesis.QuestionID.MatchString(r.PathValue("id")) {
+				trialError(w, trial.ErrInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			h, err := assessment.ReadQuestionHistory(ctx, reader, r.PathValue("id"))
+			if errors.Is(err, trial.ErrNotFound) || errors.Is(err, hypothesis.ErrNotFound) {
+				trialError(w, trial.ErrNotFound)
+				return
+			}
+			if errors.Is(err, assessment.ErrHistoryChanged) {
+				write(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
+			if err != nil {
+				failed(w, err)
+				return
+			}
+			write(w, http.StatusOK, h)
+		})
+	}
 	reader, ok := store.(assessment.HistoryReader)
 	if !ok {
 		return
