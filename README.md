@@ -136,7 +136,10 @@ reopening and evidence-version checks on closure. The
 fixtures and targeted excerpts to finalize unqualified research proposals or
 abstentions. [Retained service reviews](docs/reference/retained-reviews.md) pin
 case versions, preserve attempts and fence stale completion. Automatic dispatch
-and operations authority remain separate.
+and operations authority remain separate. The
+[hypothesis declaration contract](docs/reference/hypothesis-declarations.md)
+validates proposed mechanisms, test conditions, horizons and exact native method
+pins before lifecycle publication or experiment execution is implemented.
 
 The [capture journal](docs/reference/alpaca-journal.md) retains validated recordings
 and supports receiver-bound submission and recovery through `alpaca-retain`,

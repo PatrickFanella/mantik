@@ -26,3 +26,5 @@ Use this section for durable technical references:
 Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Retained service-case reviews](retained-reviews.md)
+
+- [Pre-test hypothesis declarations](hypothesis-declarations.md)
