@@ -132,13 +132,13 @@ func (j *Journal) Session(id string) (SessionStatus, error) {
 			return out, ErrJournalConflict
 		}
 	case "stopped":
-		if done.Code != "collection_failed" && done.Code != "cancelled" {
+		if done.Code != "collection_failed" && done.Code != "cancelled" && done.Code != "collector_control_failed" {
 			return out, ErrJournalConflict
 		}
 		if done.Code == "collection_failed" && (out.Started == 0 || out.Collections[len(out.Collections)-1].State != "failed") {
 			return out, ErrJournalConflict
 		}
-		if out.Retained == out.Declared {
+		if out.Retained == out.Declared && done.Code != "collector_control_failed" {
 			return out, ErrJournalConflict
 		}
 	default:
@@ -154,6 +154,9 @@ func (j *Journal) RunSession(ctx context.Context, c *Client, s SessionSpec) (Ses
 	return j.runSession(ctx, c, s, wait)
 }
 func (j *Journal) runSession(ctx context.Context, c *Client, s SessionSpec, pause func(context.Context, time.Duration) error) (SessionStatus, error) {
+	return j.runControlledSession(ctx, c, s, pause, nil, nil)
+}
+func (j *Journal) runControlledSession(ctx context.Context, c *Client, s SessionSpec, pause func(context.Context, time.Duration) error, before, after func(context.Context) error) (SessionStatus, error) {
 	out := SessionStatus{ID: s.ID}
 	if err := ctx.Err(); err != nil {
 		return out, err
@@ -259,6 +262,13 @@ func (j *Journal) runSession(ctx context.Context, c *Client, s SessionSpec, paus
 			return status, errors.Join(ErrSessionStopped, err, receiptErr)
 		}
 		readCtx, readCancel := context.WithTimeout(ctx, 2*time.Minute)
+		if before != nil {
+			if err := before(readCtx); err != nil {
+				readCancel()
+				status, receiptErr := finish("stopped", "collector_control_failed")
+				return status, errors.Join(err, receiptErr)
+			}
+		}
 		status, err := j.Collect(readCtx, c, s.collection(n))
 		readCancel()
 		if err != nil {
@@ -270,6 +280,12 @@ func (j *Journal) runSession(ctx context.Context, c *Client, s SessionSpec, paus
 			// per-collection evidence, not an invented session success, governs recovery.
 			current, statusErr := j.Session(s.ID)
 			return current, errors.Join(ErrSessionIncomplete, err, statusErr)
+		}
+		if after != nil {
+			if err := after(ctx); err != nil {
+				status, receiptErr := finish("stopped", "collector_control_failed")
+				return status, errors.Join(err, receiptErr)
+			}
 		}
 	}
 	return finish("completed", "declared_count_retained")

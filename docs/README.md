@@ -28,6 +28,8 @@
   declarations, durable lease ownership, retry receipts, and readiness limits.
 - [Collector submission](reference/collector-submission.md): atomic lease-fenced
   research admission, journal delivery, and historical replay.
+- [Finite leased collector](reference/finite-collector.md): explicit ownership,
+  bounded acquisition/delivery, cleanup, and retained outcomes.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed

@@ -116,6 +116,9 @@ configure feed readiness.
 `alpaca-submit` can [fence journal delivery](docs/reference/collector-submission.md)
 with an explicit registration, owner, and generation; input and admission
 receipts commit together.
+The [finite leased collector](docs/reference/finite-collector.md) combines
+explicit ownership, bounded quote acquisition, fenced delivery, and release
+through `alpaca-run-collector`. It has no automatic restart or catch-up schedule.
 Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 

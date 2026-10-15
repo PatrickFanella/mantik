@@ -38,6 +38,11 @@ type remoteResearchReceiver struct {
 	fence *feedcollector.Fence
 }
 
+func (r remoteResearchReceiver) SubmitFenced(ctx context.Context, receiver string, f feedcollector.Fence, i domain.RoutingInput) (domain.RoutingReceipt, error) {
+	r.fence = &f
+	return r.Submit(ctx, receiver, i)
+}
+
 func (r remoteResearchReceiver) Snapshot(ctx context.Context, ids []string) (domain.ResearchSnapshot, error) {
 	query := url.Values{}
 	for _, id := range ids {
@@ -72,8 +77,12 @@ func runAlpacaJournal(ctx context.Context, command string, args []string, out, e
 	fs.SetOutput(errOut)
 	var root, path, digest, base, receiver, retryMissing string
 	var limit int
+	var initialize bool
 	var fence feedcollector.Fence
 	fs.StringVar(&root, "journal", "", "absolute private journal directory (required)")
+	if command == "alpaca-journal" {
+		fs.BoolVar(&initialize, "init", false, "explicitly initialize an empty private journal if absent")
+	}
 	if command == "alpaca-retain" {
 		fs.StringVar(&path, "recording", "", "retained recording JSON file")
 		fs.StringVar(&digest, "sha256", "", "expected raw response identity")
@@ -109,7 +118,7 @@ func runAlpacaJournal(ctx context.Context, command string, args []string, out, e
 		return err
 	}
 	open := alpaca.OpenExistingJournal
-	if command == "alpaca-retain" {
+	if command == "alpaca-retain" || initialize {
 		open = alpaca.OpenJournal
 	}
 	journal, err := open(root)
