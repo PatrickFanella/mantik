@@ -69,6 +69,7 @@ export MANTIK_API_TOKEN=mantik-local-development
 ./bin/mantik supervise --view cases --limit 10
 ./bin/mantik cases
 ./bin/mantik cases --id demo-case-v1
+./bin/mantik exceptions --limit 10 --format json
 ```
 
 The [bounded activity readback](docs/reference/activity.md) pages retained audit
@@ -78,7 +79,9 @@ details, and explicit stale/retry behavior using short commands followed by
 Enter. The [case inspection commands](docs/reference/cases.md) expose the current
 fixture/routing catalogue and one case's latest retained references.
 `supervise --view cases` adds page navigation, current case details, and stale-state
-refresh. The remaining research, portfolio and exception screens
+refresh. The [exception readback](docs/reference/exceptions.md) pages retained faults and
+recovery history without deriving readiness or loading the audit ledger.
+The remaining research, portfolio and interactive exception screens
 are planned.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
