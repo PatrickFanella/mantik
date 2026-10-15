@@ -1,5 +1,6 @@
 // Package news validates recorded claims and their exact source bindings. It
-// has no provider, model, storage, routing or execution access.
+// also retains private originals and derives event groups; it has no provider,
+// model, service routing or execution access.
 package news
 
 import (

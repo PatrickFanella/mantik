@@ -44,6 +44,17 @@ func TestNewsJournalCLI(t *testing.T) {
 	if len(status.Records) != 1 || status.JournalID != first.JournalID {
 		t.Fatal("CLI journal audit mismatch")
 	}
+	var groups news.EventGroups
+	_ = json.Unmarshal(run("news-events", "--journal", path, "--as-of", r.ReceivedAt.Format("2006-01-02T15:04:05Z07:00")), &groups)
+	if len(groups.Groups) != 1 || groups.Groups[0].EventKey != r.Claims[0].EventKey {
+		t.Fatal("CLI lost event group")
+	}
+	for _, args := range [][]string{{"news-events", "--journal", path}, {"news-events", "--journal", path, "--as-of", "bad"}} {
+		out.Reset()
+		if err := Run(ctx, args, &out, &out); err == nil {
+			t.Fatal("missing or invalid cutoff accepted")
+		}
+	}
 	var view map[string]json.RawMessage
 	_ = json.Unmarshal(run("news-inspect", "--journal", path, "--record", first.Key, "--claim", r.Claims[0].ID), &view)
 	if view["original"] != nil || view["claim"] == nil {

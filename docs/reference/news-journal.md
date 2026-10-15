@@ -121,3 +121,6 @@ This completes local retention and targeted source inspection for the first
 news implementation units of issue #12. Provider collection, journal archive/
 restore, related-event routing, correction/retraction case reopening and
 prospective qualification remain separate work.
+
+[Event groups](news-events.md) provide an audited view at an explicit receipt
+cutoff, including revision review notices and original-record references.
