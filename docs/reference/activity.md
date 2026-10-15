@@ -127,7 +127,8 @@ exits even while disconnected. The service and independent workers continue
 after the terminal exits. Reconnecting starts a new viewer readback; for exact
 cursor continuation across processes, use the explicit `activity` flags above.
 
-This implements activity navigation for issue #22. Case/library/portfolio/
-exception screens and mutations through shared operations remain separate
-implementation units. `status --format json`
+This implements activity navigation for issue #22. [Case navigation](cases.md)
+is available with `supervise --view cases`.
+Library/portfolio/exception screens and mutations through shared operations
+remain separate implementation units. `status --format json`
 continues to return the existing full snapshot; it is not a paginated substitute.

@@ -81,7 +81,46 @@ return HTTP 400, unknown cases HTTP 404, missing authentication HTTP 401, and
 storage failures HTTP 503. These GET operations use the existing five-second
 server context bound and add no collector lease or execution capability.
 
-This supplies the case inspection boundary for issue #22. The interactive
-`supervise` command currently navigates activity only. Interactive case and
-exception navigation, library/portfolio screens, full match-history inspection
-and finalized-decision attribution remain separate units.
+## Interactive case navigation
+
+```sh
+./bin/mantik supervise --view cases --limit 10
+```
+
+The viewer reads the bounded current catalogue once, then displays at most the
+selected number of rows per page. The fixture execution case comes first,
+followed by the catalogue's sorted routed cases. It keeps this bounded catalogue
+rather than loading audit history. The default `supervise` view remains activity.
+
+Use these commands followed by Enter:
+
+| Command | Behavior |
+| --- | --- |
+| `n` / `p` | Next / previous local catalogue page, with no service request |
+| `r` | Refresh the catalogue and return to its first page |
+| `d CASE_ID` | Fetch current structured details for a case on the displayed page |
+| `q` or EOF | Exit without changing the service |
+
+The detail request is a separate current-state read, explicitly labeled as such.
+A case can change after the catalogue was loaded. Details preserve the API's
+reference-availability and quality fields, including `references_available=false`;
+the viewer does not treat a reference as proof of authority or qualification.
+It does not retain a history of detail responses or fetch private source bytes.
+Off-page identities and unknown commands send no request.
+
+Catalogue or detail failure marks the displayed catalogue `STALE` and disables
+navigation and details until `r` successfully refreshes it. An initial connection
+failure still permits refresh, quit and EOF. A refresh always starts from the
+first page; it does not silently carry an old page offset into a changed
+catalogue. Successful reads are labeled as on-demand readbacks, not continuous
+health checks. A response exceeding the 260 routed-case capacity is rejected.
+
+The case and activity views share bounded command input and owned stdin
+cancellation. Neither changes terminal mode, automatically polls the service,
+submits a mutation, or stops workers on exit. See the [activity viewer](activity.md)
+for Unix stdin, command-length and cancellation behavior.
+
+This supplies case navigation for issue #22. Exception navigation still needs
+a bounded operational readback; the existing operations endpoint internally
+loads the full status/event history. Library/portfolio screens, full match-history
+inspection and finalized-decision attribution remain separate units.
