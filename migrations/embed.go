@@ -52,3 +52,6 @@ var NewsReviews string
 
 //go:embed 0013_hypothesis_publications.sql
 var HypothesisPublications string
+
+//go:embed 0014_hypothesis_trials.sql
+var HypothesisTrials string

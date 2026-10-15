@@ -88,9 +88,9 @@ were checked against application-retained evidence at publication time.
 `sealed.origins_verified` remains false because source truth and causal support
 are unverified. Authority remains `research_declaration_only`, qualification
 credit false. A server timestamp records admission; it does not establish that
-the declaration preceded existing experiments. Future trials need an explicit
-publication link and their own method/data/resource/outcome contracts before
-claiming pre-test registration.
+the declaration preceded existing experiments. [Trial registration](hypothesis-trials.md) now binds a retained publication to
+a sealed recipe and server admission time. Trial execution and outcome contracts
+remain separate; registration does not establish precedence over prior experiments.
 
 ## HTTP contract
 

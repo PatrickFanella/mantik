@@ -244,3 +244,6 @@ Preparation and a passing smoke check do not complete that pilot.
 
 See [retained hypothesis publications](docs/reference/retained-hypotheses.md) for
 current-review binding, exact-question reuse and retained attribution.
+
+See [hypothesis-linked trial registration](docs/reference/hypothesis-trials.md)
+for retained experiment plans, publication binding and planned lineage.

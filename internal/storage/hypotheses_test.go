@@ -211,7 +211,7 @@ func TestPostgresContractsHypothesisUpgrade(t *testing.T) {
 	ctx := context.Background()
 	before, _ := s.NewsCases(ctx)
 	config := s.pool.Config().ConnString()
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_hypothesis_publications; DELETE FROM mantik_schema WHERE version=13"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_hypothesis_trials; DROP TABLE mantik_hypothesis_publications; DELETE FROM mantik_schema WHERE version>=13"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
