@@ -11,10 +11,11 @@ Implementation proceeds in three units:
 2. The explicit local launcher below enforces a fixed container profile, verifies
    the actual image and retains acquisition, interruption and completion evidence.
 3. The separate [Backtesting.py fixture adapter](backtesting-fixture.md) compares
-   four synthetic methods in a pinned Python environment. Its comparison schema
-   and finite test driver do not extend native worker v1 or its durable launcher.
-   Versioned launcher transport and explicit service integration remain work for
-   issue #17, which remains open.
+   four synthetic methods in a pinned Python environment. Separate
+   `external-worker-*` commands provide versioned job/result validation and
+   durable launch/reconciliation with an explicit Python profile. Native worker
+   v1 schemas and profile remain unchanged. Issue #17 remains open pending
+   delivery review of this protocol gate; service integration is separate work.
 
 ## Offline commands
 

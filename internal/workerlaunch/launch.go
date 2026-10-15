@@ -67,9 +67,12 @@ type Receipt struct {
 }
 
 func (a Acquisition) validate(root string, j workerplan.Job, approved string) error {
+	return a.validateExecution(root, nativeExecution(j), approved)
+}
+func (a Acquisition) validateExecution(root string, p execution, approved string) error {
 	expected := a.SHA256
 	a.SHA256 = ""
-	if a.Schema != "mantik-worker-acquisition-v1" || a.Root != root || !launchID.MatchString(a.ID) || a.ContainerName != "mantik-worker-"+strings.ToLower(a.ID) || a.JobSHA256 != j.SHA256 || a.ImageSHA256 != approved || approved != j.ImageSHA256 || a.CreatedAt.IsZero() || a.CreatedAt.Year() < 1 || a.CreatedAt.Year() > 9999 || !a.Deadline.Equal(a.CreatedAt.Add(workerplan.WallSeconds*time.Second)) || expected != workerplan.Hash(a) {
+	if a.Schema != p.acquisitionSchema || a.Root != root || !launchID.MatchString(a.ID) || a.ContainerName != "mantik-worker-"+strings.ToLower(a.ID) || a.JobSHA256 != p.sha || a.ImageSHA256 != approved || approved != p.image || a.CreatedAt.IsZero() || a.CreatedAt.Year() < 1 || a.CreatedAt.Year() > 9999 || !a.Deadline.Equal(a.CreatedAt.Add(time.Duration(p.resources.WallSeconds)*time.Second)) || expected != workerplan.Hash(a) {
 		return ErrConflict
 	}
 	return nil
@@ -107,7 +110,16 @@ func launch(ctx context.Context, root string, j workerplan.Job, input io.Reader,
 	if err != nil || len(raw) != j.Input.Bytes || workerplan.Digest(raw) != j.Input.SHA256 {
 		return Receipt{}, ErrConflict
 	}
-	root, err = directory(root, true)
+	return launchExecution(ctx, root, nativeExecution(j), map[string][]byte{"dataset.json": raw}, approved, d)
+}
+func launchExecution(ctx context.Context, root string, p execution, inputs map[string][]byte, approved string, d driver) (Receipt, error) {
+	if ctx.Err() != nil {
+		return Receipt{}, ctx.Err()
+	}
+	if approved != p.image {
+		return Receipt{}, ErrConflict
+	}
+	root, err := directory(root, true)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -125,19 +137,23 @@ func launch(ctx context.Context, root string, j workerplan.Job, input io.Reader,
 	if err = os.Chmod(root+"/input", 0755); err != nil {
 		return Receipt{}, err
 	}
-	jobRaw, _ := json.Marshal(j)
 	for _, file := range []struct {
 		directory, name string
 		raw             []byte
 		mode            os.FileMode
-	}{{root, "job.json", jobRaw, 0600}, {root + "/input", "job.json", jobRaw, 0444}, {root + "/input", "dataset.json", raw, 0444}} {
+	}{{root, "job.json", p.raw, 0600}, {root + "/input", "job.json", p.raw, 0444}} {
 		if err = writeOnce(file.directory, file.name, file.raw, file.mode); err != nil {
 			return Receipt{}, err
 		}
 	}
-	a := Acquisition{Schema: "mantik-worker-acquisition-v1", ID: rand.Text(), Root: root, JobSHA256: j.SHA256, ImageSHA256: approved, CreatedAt: time.Now().UTC()}
+	for name, raw := range inputs {
+		if err = writeOnce(root+"/input", name, raw, 0444); err != nil {
+			return Receipt{}, err
+		}
+	}
+	a := Acquisition{Schema: p.acquisitionSchema, ID: rand.Text(), Root: root, JobSHA256: p.sha, ImageSHA256: approved, CreatedAt: time.Now().UTC()}
 	a.ContainerName = "mantik-worker-" + strings.ToLower(a.ID)
-	a.Deadline = a.CreatedAt.Add(workerplan.WallSeconds * time.Second)
+	a.Deadline = a.CreatedAt.Add(time.Duration(p.resources.WallSeconds) * time.Second)
 	a.SHA256 = workerplan.Hash(a)
 	if err = writeJSON(root, "acquisition.json", a); err != nil {
 		return Receipt{}, err
@@ -148,7 +164,7 @@ func launch(ctx context.Context, root string, j workerplan.Job, input io.Reader,
 	work, cancel := context.WithDeadline(ctx, a.Deadline)
 	defer cancel()
 	control, stop := context.WithTimeout(work, 5*time.Second)
-	out, createStderr, createErr := d.command(control, createArgs(a, j)...)
+	out, createStderr, createErr := d.command(control, createExecutionArgs(a, p)...)
 	stop()
 	if createErr != nil {
 		_ = writeOnce(root, "create.stdout", out, 0600)
@@ -165,7 +181,7 @@ func launch(ctx context.Context, root string, j workerplan.Job, input io.Reader,
 	if err != nil {
 		return Receipt{}, err
 	}
-	if s.ID != id || verify(s, a, j) != nil || s.State.Running || s.State.Pid != 0 || s.State.Status != "created" {
+	if s.ID != id || verifyExecution(s, a, p) != nil || s.State.Running || s.State.Pid != 0 || s.State.Status != "created" {
 		return Receipt{}, ErrConflict
 	}
 	pre := preStart{AcquisitionSHA256: a.SHA256, Snapshot: s}
@@ -189,7 +205,7 @@ func launch(ctx context.Context, root string, j workerplan.Job, input io.Reader,
 	} else if !time.Now().Before(a.Deadline) {
 		reason = "timed_out"
 	}
-	return collect(root, a, j, d, reason, true)
+	return collectExecution(root, a, p, d, reason, true)
 }
 func Reconcile(ctx context.Context, root, approved string, cancel bool) (Receipt, error) {
 	return reconcile(ctx, root, approved, cancel, nil)
@@ -218,13 +234,16 @@ func reconcile(ctx context.Context, root, approved string, cancel bool, d driver
 	return collect(root, a, j, d, reason, false)
 }
 func collect(root string, a Acquisition, j workerplan.Job, d driver, reason string, allowStop bool) (Receipt, error) {
+	return collectExecution(root, a, nativeExecution(j), d, reason, allowStop)
+}
+func collectExecution(root string, a Acquisition, p execution, d driver, reason string, allowStop bool) (Receipt, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	s, err := inspect(ctx, d, a)
 	if err != nil {
 		return Receipt{}, err
 	} // Missing/uncertain handles remain unresolved.
-	if verify(s, a, j) != nil {
+	if verifyExecution(s, a, p) != nil {
 		return Receipt{}, ErrConflict
 	}
 	_, receiptErr := os.Lstat(root + "/receipt.json")
@@ -246,7 +265,7 @@ func collect(root string, a Acquisition, j workerplan.Job, d driver, reason stri
 			return Receipt{}, errors.New("owned worker stop uncertain; reconcile again")
 		}
 		s, err = inspect(ctx, d, a)
-		if err != nil || s.State.Running || s.State.Pid != 0 || verify(s, a, j) != nil {
+		if err != nil || s.State.Running || s.State.Pid != 0 || verifyExecution(s, a, p) != nil {
 			return Receipt{}, ErrConflict
 		}
 	}
@@ -272,7 +291,7 @@ func collect(root string, a Acquisition, j workerplan.Job, d driver, reason stri
 		if expected == "" || workerplan.Hash(r) != expected || r.AcquisitionSHA256 != a.SHA256 || r.ContainerID != s.ID || r.ImageSHA256 != s.Image || !r.FinishedAt.Equal(s.State.FinishedAt) || r.ExitCode != s.State.ExitCode {
 			return Receipt{}, ErrConflict
 		}
-		if r.Schema != "mantik-worker-host-receipt-v1" || r.Authority != "synthetic_host_launch_receipt_only" || r.QualificationCredit || r.StdoutBytes < 0 || r.StdoutBytes > workerplan.MaxResultBytes || r.StderrBytes < 0 || r.StderrBytes > 64<<10 {
+		if r.Schema != p.receiptSchema || r.Authority != p.authority || r.QualificationCredit || r.StdoutBytes < 0 || r.StdoutBytes > workerplan.MaxResultBytes || r.StderrBytes < 0 || r.StderrBytes > 64<<10 {
 			return Receipt{}, ErrConflict
 		}
 		r.SHA256 = expected
@@ -289,13 +308,13 @@ func collect(root string, a Acquisition, j workerplan.Job, d driver, reason stri
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return Receipt{}, err
 	}
-	r := Receipt{Schema: "mantik-worker-host-receipt-v1", AcquisitionSHA256: a.SHA256, ContainerID: s.ID, ImageSHA256: s.Image, Status: "incomplete", ReasonCode: "no_valid_worker_result", ExitCode: s.State.ExitCode, FinishedAt: s.State.FinishedAt, CollectedAt: time.Now().UTC(), Authority: "synthetic_host_launch_receipt_only"}
+	r := Receipt{Schema: p.receiptSchema, AcquisitionSHA256: a.SHA256, ContainerID: s.ID, ImageSHA256: s.Image, Status: "incomplete", ReasonCode: "no_valid_worker_result", ExitCode: s.State.ExitCode, FinishedAt: s.State.FinishedAt, CollectedAt: time.Now().UTC(), Authority: p.authority}
 	if raw, err := readFile(root, "pre-start.json", 65536); err == nil {
 		var pre preStart
 		if json.Unmarshal(raw, &pre) == nil {
 			expected := pre.SHA256
 			pre.SHA256 = ""
-			r.ProfileVerified = expected == workerplan.Hash(pre) && pre.AcquisitionSHA256 == a.SHA256 && pre.Snapshot.ID == s.ID && pre.Snapshot.State.Status == "created" && !pre.Snapshot.State.Running && verify(pre.Snapshot, a, j) == nil
+			r.ProfileVerified = expected == workerplan.Hash(pre) && pre.AcquisitionSHA256 == a.SHA256 && pre.Snapshot.ID == s.ID && pre.Snapshot.State.Status == "created" && !pre.Snapshot.State.Running && verifyExecution(pre.Snapshot, a, p) == nil
 		}
 	}
 	r.HostDeadlineMet = !s.State.FinishedAt.IsZero() && !s.State.FinishedAt.Before(a.CreatedAt) && s.State.FinishedAt.Before(a.Deadline)
@@ -309,17 +328,13 @@ func collect(root string, a Acquisition, j workerplan.Job, d driver, reason stri
 	if err = writeOnce(root, "stderr.txt", stderr, 0600); err != nil {
 		return Receipt{}, err
 	}
-	result, resultErr := workerplan.ReadResult(bytes.NewReader(out), j)
+	result, resultErr := p.outcome(out)
 	if resultErr == nil {
-		r.WorkerResultSHA256 = result.SHA256
-		r.WorkerStatus = result.Status
+		r.WorkerResultSHA256 = result.sha
+		r.WorkerStatus = result.workerStatus
 	}
-	if resultErr == nil && r.OutputComplete && r.ProfileVerified && r.HostDeadlineMet && result.DeadlineMet {
-		if s.State.ExitCode == 0 && result.Status == "completed" {
-			r.Status, r.ReasonCode = "completed", "validated_worker_result"
-		} else if s.State.ExitCode == 1 && result.Status == "failed" {
-			r.Status, r.ReasonCode = "failed", result.ErrorCode
-		}
+	if resultErr == nil && r.OutputComplete && r.ProfileVerified && r.HostDeadlineMet && result.eligible && s.State.ExitCode == result.exit {
+		r.Status, r.ReasonCode = result.status, result.reason
 	}
 	if !r.ProfileVerified {
 		r.Status, r.ReasonCode = "incomplete", "missing_pre_start_receipt"

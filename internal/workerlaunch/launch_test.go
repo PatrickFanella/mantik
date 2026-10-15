@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
+	"git.subcult.tv/subculture-collective/mantik/internal/externalplan"
 	"git.subcult.tv/subculture-collective/mantik/internal/replay"
 	"git.subcult.tv/subculture-collective/mantik/internal/researchworker"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
@@ -26,6 +27,7 @@ type fakeDocker struct {
 	interrupt     bool
 	foreign       bool
 	waitHook      func()
+	profile       *execution
 }
 
 func (f *fakeDocker) command(ctx context.Context, args ...string) ([]byte, []byte, error) {
@@ -41,21 +43,27 @@ func (f *fakeDocker) command(ctx context.Context, args ...string) ([]byte, []byt
 			}
 		}
 		a, j, err := load(root, f.j.ImageSHA256)
+		p := nativeExecution(j)
+		if f.profile != nil {
+			var externalJob externalplan.Job
+			a, externalJob, err = loadExternal(root, f.profile.image)
+			p = externalExecution(externalJob)
+		}
 		if err != nil {
 			f.t.Fatal("create before durable acquisition", err)
 		}
-		f.s = snapshot{ID: strings.Repeat("a", 64), Name: "/" + a.ContainerName, Image: j.ImageSHA256}
+		f.s = snapshot{ID: strings.Repeat("a", 64), Name: "/" + a.ContainerName, Image: p.image}
 		f.s.Config.User = "65532:65532"
-		f.s.Config.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
-		f.s.Config.Entrypoint = []string{"/app/mantik"}
-		f.s.Config.Cmd = workerArgs(j)
-		f.s.Config.Labels = map[string]string{ownerLabel: a.ID, jobLabel: j.SHA256}
+		f.s.Config.Env = p.env
+		f.s.Config.Entrypoint = p.entrypoint
+		f.s.Config.Cmd = p.args
+		f.s.Config.Labels = map[string]string{ownerLabel: a.ID, jobLabel: p.sha}
 		f.s.HostConfig.ReadonlyRootfs = true
 		f.s.HostConfig.NetworkMode = "none"
 		f.s.HostConfig.CapDrop = []string{"ALL"}
 		f.s.HostConfig.SecurityOpt = []string{"no-new-privileges:true"}
-		f.s.HostConfig.Memory = j.Resources.MemoryBytes
-		f.s.HostConfig.MemorySwap = j.Resources.MemoryBytes
+		f.s.HostConfig.Memory = p.resources.MemoryBytes
+		f.s.HostConfig.MemorySwap = p.resources.MemoryBytes
 		f.s.HostConfig.NanoCpus = 1000000000
 		f.s.HostConfig.PidsLimit = 64
 		f.s.HostConfig.IpcMode = "private"
@@ -101,6 +109,9 @@ func (f *fakeDocker) command(ctx context.Context, args ...string) ([]byte, []byt
 		f.s.State.FinishedAt = time.Now().UTC()
 		return nil, nil, nil
 	case "logs":
+		if f.profile != nil {
+			return []byte("{}"), nil, nil
+		}
 		if f.s.State.ExitCode == 137 {
 			return nil, nil, nil
 		}

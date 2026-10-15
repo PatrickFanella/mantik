@@ -117,9 +117,12 @@ func workerArgs(j workerplan.Job) []string {
 	return []string{"worker-execute", "--job", "/worker/job.json", "--job-sha256", j.SHA256, "--input", "/worker/dataset.json"}
 }
 func verify(s snapshot, a Acquisition, j workerplan.Job) error {
+	return verifyExecution(s, a, nativeExecution(j))
+}
+func verifyExecution(s snapshot, a Acquisition, p execution) error {
 	h, c := s.HostConfig, s.Config
-	r := j.Resources
-	if s.Image != j.ImageSHA256 || c.User != "65532:65532" || c.Tty || !reflect.DeepEqual(c.Entrypoint, []string{"/app/mantik"}) || !reflect.DeepEqual(c.Cmd, workerArgs(j)) || !reflect.DeepEqual(c.Env, []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}) || !h.ReadonlyRootfs || h.NetworkMode != "none" || !reflect.DeepEqual(h.CapDrop, []string{"ALL"}) || len(h.CapAdd) != 0 || !reflect.DeepEqual(h.SecurityOpt, []string{"no-new-privileges:true"}) || h.Memory != r.MemoryBytes || h.MemorySwap != r.MemoryBytes || h.NanoCpus != int64(r.CPUMillis)*1000000 || h.PidsLimit != int64(r.PIDs) || h.Privileged || h.PidMode != "" || h.IpcMode != "private" || h.UTSMode != "" || h.UsernsMode != "" || len(h.Binds) != 0 || len(h.Devices) != 0 || len(h.PortBindings) != 0 || h.RestartPolicy.Name != "no" || h.LogConfig.Type != "local" || !reflect.DeepEqual(h.LogConfig.Config, map[string]string{"max-size": "20m", "max-file": "1", "compress": "false"}) {
+	r := p.resources
+	if s.Image != p.image || c.User != "65532:65532" || c.Tty || !reflect.DeepEqual(c.Entrypoint, p.entrypoint) || !reflect.DeepEqual(c.Cmd, p.args) || !reflect.DeepEqual(c.Env, p.env) || !h.ReadonlyRootfs || h.NetworkMode != "none" || !reflect.DeepEqual(h.CapDrop, []string{"ALL"}) || len(h.CapAdd) != 0 || !reflect.DeepEqual(h.SecurityOpt, []string{"no-new-privileges:true"}) || h.Memory != r.MemoryBytes || h.MemorySwap != r.MemoryBytes || h.NanoCpus != int64(r.CPUMillis)*1000000 || h.PidsLimit != int64(r.PIDs) || h.Privileged || h.PidMode != "" || h.IpcMode != "private" || h.UTSMode != "" || h.UsernsMode != "" || len(h.Binds) != 0 || len(h.Devices) != 0 || len(h.PortBindings) != 0 || h.RestartPolicy.Name != "no" || h.LogConfig.Type != "local" || !reflect.DeepEqual(h.LogConfig.Config, map[string]string{"max-size": "20m", "max-file": "1", "compress": "false"}) {
 		return workerplan.ErrInvalid
 	}
 	if len(s.Mounts) != 1 || s.Mounts[0].Source != a.Root+"/input" || s.Mounts[0].Destination != "/worker" || s.Mounts[0].RW || s.Mounts[0].Type != "bind" {
@@ -127,9 +130,9 @@ func verify(s snapshot, a Acquisition, j workerplan.Job) error {
 	}
 	return nil
 }
-func createArgs(a Acquisition, j workerplan.Job) []string {
-	args := []string{"create", "--pull=never", "--name", a.ContainerName, "--label", ownerLabel + "=" + a.ID, "--label", jobLabel + "=" + j.SHA256, "--read-only", "--network", "none", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--pids-limit", "64", "--memory", "268435456", "--memory-swap", "268435456", "--cpus", "1", "--user", "65532:65532", "--restart", "no", "--log-driver", "local", "--log-opt", "max-size=20m", "--log-opt", "max-file=1", "--log-opt", "compress=false", "--mount", "type=bind,source=" + a.Root + "/input,destination=/worker,readonly", "--entrypoint", "/app/mantik", j.ImageSHA256}
-	return append(args, workerArgs(j)...)
+func createExecutionArgs(a Acquisition, p execution) []string {
+	args := []string{"create", "--pull=never", "--name", a.ContainerName, "--label", ownerLabel + "=" + a.ID, "--label", jobLabel + "=" + p.sha, "--read-only", "--network", "none", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--pids-limit", "64", "--memory", "268435456", "--memory-swap", "268435456", "--cpus", "1", "--user", "65532:65532", "--restart", "no", "--log-driver", "local", "--log-opt", "max-size=20m", "--log-opt", "max-file=1", "--log-opt", "compress=false", "--mount", "type=bind,source=" + a.Root + "/input,destination=/worker,readonly", "--entrypoint", p.entrypoint[0], p.image}
+	return append(args, p.args...)
 }
 
 var _ io.Writer = (*capped)(nil)
