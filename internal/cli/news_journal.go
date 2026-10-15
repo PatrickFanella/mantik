@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
@@ -16,6 +17,10 @@ func runNewsJournal(ctx context.Context, command string, args []string, out, err
 	path := fs.String("journal", "", "absolute private news journal directory")
 	file, key, claim := new(string), new(string), new(string)
 	original := new(bool)
+	asOf := new(string)
+	if command == "news-events" {
+		fs.StringVar(asOf, "as-of", "", "explicit RFC3339 receipt cutoff (required)")
+	}
 	if command == "news-retain" {
 		fs.StringVar(file, "file", "", "recorded news JSON file")
 	}
@@ -37,6 +42,14 @@ func runNewsJournal(ctx context.Context, command string, args []string, out, err
 		return ctx.Err()
 	}
 	// Validate source bytes before creating a new journal or taking its lock.
+	var cutoff time.Time
+	if command == "news-events" {
+		var err error
+		cutoff, err = time.Parse(time.RFC3339Nano, *asOf)
+		if err != nil {
+			return errors.New("news-events requires --as-of RFC3339 cutoff")
+		}
+	}
 	var r news.Recording
 	if command == "news-retain" {
 		f, err := os.Open(*file)
@@ -64,6 +77,12 @@ func runNewsJournal(ctx context.Context, command string, args []string, out, err
 		return ctx.Err()
 	}
 	switch command {
+	case "news-events":
+		groups, err := j.Events(cutoff)
+		if err != nil {
+			return err
+		}
+		return emit(out, groups)
 	case "news-retain":
 		receipt, err := j.Retain(r)
 		if err != nil {
