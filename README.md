@@ -247,3 +247,10 @@ current-review binding, exact-question reuse and retained attribution.
 
 See [hypothesis-linked trial registration](docs/reference/hypothesis-trials.md)
 for retained experiment plans, publication binding and planned lineage.
+
+The [native trial adapter](docs/reference/native-trial-runs.md) executes retained
+intents against the built-in synthetic dataset and preserves completed, failed
+and interrupted attempts. [Condition assessments](docs/reference/trial-assessments.md)
+compare retained metrics with the declared prediction, null and refutation
+conditions while keeping benchmarks and missing results explicit. These
+comparisons grant no qualification or trading authority.

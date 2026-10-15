@@ -16,6 +16,7 @@ import (
 type runBackend interface {
 	attemptBackend
 	TrialRunStore
+	TrialEvidenceStore
 }
 
 func TestMemoryNativeRunLedger(t *testing.T) { runContracts(t, NewMemory()) }
@@ -50,6 +51,10 @@ func runContracts(t *testing.T, s runBackend) {
 		}
 	}
 	start("run")
+	evidence, err := s.TrialEvidence(ctx, "run")
+	if err != nil || evidence.Run != nil || evidence.Result != "" || evidence.Registration.SHA256 != r.SHA256 || trial.Hash(evidence.Publication) != r.PublicationSHA256 {
+		t.Fatal("missing pre-execution evidence", err)
+	}
 	before, _ := s.Snapshot(ctx)
 	intentBefore, _ := s.TrialAttempt(ctx, "run")
 	var wg sync.WaitGroup
@@ -95,6 +100,16 @@ func runContracts(t *testing.T, s runBackend) {
 	if err != nil || result.Content != raw || result.SHA256 != completed.ResultSHA256 {
 		t.Fatal(err)
 	}
+	evidence, err = s.TrialEvidence(ctx, "run")
+	if err != nil || evidence.Run == nil || !reflect.DeepEqual(*evidence.Run, completed) || evidence.Result != raw {
+		t.Fatal("inconsistent finished evidence", err)
+	}
+	// Returned recipes must not alias mutable memory-store records.
+	evidence.Registration.Recipe.Methods[0].ID = "changed"
+	evidence, err = s.TrialEvidence(ctx, "run")
+	if err != nil || evidence.Registration.Recipe.Methods[0].ID != r.Recipe.Methods[0].ID {
+		t.Fatal("evidence aliases storage", err)
+	}
 	start("cancelled")
 	if _, err = s.CancelTrialAttempt(ctx, receiver, "cancelled", now); err != nil {
 		t.Fatal(err)
@@ -122,6 +137,10 @@ func runContracts(t *testing.T, s runBackend) {
 		actual, err := s.TrialRun(ctx, "run")
 		if err != nil || !reflect.DeepEqual(actual, completed) {
 			t.Fatal("restart lost terminal run", err)
+		}
+		evidence, err = s.TrialEvidence(ctx, "run")
+		if err != nil || evidence.Result != raw || evidence.Run == nil || evidence.Run.SHA256 != completed.SHA256 {
+			t.Fatal("restart lost assessment evidence", err)
 		}
 		actual, err = s.TrialRun(ctx, "interrupted")
 		if err != nil || !reflect.DeepEqual(actual, pending.Run) {

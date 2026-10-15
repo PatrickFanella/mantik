@@ -4,7 +4,9 @@ The service can execute a retained trial intent against the built-in synthetic
 dataset using the registered native experiment engine. It retains the input
 before execution and the complete native result afterward. This path has no
 provider, account or order adapter, arbitrary code runner or caller-supplied
-input/result. It does not qualify a strategy or evaluate hypothesis conditions.
+input/result. It does not qualify a strategy. A separate read-only
+[condition assessment](trial-assessments.md) compares retained metrics with the
+declared prediction, null and refutation conditions.
 
 ```sh
 ./bin/mantik trial-run-execute --api-url http://127.0.0.1:40880 \

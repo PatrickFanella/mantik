@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/assessment"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -37,6 +38,19 @@ func runTrialExecution(ctx context.Context, command string, args []string, out, 
 		return trial.ErrInvalid
 	}
 	path := "/v1/trial-attempts/" + *id + "/run"
+	if command == "trial-assessment" {
+		var result assessment.Result
+		if err = request(ctx, *base, "/v1/trial-attempts/"+*id+"/assessment", nil, &result); err != nil {
+			return err
+		}
+		hash := result.SHA256
+		result.SHA256 = ""
+		if result.Schema != assessment.Schema || result.AttemptID != *id || result.Authority != "synthetic_condition_comparison_only" || result.QualificationCredit || hash != trial.Hash(result) {
+			return errors.New("invalid assessment receipt")
+		}
+		result.SHA256 = hash
+		return emit(out, result)
+	}
 	var body any
 	if command != "trial-run" {
 		if !storage.ValidReceiverID(receiver) {
