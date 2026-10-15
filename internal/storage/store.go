@@ -33,6 +33,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	evidence     map[string]FeedEvidenceRecord
 	collectors   feedcollector.State
 	receiverID   string
 	mu           sync.Mutex

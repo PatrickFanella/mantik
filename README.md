@@ -119,6 +119,8 @@ receipts commit together.
 The [finite leased collector](docs/reference/finite-collector.md) combines
 explicit ownership, bounded quote acquisition, fenced delivery, and release
 through `alpaca-run-collector`. It has no automatic restart or catch-up schedule.
+`alpaca-publish` retains [validated server evidence](docs/reference/feed-evidence.md)
+for inspection with `feed-coverage`, separately from global readiness activation.
 Finalized entry decisions retain their protective definitions
 atomically with the fixture execution records.
 

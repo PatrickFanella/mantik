@@ -104,6 +104,31 @@ func quoteIdentity(c capture, symbol string) string {
 // Latest unusable evidence suppresses older usable quotes. Equal-receipt
 // conflicts are unknown rather than resolved by arbitrary capture names.
 func (j *Journal) Coverage(s CoverageSpec, at time.Time) (CoverageReport, error) {
+	captures, err := j.captures()
+	if err != nil {
+		return CoverageReport{}, err
+	}
+	return coverage(s, at, captures)
+}
+
+// CoverageFromRecordings revalidates raw digests and normalization before using
+// supplied recordings. Server callers must separately verify receiver history.
+func CoverageFromRecordings(s CoverageSpec, at time.Time, records []Recording) (CoverageReport, error) {
+	if len(records) > MaxCaptures {
+		return CoverageReport{}, errors.New("coverage recording limit exceeded")
+	}
+	captures := make([]capture, 0, len(records))
+	for _, record := range records {
+		result, err := Normalize(record)
+		if err != nil {
+			return CoverageReport{}, err
+		}
+		captures = append(captures, capture{Recording: record, Result: result})
+	}
+	return coverage(s, at, captures)
+}
+
+func coverage(s CoverageSpec, at time.Time, captures []capture) (CoverageReport, error) {
 	out := CoverageReport{Scope: "local_regular_session_evidence", At: at.UTC(), Spec: s, Quote: QuoteCoverage{Quality: "missing", Code: "quote_capture_missing"}, Session: SessionCoverage{Status: "unknown", Code: "calendar_capture_missing"}}
 	if err := s.validate(); err != nil {
 		return out, err
@@ -116,10 +141,6 @@ func (j *Journal) Coverage(s CoverageSpec, at time.Time) (CoverageReport, error)
 		return out, err
 	}
 	out.Session.Date = at.In(location).Format("2006-01-02")
-	captures, err := j.captures()
-	if err != nil {
-		return out, err
-	}
 	var calendar, quote *capture
 	calendarConflict, quoteConflict := false, false
 	calendarFuture, quoteFuture := false, false

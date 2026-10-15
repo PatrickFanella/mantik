@@ -40,3 +40,6 @@ var FeedCollectors string
 
 //go:embed 0009_collector_admissions.sql
 var CollectorAdmissions string
+
+//go:embed 0010_feed_evidence.sql
+var FeedEvidence string

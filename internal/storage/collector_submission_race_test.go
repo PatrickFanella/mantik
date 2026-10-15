@@ -83,7 +83,7 @@ func TestPostgresContractsCollectorAdmissionUpgrade(t *testing.T) {
 		}
 	}
 	before, _ := s.FeedCollectors(ctx)
-	if _, err := s.pool.Exec(ctx, "ALTER TABLE mantik_feed_collectors DROP CONSTRAINT mantik_collectors_require_admissions; UPDATE mantik_feed_collectors SET payload=payload-'admissions'; DELETE FROM mantik_schema WHERE version=9"); err != nil {
+	if _, err := s.pool.Exec(ctx, "ALTER TABLE mantik_feed_collectors DROP CONSTRAINT mantik_collectors_require_admissions; UPDATE mantik_feed_collectors SET payload=payload-'admissions'; DROP TABLE mantik_feed_evidence; DELETE FROM mantik_schema WHERE version>=9"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
