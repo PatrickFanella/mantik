@@ -38,6 +38,16 @@ func runTrialExecution(ctx context.Context, command string, args []string, out, 
 		return trial.ErrInvalid
 	}
 	path := "/v1/trial-attempts/" + *id + "/run"
+	if command == "trial-assessments" {
+		var history assessment.History
+		if err = request(ctx, *base, "/v1/hypothesis-trials/"+*id+"/assessments", nil, &history); err != nil {
+			return err
+		}
+		if history.Validate() != nil || history.Index.TrialID != *id {
+			return errors.New("invalid assessment history receipt")
+		}
+		return emit(out, history)
+	}
 	if command == "trial-assessment" {
 		var result assessment.Result
 		if err = request(ctx, *base, "/v1/trial-attempts/"+*id+"/assessment", nil, &result); err != nil {

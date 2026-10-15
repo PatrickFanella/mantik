@@ -70,5 +70,49 @@ existing attempt-history API.
 Authority is `synthetic_condition_comparison_only`; `qualification_credit` is
 always false. A scalar condition match does not establish a mechanism, source
 truth, statistical significance, research validity, prospective paper
-profitability or permission to trade. Aggregated search-history assessment,
+profitability or permission to trade. Cross-plan search-history assessment,
 multiple-testing controls and promotion remain separate work.
+
+## History for one registered trial
+
+```sh
+./bin/mantik trial-assessments --api-url http://127.0.0.1:40880 --id TRIAL_ID
+```
+
+The authenticated endpoint is
+`GET /v1/hypothesis-trials/{id}/assessments`. The ID identifies a registered
+plan, rather than an attempt or hypothesis. It accepts no query parameters,
+filters or write commands. A missing plan returns 404, invalid arguments 422,
+and unavailable or inconsistent evidence 503.
+
+The `mantik-trial-assessment-history-v1` response includes every retained
+attempt for that plan in start-time/ID order, up to the existing global limit of
+32 intents. It contains each complete targeted assessment, total attempt count,
+compared/not-evaluable counts, and counts by reason code. A plan never attempted
+returns an empty assessment array and zero counts with its registration and
+hypothesis pins. No successful-only or best-result projection is offered.
+
+Before reading result bodies, the service captures an index of the plan and all
+attempt/run receipt hashes in one storage snapshot. The index schema is
+`mantik-trial-evidence-index-v1`; its hash binds the ordered catalogue, including
+attempt start times and absent-run references. Each targeted read must match
+that index. The service reads one bounded result body at a time, retains only
+the compact assessment, and reads the metadata index again at the end.
+The response includes the initial index and a hash of the complete history.
+Identical retained state produces identical hashes.
+
+A new attempt, cancellation, acquisition, completion or resolution during the
+read changes the index or an individual reference. The endpoint then returns
+409 with `trial assessment history changed during read; retry the whole request`.
+It returns no partial successful history and does not retry automatically.
+Storage checks occur within a five-second request context; source evidence is
+not locked during comparison. The stability check relies on immutable plans
+and intent identities, cancellation before acquisition, and monotonic run transitions;
+there is no operation for reverting an attempt to a previous state.
+
+This history describes the current retained state of all attempts for one plan.
+It does not retain every intermediate assessment snapshot, infer active worker
+processes, or combine sibling/parent plans into a hypothesis-wide search report.
+Existing intent, registration and run records are preserved. Reading the history
+does not resolve or execute work, select a winner, grant qualification or alter
+operational state. PostgreSQL schema 16 is unchanged.
