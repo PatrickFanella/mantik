@@ -35,6 +35,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 			QualificationCredit       bool                 `json:"qualification_credit"`
 		}{Configured: policy != nil, Policy: policy})
 	})
+	libraryRoutes(mux)
 	exceptionRoutes(mux, store)
 	caseRoutes(mux, store)
 	activityRoutes(mux, store)
