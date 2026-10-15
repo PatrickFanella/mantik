@@ -41,8 +41,8 @@ under the run's fixed lease generation after normalized delivery and before
 releasing the lease. Historical v1 completed runs retain their original meaning
 and have no automatic publication proof. Manual publication remains available
 for explicit recovery; publishing an older capture does not make its quote
-admission belong to the current generation. Global readiness policy remains
-unconfigured.
+admission belong to the current generation. Global readiness requires an explicit
+[startup policy](feed-readiness.md).
 
 ## HTTP and validation
 
@@ -106,12 +106,13 @@ The response separates:
 - `operational_evidence_satisfied`: evidence requirements plus a current lease,
   coherent clock, and current-generation quote admission when price is required.
 
-`collector_liveness_verified`, `global_readiness_configured`, and
-`qualification_credit` remain false. A current lease is not inspection of an OS
+`collector_liveness_verified` and `qualification_credit` remain false.
+`global_readiness_configured` reflects the optional [startup policy](feed-readiness.md);
+`required_by_readiness_policy` identifies a selected registration in its receiver. A current lease is not inspection of an OS
 process. A valid closed-session calendar can satisfy the raw evidence requirement
 without a usable price, while a stopped collector still fails the operational
-evidence check. Global `feed_coverage` remains `not_configured`; fixture readiness
-and strategy execution retain their existing contracts.
+evidence check. Global `feed_coverage` stays `not_configured` without the startup policy.
+Fixture readiness and strategy execution retain their existing contracts.
 
 ## Storage and recovery
 

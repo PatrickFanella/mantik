@@ -17,7 +17,7 @@ selected scope, `ready`, `status`, mode, check time, and every capability result
 | --- | --- |
 | `process` | The HTTP process can answer; storage may still be unavailable |
 | `storage` | A consistent state snapshot can be read |
-| `feed_coverage` | Real feed coverage; currently always `not_configured` |
+| `feed_coverage` | Validated current evidence for every registration in an [explicit startup policy](feed-readiness.md); disabled by default |
 | `action_delivery` | Fresh successful worker progress without unresolved delivery faults |
 | `protective_monitoring` | Fresh successful timer progress and applicable protection without unresolved protective faults |
 | `fixture_operation` | Storage, action delivery, and protective monitoring are ready within the fixture contract |

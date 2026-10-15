@@ -80,6 +80,7 @@ type serverFeedCoverage struct {
 	QuoteAdmissionCurrentGeneration bool                          `json:"quote_admission_current_generation"`
 	OperationalEvidenceSatisfied    bool                          `json:"operational_evidence_satisfied"`
 	CollectorLivenessVerified       bool                          `json:"collector_liveness_verified"`
+	RequiredByReadinessPolicy       bool                          `json:"required_by_readiness_policy"`
 	GlobalReadinessConfigured       bool                          `json:"global_readiness_configured"`
 	QualificationCredit             bool                          `json:"qualification_credit"`
 	Publications                    []storage.FeedEvidenceReceipt `json:"publications"`
@@ -191,7 +192,7 @@ func feedEvidenceError(w http.ResponseWriter, err error) {
 	}
 }
 
-func feedEvidenceRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
+func feedEvidenceRoutes(mux *http.ServeMux, store storage.Store, clock Clock, policy *FeedReadinessPolicy) {
 	backend, ok := store.(storage.FeedEvidenceStore)
 	if !ok {
 		return
@@ -249,6 +250,8 @@ func feedEvidenceRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			feedEvidenceError(w, err)
 			return
 		}
+		report.GlobalReadinessConfigured = policy != nil
+		report.RequiredByReadinessPolicy = policy != nil && policy.ReceiverID == snapshot.ReceiverID && slices.Contains(policy.RequiredRegistrations, r.PathValue("id"))
 		write(w, 200, report)
 	})
 }

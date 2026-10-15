@@ -113,5 +113,5 @@ bytes, re-normalize provider responses, or verify provider entitlement.
 
 Process liveness, raw evidence validation, coverage freshness, provider access,
 and strategy qualification remain separate checks. Global `feed_coverage`
-remains `not_configured`. This implementation grants no profitability credit
+requires a separate [startup policy](feed-readiness.md) and raw evidence validation. This implementation grants no profitability credit
 and enables no orders or live-money execution.

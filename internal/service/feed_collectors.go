@@ -11,7 +11,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
 
-func feedCollectorRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
+func feedCollectorRoutes(mux *http.ServeMux, store storage.Store, clock Clock, policy *FeedReadinessPolicy) {
 	if submissions, ok := store.(storage.CollectorSubmissionStore); ok {
 		mux.HandleFunc("POST /v1/collector-inputs", func(w http.ResponseWriter, r *http.Request) {
 			var body struct {
@@ -68,7 +68,7 @@ func feedCollectorRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			ProcessLivenessVerified   bool              `json:"process_liveness_verified"`
 			GlobalReadinessConfigured bool              `json:"global_readiness_configured"`
 			QualificationCredit       bool              `json:"qualification_credit"`
-		}{FeedCollectorSnapshot: snapshot, CheckedAt: at, LeaseStatus: statuses})
+		}{FeedCollectorSnapshot: snapshot, CheckedAt: at, LeaseStatus: statuses, GlobalReadinessConfigured: policy != nil})
 	})
 	mux.HandleFunc("POST /v1/feed-collectors", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
