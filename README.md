@@ -66,6 +66,7 @@ export MANTIK_API_TOKEN=mantik-local-development
 ./bin/mantik activity --limit 10
 ./bin/mantik activity --limit 10 --format json
 ./bin/mantik supervise --limit 10
+./bin/mantik supervise --view cases --limit 10
 ./bin/mantik cases
 ./bin/mantik cases --id demo-case-v1
 ```
@@ -75,8 +76,9 @@ events with a fixed history boundary and structured JSON details. It is a
 read-only activity view. `supervise` adds interactive page navigation, event
 details, and explicit stale/retry behavior using short commands followed by
 Enter. The [case inspection commands](docs/reference/cases.md) expose the current
-fixture/routing catalogue and one case's latest retained references. Interactive
-case navigation and the remaining research, portfolio and exception screens
+fixture/routing catalogue and one case's latest retained references.
+`supervise --view cases` adds page navigation, current case details, and stale-state
+refresh. The remaining research, portfolio and exception screens
 are planned.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches

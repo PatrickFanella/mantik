@@ -22,7 +22,8 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	fs := flag.NewFlagSet("supervise", flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	base := fs.String("api-url", defaultURL, "service HTTP origin")
-	limit := fs.Int("limit", 10, "events per page, 1..100")
+	limit := fs.Int("limit", 10, "items per page, 1..100")
+	view := fs.String("view", "activity", "activity or cases")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -33,7 +34,7 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" {
 		return errors.New("api-url must be an HTTP origin without credentials or a path")
 	}
-	if fs.NArg() != 0 {
+	if fs.NArg() != 0 || (*view != "activity" && *view != "cases") {
 		return errors.New("unexpected supervision arguments")
 	}
 	if err := (storage.ActivityQuery{Limit: *limit}).Validate(); err != nil {
@@ -44,6 +45,19 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	in, err := os.Open("/dev/stdin")
 	if err != nil {
 		return errors.New("supervise requires a readable Unix stdin")
+	}
+	if *view == "cases" {
+		catalog := func(ctx context.Context) (domain.CaseCatalog, error) {
+			var c domain.CaseCatalog
+			err := request(ctx, *base, "/v1/cases", nil, &c)
+			return c, err
+		}
+		detail := func(ctx context.Context, id string) (domain.CaseInspection, error) {
+			var d domain.CaseInspection
+			err := request(ctx, *base, "/v1/cases/"+id, nil, &d)
+			return d, err
+		}
+		return superviseCases(ctx, in, out, *limit, catalog, detail)
 	}
 	fetch := func(ctx context.Context, q storage.ActivityQuery) (domain.ActivityPage, error) {
 		v := url.Values{"after": {strconv.FormatInt(q.After, 10)}, "limit": {strconv.Itoa(q.Limit)}}
@@ -61,11 +75,8 @@ const supervisionHelp = "Commands (then Enter): n next | r retry current request
 
 // superviseActivity owns in. Only one page and its pending request are retained.
 func superviseActivity(ctx context.Context, in io.ReadCloser, out io.Writer, limit int, fetch activityFetch) error {
-	defer in.Close()
-	stop := context.AfterFunc(ctx, func() { _ = in.Close() })
-	defer stop()
-	scanner := bufio.NewScanner(in)
-	scanner.Buffer(make([]byte, 128), 256)
+	scanner, cleanup := supervisionInput(ctx, in)
+	defer cleanup()
 	query := storage.ActivityQuery{Limit: limit}
 	var page domain.ActivityPage
 	stale, havePage, read := true, false, true
@@ -170,4 +181,11 @@ func superviseActivity(ctx context.Context, in io.ReadCloser, out io.Writer, lim
 			}
 		}
 	}
+}
+
+func supervisionInput(ctx context.Context, in io.ReadCloser) (*bufio.Scanner, func()) {
+	stop := context.AfterFunc(ctx, func() { _ = in.Close() })
+	scanner := bufio.NewScanner(in)
+	scanner.Buffer(make([]byte, 128), 256)
+	return scanner, func() { stop(); _ = in.Close() }
 }
