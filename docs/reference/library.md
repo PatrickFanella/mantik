@@ -72,8 +72,41 @@ content hash and declared checks/safety. An unknown ID fails; it does not resolv
 a method from the client's local registry. A failed service read also fails
 without a cached or client-local fallback.
 
-This supplies the library inspection boundary for issue #22. Interactive library
-navigation, a service-owned research-attempt catalogue and portfolio supervision
-remain separate units. Account allocation and realistic paper execution are not
+## Interactive library navigation
+
+```sh
+./bin/mantik supervise --view library --limit 10
+```
+
+The viewer requests the service catalogue, validates its schema/scope/contracts
+and definition hashes, then keeps that bounded readback. Use these commands
+followed by Enter:
+
+| Command | Behavior |
+| --- | --- |
+| `n` / `p` | Next / previous local page, with no service request |
+| `r` | Refresh and validate the catalogue, returning to its first page |
+| `d METHOD_ID` | Print the displayed method's complete retained definition and hash |
+| `q` or EOF | Exit without changing the service |
+
+The page limit is 1..100; the catalogue itself permits at most 16 methods and
+currently contains four. Detail, paging and unknown commands send no service
+request. Off-page method identities are rejected. The detail view preserves the
+pin, safety declarations, required checks, assumptions and evidence class from
+that catalogue; it does not resolve or execute a local implementation.
+
+Failed requests or invalid catalogues mark the last successful display `STALE`
+and disable navigation/details until refresh succeeds. An initial connection
+failure still permits refresh, quit and EOF. The successful label explicitly
+identifies compiled methods rather than active admission or evaluation results.
+Refresh discards the previous catalogue and returns to the first page. It does
+not silently substitute a client-local list or enumerate local research files.
+
+The view uses the shared bounded command input and owned Unix stdin cancellation
+from the [activity viewer](activity.md). It does not enter raw terminal mode,
+automatically poll, run experiments, activate methods or stop workers on exit.
+
+This supplies library navigation for issue #22. A service-owned research-attempt
+catalogue and portfolio supervision remain separate units. Account allocation and realistic paper execution are not
 implemented by this readback. See [experiment contracts](experiments.md) for
 explicit execution and retained-attempt behavior.

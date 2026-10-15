@@ -68,6 +68,7 @@ export MANTIK_API_TOKEN=mantik-local-development
 ./bin/mantik supervise --limit 10
 ./bin/mantik supervise --view cases --limit 10
 ./bin/mantik supervise --view exceptions --limit 10
+./bin/mantik supervise --view library --limit 10
 ./bin/mantik cases
 ./bin/mantik cases --id demo-case-v1
 ./bin/mantik exceptions --limit 10 --format json
@@ -86,8 +87,8 @@ refresh. The [exception readback](docs/reference/exceptions.md) pages retained f
 recovery history without deriving readiness or loading the audit ledger.
 `supervise --view exceptions` adds bounded navigation and retained recovery
 details with explicit stale/retry behavior. The [library readback](docs/reference/library.md) exposes the service's compiled
-synthetic method pins, safety declarations and required checks. Interactive
-library and portfolio screens remain planned.
+synthetic method pins, safety declarations and required checks. `supervise --view library` adds validated catalogue navigation and method
+details. Portfolio and service-owned research-attempt views remain planned.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.
