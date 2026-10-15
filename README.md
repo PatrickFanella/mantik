@@ -267,6 +267,8 @@ validates native-fixture results through `worker-job`, `worker-execute` and
 host-verified settings and durable evidence; `worker-reconcile` inspects or
 explicitly cancels that owned attempt after interruption. The separate
 [Backtesting.py adapter](docs/reference/backtesting-fixture.md) compares the
-four built-in synthetic methods in a pinned Python container. Its versioned
-comparison artifact is not yet accepted by `worker-launch` or service trials.
-Automatic service dispatch remains separate work.
+four built-in synthetic methods in a pinned Python container. Its separate
+`external-worker-job`, `external-worker-launch`, `external-worker-reconcile` and
+`external-worker-result` commands retain and validate owned attempts, mismatches
+and interruptions. Native worker v1 remains unchanged. Automatic service dispatch
+and trial import remain separate work.

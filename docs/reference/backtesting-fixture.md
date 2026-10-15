@@ -5,13 +5,13 @@ with Backtesting.py 0.6.6. It accepts only the current Go-exported dataset and
 recipe; it cannot accept arbitrary strategies, Python code, data or broker
 configuration. It uses no service API, database, model or provider.
 
-This unit establishes the external library's fixture semantics before adding
-durable launcher integration. Its schema is separate from
+The adapter's schema is separate from
 `mantik-research-worker-job-v1` and `mantik-research-worker-result-v1`. The existing
 `worker-launch` and `worker-reconcile` commands continue to accept only the native
-Go adapter. The finite rehearsal below is a test driver; it is not a scheduler or
-a crash-recoverable dispatcher. Issue #17 remains open for a versioned external
-worker/transport contract and its lifecycle integration.
+Go adapter. The separate `external-worker-*` commands below provide durable local
+launch/reconciliation through a versioned external contract. The finite rehearsal
+at the end of this document remains a test driver. Issue #17 remains open pending delivery review of the protocol gate. Service
+dispatch/import and broader autonomous research integration are separate work.
 
 ## Environment and inputs
 
@@ -101,6 +101,106 @@ credit is always false. Image and isolation verification remain false inside
 the result: host evidence must establish the actual process settings. Matching
 fixture results do not establish general engine equivalence, statistical
 qualification, realistic fills, profitability or execution authority.
+
+## Durable external worker commands
+
+`mantik-external-fixture-worker-job-v1` pins a caller-chosen job ID, the fixed
+adapter/tool, Python and library versions, approved immutable image, adapter
+source and requirements hashes, full fixed recipe, three exact input artifacts,
+and a compact native-reference header with all four method/metric pins. Native
+replay bodies remain in the separately retained `native.json`, rather than being
+duplicated into the declaration. The job also fixes the resource profile,
+`single_comparison_stdout_64k_local_logs_v1` transport, `comparison.json` output,
+authority `external_fixture_worker_declaration_only`, false qualification credit
+and a hash of the Go JSON declaration with its own hash field empty.
+
+Use the existing export/reference commands or the retained rehearsal's input
+files. The input directory must contain `dataset.json`, `recipe.json` and
+`native.json`; these are read as bounded regular files. Source and requirements
+pins are explicit declarations. Host approval of the image is still necessary;
+a reported source hash does not attest the image's computations.
+
+```sh
+MANTIK_BT_ADAPTER="$(sha256sum research/backtesting/adapter.py | cut -d ' ' -f1)"
+MANTIK_BT_LOCK="$(sha256sum research/backtesting/requirements.lock | cut -d ' ' -f1)"
+./bin/mantik external-worker-job --id external-fixture-1 \
+  --image-sha256 "$MANTIK_BT_IMAGE" \
+  --adapter-sha256 "$MANTIK_BT_ADAPTER" \
+  --requirements-sha256 "$MANTIK_BT_LOCK" \
+  --input-dir "$MANTIK_BT_INPUTS" > "$MANTIK_BT_JOB"
+./bin/mantik external-worker-launch --job "$MANTIK_BT_JOB" \
+  --job-sha256 "$(jq -r .sha256 "$MANTIK_BT_JOB")" \
+  --input-dir "$MANTIK_BT_INPUTS" --out-dir "$MANTIK_BT_ATTEMPT" \
+  --approved-image-sha256 "$MANTIK_BT_IMAGE"
+./bin/mantik external-worker-reconcile --out-dir "$MANTIK_BT_ATTEMPT" \
+  --approved-image-sha256 "$MANTIK_BT_IMAGE"
+./bin/mantik external-worker-result --job "$MANTIK_BT_JOB" \
+  --job-sha256 "$(jq -r .sha256 "$MANTIK_BT_JOB")" \
+  --file "$MANTIK_BT_ATTEMPT/stdout.json"
+```
+
+`external-worker-result` validates and returns the exact compact Python bytes,
+preserving their hash. It does not reformat them as Go JSON. The validator checks
+artifact/source pins, environment declarations, conversion settings, ordered
+method identities, required integer metrics, trade-ledger shape, the passive
+action exclusion, each native/external value, delta and match flag, the overall
+match disposition, authority and the original compact-byte hash. It does not
+independently certify the library's calculations or a supplied native reference.
+Equivalent declarations may share a comparison's content hash; the durable host
+receipt binds that artifact to a particular sealed job and physical acquisition.
+
+The launcher reuses the [native launcher's ownership and recovery controls](research-workers.md#explicit-local-host-launcher).
+It validates all three inputs against the sealed job before creating resources,
+retains them and the job in a new private directory, then syncs
+`mantik-external-worker-acquisition-v1` before Docker creation. A kernel lock,
+actual ownership labels, pinned image and pre-start profile receipt protect the
+physical attempt. No automatic recreation or re-execution occurs.
+
+The fixed Python entrypoint is `/usr/local/bin/python -I /adapter/adapter.py`.
+Only exact file/hash arguments are supplied. It uses the same non-root,
+read-only, network-disabled, capability, memory/CPU/PID and no-restart settings
+as native workers. The complete environment must equal the inspected pinned
+Python image's public PATH/version/build-key/build-hash values plus the fixed
+bytecode/unbuffered and single-thread numerical-library settings. Additional
+variables, commands, namespaces, mounts, devices or ports fail verification.
+`-I` ignores Python environment configuration; numerical-library thread limits
+remain applicable. No caller credentials or environment values are forwarded.
+
+The external resource declaration fixes 30 host seconds, 256 MiB, one CPU,
+64 PIDs, 8 MiB per input and a 64 KiB comparison plus newline. Host enforcement
+uses actual process/container state and the acquisition deadline, independently
+of the adapter. No cooperative deadline claim is added to the Python artifact.
+The approved fixed adapter emits one compact comparison on stdout and redirects
+library diagnostics to stderr. Capture uses the bounded local logging profile:
+at most 16 MiB retained stdout and 64 KiB stderr, with result validation enforcing
+the smaller comparison limit. This permits oversized/invalid stdout to remain
+inspectable as incomplete evidence. As with native capture, `output_complete`
+means the bounded log read finished, not that the daemon never rotated earlier
+diagnostics. This transport is not approved for arbitrary noisy external tools.
+
+`mantik-external-worker-host-receipt-v1` binds the job/acquisition/image/container,
+actual finish and exit, host deadline, profile and capture disposition, stream
+hashes, valid comparison identity when available, collection time and its own
+hash. Authority is `synthetic_external_host_launch_receipt_only`; qualification
+credit remains false. A valid matching comparison with exit 0 is `completed`.
+A valid complete comparison with differing metrics and exit 1 is `mismatch`.
+A valid library failure with exit 1 is `failed`. Missing/invalid output, changed
+source pins or inconsistent exit status remain `incomplete`, with raw evidence
+retained. Launch exits nonzero for every status except `completed`.
+
+Reconciliation validates retained job/input identities and actual ownership,
+then returns a terminal receipt unchanged or recovers a finished result.
+An owned running worker before deadline returns a running error. `--cancel`
+explicitly stops that owned running attempt; an overdue running attempt is
+stopped after inspection. A worker that finished on time remains recoverable
+after the deadline. Missing handles, changed ownership/profile or an externally
+restarted terminal handle remain unresolved/conflicted. Cross-using native and
+external commands is rejected. A deliberate retry needs a new directory and
+preserves the original comparison identity; there is no automatic retry policy.
+
+The shared launcher refactor preserves native v1 JSON schemas, PATH-only profile,
+entrypoint, result rules and receipts. No database/schema, service scheduler,
+trial admission, provider or operational account is changed.
 
 ## Reproduce the retained rehearsal
 
