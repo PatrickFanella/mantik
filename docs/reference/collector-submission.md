@@ -93,6 +93,8 @@ not a reason to weaken the fence or change the input.
 
 This command delivers retained data. It does not acquire or renew leases,
 contact Alpaca, start a recurring collector, or alter strategy execution.
+The separate [finite collector command](finite-collector.md) combines bounded
+acquisition with explicit lease lifecycle and this fenced delivery contract.
 
 ## Scope and persistence
 

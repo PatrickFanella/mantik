@@ -129,9 +129,10 @@ This bounded contract must be extended before unattended continuous collection.
 Ownership fences lease commands and the [collector submission endpoint](collector-submission.md).
 Manual research-input submission retains its own receiver and provenance
 contract. The bounded journal client can select collector-fenced submission;
-automatic lease acquisition/renewal during collection and combining ownership with independently validated
-[regular-session coverage](alpaca-coverage.md) are subsequent implementation
-units. Registration never enables trading or establishes profitability.
+the [finite leased collector](finite-collector.md) performs explicit lease
+acquisition/renewal during quote collection. Combining ownership with independently
+validated [regular-session coverage](alpaca-coverage.md) is a subsequent
+implementation unit. Registration never enables trading or establishes profitability.
 
 ## Persistence and recovery
 
