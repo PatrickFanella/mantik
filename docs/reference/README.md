@@ -36,3 +36,4 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Retained trial attempt intents](trial-attempts.md)
 
 - [Bounded native trial execution](native-trial-runs.md)
+- [Native trial condition assessments](trial-assessments.md)

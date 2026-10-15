@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/assessment"
 	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
 	"git.subcult.tv/subculture-collective/mantik/internal/replay"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
@@ -16,6 +17,26 @@ import (
 )
 
 func trialRunRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
+	if evidence, ok := store.(storage.TrialEvidenceStore); ok {
+		mux.HandleFunc("GET /v1/trial-attempts/{id}/assessment", func(w http.ResponseWriter, r *http.Request) {
+			if !runArguments(w, r) {
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			retained, err := evidence.TrialEvidence(ctx, r.PathValue("id"))
+			if err != nil {
+				trialError(w, err)
+				return
+			}
+			result, err := assessment.Build(retained)
+			if err != nil {
+				failed(w, err)
+				return
+			}
+			write(w, 200, result)
+		})
+	}
 	backend, ok := store.(storage.TrialRunStore)
 	if !ok {
 		return

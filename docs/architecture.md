@@ -151,8 +151,12 @@ cases and execution state. Pre-execution [attempt intents](reference/trial-attem
 retain plan/source pins, pending work and explicit cancellation without dispatching
 a worker. The [native execution adapter](reference/native-trial-runs.md) retains
 separate run ownership, exact fixture input and full native outcomes, executing
-only in independent memory stores after acquisition commits. External research
-workers, statistical hypothesis evaluation and promotion remain separate work. See [trial registration](reference/hypothesis-trials.md).
+only in independent memory stores after acquisition commits.
+`internal/assessment` derives [condition comparisons](reference/trial-assessments.md)
+from one consistent snapshot of retained intent, plan, publication and native
+result. It preserves benchmarks and absent/failed results without changing
+research or operational state. External research workers, statistical hypothesis
+evaluation and promotion remain separate work. See [trial registration](reference/hypothesis-trials.md).
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00

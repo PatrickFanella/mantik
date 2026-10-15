@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/assessment"
 	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/investigation"
@@ -141,6 +142,14 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 			t.Fatal("native metrics changed")
 		}
 	}
+	var compared assessment.Result
+	if err = json.Unmarshal(run("trial-assessment", "--id", "native"), &compared); err != nil || compared.Status != "compared" || len(compared.Methods) != 4 || !compared.Methods[0].Matches.Null || !compared.Methods[0].Matches.Refutation || compared.Methods[2].Matches != nil || compared.NativeResultSHA256 != native.ResultSHA256 {
+		t.Fatal(compared, err)
+	}
+	compared = assessment.Result{}
+	if err = json.Unmarshal(run("trial-assessment", "--id", "intent"), &compared); err != nil || compared.ReasonCode != "cancelled_before_execution" || compared.Methods[0].Metrics != nil {
+		t.Fatal(compared, err)
+	}
 	command := trial.Command{ReceiverID: catalog.ReceiverID, RequestID: "second", PublicationID: publication.ID, Recipe: recipe}
 	body, _ := json.Marshal(command)
 	call := func(method, path, body string, auth bool, want int) {
@@ -171,6 +180,10 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	call("POST", "/v1/trial-attempts/intent/run", `{"receiver_id":"`+catalog.ReceiverID+`"}`, true, 409)
 	call("POST", "/v1/trial-attempts/native/cancel", `{"receiver_id":"`+catalog.ReceiverID+`"}`, true, 409)
 	call("GET", "/v1/trial-attempts/native/run?result=true", "", true, 422)
+	call("GET", "/v1/trial-attempts/native/assessment", "", false, 401)
+	call("GET", "/v1/trial-attempts/native/assessment?best=true", "", true, 422)
+	call("GET", "/v1/trial-attempts/missing/assessment", "", true, 404)
+	call("POST", "/v1/trial-attempts/native/assessment", `{}`, true, 405)
 	call("POST", "/v1/hypothesis-trials", string(body), false, 401)
 	call("GET", "/v1/hypothesis-trials/first", "", false, 401)
 	call("POST", "/v1/hypothesis-trials", strings.Replace(string(body), `"request_id":`, `"request_id":"changed","request_id":`, 1), true, 422)
