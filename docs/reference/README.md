@@ -9,6 +9,11 @@
 - [Independent deadlines and missing events](timers.md)
 - [Durable fixture actions](actions.md)
 - [Operational inspection and recovery](operations.md)
+- [Recorded news claims](news.md)
+- [Private news journal](news-journal.md)
+- [Receipt-cutoff event groups](news-events.md)
+- [Receiver-bound news research cases](news-cases.md)
+- [Bounded recorded-model review](research-review.md)
 
 Use this section for durable technical references:
 

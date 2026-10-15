@@ -131,7 +131,10 @@ inspection. The [event-group view](docs/reference/news-events.md) links declared
 events at an explicit receipt cutoff and flags revision review requirements.
 [Receiver-bound news admission](docs/reference/news-cases.md) retains each
 original and routes declared events to dedicated research cases, with revision
-reopening and evidence-version checks on closure.
+reopening and evidence-version checks on closure. The
+[bounded review runner](docs/reference/research-review.md) uses recorded model
+fixtures and targeted excerpts to finalize unqualified research proposals or
+abstentions. It does not dispatch service investigations or authorize operations.
 
 The [capture journal](docs/reference/alpaca-journal.md) retains validated recordings
 and supports receiver-bound submission and recovery through `alpaca-retain`,

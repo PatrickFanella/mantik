@@ -31,3 +31,6 @@ reports, paper tracker and downloaded files, records relevant source history,
 and maps literature and implementations to candidate library work. Original
 papers, reports and operational data remain outside Mantik Git. Recovery and
 source inspection do not establish reproduction or performance.
+
+- [Recorded-news acceptance audit](news-acceptance.md) — delivered interfaces,
+  retained rehearsal evidence and remaining extraction limits.
