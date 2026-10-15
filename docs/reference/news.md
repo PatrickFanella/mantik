@@ -4,12 +4,13 @@
 article's exact source text. It is an offline research boundary for issue #12,
 with no provider, model, database, routing, execution or portfolio access.
 
-This first unit does not collect articles, discover claims, prove assertions
-true, retain a durable article journal or reopen cases. The caller must preserve
-the input recording and original material privately. A normalized reference is
-not proof that its target exists or can be retrieved. Durable retention,
-predecessor verification, related-event routing and correction/retraction case
-policies remain separate units.
+Normalization does not collect articles, discover claims, prove assertions true
+or reopen cases. The [private news journal](news-journal.md) adds explicit local
+retention, verified predecessors and targeted inspection. Without that retention
+step, the caller must preserve input/original material privately; a normalized
+reference alone is not proof that its target exists or can be retrieved.
+Related-event routing and correction/retraction case policies remain separate
+units.
 
 ## Recording contract
 
