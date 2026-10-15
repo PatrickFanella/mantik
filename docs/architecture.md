@@ -156,7 +156,11 @@ only in independent memory stores after acquisition commits.
 from one consistent snapshot of retained intent, plan, publication and native
 result. It preserves benchmarks and absent/failed results without changing
 research or operational state. External research workers, statistical hypothesis
-evaluation and promotion remain separate work. See [trial registration](reference/hypothesis-trials.md).
+evaluation and promotion remain separate work. A per-plan assessment history
+pins a bounded metadata index, checks each targeted result against it, and
+rejects the entire read if the final index changes. It loads result bodies one
+at a time and returns every retained attempt without a winner projection.
+See [trial registration](reference/hypothesis-trials.md).
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00

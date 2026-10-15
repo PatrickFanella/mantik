@@ -254,3 +254,6 @@ and interrupted attempts. [Condition assessments](docs/reference/trial-assessmen
 compare retained metrics with the declared prediction, null and refutation
 conditions while keeping benchmarks and missing results explicit. These
 comparisons grant no qualification or trading authority.
+`trial-assessments --id TRIAL_ID` reads all retained attempt assessments for one
+registered plan, with explicit failure/missing-result counts and a consistent
+source boundary. A plan never attempted remains visible with zero attempts.

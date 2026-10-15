@@ -17,6 +17,7 @@ type runBackend interface {
 	attemptBackend
 	TrialRunStore
 	TrialEvidenceStore
+	TrialEvidenceIndexStore
 }
 
 func TestMemoryNativeRunLedger(t *testing.T) { runContracts(t, NewMemory()) }
@@ -44,6 +45,10 @@ func runContracts(t *testing.T, s runBackend) {
 	r, at := attemptFixture(t, s)
 	now := func() time.Time { return at }
 	receiver := r.ReceiverID
+	emptyIndex, err := s.TrialEvidenceIndex(ctx, r.ID)
+	if err != nil || emptyIndex.Validate() != nil || len(emptyIndex.Attempts) != 0 || emptyIndex.RegistrationSHA256 != r.SHA256 {
+		t.Fatal(emptyIndex, err)
+	}
 	start := func(id string) {
 		t.Helper()
 		if _, err := s.StartTrialAttempt(ctx, trial.AttemptCommand{ReceiverID: receiver, RequestID: id, TrialID: r.ID}, now); err != nil {
@@ -51,6 +56,10 @@ func runContracts(t *testing.T, s runBackend) {
 		}
 	}
 	start("run")
+	intentIndex, err := s.TrialEvidenceIndex(ctx, r.ID)
+	if err != nil || len(intentIndex.Attempts) != 1 || intentIndex.Attempts[0].RunSHA256 != "" || intentIndex.SHA256 == emptyIndex.SHA256 {
+		t.Fatal(intentIndex, err)
+	}
 	evidence, err := s.TrialEvidence(ctx, "run")
 	if err != nil || evidence.Run != nil || evidence.Result != "" || evidence.Registration.SHA256 != r.SHA256 || trial.Hash(evidence.Publication) != r.PublicationSHA256 {
 		t.Fatal("missing pre-execution evidence", err)
@@ -78,6 +87,10 @@ func runContracts(t *testing.T, s runBackend) {
 	if winners.Load() != 1 {
 		t.Fatal("multiple run owners", winners.Load())
 	}
+	runningIndex, err := s.TrialEvidenceIndex(ctx, r.ID)
+	if err != nil || runningIndex.Attempts[0].RunSHA256 != work.Run.SHA256 || runningIndex.SHA256 == intentIndex.SHA256 {
+		t.Fatal(runningIndex, err)
+	}
 	if _, err := s.CancelTrialAttempt(ctx, receiver, "run", now); !errors.Is(err, trial.ErrConflict) {
 		t.Fatal("running intent cancelled", err)
 	}
@@ -91,6 +104,10 @@ func runContracts(t *testing.T, s runBackend) {
 	completed, err := s.FinishTrialRun(ctx, receiver, "run", work.Run.InvocationID, raw, now)
 	if err != nil || completed.Validate() != nil || completed.Status != "completed" {
 		t.Fatal(completed, err)
+	}
+	completedIndex, err := s.TrialEvidenceIndex(ctx, r.ID)
+	if err != nil || completedIndex.Validate() != nil || completedIndex.Attempts[0].RunSHA256 != completed.SHA256 || completedIndex.SHA256 == runningIndex.SHA256 {
+		t.Fatal(completedIndex, err)
 	}
 	retry, err := s.BeginTrialRun(ctx, receiver, "run", `{}`, "another", func() time.Time { panic("terminal retry clock") })
 	if err != nil || retry.Acquired || !reflect.DeepEqual(retry.Run, completed) {
@@ -137,6 +154,10 @@ func runContracts(t *testing.T, s runBackend) {
 		actual, err := s.TrialRun(ctx, "run")
 		if err != nil || !reflect.DeepEqual(actual, completed) {
 			t.Fatal("restart lost terminal run", err)
+		}
+		index, err := s.TrialEvidenceIndex(ctx, r.ID)
+		if err != nil || index.Validate() != nil || len(index.Attempts) != 3 {
+			t.Fatal("restart lost bounded index", index, err)
 		}
 		evidence, err = s.TrialEvidence(ctx, "run")
 		if err != nil || evidence.Result != raw || evidence.Run == nil || evidence.Run.SHA256 != completed.SHA256 {

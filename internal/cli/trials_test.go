@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -150,6 +151,22 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	if err = json.Unmarshal(run("trial-assessment", "--id", "intent"), &compared); err != nil || compared.ReasonCode != "cancelled_before_execution" || compared.Methods[0].Metrics != nil {
 		t.Fatal(compared, err)
 	}
+	var assessmentHistory assessment.History
+	if err = json.Unmarshal(run("trial-assessments", "--id", first.ID), &assessmentHistory); err != nil || assessmentHistory.Validate() != nil || assessmentHistory.AttemptCount != 2 || assessmentHistory.Compared != 1 || assessmentHistory.NotEvaluable != 1 {
+		t.Fatal(assessmentHistory, err)
+	}
+	run("trial-attempt-start", "--id", "pending-for-history", "--trial", first.ID, "--receiver-id", catalog.ReceiverID)
+	changing := &changingHistoryStore{Memory: s, before: func() {
+		if _, err := s.CancelTrialAttempt(ctx, catalog.ReceiverID, "pending-for-history", time.Now); err != nil {
+			t.Error(err)
+		}
+	}}
+	changedServer := httptest.NewServer(service.Handler(changing, "trial-cli-token"))
+	defer changedServer.Close()
+	var changedOut bytes.Buffer
+	if err = Run(ctx, []string{"trial-assessments", "--api-url", changedServer.URL, "--id", first.ID}, &changedOut, &changedOut); err == nil || !strings.Contains(err.Error(), "HTTP 409") || changedOut.Len() != 0 {
+		t.Fatal("mixed history was accepted or printed", err, changedOut.String())
+	}
 	command := trial.Command{ReceiverID: catalog.ReceiverID, RequestID: "second", PublicationID: publication.ID, Recipe: recipe}
 	body, _ := json.Marshal(command)
 	call := func(method, path, body string, auth bool, want int) {
@@ -184,6 +201,10 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	call("GET", "/v1/trial-attempts/native/assessment?best=true", "", true, 422)
 	call("GET", "/v1/trial-attempts/missing/assessment", "", true, 404)
 	call("POST", "/v1/trial-attempts/native/assessment", `{}`, true, 405)
+	call("GET", "/v1/hypothesis-trials/first/assessments", "", false, 401)
+	call("GET", "/v1/hypothesis-trials/first/assessments?best=true", "", true, 422)
+	call("GET", "/v1/hypothesis-trials/missing/assessments", "", true, 404)
+	call("POST", "/v1/hypothesis-trials/first/assessments", `{}`, true, 405)
 	call("POST", "/v1/hypothesis-trials", string(body), false, 401)
 	call("GET", "/v1/hypothesis-trials/first", "", false, 401)
 	call("POST", "/v1/hypothesis-trials", strings.Replace(string(body), `"request_id":`, `"request_id":"changed","request_id":`, 1), true, 422)
@@ -199,4 +220,15 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 			t.Fatal("incomplete command accepted")
 		}
 	}
+}
+
+type changingHistoryStore struct {
+	*storage.Memory
+	once   sync.Once
+	before func()
+}
+
+func (s *changingHistoryStore) TrialEvidence(ctx context.Context, id string) (trial.Evidence, error) {
+	s.once.Do(s.before)
+	return s.Memory.TrialEvidence(ctx, id)
 }
