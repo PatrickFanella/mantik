@@ -32,3 +32,5 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Retained hypothesis publications](retained-hypotheses.md)
 
 - [Hypothesis-linked trial registration](hypothesis-trials.md)
+
+- [Retained trial attempt intents](trial-attempts.md)

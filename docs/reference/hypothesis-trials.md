@@ -75,8 +75,10 @@ times, not evidence of when the research idea was conceived or first tested.
 Registration records admission before any future execution through this trial's
 application-owned protocol. It does not prove that an existing dataset was unseen,
 that no prior experiment ran, or that the standalone `experiment` CLI used this
-registration. Result ingestion, execution ownership, interruption/cancellation,
-failed-attempt history, condition evaluation and promotion remain separate work.
+registration. [Attempt intents](trial-attempts.md) now retain pending work and explicit
+cancellation before execution. Execution ownership, interruption/timeout handling,
+result ingestion, failed-run history, condition evaluation and promotion remain
+separate work.
 
 ## HTTP and persistence
 

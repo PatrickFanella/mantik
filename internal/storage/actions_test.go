@@ -366,7 +366,7 @@ func TestPostgresContractsV3ActionUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, "ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_input_contract; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_operations; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_actions; DROP TABLE mantik_fixture_effects; DROP TABLE mantik_hypothesis_trials; DROP TABLE mantik_hypothesis_publications; DROP TABLE mantik_news_reviews; DROP TABLE mantik_news_cases; DROP TABLE mantik_feed_evidence; DROP TABLE mantik_feed_collectors; DELETE FROM mantik_schema WHERE version>=4"); err != nil {
+	if _, err := store.pool.Exec(ctx, "ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_input_contract; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_operations; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_actions; DROP TABLE mantik_fixture_effects; DROP TABLE mantik_trial_attempts; DROP TABLE mantik_hypothesis_trials; DROP TABLE mantik_hypothesis_publications; DROP TABLE mantik_news_reviews; DROP TABLE mantik_news_cases; DROP TABLE mantik_feed_evidence; DROP TABLE mantik_feed_collectors; DELETE FROM mantik_schema WHERE version>=4"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.pool.Exec(ctx, "UPDATE mantik_state SET payload=$1::jsonb-'actions'-'operations'", raw); err != nil {

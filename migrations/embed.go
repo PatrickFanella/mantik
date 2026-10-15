@@ -55,3 +55,6 @@ var HypothesisPublications string
 
 //go:embed 0014_hypothesis_trials.sql
 var HypothesisTrials string
+
+//go:embed 0015_trial_attempt_intents.sql
+var TrialAttemptIntents string

@@ -108,3 +108,49 @@ func canonicalNames(supplied, expected any) bool {
 	}
 	return true
 }
+
+func ReadAttemptCommand(reader io.Reader) (AttemptCommand, error) {
+	raw, err := io.ReadAll(io.LimitReader(reader, 4097))
+	if err != nil || len(raw) > 4096 || !utf8.Valid(raw) {
+		return AttemptCommand{}, ErrInvalid
+	}
+	if err = unique(json.NewDecoder(bytes.NewReader(raw)), 0); err != nil {
+		return AttemptCommand{}, err
+	}
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.DisallowUnknownFields()
+	var c AttemptCommand
+	if d.Decode(&c) != nil || d.Decode(new(any)) != io.EOF {
+		return c, ErrInvalid
+	}
+	canonical, _ := json.Marshal(c)
+	var supplied, expected any
+	if json.Unmarshal(raw, &supplied) != nil || json.Unmarshal(canonical, &expected) != nil || !canonicalNames(supplied, expected) {
+		return c, ErrInvalid
+	}
+	return c, c.Validate()
+}
+
+func ReadAttemptCancellation(reader io.Reader) (string, error) {
+	raw, err := io.ReadAll(io.LimitReader(reader, 4097))
+	if err != nil || len(raw) > 4096 || !utf8.Valid(raw) {
+		return "", ErrInvalid
+	}
+	if err = unique(json.NewDecoder(bytes.NewReader(raw)), 0); err != nil {
+		return "", err
+	}
+	var c struct {
+		ReceiverID string `json:"receiver_id"`
+	}
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.DisallowUnknownFields()
+	if d.Decode(&c) != nil || d.Decode(new(any)) != io.EOF {
+		return "", ErrInvalid
+	}
+	canonical, _ := json.Marshal(c)
+	var supplied, expected any
+	if json.Unmarshal(raw, &supplied) != nil || json.Unmarshal(canonical, &expected) != nil || !canonicalNames(supplied, expected) {
+		return "", ErrInvalid
+	}
+	return c.ReceiverID, nil
+}
