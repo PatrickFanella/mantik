@@ -124,8 +124,10 @@ separate work. `alpaca-normalize` converts retained Alpaca quote/calendar
 recordings offline; the bounded read client is tested against local servers. See [Alpaca contracts](docs/reference/alpaca.md).
 The [recorded news boundary](docs/reference/news.md) validates operator-supplied
 claims against exact source excerpts, with causal timestamps, explicit uncertainty
-and revision declarations. `news-normalize` is offline; news retention and case
-routing remain separate work.
+and revision declarations. `news-normalize` is offline. The
+[private news journal](docs/reference/news-journal.md) retains source/claim
+revisions with content conflicts, verified predecessors and explicit original
+inspection. News case routing remains separate work.
 
 The [capture journal](docs/reference/alpaca-journal.md) retains validated recordings
 and supports receiver-bound submission and recovery through `alpaca-retain`,
