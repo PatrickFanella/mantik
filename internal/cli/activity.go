@@ -55,6 +55,14 @@ func runActivity(ctx context.Context, args []string, out, errOut io.Writer) erro
 	if *format == "json" {
 		return emit(out, page)
 	}
+	if err := renderActivity(out, page); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(out, "Use --format json for structured evidence; preserve --through when continuing this history. Omit --through to read newly appended events.")
+	return err
+}
+
+func renderActivity(out io.Writer, page domain.ActivityPage) error {
 	if _, err := fmt.Fprintf(out, "MODE %s (unqualified fixture execution)\nHISTORY THROUGH %d  NEXT AFTER %d  MORE %t\nSEQUENCE  TIME  KIND  EVENT ID\n", strconv.Quote(page.Mode), page.Through, page.NextAfter, page.HasMore); err != nil {
 		return err
 	}
@@ -63,6 +71,5 @@ func runActivity(ctx context.Context, args []string, out, errOut io.Writer) erro
 			return err
 		}
 	}
-	_, err = fmt.Fprintln(out, "Use --format json for structured evidence; preserve --through when continuing this history. Omit --through to read newly appended events.")
-	return err
+	return nil
 }

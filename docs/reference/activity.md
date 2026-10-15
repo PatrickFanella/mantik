@@ -82,7 +82,52 @@ After switching service or restoring a different history, start a new readback
 and verify its source. Disconnecting the CLI does not stop service workers or
 acquire a collector lease.
 
-This is the first bounded activity view for issue #22. Interactive keyboard
-navigation, case/library/portfolio/exception screens, and mutations through
-shared operations remain separate implementation units. `status --format json`
+## Interactive activity supervision
+
+On Unix, open the read-only activity viewer with:
+
+```sh
+./bin/mantik supervise --api-url http://127.0.0.1:40880 --limit 10
+```
+
+Set `MANTIK_API_TOKEN` as for other CLI operations. The viewer makes one bounded
+GET at startup and then waits for a command followed by Enter. It uses ordinary
+terminal input, without an alternate screen, raw terminal mode or automatic
+polling. The page limit remains fixed for the session.
+
+| Command | Behavior |
+| --- | --- |
+| `n` | Next page within the current fixed boundary |
+| `r` | Retry the current request with the same cursor and boundary |
+| `b` | Begin a new readback from the start, selecting the latest boundary |
+| `u` | At the end of a fixed history, fetch newly appended events |
+| `d SEQUENCE` | Print full JSON details for an event on the displayed page |
+| `q` or EOF | Exit the viewer |
+
+Only one page and the current request are kept in memory. Event details come
+from that retained page and do not fetch another history or generate a narrative.
+Unknown commands and out-of-page event identities send no request. Appended
+history is unavailable until the fixed history has been traversed or a new
+readback begun; it does not silently skip unread events.
+
+Successful requests are labeled `READBACK OK`, explicitly as an on-demand
+readback rather than a continuous health check. A failed request labels the
+last successful page `STALE`; next-page, appended-history and detail commands
+are disabled until a retry or a new readback succeeds. Retrying a failed next
+page repeats its pending cursor, without advancing from the stale display.
+An initial connection failure leaves no successful page but still accepts
+retry, begin-again and quit commands. The error message does not echo arbitrary
+remote response text or authentication details.
+
+The viewer owns a separate `/dev/stdin` handle. Cancellation closes that handle
+to unblock input; quitting does not close the calling process's original stdin
+handle or send a service mutation. Ctrl-C exits with cancellation. Command input
+is bounded to 255 bytes per line; an oversized command ends the viewer. EOF
+exits even while disconnected. The service and independent workers continue
+after the terminal exits. Reconnecting starts a new viewer readback; for exact
+cursor continuation across processes, use the explicit `activity` flags above.
+
+This implements activity navigation for issue #22. Case/library/portfolio/
+exception screens and mutations through shared operations remain separate
+implementation units. `status --format json`
 continues to return the existing full snapshot; it is not a paginated substitute.
