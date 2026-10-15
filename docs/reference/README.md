@@ -34,3 +34,5 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Hypothesis-linked trial registration](hypothesis-trials.md)
 
 - [Retained trial attempt intents](trial-attempts.md)
+
+- [Bounded native trial execution](native-trial-runs.md)

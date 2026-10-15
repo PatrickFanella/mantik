@@ -58,3 +58,6 @@ var HypothesisTrials string
 
 //go:embed 0015_trial_attempt_intents.sql
 var TrialAttemptIntents string
+
+//go:embed 0016_native_trial_runs.sql
+var NativeTrialRuns string

@@ -178,7 +178,7 @@ func TestPostgresContractsNewsUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := s.pool.Config().ConnString()
-	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_trial_attempts; DROP TABLE mantik_hypothesis_trials; DROP TABLE mantik_hypothesis_publications; DROP TABLE mantik_news_reviews; DROP TABLE mantik_news_cases; DELETE FROM mantik_schema WHERE version>=11"); err != nil {
+	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_trial_run_artifacts; DROP TABLE mantik_trial_runs; DROP TABLE mantik_trial_attempts; DROP TABLE mantik_hypothesis_trials; DROP TABLE mantik_hypothesis_publications; DROP TABLE mantik_news_reviews; DROP TABLE mantik_news_cases; DELETE FROM mantik_schema WHERE version>=11"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -196,7 +196,7 @@ func TestPostgresContractsNewsUpgrade(t *testing.T) {
 		t.Fatal("upgrade rewrote fixture aggregate", err)
 	}
 	var version int
-	if err = upgraded.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&version); err != nil || version != 15 {
+	if err = upgraded.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&version); err != nil || version != 16 {
 		t.Fatal(version, err)
 	}
 	if _, err = upgraded.pool.Exec(ctx, "UPDATE mantik_schema SET sha256='changed' WHERE version=11"); err != nil {

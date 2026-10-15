@@ -110,6 +110,9 @@ func (m *Memory) CancelTrialAttempt(ctx context.Context, receiver, id string, no
 	if !ValidReceiverID(receiver) || receiver != m.receiverID {
 		return trial.Attempt{}, ErrReceiverMismatch
 	}
+	if _, exists := m.trialRuns[id]; exists {
+		return trial.Attempt{}, trial.ErrConflict
+	}
 	all := make([]trial.Attempt, 0, len(m.trialAttempts))
 	for _, a := range m.trialAttempts {
 		all = append(all, a)
@@ -231,6 +234,13 @@ func (p *Postgres) CancelTrialAttempt(ctx context.Context, receiver, id string, 
 		return trial.Attempt{}, trial.ErrInvalid
 	}
 	return p.attemptMutation(ctx, receiver, func(tx pgx.Tx, all []trial.Attempt) (trial.Attempt, error) {
+		var exists bool
+		if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM mantik_trial_runs WHERE attempt_id=$1)", id).Scan(&exists); err != nil {
+			return trial.Attempt{}, err
+		}
+		if exists {
+			return trial.Attempt{}, trial.ErrConflict
+		}
 		a, err := cancelAttempt(all, id, now)
 		if err != nil {
 			return a, err

@@ -76,9 +76,9 @@ Registration records admission before any future execution through this trial's
 application-owned protocol. It does not prove that an existing dataset was unseen,
 that no prior experiment ran, or that the standalone `experiment` CLI used this
 registration. [Attempt intents](trial-attempts.md) now retain pending work and explicit
-cancellation before execution. Execution ownership, interruption/timeout handling,
-result ingestion, failed-run history, condition evaluation and promotion remain
-separate work.
+cancellation before execution. [Native runs](native-trial-runs.md) now execute the built-in synthetic fixture
+and retain completed, failed or unresolved outcomes. External-worker execution,
+statistical condition evaluation and promotion remain separate work.
 
 ## HTTP and persistence
 
