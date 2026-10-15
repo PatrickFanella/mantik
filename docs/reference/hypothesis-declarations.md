@@ -3,8 +3,9 @@
 `hypothesis-declare` validates and hashes a structured research declaration. It
 establishes the input contract for the hypothesis lifecycle in issue #16. It does
 not publish a hypothesis, verify cited evidence, run a trial or prove that the
-file existed before an experiment. Durable declaration/attempt history and
-promotion remain separate work.
+file existed before an experiment. Application-owned publication and exact-question reuse are described in
+[retained hypotheses](retained-hypotheses.md); trials and promotion remain separate
+work.
 
 ```sh
 ./bin/mantik hypothesis-declare --export-fixture > /absolute/private/hypothesis.json
@@ -44,10 +45,11 @@ whitespace or control characters. Original claim keys use `news-` plus a 64-digi
 lowercase SHA-256 identity; recording digests must be 64 lowercase hexadecimal
 digits. References are bounded to 256 UTF-8 bytes and are not fetched.
 
-A review's current candidate contains claim/refutation codes and evidence keys;
-it does not yet contain this full declaration. There is no automatic conversion
-or publication path. A later application-owned publication step must bind the
-review, its current evidence and the complete declaration independently.
+A review's candidate contains claim/refutation codes and evidence keys; it does
+not contain this full declaration. The operator supplies the complete declaration
+to the [application-owned publication step](retained-hypotheses.md), which checks
+the authoritative review and current evidence independently. Offline validation
+alone does not publish or verify evidence.
 
 ## Condition semantics
 
@@ -107,7 +109,7 @@ references for that exact question keep the same question key while retaining
 different declaration hashes. Equivalent prose, alternate units or logically
 equivalent condition expressions are not semantically normalized.
 
-This key supports future reuse checks; it does not merge records, discard
+This key supports service publication reuse checks; it does not merge records, discard
 contradictory evidence or select a winning trial. Supplied origins are preserved
 as declarations. A valid digest shape does not prove that a source exists,
 matches the claim, remains current or supports the proposed mechanism. Result
