@@ -165,6 +165,64 @@ operation. Strategy evaluation, realistic paper fills/costs, prospective
 profitability, and any broker execution remain separate gates. Existing running
 services have not been upgraded to this source or policy.
 
+## Calendar-first bounded window, October 15, 2026 UTC
+
+Merged source `224659a63047b6025561b64446fdeb67d0085ab4` passed hosted main CI.
+A separate committed-image rehearsal declared a 60-second regular-session limit,
+one fresh calendar acquisition and two SPY IEX quote acquisitions twenty seconds
+apart. It restored the checksum-verified open-session backup and a separate copy
+of its journal into a new project and volume on free loopback 41916. Schema 10,
+the restored receiver, the explicit readiness policy and the immutable image
+were checked before collection. Prior source stacks remained stopped.
+
+This attempt **did not complete the planned healthy-price collection**. It did
+verify the calendar-first path and a safe stop on degraded real provider data:
+
+| Actual event (UTC) | Retained outcome |
+| --- | --- |
+| 17:00:38.970959838 | Fixed owner claimed generation 6 |
+| 17:00:39.841524447 | One calendar HTTP attempt retained the current regular session, open until 20:00 UTC |
+| 17:00:40.498599388 | Calendar publication was validated under generation 6 before quote acquisition |
+| 17:00:41.235423202 | One quote HTTP attempt returned a provider timestamp of 16:56:33.700843777 UTC |
+| 17:00:42.167015752 | Collector retained terminal `stopped` history with `quote_unusable` and confirmed lease release |
+
+The quote was 247.534580 seconds old when received, exceeding the unchanged
+60-second limit. It normalized to quarantined `stale_quote` state evidence with
+no price value. That input and its raw diagnostic publication were retained;
+the second declared quote was never acquired. Feed readiness did not become
+healthy during the sampled run and returned HTTP 503 with `stopped` after lease
+release. No additional provider attempt was made to replace this result.
+
+The original rehearsal driver asserted that the planned two-quote completion
+had succeeded and exited at that assertion. Its failure, stdout, stderr and
+terminal collector history were retained. A separate closeout inspected the
+actual stopped collector and live disposable app before archiving or stopping
+resources. This was an unmet qualification expectation caused by stale provider
+evidence; it was not evidence that Mantik accepted a stale price.
+
+Offline archive verification, isolated restore and credential-free v3 collector
+inspection reproduced the stopped status, calendar receipt, one quote receipt
+and `quote_unusable` code. All eight journal inputs were acknowledged with zero
+pending or uncertain inputs. The database retained seven raw publications: five
+restored records, the fresh calendar and the quarantined quote. A coherent
+schema-10 backup, its SHA-256 receipt, configuration hashes, source/image/CI
+receipts and the original captures were preserved outside Git. Private closeout
+files are `completion-audit.json` and `completion-report.md` in
+`regular-session-feed-20261015` beside the owned manifest.
+
+The disposable app and database were stopped and independently confirmed at
+PID 0 with exit code 0. The finite collector remained terminal at PID 0 with
+exit code 1, as expected for its retained stop. The canonical source journal and
+three original running services kept their contents and exact process/image
+handles. Fixture observations, actions and economic effects remained zero.
+No account/order request, recurring collection or replacement soak was started.
+
+This attempt establishes fresh calendar publication before a quote and retained
+safe-stop behavior on an actual stale IEX response. It does not establish a
+healthy calendar-first quote window, completion of both declared acquisitions,
+continuous data freshness or profitability. The earlier two-quote open-session
+checkpoint above remains separate evidence from its earlier source and run.
+
 ## Repeatable operator procedure
 
 1. Verify authorization for the credential pair, intended paper environment,
@@ -211,11 +269,14 @@ services have not been upgraded to this source or policy.
 
 Existing services without a startup policy still report `feed_coverage` as
 `not_configured`. The isolated rehearsals above established finite closed- and
-open-session readiness behavior. A newly identified real IEX quote passed the
+open-session readiness behavior, plus a later calendar-first safe stop on stale
+provider data. The calendar-first healthy-price completion remains unproven. A newly identified real IEX quote passed the
 price, attribution, age and current-generation contracts; its release transition
 and retained history were verified separately.
 
-Continuous acquisition and calendar refresh, coverage obligations,
+Automatic calendar acquisition is bounded to one acquisition per declared
+regular-session run; its retained publication was verified above. Continuous
+acquisition and recurring calendar refresh, coverage obligations,
 outage/recovery operation, retention policy and licensing scope still need
 qualification. Future price captures must continue to satisfy the same contract;
 do not loosen quote age, round unsupported prices, substitute synthetic values,
