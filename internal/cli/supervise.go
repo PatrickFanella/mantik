@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
 
@@ -23,7 +24,7 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	fs.SetOutput(errOut)
 	base := fs.String("api-url", defaultURL, "service HTTP origin")
 	limit := fs.Int("limit", 10, "items per page, 1..100")
-	view := fs.String("view", "activity", "activity, cases or exceptions")
+	view := fs.String("view", "activity", "activity, cases, exceptions or library")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -34,7 +35,7 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" {
 		return errors.New("api-url must be an HTTP origin without credentials or a path")
 	}
-	if fs.NArg() != 0 || (*view != "activity" && *view != "cases" && *view != "exceptions") {
+	if fs.NArg() != 0 || (*view != "activity" && *view != "cases" && *view != "exceptions" && *view != "library") {
 		return errors.New("unexpected supervision arguments")
 	}
 	if err := (storage.ActivityQuery{Limit: *limit}).Validate(); err != nil {
@@ -45,6 +46,14 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	in, err := os.Open("/dev/stdin")
 	if err != nil {
 		return errors.New("supervise requires a readable Unix stdin")
+	}
+	if *view == "library" {
+		fetch := func(ctx context.Context) (experiment.Catalog, error) {
+			var c experiment.Catalog
+			err := request(ctx, *base, "/v1/library", nil, &c)
+			return c, err
+		}
+		return superviseLibrary(ctx, in, out, *limit, fetch)
 	}
 	if *view == "exceptions" {
 		fetch := func(ctx context.Context, q storage.ExceptionQuery) (domain.ExceptionPage, error) {

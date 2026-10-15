@@ -49,6 +49,14 @@ func runLibrary(ctx context.Context, args []string, out, errOut io.Writer) error
 	if *format == "json" {
 		return emit(out, c)
 	}
+	if err := renderMethodCatalog(out, c); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(out, "Use library --id METHOD_ID for exact safety, checks, assumptions and definition hash. Inspection does not execute an experiment or activate a strategy.")
+	return err
+}
+
+func renderMethodCatalog(out io.Writer, c experiment.Catalog) error {
 	if _, err := fmt.Fprintf(out, "SCOPE %s  CONTRACT %s\nCOMPILED SYNTHETIC METHODS (unqualified; not an active portfolio or result history)\nID  KIND  IMPLEMENTATION  EVIDENCE  COST MODEL\n", strconv.Quote(c.Scope), strconv.Quote(c.ContractVersion)); err != nil {
 		return err
 	}
@@ -58,6 +66,5 @@ func runLibrary(ctx context.Context, args []string, out, errOut io.Writer) error
 			return err
 		}
 	}
-	_, err = fmt.Fprintln(out, "Use library --id METHOD_ID for exact safety, checks, assumptions and definition hash. Inspection does not execute an experiment or activate a strategy.")
-	return err
+	return nil
 }
