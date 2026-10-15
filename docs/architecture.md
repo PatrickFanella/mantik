@@ -130,10 +130,23 @@ command exports the synthetic dataset or reads a file pinned by SHA-256. See
 rules. Dataset artifacts are files outside Git; the service database schema is
 unchanged.
 
-`internal/experiment` declares dataset/window/method/benchmark/metric pins before
-running independent memory replays. It retains declarations, supplied inputs,
-and successes or failures as immutable local artifacts. Passive and no-action
-controls are nonexecuting components. See [experiment contracts](reference/experiments.md).
+`internal/experimentplan` owns the versioned experiment recipe, method catalogue,
+content pins, bounded recipe reader and declaration validation. Its application
+dependencies are only `domain` and `library`; validating a declared plan cannot
+load a dataset, start replay or access storage. This lets future storage-backed
+trial registration use the same validation contract without importing the runner.
+
+`internal/experiment` constructs default recipes from validated datasets, runs
+independent memory replays, and retains declarations, supplied inputs and
+successes or failures as immutable local artifacts. Its existing recipe/method
+exports remain aliases and forwarding functions for the shared contracts. The
+v1 JSON field order, method hashes, recipe identities, validation rules and CLI
+behavior are preserved. Passive and no-action controls remain nonexecuting
+components. See [experiment contracts](reference/experiments.md).
+
+The shared declaration package does not register hypothesis-linked trials or
+retain their outcomes. Those require a separate application-owned registration
+and attempt-history contract against a retained hypothesis publication.
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00
