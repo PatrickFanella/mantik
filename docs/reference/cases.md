@@ -120,7 +120,8 @@ cancellation. Neither changes terminal mode, automatically polls the service,
 submits a mutation, or stops workers on exit. See the [activity viewer](activity.md)
 for Unix stdin, command-length and cancellation behavior.
 
-This supplies case navigation for issue #22. Exception navigation still needs
-a bounded operational readback; the existing operations endpoint internally
-loads the full status/event history. Library/portfolio screens, full match-history
+This supplies case navigation for issue #22. [Exception navigation](exceptions.md)
+uses the bounded retained-exception API.
+The existing operations endpoint still internally loads the full status/event
+history; the supervisor does not use it. Library/portfolio screens, full match-history
 inspection and finalized-decision attribution remain separate units.

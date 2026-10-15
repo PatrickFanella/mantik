@@ -67,6 +67,7 @@ export MANTIK_API_TOKEN=mantik-local-development
 ./bin/mantik activity --limit 10 --format json
 ./bin/mantik supervise --limit 10
 ./bin/mantik supervise --view cases --limit 10
+./bin/mantik supervise --view exceptions --limit 10
 ./bin/mantik cases
 ./bin/mantik cases --id demo-case-v1
 ./bin/mantik exceptions --limit 10 --format json
@@ -81,8 +82,9 @@ fixture/routing catalogue and one case's latest retained references.
 `supervise --view cases` adds page navigation, current case details, and stale-state
 refresh. The [exception readback](docs/reference/exceptions.md) pages retained faults and
 recovery history without deriving readiness or loading the audit ledger.
-The remaining research, portfolio and interactive exception screens
-are planned.
+`supervise --view exceptions` adds bounded navigation and retained recovery
+details with explicit stale/retry behavior. Research and portfolio screens
+remain planned.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.

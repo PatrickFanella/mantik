@@ -65,8 +65,45 @@ JSON preserves the full structured exception and recovery history. The CLI
 performs one bounded GET, with no cached display, automatic retry or recovery
 request. Its existing response-size and network timeout bounds also apply.
 
-This is the exception readback boundary for issue #22. Interactive exception
-navigation remains a separate unit. The existing `operations` command/API still
+## Interactive exception navigation
+
+```sh
+./bin/mantik supervise --view exceptions --limit 10
+```
+
+Use short commands followed by Enter:
+
+| Command | Behavior |
+| --- | --- |
+| `n` | Fetch the next page after the returned exception identity |
+| `r` | Repeat the current request with the same cursor |
+| `b` | Begin again without a cursor to discover updated or earlier-sorting records |
+| `d EXCEPTION_ID` | Print complete retained details from the displayed page |
+| `q` or EOF | Exit without changing the service |
+
+The viewer keeps one page and its pending request, with the same 1..100 page
+limit and response-size bound as the standalone command. Details include the
+retained evidence references, recovery attempts and terminal outcome; they do
+not issue another request or invoke recovery. Off-page identities and unknown
+commands also send no request. There is no automatic polling or retained page
+stack.
+
+Successful requests are labeled as retained on-demand readbacks, not current
+readiness. A failed or invalid page marks the last successful page `STALE` and
+blocks navigation/details until retry or begin-again succeeds. A failed next-page
+request retains its pending cursor for exact retry. Because these are mutable
+current-state pages, repeating a request can return updated records; it does not
+promise an immutable replay. At the end, begin again to discover changes before
+an earlier cursor.
+
+The viewer rejects wrong scope/mode, excessive item counts, unordered or duplicate
+identities and inconsistent continuation cursors. An empty valid page still
+carries the retained-only label. An initial request failure permits retry,
+begin-again, quit and EOF. The shared owned Unix stdin handle, bounded command
+input and cancellation behavior match the [activity viewer](activity.md).
+Terminal exit leaves workers and service state unchanged.
+
+This implements read-only exception navigation for issue #22. The existing `operations` command/API still
 combines all retained exceptions with fresh readiness and internally uses the
 full snapshot; this endpoint does not silently change that contract. Recovery
 continues through the explicit shared `recover` operation described in

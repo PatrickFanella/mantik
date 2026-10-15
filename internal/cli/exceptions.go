@@ -48,6 +48,14 @@ func runExceptions(ctx context.Context, args []string, out, errOut io.Writer) er
 	if *format == "json" {
 		return emit(out, page)
 	}
+	if err := renderExceptionPage(out, page); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(out, "Use --format json for evidence references and recovery history; use readiness for a fresh capability assessment.")
+	return err
+}
+
+func renderExceptionPage(out io.Writer, page domain.ExceptionPage) error {
 	if _, err := fmt.Fprintf(out, "MODE %s  SCOPE %s\nRETAINED RECORDS ONLY (not a current readiness assessment)\nNEXT AFTER %s  MORE %t\nID  CAPABILITY  SEVERITY  STATUS  CODE  RECOVERY ATTEMPTS\n", strconv.Quote(page.Mode), strconv.Quote(page.Scope), strconv.Quote(page.NextAfter), page.HasMore); err != nil {
 		return err
 	}
@@ -56,6 +64,5 @@ func runExceptions(ctx context.Context, args []string, out, errOut io.Writer) er
 			return err
 		}
 	}
-	_, err = fmt.Fprintln(out, "Use --format json for evidence references and recovery history; use readiness for a fresh capability assessment.")
-	return err
+	return nil
 }
