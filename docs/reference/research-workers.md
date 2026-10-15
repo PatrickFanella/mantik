@@ -8,8 +8,8 @@ Implementation proceeds in three units:
 
 1. Versioned job/result contracts and a working native-fixture adapter, described
    here. This unit pins declarations and checks transport/result identities.
-2. A host-controlled launcher that enforces isolation and resources, verifies the
-   actual image, and retains acquisition, interruption and completion receipts.
+2. The explicit local launcher below enforces a fixed container profile, verifies
+   the actual image and retains acquisition, interruption and completion evidence.
 3. A pinned external research-library adapter, compared with the native fixture,
    followed by explicit service integration. Issue #17 remains open.
 
@@ -91,7 +91,7 @@ can exit successfully when inspecting a retained failed result.
 Enforcement scope is `artifact_bounds_and_cooperative_context_only`. The adapter
 enforces artifact bounds and uses a cooperative context for native work. It does
 not kill an uncooperative process or interrupt a blocked input reader. Memory,
-CPU and PID values are declarations for the future launcher. Image identity and
+CPU and PID values are declarations for the host launcher. Image identity and
 isolation verification remain false; a worker cannot attest its own container.
 Specifying an image hash does not select or verify the current process's image.
 Independent host evidence must establish those properties.
@@ -107,3 +107,90 @@ Result authority is `synthetic_worker_protocol_only`, with qualification credit
 always false. Protocol validation supplies neither statistical qualification,
 paper profitability, execution authority nor a sandbox security attestation.
 Schema 16 and existing running services are unchanged.
+
+## Explicit local host launcher
+
+`worker-launch` runs one physical attempt in a new private directory:
+
+```sh
+./bin/mantik worker-launch --job "$MANTIK_WORK_DIR/job.json" \
+  --job-sha256 "$(jq -r .sha256 "$MANTIK_WORK_DIR/job.json")" \
+  --input "$MANTIK_WORK_DIR/dataset.json" \
+  --approved-image-sha256 "$MANTIK_WORKER_IMAGE" \
+  --out-dir "$MANTIK_WORK_DIR/launch-1"
+./bin/mantik worker-reconcile --out-dir "$MANTIK_WORK_DIR/launch-1" \
+  --approved-image-sha256 "$MANTIK_WORKER_IMAGE"
+```
+
+The launcher is Linux-specific. It uses `/usr/bin/docker` and the local Unix
+socket `/var/run/docker.sock`, with a new empty Docker configuration directory
+and a scrubbed client environment. It accepts no Docker command, remote daemon,
+registry credentials, arbitrary worker command or runtime overrides. The approved
+image argument must match the sealed job. Image pulls and fallback images are
+disabled. Retain a local tag for the approved image; replacing a shared build tag
+can leave an earlier image ID unavailable. A missing image is a retained setup
+failure, rather than permission to select another image.
+
+The attempt directory must be new, under an existing parent. It is canonicalized
+and created with mode 0700. The launcher atomically retains the job, exact input
+and `mantik-worker-acquisition-v1` receipt before Docker creation. The receipt
+pins a random invocation identity, absolute directory, job/image hashes, owned
+container name and 30-second host deadline. Each file and containing directory
+is synced before acknowledgment. A nonblocking kernel file lock protects active
+launch/reconciliation; process death releases the lock. Existing directories are
+never reused for execution. A deliberate physical retry needs a new directory,
+preserving the prior attempt and the original job/result identities.
+
+Before start, host inspection verifies the actual image, invocation/job labels,
+entrypoint/arguments, non-root UID 65532, environment containing only the expected
+PATH, one read-only input mount, read-only root filesystem, network `none`, dropped
+capabilities, no-new-privileges, no host PID/IPC/UTS namespace, no devices or port
+bindings, no restart policy, 256 MiB memory with no extra swap, one CPU and 64 PIDs.
+It retains a separate pre-start snapshot before starting the verified container.
+Docker uses a bounded local log profile: one 20 MiB file with compression disabled.
+The [Docker local-driver documentation](https://docs.docker.com/engine/logging/drivers/local/)
+describes the log-size, rotation and compression options.
+
+On cancellation, deadline or interrupted wait, the launcher inspects the actual
+handle and labels before killing only its owned running container. It then
+rechecks terminal state and profile. Missing handles, unavailable Docker or changed
+ownership/profile leave an unresolved error; they never cause recreation or a
+blind restart. Create/start diagnostics are retained separately when available.
+
+Reconciliation reads the acquisition, locks the attempt and inspects its actual
+container. A running worker before deadline returns an explicit running error.
+To cancel that owned running attempt deliberately:
+
+```sh
+./bin/mantik worker-reconcile --out-dir "$MANTIK_WORK_DIR/launch-1" \
+  --approved-image-sha256 "$MANTIK_WORKER_IMAGE" --cancel
+```
+
+An overdue running worker is stopped after inspection. A worker already finished
+on time can be recovered after the deadline without re-execution. A terminal
+receipt is immutable; repeated reconciliation verifies the actual stopped handle
+and retained artifact hashes and returns that receipt. A terminal container that
+was externally restarted or changed causes a conflict. Moving/copying the attempt
+directory does not transfer ownership of a live container.
+
+`mantik-worker-host-receipt-v1` records the acquisition/container/image identity,
+actual exit and finish time, host deadline disposition, profile checks, bounded
+stdout/stderr hashes and sizes, validated worker result identity when present,
+status and reason, collection time and its own hash. Raw streams are retained as
+`stdout.json` and `stderr.txt`, bounded to 16 MiB and 64 KiB. `output_complete`
+means the bounded Docker log read finished successfully; it does not attest that
+the daemon never rotated earlier output. This native adapter emits one bounded
+result; arbitrary external tools need a separately reviewed transport policy.
+Invalid, missing or truncated results remain incomplete. Native failures, late
+results, cancellation and timeouts remain distinct. The launcher prints retained
+receipts and exits nonzero unless execution completed; reconciliation can exit
+successfully when inspecting a retained failed/cancelled attempt.
+
+Completed status requires a valid worker envelope, matching exit status, retained
+pre-start proof, matching final profile and actual finish before the host deadline.
+Worker self-attestation flags remain false. Host profile verification is an
+observation of the declared settings, not a sandbox security certification or
+proof of image computations. Authority is `synthetic_host_launch_receipt_only`,
+with qualification credit false. No result is admitted into service trial runs,
+and no service scheduler, provider adapter or operational account is used. Stopped
+containers and attempt evidence are retained; removal is an operator action.
