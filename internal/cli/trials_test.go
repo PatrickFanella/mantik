@@ -118,6 +118,29 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	if err = json.Unmarshal(run("trial-attempt", "--id", "intent"), &retriedIntent); err != nil || !reflect.DeepEqual(cancelledIntent, retriedIntent) {
 		t.Fatal(err)
 	}
+	run("trial-attempt-start", "--id", "native", "--trial", first.ID, "--receiver-id", catalog.ReceiverID)
+	var native trial.Run
+	executeArgs := []string{"trial-run-execute", "--id", "native", "--receiver-id", catalog.ReceiverID}
+	if err = json.Unmarshal(run(executeArgs...), &native); err != nil || native.Status != "completed" || native.Validate() != nil || native.QualificationCredit {
+		t.Fatal(native, err)
+	}
+	var nativeRetry trial.Run
+	if err = json.Unmarshal(run(executeArgs...), &nativeRetry); err != nil || !reflect.DeepEqual(native, nativeRetry) {
+		t.Fatal("native retry reran execution", err)
+	}
+	var artifact trial.RunArtifact
+	if err = json.Unmarshal(run("trial-run", "--id", "native", "--artifact", "result"), &artifact); err != nil || artifact.SHA256 != native.ResultSHA256 {
+		t.Fatal(err)
+	}
+	var executed experiment.Attempt
+	if err = json.Unmarshal([]byte(artifact.Content), &executed); err != nil || executed.Qualified || len(executed.Results) != 4 {
+		t.Fatal(executed, err)
+	}
+	for i, want := range []int64{-6000, -3000, 0, -7200} {
+		if executed.Results[i].Metrics.MarkedPnLCents != want {
+			t.Fatal("native metrics changed")
+		}
+	}
 	command := trial.Command{ReceiverID: catalog.ReceiverID, RequestID: "second", PublicationID: publication.ID, Recipe: recipe}
 	body, _ := json.Marshal(command)
 	call := func(method, path, body string, auth bool, want int) {
@@ -143,6 +166,11 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	call("POST", "/v1/trial-attempts/intent/cancel", `{"receiver_id":"`+catalog.ReceiverID+`","execution_started":true}`, true, 422)
 	call("GET", "/v1/trial-attempts/intent?result=true", "", true, 422)
 	call("GET", "/v1/hypothesis-trials/missing/attempts", "", true, 404)
+	call("POST", "/v1/trial-attempts/native/run", `{"receiver_id":"`+catalog.ReceiverID+`"}`, false, 401)
+	call("POST", "/v1/trial-attempts/native/run", `{"receiver_id":"`+catalog.ReceiverID+`","result":{}}`, true, 422)
+	call("POST", "/v1/trial-attempts/intent/run", `{"receiver_id":"`+catalog.ReceiverID+`"}`, true, 409)
+	call("POST", "/v1/trial-attempts/native/cancel", `{"receiver_id":"`+catalog.ReceiverID+`"}`, true, 409)
+	call("GET", "/v1/trial-attempts/native/run?result=true", "", true, 422)
 	call("POST", "/v1/hypothesis-trials", string(body), false, 401)
 	call("GET", "/v1/hypothesis-trials/first", "", false, 401)
 	call("POST", "/v1/hypothesis-trials", strings.Replace(string(body), `"request_id":`, `"request_id":"changed","request_id":`, 1), true, 422)

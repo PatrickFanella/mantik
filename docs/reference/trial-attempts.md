@@ -1,9 +1,10 @@
 # Retained trial attempt intents
 
 An attempt intent records planned work against an immutable registered trial.
-It is retained before a future executor can run that work. This v1 boundary
-supports starting, inspecting and cancelling an intent; it does not dispatch a
-worker, read a dataset, execute a method, accept results or evaluate conditions.
+It is retained before an executor can run that work. This v1 boundary
+supports starting, inspecting and cancelling an intent. The separate
+[native run](native-trial-runs.md) operation now executes the built-in fixture and
+retains results without rewriting the historical intent.
 
 ```sh
 ./bin/mantik trial-attempt-start --api-url http://127.0.0.1:40880 \
@@ -27,14 +28,15 @@ V1 states are `pending` and `cancelled`. Every receipt explicitly retains
 `research_attempt_intent_only`. Pending means that an execution intent exists;
 it is not evidence of an active worker, a completed experiment or a timeout.
 There is no automatic deadline, lease, retry loop, failure classifier or pending
-expiry in this version. A process interruption leaves the retained intent visible
-for inspection; it can be cancelled explicitly. An executor and its ownership,
-interruption, timeout and result contracts require a separate change.
+expiry for the intent itself. Current execution state belongs to a separate run. A process interruption leaves the retained intent visible
+for inspection; it can be cancelled explicitly before a run exists. A run blocks intent
+cancellation; inspect its outcome or unresolved execution state separately.
 
 Cancellation records `operator_cancelled_before_execution` and the server close
 time. It cannot delete the intent or change its original plan/source identities.
-It does not assert that an external process was killed; no execution path is
-available here. A new attempt ID retains a separate intent for the same plan.
+It does not assert that an external process was killed; intent cancellation itself
+does not dispatch execution. A new attempt ID retains a separate intent for the
+same plan.
 Cancelled intents remain in history alongside pending ones. A trial's own parent
 links continue to describe planned research lineage independently.
 

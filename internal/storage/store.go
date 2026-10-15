@@ -37,6 +37,9 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	trialRuns     map[string]trial.Run
+	trialInputs   map[string]string
+	trialResults  map[string]string
 	trialAttempts map[string]trial.Attempt
 	trials        map[string]trial.Registration
 	publications  map[string]hypothesis.Publication
@@ -55,7 +58,7 @@ type Memory struct {
 }
 
 func NewMemory() *Memory {
-	return &Memory{trialAttempts: map[string]trial.Attempt{}, trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
+	return &Memory{trialRuns: map[string]trial.Run{}, trialInputs: map[string]string{}, trialResults: map[string]string{}, trialAttempts: map[string]trial.Attempt{}, trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
 }
 
 // NewQueuedMemory exercises the persistent delivery contract without a database.
