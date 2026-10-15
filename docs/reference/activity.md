@@ -129,6 +129,7 @@ cursor continuation across processes, use the explicit `activity` flags above.
 
 This implements activity navigation for issue #22. [Case navigation](cases.md)
 is available with `supervise --view cases`.
-Library/portfolio/exception screens and mutations through shared operations
-remain separate implementation units. `status --format json`
+[Exception navigation](exceptions.md) is available with `supervise --view exceptions`.
+Library/portfolio screens and mutations through shared operations remain separate
+implementation units. `status --format json`
 continues to return the existing full snapshot; it is not a paginated substitute.

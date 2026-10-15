@@ -23,7 +23,7 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	fs.SetOutput(errOut)
 	base := fs.String("api-url", defaultURL, "service HTTP origin")
 	limit := fs.Int("limit", 10, "items per page, 1..100")
-	view := fs.String("view", "activity", "activity or cases")
+	view := fs.String("view", "activity", "activity, cases or exceptions")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -34,7 +34,7 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" {
 		return errors.New("api-url must be an HTTP origin without credentials or a path")
 	}
-	if fs.NArg() != 0 || (*view != "activity" && *view != "cases") {
+	if fs.NArg() != 0 || (*view != "activity" && *view != "cases" && *view != "exceptions") {
 		return errors.New("unexpected supervision arguments")
 	}
 	if err := (storage.ActivityQuery{Limit: *limit}).Validate(); err != nil {
@@ -45,6 +45,18 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	in, err := os.Open("/dev/stdin")
 	if err != nil {
 		return errors.New("supervise requires a readable Unix stdin")
+	}
+	if *view == "exceptions" {
+		fetch := func(ctx context.Context, q storage.ExceptionQuery) (domain.ExceptionPage, error) {
+			v := url.Values{"limit": {strconv.Itoa(q.Limit)}}
+			if q.After != "" {
+				v.Set("after", q.After)
+			}
+			var page domain.ExceptionPage
+			err := requestWithQuery(ctx, *base, "/v1/exceptions", nil, &page, v, 8<<20)
+			return page, err
+		}
+		return superviseExceptions(ctx, in, out, *limit, fetch)
 	}
 	if *view == "cases" {
 		catalog := func(ctx context.Context) (domain.CaseCatalog, error) {
