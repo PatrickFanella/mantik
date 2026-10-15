@@ -100,6 +100,24 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	if b, err := os.ReadFile(file); err != nil || !bytes.Equal(b, raw) {
 		t.Fatal("CLI modified recipe", err)
 	}
+	intentArgs := []string{"trial-attempt-start", "--id", "intent", "--trial", first.ID, "--receiver-id", catalog.ReceiverID}
+	var intent, cancelledIntent, retriedIntent trial.Attempt
+	if err = json.Unmarshal(run(intentArgs...), &intent); err != nil || intent.Validate() != nil || intent.ExecutionStarted {
+		t.Fatal(intent, err)
+	}
+	if err = json.Unmarshal(run("trial-attempt-cancel", "--id", "intent", "--receiver-id", catalog.ReceiverID), &cancelledIntent); err != nil || cancelledIntent.Status != "cancelled" || cancelledIntent.IntentSHA256 != intent.IntentSHA256 {
+		t.Fatal(cancelledIntent, err)
+	}
+	if err = json.Unmarshal(run(intentArgs...), &retriedIntent); err != nil || !reflect.DeepEqual(cancelledIntent, retriedIntent) {
+		t.Fatal("start retry resurrected cancelled intent", err)
+	}
+	var intentHistory trial.AttemptHistory
+	if err = json.Unmarshal(run("trial-attempts", "--id", first.ID), &intentHistory); err != nil || len(intentHistory.Attempts) != 1 || !reflect.DeepEqual(intentHistory.Attempts[0], cancelledIntent) {
+		t.Fatal(intentHistory, err)
+	}
+	if err = json.Unmarshal(run("trial-attempt", "--id", "intent"), &retriedIntent); err != nil || !reflect.DeepEqual(cancelledIntent, retriedIntent) {
+		t.Fatal(err)
+	}
 	command := trial.Command{ReceiverID: catalog.ReceiverID, RequestID: "second", PublicationID: publication.ID, Recipe: recipe}
 	body, _ := json.Marshal(command)
 	call := func(method, path, body string, auth bool, want int) {
@@ -117,6 +135,14 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 			t.Fatal(path, res.StatusCode, want)
 		}
 	}
+	intentBody, _ := json.Marshal(trial.AttemptCommand{ReceiverID: catalog.ReceiverID, RequestID: "intent-two", TrialID: first.ID})
+	call("POST", "/v1/trial-attempts", string(intentBody), false, 401)
+	call("GET", "/v1/trial-attempts/intent", "", false, 401)
+	call("POST", "/v1/trial-attempts", strings.Replace(string(intentBody), `"trial_id":`, `"result":{},"trial_id":`, 1), true, 422)
+	call("POST", "/v1/trial-attempts", strings.Replace(string(intentBody), `"request_id":`, `"request_id":"changed","request_id":`, 1), true, 422)
+	call("POST", "/v1/trial-attempts/intent/cancel", `{"receiver_id":"`+catalog.ReceiverID+`","execution_started":true}`, true, 422)
+	call("GET", "/v1/trial-attempts/intent?result=true", "", true, 422)
+	call("GET", "/v1/hypothesis-trials/missing/attempts", "", true, 404)
 	call("POST", "/v1/hypothesis-trials", string(body), false, 401)
 	call("GET", "/v1/hypothesis-trials/first", "", false, 401)
 	call("POST", "/v1/hypothesis-trials", strings.Replace(string(body), `"request_id":`, `"request_id":"changed","request_id":`, 1), true, 422)

@@ -37,24 +37,25 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
-	trials       map[string]trial.Registration
-	publications map[string]hypothesis.Publication
-	reviews      map[string]review.Attempt
-	news         newscase.State
-	evidence     map[string]FeedEvidenceRecord
-	collectors   feedcollector.State
-	receiverID   string
-	mu           sync.Mutex
-	queued       bool
-	effects      map[string]domain.ActionEffect
-	state        domain.State
-	observations map[string][]byte
-	receipts     map[string]domain.Receipt
-	events       []domain.Event
+	trialAttempts map[string]trial.Attempt
+	trials        map[string]trial.Registration
+	publications  map[string]hypothesis.Publication
+	reviews       map[string]review.Attempt
+	news          newscase.State
+	evidence      map[string]FeedEvidenceRecord
+	collectors    feedcollector.State
+	receiverID    string
+	mu            sync.Mutex
+	queued        bool
+	effects       map[string]domain.ActionEffect
+	state         domain.State
+	observations  map[string][]byte
+	receipts      map[string]domain.Receipt
+	events        []domain.Event
 }
 
 func NewMemory() *Memory {
-	return &Memory{trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
+	return &Memory{trialAttempts: map[string]trial.Attempt{}, trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
 }
 
 // NewQueuedMemory exercises the persistent delivery contract without a database.

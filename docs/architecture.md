@@ -147,7 +147,9 @@ components. See [experiment contracts](reference/experiments.md).
 `internal/trial` uses the shared declaration package to bind immutable trial
 registrations to retained hypothesis publications and optional parent plans.
 Storage retains full recipes and server admission times separately from news
-cases and execution state. Trial execution, attempt outcomes and promotion remain
+cases and execution state. Pre-execution [attempt intents](reference/trial-attempts.md)
+retain plan/source pins, pending work and explicit cancellation without dispatching
+a worker. Trial execution, attempt outcomes and promotion remain
 separate work. See [trial registration](reference/hypothesis-trials.md).
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and
