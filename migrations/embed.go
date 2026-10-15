@@ -46,3 +46,6 @@ var FeedEvidence string
 
 //go:embed 0011_news_cases.sql
 var NewsCases string
+
+//go:embed 0012_news_reviews.sql
+var NewsReviews string

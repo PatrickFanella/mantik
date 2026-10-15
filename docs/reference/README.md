@@ -24,3 +24,5 @@ Use this section for durable technical references:
 - Integration notes
 
 Keep exploratory notes in `docs/research/` until they become stable references.
+
+- [Retained service-case reviews](retained-reviews.md)

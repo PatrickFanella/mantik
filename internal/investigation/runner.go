@@ -44,6 +44,23 @@ func Run(ctx context.Context, journal *news.Journal, event string, asOf time.Tim
 	}
 	raw, _ := json.Marshal(group)
 	subject := Subject{JournalID: view.JournalID, EventGroupID: group.ID, EventKey: group.EventKey, EvidenceClass: group.EvidenceClass, AsOf: view.AsOf, SnapshotSHA256: news.SHA256(string(raw))}
+	return run(ctx, subject, *group, model)
+}
+
+// RunPinned consumes a trusted application-built service snapshot. HTTP and model
+// inputs must never supply Pin; the storage boundary owns source verification.
+func RunPinned(ctx context.Context, pin Pin, model Model) (Result, error) {
+	raw, _ := json.Marshal(pin.Group)
+	if model == nil || pin.Subject.ReceiverID == "" || pin.Subject.CaseVersion < 1 || pin.Subject.CaseGeneration < 1 || pin.Subject.CaseID != pin.Group.ID || pin.Subject.EventGroupID != pin.Group.ID || pin.Subject.EventKey != pin.Group.EventKey || pin.Subject.EvidenceClass != pin.Group.EvidenceClass || pin.Subject.SnapshotSHA256 != news.SHA256(string(raw)) {
+		return Result{}, errors.New("invalid application review pin")
+	}
+	pin = detached(pin)
+	return run(ctx, pin.Subject, pin.Group, model)
+}
+func run(ctx context.Context, subject Subject, group news.EventGroup, model Model) (Result, error) {
+	contract := Definition()
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(contract.TimeoutSeconds)*time.Second)
+	defer cancel()
 	frame := Frame{Schema: Schema, Contract: contract, Subject: subject, Claims: []ClaimRef{}, Results: []ToolResult{}}
 	claims := map[string]news.EventClaim{}
 	for _, c := range group.Claims {

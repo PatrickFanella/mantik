@@ -34,6 +34,10 @@ func Definition() Contract {
 }
 
 type Subject struct {
+	ReceiverID     string    `json:"receiver_id,omitempty"`
+	CaseID         string    `json:"case_id,omitempty"`
+	CaseVersion    int       `json:"case_version,omitempty"`
+	CaseGeneration int       `json:"case_generation,omitempty"`
 	JournalID      string    `json:"journal_id"`
 	EventGroupID   string    `json:"event_group_id"`
 	EventKey       string    `json:"event_key"`
@@ -126,4 +130,10 @@ func detached[T any](value T) T {
 	var copy T
 	_ = json.Unmarshal(raw, &copy)
 	return copy
+}
+
+// Pin is created by trusted application storage, never accepted from model or HTTP input.
+type Pin struct {
+	Subject Subject         `json:"subject"`
+	Group   news.EventGroup `json:"group"`
 }
