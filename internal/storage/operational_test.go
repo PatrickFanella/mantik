@@ -297,7 +297,7 @@ func TestPostgresContractsV4OperationalUpgrade(t *testing.T) {
 		}
 	}
 	before.State.Operations = nil
-	if _, err := store.pool.Exec(ctx, "ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_input_contract; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_operations; DROP TABLE mantik_feed_collectors; DELETE FROM mantik_schema WHERE version>=5"); err != nil {
+	if _, err := store.pool.Exec(ctx, "ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_input_contract; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_operations; DROP TABLE mantik_feed_evidence; DROP TABLE mantik_feed_collectors; DELETE FROM mantik_schema WHERE version>=5"); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := json.Marshal(before.State)

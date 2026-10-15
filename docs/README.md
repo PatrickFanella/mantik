@@ -30,6 +30,8 @@
   research admission, journal delivery, and historical replay.
 - [Finite leased collector](reference/finite-collector.md): explicit ownership,
   bounded acquisition/delivery, cleanup, and retained outcomes.
+- [Validated feed evidence](reference/feed-evidence.md): immutable raw capture
+  publication, normalized-history checks, and server-side coverage inspection.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed
