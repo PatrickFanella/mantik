@@ -524,6 +524,11 @@ func (j *Journal) runCollectorAt(ctx context.Context, c *Client, s CollectorSpec
 		}
 
 	}
+	// Acquisition status intentionally retains its own failure code; preserve
+	// the parent deadline/cancellation as the orchestration stop reason too.
+	if s.RegularSession != nil && ctx.Err() != nil {
+		runErr = errors.Join(ctx.Err(), runErr)
+	}
 	// A cancelled parent cannot prevent bounded cleanup. Unknown claim replies
 	// have no trusted generation and are never followed by a guessed stop.
 	stopConfirmed := false

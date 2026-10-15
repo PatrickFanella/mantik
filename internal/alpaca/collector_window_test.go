@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 func TestRegularCollectorCalendarFirstAndStopBoundaries(t *testing.T) {
-	for _, mode := range []string{"completed", "closed", "calendar_failed", "calendar_publication_failed", "quote_unusable", "session_close", "deadline", "clock_backwards", "cancelled"} {
+	for _, mode := range []string{"completed", "closed", "calendar_failed", "calendar_publication_failed", "quote_unusable", "session_close", "deadline", "clock_backwards", "cancelled", "pacing_deadline"} {
 		t.Run(mode, func(t *testing.T) {
 			j, s, control, receiver := collectorFixture(t)
 			s.Session.IntervalSeconds = 1
@@ -61,6 +62,11 @@ func TestRegularCollectorCalendarFirstAndStopBoundaries(t *testing.T) {
 					offset = -time.Hour
 				case "cancelled":
 					return context.Canceled
+				case "pacing_deadline":
+					if _, ok := ctx.Deadline(); !ok {
+						t.Error("pacing lost the run deadline")
+					}
+					return context.DeadlineExceeded
 				}
 				return nil
 			}
@@ -78,7 +84,7 @@ func TestRegularCollectorCalendarFirstAndStopBoundaries(t *testing.T) {
 					t.Fatal("completed replay repeated work", replay, replayErr)
 				}
 			} else {
-				expected := map[string]string{"closed": "regular_session_closed", "calendar_failed": "collector_failed", "calendar_publication_failed": "collector_failed", "quote_unusable": "quote_unusable", "session_close": "regular_session_closed", "deadline": "window_deadline", "clock_backwards": "clock_backwards", "cancelled": "cancelled"}[mode]
+				expected := map[string]string{"closed": "regular_session_closed", "calendar_failed": "collector_failed", "calendar_publication_failed": "collector_failed", "quote_unusable": "quote_unusable", "session_close": "regular_session_closed", "deadline": "window_deadline", "clock_backwards": "clock_backwards", "cancelled": "cancelled", "pacing_deadline": "window_deadline"}[mode]
 				if err == nil || out.State != "stopped" || out.StopCode != expected {
 					t.Fatal(out, err, calls)
 				}
@@ -149,25 +155,48 @@ func TestRegularCollectorRetainedCalendarReceiptRequired(t *testing.T) {
 	}
 }
 
-func TestRegularCollectorRealDeadlineStopsPacing(t *testing.T) {
-	j, s, control, receiver := collectorFixture(t)
-	s.Session.IntervalSeconds = 1
-	s.RegularSession = &RegularSessionWindow{MaxDurationSeconds: 1}
-	zone, _ := time.LoadLocation("America/New_York")
-	if at := time.Now().In(zone); at.Hour() == 23 && at.Minute() == 59 {
-		t.Skip("manufactured same-day regular session ends at 23:59")
-	}
-	calls := 0
-	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		if r.URL.Path == "/v2/calendar" {
-			_, _ = fmt.Fprintf(w, `[{"date":%q,"open":"00:00","close":"23:59"}]`, r.URL.Query().Get("start"))
-			return
-		}
-		_, _ = fmt.Fprint(w, freshQuote())
-	})
-	out, err := j.RunCollector(context.Background(), client, s, control, receiver)
-	if err == nil || out.StopCode != "window_deadline" || !out.StopConfirmed || !out.CalendarPublished || out.Published != 1 || calls != 2 {
-		t.Fatal(out, err, calls)
+func TestRegularCollectorRealDeadlineBoundsWholeRun(t *testing.T) {
+	for _, slowCalendar := range []bool{false, true} {
+		t.Run(fmt.Sprintf("slow_calendar_%t", slowCalendar), func(t *testing.T) {
+			j, s, control, receiver := collectorFixture(t)
+			s.Session.IntervalSeconds = 1
+			s.RegularSession = &RegularSessionWindow{MaxDurationSeconds: 1}
+			zone, _ := time.LoadLocation("America/New_York")
+			if at := time.Now().In(zone); at.Hour() == 23 && at.Minute() == 59 {
+				t.Skip("manufactured same-day regular session ends at 23:59")
+			}
+			var calendars, quotes atomic.Int32
+			client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/calendar" {
+					calendars.Add(1)
+					if slowCalendar {
+						<-r.Context().Done()
+						return
+					}
+					_, _ = fmt.Fprintf(w, `[{"date":%q,"open":"00:00","close":"23:59"}]`, r.URL.Query().Get("start"))
+					return
+				}
+				quotes.Add(1)
+				_, _ = fmt.Fprint(w, freshQuote())
+			})
+			out, err := j.RunCollector(context.Background(), client, s, control, receiver)
+			// The deadline starts at intent, so a loaded machine may expire during
+			// calendar acquisition/publication, before any quote. Progress is not a
+			// timing guarantee; stopped state, bounded reads and released authority are.
+			if err == nil || out.State != "stopped" || out.StopCode != "window_deadline" || out.Published > 1 || calendars.Load() > 1 || quotes.Load() > 1 {
+				t.Fatal(out, err, calendars.Load(), quotes.Load())
+			}
+			snapshot, snapshotErr := control.Snapshot(context.Background())
+			if snapshotErr != nil {
+				t.Fatal(snapshotErr)
+			}
+			lease := snapshot.State.Entries[s.Binding.CollectorRegistrationID].Lease
+			if lease != nil && !lease.Stopped {
+				t.Fatal("deadline left acquired authority active", out, lease)
+			}
+			if slowCalendar && (quotes.Load() != 0 || out.Published != 0) {
+				t.Fatal("quote acquired after calendar deadline", out, quotes.Load())
+			}
+		})
 	}
 }
