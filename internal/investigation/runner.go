@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/library"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -22,10 +23,20 @@ var field = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 // provider adapters also need transport deadlines before use. No goroutine is
 // detached to pretend an uncooperative model call has been terminated.
 func Run(ctx context.Context, journal *news.Journal, event string, asOf time.Time, model Model) (Result, error) {
+	return RunWithType(ctx, journal, event, asOf, TypeID, model)
+}
+
+// RunWithType supports explicitly selected local recorded-review contracts.
+// Retained service reviews continue to use the original v1 RunPinned path.
+func RunWithType(ctx context.Context, journal *news.Journal, event string, asOf time.Time, typeID string, model Model) (Result, error) {
+	contract, err := DefinitionFor(typeID)
+	if err != nil {
+		return Result{}, err
+	}
+
 	if journal == nil || model == nil {
 		return Result{}, errors.New("review requires a journal and model fixture")
 	}
-	contract := Definition()
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(contract.TimeoutSeconds)*time.Second)
 	defer cancel()
 	view, err := journal.Events(asOf)
@@ -44,7 +55,7 @@ func Run(ctx context.Context, journal *news.Journal, event string, asOf time.Tim
 	}
 	raw, _ := json.Marshal(group)
 	subject := Subject{JournalID: view.JournalID, EventGroupID: group.ID, EventKey: group.EventKey, EvidenceClass: group.EvidenceClass, AsOf: view.AsOf, SnapshotSHA256: news.SHA256(string(raw))}
-	return run(ctx, subject, *group, model)
+	return run(ctx, subject, *group, model, contract)
 }
 
 // RunPinned consumes a trusted application-built service snapshot. HTTP and model
@@ -55,19 +66,28 @@ func RunPinned(ctx context.Context, pin Pin, model Model) (Result, error) {
 		return Result{}, errors.New("invalid application review pin")
 	}
 	pin = detached(pin)
-	return run(ctx, pin.Subject, pin.Group, model)
+	return run(ctx, pin.Subject, pin.Group, model, Definition())
 }
-func run(ctx context.Context, subject Subject, group news.EventGroup, model Model) (Result, error) {
-	contract := Definition()
+func run(ctx context.Context, subject Subject, group news.EventGroup, model Model, contract Contract) (Result, error) {
+	schema := Schema
+	var methods []library.MethodRef
+	if contract.TypeID == MethodTypeID {
+		schema = MethodSchema
+		var err error
+		methods, err = methodInventory()
+		if err != nil {
+			return Result{}, err
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(contract.TimeoutSeconds)*time.Second)
 	defer cancel()
-	frame := Frame{Schema: Schema, Contract: contract, Subject: subject, Claims: []ClaimRef{}, Results: []ToolResult{}}
+	frame := Frame{Schema: schema, Methods: methods, Contract: contract, Subject: subject, Claims: []ClaimRef{}, Results: []ToolResult{}}
 	claims := map[string]news.EventClaim{}
 	for _, c := range group.Claims {
 		claims[c.Claim.Key] = c
 		frame.Claims = append(frame.Claims, ClaimRef{Key: c.Claim.Key, State: c.State, Code: c.Claim.Code})
 	}
-	result := Result{Schema: Schema, TypeID: TypeID, Status: "finalized", Subject: subject, Authority: "research_only_unqualified", Tools: []ToolResult{}, Artifacts: []Artifact{}, Checks: []Check{}}
+	result := Result{Schema: schema, TypeID: contract.TypeID, Status: "finalized", Subject: subject, Authority: "research_only_unqualified", Tools: []ToolResult{}, Artifacts: []Artifact{}, Checks: []Check{}}
 	checks := map[string]string{}
 	for _, id := range contract.RequiredChecks {
 		checks[id] = "not_run"
@@ -113,7 +133,7 @@ func run(ctx context.Context, subject Subject, group news.EventGroup, model Mode
 			return fail("completion", "model_unavailable")
 		}
 		step, err := decodeStep(raw)
-		if err != nil {
+		if err != nil || contract.TypeID == TypeID && !legacyFields(raw) {
 			return fail("model_schema", "malformed_model_artifact")
 		}
 		checks["model_schema"] = "passed"
@@ -123,19 +143,34 @@ func run(ctx context.Context, subject Subject, group news.EventGroup, model Mode
 				return fail("tool_budget", "tool_budget_exhausted")
 			}
 			call := step.Tool
-			if call.Name != "inspect_news_claim" {
+			var tool ToolResult
+			switch call.Name {
+			case "inspect_news_claim":
+				if call.MethodID != "" || call.MethodSHA256 != "" {
+					return fail("model_schema", "invalid_tool_arguments")
+				}
+				tool = ToolResult{Call: calls, Name: call.Name, Status: "rejected", Code: "claim_not_in_snapshot"}
+				if claim, ok := claims[call.ClaimKey]; ok {
+					c := detached(claim.Claim)
+					tool.Status = "ok"
+					tool.Code = "bound_excerpt"
+					tool.State = claim.State
+					tool.RecordKey = claim.RecordKey
+					tool.Reference = claim.Reference
+					tool.Claim = &c
+				}
+			case "inspect_native_method":
+				if contract.TypeID != MethodTypeID {
+					return fail("authority_boundary", "tool_not_permitted")
+				}
+				if call.ClaimKey != "" || call.MethodID == "" || call.MethodSHA256 == "" {
+					return fail("model_schema", "invalid_tool_arguments")
+				}
+				tool = inspectMethod(*call, calls)
+			default:
 				return fail("authority_boundary", "tool_not_permitted")
 			}
-			tool := ToolResult{Call: calls, Name: call.Name, Status: "rejected", Code: "claim_not_in_snapshot"}
-			if claim, ok := claims[call.ClaimKey]; ok {
-				c := detached(claim.Claim)
-				tool.Status = "ok"
-				tool.Code = "bound_excerpt"
-				tool.State = claim.State
-				tool.RecordKey = claim.RecordKey
-				tool.Reference = claim.Reference
-				tool.Claim = &c
-			}
+
 			result.Tools = append(result.Tools, tool)
 			frame.Results = detached(result.Tools)
 			continue
@@ -149,7 +184,7 @@ func run(ctx context.Context, subject Subject, group news.EventGroup, model Mode
 		}
 		inspected := map[string]ToolResult{}
 		for _, tool := range result.Tools {
-			if tool.Status == "ok" {
+			if tool.Status == "ok" && tool.Claim != nil {
 				inspected[tool.Claim.Key] = tool
 			}
 		}
@@ -160,6 +195,12 @@ func run(ctx context.Context, subject Subject, group news.EventGroup, model Mode
 			}
 		}
 		checks["evidence_binding"] = "passed"
+		if contract.TypeID == MethodTypeID {
+			if !boundMethods(*p, result.Tools) {
+				return fail("method_binding", "method_not_eligible")
+			}
+			checks["method_binding"] = "passed"
+		}
 		checks["completion"] = "passed"
 		return finish(p.Outcome, "model_proposal_checked", p)
 	}
