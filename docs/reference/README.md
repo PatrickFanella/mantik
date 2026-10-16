@@ -10,6 +10,7 @@
 - [Durable fixture actions](actions.md)
 - [Operational inspection and recovery](operations.md)
 - [Recorded news claims](news.md)
+- [Recorded article extraction](news-extraction.md)
 - [Private news journal](news-journal.md)
 - [Receipt-cutoff event groups](news-events.md)
 - [Receiver-bound news research cases](news-cases.md)
