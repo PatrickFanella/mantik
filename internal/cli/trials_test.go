@@ -20,6 +20,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/investigation"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/replay"
+	"git.subcult.tv/subculture-collective/mantik/internal/researchhistory"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/trial"
@@ -90,6 +91,11 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	if err = json.Unmarshal(run("hypothesis-assessments", "--id", publication.Sealed.ID), &questionHistory); err != nil || questionHistory.Validate() != nil || questionHistory.PlanCount != 0 {
 		t.Fatal(questionHistory, err)
 	}
+	var emptyResearch researchhistory.QuestionHistory
+	if err = json.Unmarshal(run("hypothesis-research-history", "--id", publication.Sealed.ID), &emptyResearch); err != nil || emptyResearch.Validate() != nil || emptyResearch.Native.PlanCount != 0 || emptyResearch.ExternalJobCount != 0 {
+		t.Fatal(emptyResearch, err)
+	}
+
 	var first, repeated, actual trial.Registration
 	if err = json.Unmarshal(run(args...), &first); err != nil || first.Validate() != nil {
 		t.Fatal(err)
@@ -132,7 +138,7 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 		t.Fatal(native, err)
 	}
 	var nativeRetry trial.Run
-	t.Run("external-worker-handoff", func(t *testing.T) { testTrialWorkerHandoff(t, ctx, server.URL, catalog.ReceiverID, native) })
+	t.Run("external-worker-handoff", func(t *testing.T) { testTrialWorkerHandoff(t, ctx, server.URL, catalog.ReceiverID, native, s) })
 	if err = json.Unmarshal(run(executeArgs...), &nativeRetry); err != nil || !reflect.DeepEqual(native, nativeRetry) {
 		t.Fatal("native retry reran execution", err)
 	}

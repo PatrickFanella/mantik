@@ -169,3 +169,78 @@ experiments and review-stage abstentions without a published hypothesis/trial
 link. It neither proves that a search was exhaustive nor establishes research
 validity, statistical significance, qualification or trading authority. Schema
 16 and existing receipts are unchanged.
+
+## Combined native and external history
+
+The native assessment commands above retain their v1 schemas and behavior.
+Two additional read-only views join that evidence to every retained external
+job declaration and its reported attempts:
+
+```sh
+./bin/mantik trial-research-history --api-url "$MANTIK_API_URL" \
+  --id trial-plan-1
+./bin/mantik hypothesis-research-history --api-url "$MANTIK_API_URL" \
+  --id "$MANTIK_HYPOTHESIS_ID"
+```
+
+The HTTP paths are `GET /v1/hypothesis-trials/ID/research-history` and
+`GET /v1/hypotheses/ID/research-history`. They require the existing bearer token,
+reject query parameters and accept no writes. Unknown plans/questions return
+404, invalid IDs/queries 422, changed captured catalogues 409 and backend or
+corrupt-evidence failures 503. The CLI validates the complete response and its
+requested identity before printing it; a conflict prints no partial history.
+
+`mantik-trial-research-history-v1` contains the unchanged native assessment
+history and `mantik-external-trial-history-v1`. The external component includes
+all job declarations, their complete source native-run metadata and every
+retained external intent/outcome. It counts unattempted jobs, pending intents
+and each reported disposition. Job and attempt IDs are ordered lexically.
+Declarations with no external attempt remain visible. This component includes
+metadata and sealed recipe/input references; it does not load native replay
+bodies, external stdout/stderr or host receipt files. Use the targeted commands
+in [trial workers](trial-workers.md) to inspect exact output separately.
+
+`mantik-hypothesis-research-history-v1` contains the unchanged native hypothesis
+history plus one external history in the same order as each registered plan.
+Parent/child lineage, plans with no native attempts and plans with no external
+jobs remain visible. Native and external counts have separate fields. External
+job and attempt identities are unique across plans and remain subject to the
+receiver's global 32-job and 64-attempt bounds. Report status counts include
+completed comparisons, mismatches, library failures, incomplete captures,
+cancellations, timeouts and interruptions. A missing report stays pending.
+Neither view filters to a winning attempt or ranks plans.
+
+Each source run must be complete and bound to the declaration's receiver,
+registration, recipe, native artifact byte hash and native deadline flag. The
+combined view also binds that exact source run and result to its native
+assessment. A late completed source keeps its `not_evaluable` native disposition
+and false deadline flag, even when an external comparison is available.
+External intents pin their declaration and job; terminal reports pin their
+original intent. Hashes cover each nested history and the combined response.
+
+Native condition matches and external metric agreement answer different
+questions. The synthetic threshold fixture can have matching native/external
+metrics while simultaneously matching the hypothesis's null and refutation
+conditions. The combined view preserves both findings. External reports retain
+`caller_reported_external_attempt_only` authority and unknown host state. Their
+validity checks establish protocol consistency, not independent reproduction,
+process liveness, isolation or deadline proof. The combined authority is
+`research_process_history_only`; qualification credit remains false.
+
+Memory storage reads external metadata under one lock. PostgreSQL uses a
+read-only repeatable-read transaction for registration, job, source-run and
+attempt metadata. The combined reader builds native assessments through their
+existing bounded, one-result-at-a-time path, then rechecks the external metadata
+hash, native attempt index and, for a question, the complete plan catalogue.
+Changes to a captured boundary cause a conflict so callers can request a fresh
+view. A change incorporated before its boundary is captured can appear in a
+consistent response. No automatic retry or process action is hidden in a read.
+
+These views use schema 18 without changing tables or existing assessment
+schemas. Tests cover every external report status, pending and never-attempted
+work, a late native source, retained native failures/cancellation, native
+null/refutation evidence, full catalogue capacity, source-binding corruption,
+changed counters/lineage, concurrent additions/completions, authenticated CLI
+readback and restart retention. Isolated runtime verification also checks the
+complete combined response after backup/restore. Synthetic history does not
+establish profitability, provider-backed qualification or permission to trade.

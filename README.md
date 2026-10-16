@@ -279,3 +279,6 @@ The `trial-worker-attempt-*` commands retain an intent, caller-reported outcome
 and exact output bytes for every submitted external attempt. History includes
 pending and unsuccessful attempts; a report grants no host attestation or
 qualification credit.
+`trial-research-history` and `hypothesis-research-history` join all retained
+native assessments with external declarations and attempt reports in a
+[consistent history view](docs/reference/trial-assessments.md#combined-native-and-external-history).

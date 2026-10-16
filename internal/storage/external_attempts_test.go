@@ -286,6 +286,10 @@ func reportedContracts(t *testing.T, s reportedBackend, config string) {
 	if _, err = s.ReportExternalAttempt(ctx, report, noClock); err != nil {
 		t.Fatal(err)
 	}
+	full, err := s.(storage.ExternalHistoryStore).ExternalTrialHistory(ctx, job.TrialID)
+	if err != nil || full.Validate() != nil || full.AttemptCount != workertrial.MaxAttempts {
+		t.Fatal("full catalogue truncated", err)
+	}
 	after, _ := s.Snapshot(ctx)
 	native, err := s.TrialRun(ctx, run.AttemptID)
 	declared, err2 := s.ExternalJob(ctx, job.Command.RequestID)

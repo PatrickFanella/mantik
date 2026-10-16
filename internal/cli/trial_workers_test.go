@@ -4,18 +4,24 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"git.subcult.tv/subculture-collective/mantik/internal/researchhistory"
+	"git.subcult.tv/subculture-collective/mantik/internal/service"
+	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/externalplan"
 	"git.subcult.tv/subculture-collective/mantik/internal/trial"
 	"git.subcult.tv/subculture-collective/mantik/internal/workertrial"
 )
 
-func testTrialWorkerHandoff(t *testing.T, ctx context.Context, base, receiver string, native trial.Run) {
+func testTrialWorkerHandoff(t *testing.T, ctx context.Context, base, receiver string, native trial.Run, store *storage.Memory) {
 	t.Helper()
 	run := func(args ...string) []byte {
 		t.Helper()
@@ -50,6 +56,7 @@ func testTrialWorkerHandoff(t *testing.T, ctx context.Context, base, receiver st
 		}
 	}
 	testReportedAttempts(t, ctx, base, receiver, first, run)
+	testCombinedResearchHistory(t, ctx, base, receiver, first, store, run)
 	if err = j.ValidateInputs(inputs); err != nil {
 		t.Fatal("service bundle cannot be consumed by durable external launcher", err)
 	}
@@ -128,4 +135,74 @@ func testReportedAttempts(t *testing.T, ctx context.Context, base, receiver stri
 	call("GET", "/v1/external-trial-attempts/missing", "", true, 404)
 	call("GET", "/v1/external-trial-attempts/physical-1/outputs/other", "", true, 422)
 	call("POST", "/v1/external-trial-attempts/physical-1/launch", `{}`, true, 404)
+}
+
+func testCombinedResearchHistory(t *testing.T, ctx context.Context, base, receiver string, job workertrial.Record, store *storage.Memory, run func(...string) []byte) {
+	t.Helper()
+	var h researchhistory.TrialHistory
+	if err := json.Unmarshal(run("trial-research-history", "--id", job.TrialID), &h); err != nil || h.Validate() != nil || h.External.JobCount != 1 || h.External.AttemptCount != 1 || h.External.ReportedStatuses["incomplete"] != 1 {
+		t.Fatal(h, err)
+	}
+	var q researchhistory.QuestionHistory
+	if err := json.Unmarshal(run("hypothesis-research-history", "--id", job.HypothesisID), &q); err != nil || q.Validate() != nil || q.Native.PlanCount != 1 || q.ExternalJobCount != 1 || q.ExternalAttemptCount != 1 || q.ReportedStatuses["incomplete"] != 1 {
+		t.Fatal(q, err)
+	}
+	for _, path := range []string{"/v1/hypothesis-trials/" + job.TrialID + "/research-history", "/v1/hypotheses/" + job.HypothesisID + "/research-history"} {
+		for _, test := range []struct {
+			method, path string
+			auth         bool
+			want         int
+		}{{"GET", path, false, 401}, {"GET", path + "?best=true", true, 422}, {"POST", path, true, 405}} {
+			req, _ := http.NewRequestWithContext(ctx, test.method, base+test.path, nil)
+			if test.auth {
+				req.Header.Set("Authorization", "Bearer trial-cli-token")
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+			if res.StatusCode != test.want {
+				t.Fatal(test, res.StatusCode)
+			}
+		}
+	}
+	for _, command := range []string{"trial-research-history", "hypothesis-research-history"} {
+		id := "history-pending-" + command
+		i, err := store.StartExternalAttempt(ctx, workertrial.AttemptCommand{ReceiverID: receiver, RequestID: id, JobID: job.Command.RequestID, DeclarationSHA256: job.SHA256}, time.Now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		changing := &changingExternalHistory{Memory: store, trialID: job.TrialID, after: func() {
+			if _, err := store.ReportExternalAttempt(ctx, workertrial.ReportCommand{ReceiverID: receiver, AttemptID: id, IntentSHA256: i.SHA256, ReportedStatus: "incomplete", Stdout: "{concurrent capture"}, time.Now); err != nil {
+				t.Error(err)
+			}
+		}}
+		server := httptest.NewServer(service.Handler(changing, "trial-cli-token"))
+		defer server.Close()
+		requested := job.TrialID
+		if command == "hypothesis-research-history" {
+			requested = job.HypothesisID
+		}
+		var out, errOut bytes.Buffer
+		err = Run(ctx, []string{command, "--api-url", server.URL, "--id", requested}, &out, &errOut)
+		if err == nil || !strings.Contains(err.Error(), "HTTP 409") || out.Len() != 0 {
+			t.Fatal("partial/mixed research history printed", err, out.String())
+		}
+	}
+}
+
+type changingExternalHistory struct {
+	*storage.Memory
+	once    sync.Once
+	trialID string
+	after   func()
+}
+
+func (s *changingExternalHistory) ExternalTrialHistory(ctx context.Context, id string) (workertrial.History, error) {
+	h, err := s.Memory.ExternalTrialHistory(ctx, id)
+	if id == s.trialID {
+		s.once.Do(s.after)
+	}
+	return h, err
 }
