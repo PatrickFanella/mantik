@@ -92,6 +92,38 @@ the declaration preceded existing experiments. [Trial registration](hypothesis-t
 a sealed recipe and server admission time. Trial execution and outcome contracts
 remain separate; registration does not establish precedence over prior experiments.
 
+## Discover retained questions
+
+```bash
+./bin/mantik hypotheses --api-url "$MANTIK_API_URL"
+```
+
+Authenticated `GET /v1/hypotheses` returns a
+`mantik-hypothesis-catalogue-v1` snapshot. It contains the receiver identity,
+every retained question and its complete publication receipts, question and
+publication counts, and a SHA-256 over the JSON response with `sha256` set to
+the empty string. Questions sort by exact question ID; publications sort by
+publication time, then request ID. Identical retained state produces the same
+hash. The CLI validates the hash, canonical ordering, counts, receiver bindings
+and sealed declaration/method pins before emitting the response.
+
+The existing global limit of 32 publications bounds the whole catalogue. There
+is no pagination, ranking or filtering. An empty store returns empty arrays and
+zero counts. A closed or superseded decision case does not remove its research
+publications. Labels and supporting origins may differ for one exact question;
+each publication retains its own attribution. Changed conditions, horizon or
+methods produce a different question ID. Reads use one memory lock or one
+read-only PostgreSQL repeatable-read transaction; corrupt bindings or an
+overflow fail the complete request rather than returning a subset.
+
+The authority is `retained_research_declarations_only` with
+`qualification_credit: false`. This catalogue exposes declared mechanisms,
+conditions and methods for discovery; it does not judge similarity, recommend
+a winner, prove current evidence applicability, or include trial outcomes.
+Use the question's combined research history to inspect all plans and attempts
+before drawing conclusions. Model review tools do not yet consume this
+catalogue. This change adds no automatic review, publication, trial or order.
+
 ## HTTP contract
 
 Authenticated `POST /v1/hypothesis-publications` accepts one object:
@@ -115,6 +147,6 @@ resolved native method configurations and authoritative review linkage.
 Authenticated `GET /v1/hypotheses/{id}` returns
 `mantik-retained-hypothesis-v1`, with research-only authority and the bounded
 publication history for that question. It does not select full articles, raw
-model artifacts, unrelated questions or execution history. Neither route accepts
+model artifacts, unrelated questions or execution history. None of these routes accepts
 query parameters. Invalid input returns 422, missing question/review 404,
 receiver/evidence/identity/clock/capacity conflict 409, and storage failure 503.
