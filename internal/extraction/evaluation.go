@@ -105,20 +105,9 @@ func Evaluate(ctx context.Context, input Corpus) (Evaluation, error) {
 			return Evaluation{}, invalid
 		}
 		artifacts[i] = artifact
-		expected, _ := json.Marshal(item.Expected)
-		g, e := Run(ctx, a, item.EventKey, evaluationArtifact(expected))
+		g, e := evaluateExpected(ctx, a, item.EventKey, item.Expected)
 		if e != nil {
 			return Evaluation{}, e
-		}
-		if g.Outcome != item.Expected.Outcome || g.ReasonCode != item.Expected.ReasonCode || len(g.Claims) != len(item.Expected.Claims) || item.Expected.Claims == nil {
-			return Evaluation{}, invalid
-		}
-		// Annotations must be valid extracted claims or deliberate abstentions,
-		// never application-generated failures masquerading as a gold label.
-		for _, check := range g.Checks {
-			if check.Status == "failed" {
-				return Evaluation{}, invalid
-			}
 		}
 		gold[i] = g
 	}
@@ -129,52 +118,81 @@ func Evaluate(ctx context.Context, input Corpus) (Evaluation, error) {
 		if e != nil {
 			return Evaluation{}, e
 		}
-		s := CaseScore{ID: item.ID, Expected: item.Expected, Actual: actual,
-			MatchedExpectedIDs: []string{}, MissingExpectedIDs: []string{}, UnexpectedActualIDs: []string{}}
-		used := make([]bool, len(actual.Claims))
-		for _, expected := range gold[i].Claims {
-			match := -1
-			for j, candidate := range actual.Claims {
-				if !used[j] && claimKey(expected) == claimKey(candidate) {
-					match = j
-					break
-				}
-			}
-			if match < 0 {
-				s.MissingExpectedIDs = append(s.MissingExpectedIDs, expected.ID)
-			} else {
-				used[match] = true
-				s.MatchedExpectedIDs = append(s.MatchedExpectedIDs, expected.ID)
-			}
-		}
-		for j, candidate := range actual.Claims {
-			if !used[j] {
-				s.UnexpectedActualIDs = append(s.UnexpectedActualIDs, candidate.ID)
-			}
-		}
-		s.Exact = actual.Outcome == item.Expected.Outcome && actual.ReasonCode == item.Expected.ReasonCode && len(s.MissingExpectedIDs) == 0 && len(s.UnexpectedActualIDs) == 0
-		r.Counts.Cases++
-		if s.Exact {
-			r.Counts.ExactCases++
-		}
-		if item.Expected.Outcome == "extracted" {
-			r.Counts.ExpectedExtracted++
-			if actual.Outcome == "abstain" {
-				r.Counts.UnexpectedAbstentions++
-			}
-		} else {
-			r.Counts.ExpectedAbstentions++
-			if actual.Outcome == "extracted" {
-				r.Counts.MissedAbstentions++
-			}
-		}
-		r.Counts.MatchedClaims += len(s.MatchedExpectedIDs)
-		r.Counts.MissingClaims += len(s.MissingExpectedIDs)
-		r.Counts.UnexpectedClaims += len(s.UnexpectedActualIDs)
+		s := compareEvaluationCase(item.ID, item.Expected, gold[i], actual)
+		addEvaluationCounts(&r.Counts, s)
 		r.Cases = append(r.Cases, s)
 	}
 	r.SHA256 = hash(r)
 	return r, nil
+}
+
+// evaluateExpected accepts structurally valid annotations, not application
+// failures masquerading as expected abstentions. It never attests their truth.
+func evaluateExpected(ctx context.Context, a news.Article, key string, annotation Response) (Result, error) {
+	raw, err := json.Marshal(annotation)
+	if err != nil {
+		return Result{}, ErrInvalid
+	}
+	g, err := Run(ctx, a, key, evaluationArtifact(raw))
+	if err != nil {
+		return Result{}, err
+	}
+	if g.Outcome != annotation.Outcome || g.ReasonCode != annotation.ReasonCode || len(g.Claims) != len(annotation.Claims) || annotation.Claims == nil {
+		return Result{}, ErrInvalid
+	}
+	for _, check := range g.Checks {
+		if check.Status == "failed" {
+			return Result{}, ErrInvalid
+		}
+	}
+	return g, nil
+}
+func compareEvaluationCase(id string, annotation Response, gold, actual Result) CaseScore {
+	s := CaseScore{ID: id, Expected: annotation, Actual: actual,
+		MatchedExpectedIDs: []string{}, MissingExpectedIDs: []string{}, UnexpectedActualIDs: []string{}}
+	used := make([]bool, len(actual.Claims))
+	for _, expected := range gold.Claims {
+		match := -1
+		for j, candidate := range actual.Claims {
+			if !used[j] && claimKey(expected) == claimKey(candidate) {
+				match = j
+				break
+			}
+		}
+		if match < 0 {
+			s.MissingExpectedIDs = append(s.MissingExpectedIDs, expected.ID)
+		} else {
+			used[match] = true
+			s.MatchedExpectedIDs = append(s.MatchedExpectedIDs, expected.ID)
+		}
+	}
+	for j, candidate := range actual.Claims {
+		if !used[j] {
+			s.UnexpectedActualIDs = append(s.UnexpectedActualIDs, candidate.ID)
+		}
+	}
+	s.Exact = actual.Outcome == annotation.Outcome && actual.ReasonCode == annotation.ReasonCode && len(s.MissingExpectedIDs) == 0 && len(s.UnexpectedActualIDs) == 0
+	return s
+}
+func addEvaluationCounts(counts *EvaluationCounts, s CaseScore) {
+	counts.Cases++
+	if s.Exact {
+		counts.ExactCases++
+	}
+	if s.Expected.Outcome == "extracted" {
+		counts.ExpectedExtracted++
+		if s.Actual.Outcome == "abstain" {
+			counts.UnexpectedAbstentions++
+		}
+	} else {
+		counts.ExpectedAbstentions++
+		if s.Actual.Outcome == "extracted" {
+			counts.MissedAbstentions++
+		}
+	}
+	counts.MatchedClaims += len(s.MatchedExpectedIDs)
+	counts.MissingClaims += len(s.MissingExpectedIDs)
+	counts.UnexpectedClaims += len(s.UnexpectedActualIDs)
 }
 
 // FixtureCorpus demonstrates exact agreement and a structurally valid but

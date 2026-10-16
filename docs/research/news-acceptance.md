@@ -112,13 +112,47 @@ built CLI rehearsal; it changed no storage, schema, dependencies or container
 behavior. Original pilot PIDs/images remain unchanged at this checkpoint, and
 the user-curtailed observer remains inactive. No 24-hour proof is added.
 
+## Local model and capture checkpoint through PR 109, 2026-10-16
+
+PRs 104–109 added a local endpoint adapter, quote-only extraction with
+application-derived spans, offline retained-receipt inspection, schema-23 capture
+imports and schema-24 explicit reviewed local admission. PR 109 merged as
+`6196f7be9e1000c16b08cce8c8c03bda1553ee82`; its exact-head and merged-main CI passed.
+The provider boundary described in the earlier checkpoint has been crossed only
+for the explicitly bounded local-model synthetic rehearsals.
+
+| Boundary | Verified scope | Remaining limit |
+| --- | --- | --- |
+| Local extraction | Retained prepared/finished bytes; bounded local compatibility request; deterministic unique-quote anchoring; original model content retained separately from derived candidates | The earlier offset-based local result was invalid and remains retained. A later quote-based result passed structural checks on one invented article. Neither establishes real-news accuracy. |
+| Capture retention | Separate caller-reported imports, including unknown and failed completion; immutable receiver-bound records, bounded complete history and replay on reads | Imported files do not attest provider execution, timing or source truth. Service-owned model dispatch and recovery remain separate work. |
+| Explicit local research admission | Exact capture/result approval pins; atomic news provenance and receipt; correction/retraction handling; downstream recorded review startup; restart, restore and rollback checks | Approval records explicit caller intent. It does not qualify the source, model, strategy or economic results. No automatic local approval or operational action is added. |
+| Cohort evaluation | [Local capture evaluation](../reference/local-extraction-evaluation.md) retains full snapshots, compares finished results against supplied annotations and exposes unknown completion separately | This is annotation-agreement tooling. A reviewed real-source corpus, representative sampling and measured actual-extractor cohort remain unproven. |
+
+The schema-23 rehearsal is retained privately at
+`local-capture-rehearsal-1792167181426656015`, source tree
+`d5cf650bd549eeb4683f0d72154f912244fd9ad0`: 58 recorded commands covered upgrade,
+three capture types, exact retries, restart/restore, corruption rejection,
+older-binary refusal and backup-based rollback.
+
+The schema-24 rehearsal is retained privately at
+`local-admission-rehearsal-1792169396056760889`, source tree
+`9bdf9fc906379163ea15fce7cf2ed81a1a6efdc2`: 86 recorded commands covered upgrade,
+explicit admission of one previously captured synthetic candidate, preservation
+of the original captures and older recorded approval, recorded research-review
+startup, restart/restore, resealed metadata and broken-link rejection,
+older-binary refusal and a separate pre-upgrade-backup restore. It recorded zero
+new model requests, economic effects and qualification credit. Its four owned
+stacks were inspected stopped at completion; original pilot handles were
+unchanged and the curtailed observer remained inactive. These are source-pinned,
+same-host historical observations, not deployment or new 24-hour proof.
+
 ### Next implementation boundary
 
-Issue 12 remains open. The next extraction step needs a selected model/adapter
-and a reviewed evaluation corpus with explicit expectations. Provider access,
-permitted source material and finite request/cost bounds must be established
-before a provider-backed rehearsal. A supplied-annotation evaluator provides a
-way to retain disagreements; it does not supply those decisions or evidence.
-Automatic event grouping and source-independence assessment also remain
-separate requirements. Do not close dependent issues from the recorded path
-or the invented evaluator demonstration.
+Issue 12 remains open. The selected local-model path can now retain and explicitly
+admit checked candidates, but accuracy on real news requires a separately
+reviewed corpus with permitted source material, sampling and exact expectations.
+Confirm finite source, request and access bounds before another actual-extractor
+cohort. The evaluator preserves disagreements; it cannot supply independent
+annotations or a representative sample. Automatic event grouping, syndication
+and source-independence assessment remain separate requirements. Do not close
+dependent issues from the synthetic rehearsal or annotation-agreement counts.
