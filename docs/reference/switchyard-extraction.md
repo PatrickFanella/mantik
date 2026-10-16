@@ -47,13 +47,48 @@ available error bytes. A failed final write leaves the prepared intent; inspect
 it before considering another request. The output directory must be new.
 
 **The requested token limit and reasoning effort are not provider enforcement
-proof.** The inspected Switchyard OpenCode generation path does not forward
-these settings. A client deadline also does not establish that a broker stopped
-upstream work or billing. Before actual provider requests, verify the deployed
-route, credentials/billing path, parameter enforcement and bounded authorization.
-No paid-provider execution is established by the fixture tests for this adapter.
+proof.** Switchyard's bounded extraction profile accepts exactly 1,024 tokens,
+low reasoning, JSON-object output and no tools or temperature. Other token
+limits in Mantik's client range are refused by that profile. Its dedicated
+OpenCode agent and plugin enforce those settings and disable provider retries;
+the broker disables its own retries. A fixed session title suppresses the
+separate small-model title request before source text is admitted.
+
+The pinned OpenCode 2.0.22 release rehearsal exercises the complete Mantik →
+Switchyard → OpenCode path against a fake Responses provider. Success and
+injected failure each produced one request to `gpt-6.1-sol`, with
+`max_output_tokens: 1024`, low reasoning and no tools. These fixtures establish
+the tested route's behavior with a fake provider. Before actual requests,
+verify the deployed revision, credentials/billing path and bounded
+authorization. A client deadline does not establish that a broker stopped
+upstream work or billing. Fixture tests do not establish real provider execution.
 The public Switchyard `/v1/models` implementation lists Ollama tags only; absence
 there does not establish whether an OpenAI route is configured.
+
+## Verified setup checkpoint — 2026-10-16
+
+Switchyard PRs [147](https://git.subcult.tv/subculture-collective/switchyard/pulls/147),
+[148](https://git.subcult.tv/subculture-collective/switchyard/pulls/148) and
+[149](https://git.subcult.tv/subculture-collective/switchyard/pulls/149) are merged.
+The API and shared OpenCode sidecar on Kvant run release source
+`9bfc56d01a841e0c3623036a513a8a5bf6c3e4aa`, after exact-head PR checks,
+merged-main CI and isolated release-image rehearsals passed. The model endpoint
+is `http://10.0.0.50:11434`; OpenCode uses its existing managed OpenAI OAuth
+connection. Mantik holds no provider credential.
+
+One synthetic live extraction completed on 2026-10-16 at 20:38:50 UTC. The
+client made one attempt, the broker retained one completed request, and the
+OpenCode session recorded the `switchyard-news-extractor` agent with
+`openai/gpt-6.1-sol`, low reasoning and a normal `stop` finish. Mantik validated
+one claim against the exact 67-byte synthetic source span; offline inspection
+also passed. Private receipts and rollback evidence are retained under
+`~/.local/state/switchyard/deployments/mantik-openai-20261016T200314Z/` on Kvant.
+
+The live result proves this connection can complete a checked synthetic
+extraction. It does not independently attest the provider's token ceiling,
+billing or all hidden network attempts. No real-news cohort, service admission,
+trading action or profitability qualification was performed. Reviewed admission
+and evaluation of this provider's distinct receipt schema remain separate work.
 
 ## Retained evidence and inspection
 
