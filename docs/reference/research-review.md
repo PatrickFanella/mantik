@@ -191,3 +191,85 @@ inspection, two-method candidates, frame-mutation isolation, wrong/missing/
 duplicate pins, tool authority/argument rejection, legacy field rejection,
 budgets, cancellation and exact CLI fixture preservation. Recorded behavior is
 not provider verification, profitability evidence or operational qualification.
+
+## Inspect existing hypotheses in a recorded review
+
+The local `news-reuse-review-v1` profile adds targeted hypothesis inspection to
+the method-aware contract. Export a complete catalogue from the service first:
+
+```sh
+umask 077
+./bin/mantik hypotheses --api-url "$MANTIK_API_URL" \
+  > /absolute/private/hypotheses.json
+./bin/mantik research-review --type news-reuse-review-v1 --export-contract
+./bin/mantik research-review --type news-reuse-review-v1 \
+  --journal /absolute/private/news-journal --event NEWS_EVENT_GROUP_ID \
+  --as-of 2026-10-15T18:00:00Z \
+  --hypothesis-catalogue /absolute/private/hypotheses.json \
+  --model-fixture /absolute/private/reuse-review-artifacts.json
+```
+
+The catalogue must be a regular file of at most 4 MiB. The application validates
+its complete schema, counts, canonical ordering, receiver, sealed declarations,
+compiled method pins and snapshot hash before calling the recorded model.
+Unknown or duplicate JSON fields and trailing values fail before evaluation.
+This is an operator-selected local snapshot; its hash does not authenticate the
+export, prove it is the latest catalogue, or make it a retained service review.
+The application makes a separate inventory of at most 32 distinct declaration
+references. Identical declarations from repeated publications share a tool
+reference; their original publication receipts remain in the catalogue.
+
+The initial frame contains compact question ID/declaration-hash pairs with
+evidence class, instrument, mechanism code and horizon so a model can choose
+what to inspect. It also carries native method references, the inventory/catalogue
+hashes and catalogue receiver. Mechanism statements, conditions and attribution
+stay behind targeted inspection.
+Full declarations appear only after this targeted tool request:
+
+```json
+{"kind":"tool","tool":{"name":"inspect_hypothesis","hypothesis_id":"hypothesis-EXPECTED_QUESTION_SHA256","declaration_sha256":"EXPECTED_DECLARATION_SHA256"}}
+```
+
+An exact inventory match returns a typed `hypothesis_ref` and sealed
+`hypothesis`: declared mechanism, prediction, null/refutation conditions, horizon,
+methods and original attribution. It does not return trial results or raw news
+articles. Unknown question IDs and changed declaration hashes return typed
+rejections without a declaration body. Tool arguments cannot mix claim, method
+and hypothesis identifiers. Model artifacts cannot supply inventory contents,
+tool results or passing check outcomes.
+
+For this profile, a `propose_hypothesis` candidate must include:
+
+```json
+"reuse": {
+  "id": "hypothesis-EXPECTED_QUESTION_SHA256",
+  "declaration_sha256": "EXPECTED_DECLARATION_SHA256"
+}
+```
+
+That exact declaration must have been inspected during the run. The candidate's
+mechanism/refutation codes and complete inspected method set must match it.
+Every selected current news claim must also carry the same evidence class and
+instrument as the declaration. The application adds a seventh mandatory check,
+`hypothesis_binding`; mismatches finalize an abstention with
+`hypothesis_not_eligible`. Existing news eligibility and method checks still
+apply. An empty catalogue permits abstention or requests for evidence, without
+inventing a reusable question. New questions use the other review profiles.
+
+The result schema is `mantik-news-reuse-review-v1`. Every finalized result,
+including automatic abstentions, binds `hypothesis_inventory_sha256`,
+`hypothesis_catalogue_sha256` and `hypothesis_receiver_id` into its result ID.
+The same eight-turn, four-tool and 30-second cooperative limits apply. Inspecting
+one claim, two methods and one hypothesis fits within that tool budget.
+
+These checks establish identity and structural evidence compatibility. They do
+not establish semantic relevance, corroboration, profitability or research
+validity. The declaration's existing conditions remain unchanged; the proposal
+does not add its current claims to a publication or update the hypothesis.
+Inspect the separate combined research history before judging prior results.
+
+This profile runs recorded local fixtures only. Service review start rejects
+it until storage can retain an application-owned catalogue pin and enforce its
+schema fence. Existing `news-review-v1` and `news-method-review-v1` contracts and
+hashes remain unchanged; both reject the new model fields even when empty or
+null. There are no provider calls, automatic publication, trials or orders.

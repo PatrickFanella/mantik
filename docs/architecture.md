@@ -195,6 +195,17 @@ fail before model invocation. Method-aware publication also binds the declared
 method set to the inspected candidate. No provider or worker activation is
 introduced. See [recorded review profiles](reference/research-review.md#method-aware-local-review-profile).
 
+The local `news-reuse-review-v1` profile derives a bounded declaration inventory
+from a validated retained hypothesis catalogue export. Models see only refs
+until targeted inspection; checked reuse proposals bind the catalogue and
+inventory hashes, current evidence class/instrument and inspected method set.
+Neutral pre-test declaration types live in `question`; `hypothesis` preserves
+its aliases, wire schemas and hashes while owning publication lineage. This
+avoids making investigation depend on publication or storage. The new local
+profile is rejected by retained service review start until catalogue pinning
+and a storage compatibility fence are implemented. See
+[hypothesis inspection](reference/research-review.md#inspect-existing-hypotheses-in-a-recorded-review).
+
 `internal/workertrial` binds a receiver-fenced external job declaration to an
 exact completed native trial and its registered recipe. Schema 17 atomically
 retains the declaration and three original input texts. The service exposes

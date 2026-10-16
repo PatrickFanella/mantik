@@ -15,13 +15,19 @@ func DefinitionFor(id string) (Contract, error) {
 	if id == TypeID {
 		return c, nil
 	}
-	if id != MethodTypeID {
+	if id != MethodTypeID && id != ReuseTypeID {
 		return Contract{}, errors.New("unsupported research review type")
 	}
 	c.TypeID = MethodTypeID
 	c.Tools = append(c.Tools, "inspect_native_method")
 	c.RequiredEvidence = append(c.RequiredEvidence, "inspected_native_method_pins_for_hypothesis")
 	c.RequiredChecks = append(c.RequiredChecks, "method_binding")
+	if id == ReuseTypeID {
+		c.TypeID = ReuseTypeID
+		c.Tools = append(c.Tools, "inspect_hypothesis")
+		c.RequiredEvidence = append(c.RequiredEvidence, "inspected_exact_hypothesis_declaration_for_reuse")
+		c.RequiredChecks = append(c.RequiredChecks, "hypothesis_binding")
+	}
 	return c, nil
 }
 func methodInventory() ([]library.MethodRef, error) {

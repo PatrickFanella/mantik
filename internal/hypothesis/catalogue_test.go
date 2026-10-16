@@ -43,6 +43,15 @@ func TestCatalogueCanonicalCompleteAndDetached(t *testing.T) {
 			t.Fatal("reuse lineage lost or unordered", q)
 		}
 	}
+	inventory, err := first.ReviewInventory()
+	if err != nil || inventory.Validate() != nil || inventory.CatalogueSHA256 != first.SHA256 || inventory.ReceiverID != first.ReceiverID || len(inventory.Refs()) != 3 {
+		t.Fatal(inventory, err)
+	}
+	corrupt := first
+	corrupt.SHA256 = "changed"
+	if _, err = corrupt.ReviewInventory(); err == nil {
+		t.Fatal("corrupt catalogue projected into model inventory")
+	}
 	a.Sealed.Declaration.Methods[0].SHA256 = "changed"
 	if first.Validate() != nil {
 		t.Fatal("caller mutated snapshot")

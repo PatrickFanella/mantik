@@ -16,6 +16,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/investigation"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
+	"git.subcult.tv/subculture-collective/mantik/internal/question"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -79,6 +80,82 @@ func TestHypothesisPublicationCLIAndAPI(t *testing.T) {
 	if err = json.Unmarshal(run("hypotheses"), &discovered); err != nil || discovered.Validate() != nil || discovered.PublicationCount != 1 || discovered.QuestionCount != 1 || !reflect.DeepEqual(discovered.Questions[0], q) {
 		t.Fatal(discovered, err)
 	}
+	// A complete service catalogue can feed an explicitly local recorded review.
+	// Its new news claim refs belong to the local journal, not the old publication.
+	journalPath := filepath.Join(dir, "local-journal")
+	j, err := news.OpenJournal(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = j.Retain(r); err != nil {
+		t.Fatal(err)
+	}
+	groups, err := j.Events(r.ReceivedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = j.Close(); err != nil {
+		t.Fatal(err)
+	}
+	localKey := groups.Groups[0].Claims[0].Claim.Key
+	ref := d.Methods[0]
+	reuseSteps := []investigation.Step{
+		{Kind: "tool", Tool: &investigation.ToolCall{Name: "inspect_news_claim", ClaimKey: localKey}},
+		{Kind: "tool", Tool: &investigation.ToolCall{Name: "inspect_native_method", MethodID: ref.ID, MethodSHA256: ref.SHA256}},
+		{Kind: "tool", Tool: &investigation.ToolCall{Name: "inspect_hypothesis", HypothesisID: p.Sealed.ID, DeclarationSHA256: p.Sealed.DeclarationSHA256}},
+		{Kind: "proposal", Proposal: &investigation.Proposal{Outcome: "propose_hypothesis", Uncertainty: "unverified", ReasonCodes: []string{"inspect_existing_question"}, ClaimKeys: []string{localKey}, Candidate: &investigation.Candidate{Kind: "research_hypothesis", ClaimCode: d.Mechanism.Code, RefutationCode: d.Refutation.Code, EvidenceKeys: []string{localKey}, Methods: d.Methods, Reuse: &question.Ref{ID: p.Sealed.ID, DeclarationSHA256: p.Sealed.DeclarationSHA256}}}},
+	}
+	reuseFile, catalogueFile := filepath.Join(dir, "reuse.json"), filepath.Join(dir, "catalogue.json")
+	reuseRaw, _ := json.Marshal(reuseSteps)
+	catalogueRaw, _ := json.Marshal(discovered)
+	for path, content := range map[string][]byte{reuseFile: reuseRaw, catalogueFile: catalogueRaw} {
+		if err = os.WriteFile(path, content, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reuseArgs := []string{"research-review", "--journal", journalPath, "--event", groups.Groups[0].ID, "--as-of", r.ReceivedAt.Format(time.RFC3339Nano), "--model-fixture", reuseFile, "--type", investigation.ReuseTypeID, "--hypothesis-catalogue", catalogueFile}
+	var reviewOutput bytes.Buffer
+	if err = Run(ctx, reuseArgs, &reviewOutput, &reviewOutput); err != nil {
+		t.Fatal(err)
+	}
+	var local struct {
+		Result investigation.Result `json:"result"`
+	}
+	inventory, _ := discovered.ReviewInventory()
+	if err = json.Unmarshal(reviewOutput.Bytes(), &local); err != nil || local.Result.Outcome != "propose_hypothesis" || local.Result.HypothesisInventorySHA256 != inventory.SHA256 || local.Result.HypothesisCatalogueSHA256 != discovered.SHA256 || local.Result.Proposal.Candidate.Reuse.ID != p.Sealed.ID || local.Result.QualificationCredit {
+		t.Fatal(local, err)
+	}
+	for _, malformed := range [][]byte{
+		[]byte(strings.Replace(string(catalogueRaw), `"schema":`, `"schema":"duplicate","schema":`, 1)),
+		[]byte(strings.Replace(string(catalogueRaw), `"qualification_credit":false`, `"qualification_credit":true`, 1)),
+		append(append([]byte{}, catalogueRaw...), []byte(` {}`)...),
+	} {
+		if err = os.WriteFile(catalogueFile, malformed, 0600); err != nil {
+			t.Fatal(err)
+		}
+		reviewOutput.Reset()
+		if err = Run(ctx, reuseArgs, &reviewOutput, &reviewOutput); err == nil || reviewOutput.Len() != 0 {
+			t.Fatal("invalid catalogue emitted review", err)
+		}
+	}
+	if err = os.WriteFile(catalogueFile, catalogueRaw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, badArgs := range [][]string{
+		reuseArgs[:len(reuseArgs)-2],
+		append(append([]string{}, reuseArgs...), "--type", investigation.MethodTypeID),
+		append(append([]string{}, reuseArgs...), "--hypothesis-catalogue", dir),
+	} {
+		reviewOutput.Reset()
+		if err = Run(ctx, badArgs, &reviewOutput, &reviewOutput); err == nil {
+			t.Fatal("invalid catalogue/profile arguments accepted")
+		}
+	}
+	for path, expected := range map[string][]byte{reuseFile: reuseRaw, catalogueFile: catalogueRaw} {
+		if content, err := os.ReadFile(path); err != nil || !bytes.Equal(content, expected) {
+			t.Fatal("review changed private input", path, err)
+		}
+	}
 	if content, err := os.ReadFile(file); err != nil || !bytes.Equal(content, raw) {
 		t.Fatal("CLI changed declaration", err)
 	}
@@ -105,6 +182,7 @@ func TestHypothesisPublicationCLIAndAPI(t *testing.T) {
 	call("GET", "/v1/hypotheses?best=true", "", true, 422)
 	call("GET", "/v1/hypotheses?limit=1", "", true, 422)
 	call("POST", "/v1/hypotheses", `{}`, true, 405)
+	call("POST", "/v1/news-reviews", `{"receiver_id":"`+catalog.ReceiverID+`","request_id":"unsupported-reuse","case_id":"`+admitted.Matches[0].CaseID+`","version":1,"type_id":"news-reuse-review-v1"}`, true, 422)
 	call("POST", "/v1/hypothesis-publications", strings.Replace(string(body), `"request_id":`, `"request_id":"forged","request_id":`, 1), true, 422)
 	call("POST", "/v1/hypothesis-publications", strings.Replace(string(body), `"declaration":`, `"sealed":{"qualification_credit":true},"declaration":`, 1), true, 422)
 	call("GET", "/v1/hypotheses/"+p.Sealed.ID+"?original=true", "", true, 422)

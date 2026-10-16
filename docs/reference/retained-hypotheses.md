@@ -121,8 +121,11 @@ The authority is `retained_research_declarations_only` with
 conditions and methods for discovery; it does not judge similarity, recommend
 a winner, prove current evidence applicability, or include trial outcomes.
 Use the question's combined research history to inspect all plans and attempts
-before drawing conclusions. Model review tools do not yet consume this
-catalogue. This change adds no automatic review, publication, trial or order.
+before drawing conclusions. The explicitly local
+[`news-reuse-review-v1` recorded profile](research-review.md#inspect-existing-hypotheses-in-a-recorded-review)
+can inspect a validated catalogue export. Retained service reviews do not yet
+consume catalogue pins. Discovery adds no automatic review, publication, trial
+or order.
 
 ## HTTP contract
 
