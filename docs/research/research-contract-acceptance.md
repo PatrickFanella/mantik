@@ -7,7 +7,8 @@ implemented recorded-fixture contracts through
 [PR 97](https://git.subcult.tv/subculture-collective/mantik/pulls/97), merged as
 `bfb1a1755e33c961de9d2586159b271b38287f7c`.
 It separates contract coverage from dependency completion, automatic research,
-deployment and financial qualification. It does not close the M4 exit gate.
+deployment and financial qualification. It does not close the M4 exit gate. The extraction checkpoint below supplements
+this PR 97 baseline through PR 102.
 
 ## Decision workflow and tool contracts — issue 15
 
@@ -110,9 +111,12 @@ PR-head pass as merged-main CI, deployment or provider qualification.
 
 Issues 3, 5, 6 and 9 were closed at this audit. Issue 12 remains open for the
 extraction work described in the [recorded-news audit](news-acceptance.md).
-Its retained article/claim contracts currently require operator-supplied claims
-and event keys. Starting a review against those inputs does not implement article
-extraction, automatic event equivalence or source-independence assessment.
+The recorded extraction path now retains source-only intents and checked
+recorded artifacts, with a separate explicit provenance-checked approval path
+into news cases. The offline evaluator retains agreement and disagreement with
+supplied annotations. These additions do not discover claims by themselves or
+prove model accuracy. Event keys remain operator supplied; automatic event
+equivalence and source-independence assessment remain absent.
 
 Therefore issue 15 remains open on dependency 12; issues 16 and 17 remain open
 on dependency 15. Delivered contract coverage above does not bypass native
@@ -120,13 +124,14 @@ dependencies. Reconcile the acceptance checklists and close issues only after
 the remaining requirements and dependencies are verified. The M4 milestone also
 retains its integrated workflow and generated-candidate requirements.
 
-The next bounded development unit is article extraction under issue 12:
-consume a retained original and recorded extractor artifacts, bind every claim
-to its exact source excerpt and availability metadata, and retain malformed,
-unsupported and abstaining outcomes. Test duplicate distribution, corrections,
-late evidence and attempted authority escalation against invented fixtures.
-Provider-backed extraction and measured extraction quality require separate
-evidence; a deterministic fixture adapter alone cannot close that gap.
+PRs 99–102 delivered the recorded extraction contract, durable attempt ledger,
+explicit candidate admission and offline supplied-annotation evaluator. See the
+[updated news checkpoint](news-acceptance.md#recorded-extraction-checkpoint-through-pr-102)
+for per-boundary coverage, source-pinned execution evidence and retained failed
+attempts. The next extraction unit requires model/adapter selection and a
+reviewed corpus, followed by a bounded actual-extractor evaluation. Any provider
+rehearsal also needs explicit access, source and request/cost scope. Recorded
+artifact checks and invented agreement cases cannot close that quality gap.
 
 Generated-candidate evaluation in issue 18 follows its declared dependencies.
 It needs immutable source/hypothesis/dataset/toolchain provenance and a separately
