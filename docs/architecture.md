@@ -222,7 +222,10 @@ request before one bounded compatibility POST and a finished capture afterward.
 It uses an explicit private origin and local model route, with no service mutation
 or automatic retry. Local v2 retains quote-only model content separately from
 deterministic unique-quote byte-span derivation. It preserves the recorded
-protocol and all existing claim checks.
+protocol and all existing claim checks. Offline local receipt inspection recomputes
+that chain from captured bytes; its report grants no model-execution attestation
+or service admission, including when saved network/cancellation metadata is
+internally consistent.
 
 Offline [corpus evaluation](reference/extraction-evaluation.md) replays every
 recorded output against supplied annotations and retains per-case disagreements,

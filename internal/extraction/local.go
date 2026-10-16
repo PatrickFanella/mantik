@@ -117,6 +117,15 @@ type localEnvelope struct {
 	} `json:"choices"`
 }
 
+func localRequestBytes(article news.Article, config LocalConfig) []byte {
+	source, _ := json.Marshal(article)
+	payload := localRequest{Model: config.Model, MaxTokens: config.MaxTokens,
+		Messages: []localMessage{{Role: "system", Content: localInstructions}, {Role: "user", Content: string(source)}}}
+	payload.ResponseFormat.Type = "json_object"
+	raw, _ := json.Marshal(payload)
+	return raw
+}
+
 type localExtractor struct {
 	receipt *LocalReceipt
 	client  *http.Client
@@ -126,11 +135,7 @@ type localExtractor struct {
 
 func (m *localExtractor) Extract(ctx context.Context, f Frame) ([]byte, error) {
 	r := m.receipt
-	article, _ := json.Marshal(f.Article)
-	payload := localRequest{Model: r.Config.Model, MaxTokens: r.Config.MaxTokens,
-		Messages: []localMessage{{Role: "system", Content: localInstructions}, {Role: "user", Content: string(article)}}}
-	payload.ResponseFormat.Type = "json_object"
-	raw, _ := json.Marshal(payload)
+	raw := localRequestBytes(f.Article, r.Config)
 	r.Request = localBytes(raw, true)
 	r.Status, r.Disposition = "prepared", "not_sent"
 	*r = sealLocal(*r)
@@ -165,12 +170,16 @@ func (m *localExtractor) Extract(ctx context.Context, f Frame) ([]byte, error) {
 		body = body[:MaxLocalHTTPBytes]
 	}
 	r.Response = localBytes(body, complete)
+	return interpretLocalResponse(r, f.Article, body)
+}
+
+func interpretLocalResponse(r *LocalReceipt, article news.Article, body []byte) ([]byte, error) {
 	r.Disposition = "http_failed"
-	if res.StatusCode != http.StatusOK {
+	if r.HTTPStatus != http.StatusOK {
 		return nil, errors.New("local model returned non-success status")
 	}
 	r.Disposition = "incomplete_http_capture"
-	if !complete {
+	if !r.Response.Complete {
 		return nil, io.EOF
 	}
 	r.Disposition = "invalid_envelope"
@@ -186,7 +195,7 @@ func (m *localExtractor) Extract(ctx context.Context, f Frame) ([]byte, error) {
 	if c.FinishReason != "stop" || len(c.Message.ToolCalls) != 0 || c.Message.Refusal != nil {
 		return content, io.EOF
 	}
-	anchoring, derived := AnchorQuotes(f.Article, r.EventKey, content)
+	anchoring, derived := AnchorQuotes(article, r.EventKey, content)
 	r.Anchoring = &anchoring
 	if anchoring.Status != "derived" {
 		r.Disposition = "quote_anchoring_rejected"

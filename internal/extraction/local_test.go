@@ -192,4 +192,8 @@ func TestLocalExtractionCooperativeDeadline(t *testing.T) {
 	if err != nil || calls.Load() != 1 || len(saved) != 2 || r.Result.ReasonCode != "extractor_timeout" || r.Response.Complete {
 		t.Fatal("deadline not retained", err, r.Result)
 	}
+	if _, err := InspectLocal(context.Background(), saved[0], &saved[1]); err != nil {
+		t.Fatal("reported timeout capture rejected by offline inspector", err)
+	}
+
 }

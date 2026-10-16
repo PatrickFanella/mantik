@@ -144,3 +144,60 @@ rewritten, upgraded or reinterpreted by this command. New invocations require
 fresh directories and use v2. A v1 model's incorrect offsets must not be silently
 repaired and counted as a new model result. A new prompt/version requires its
 own retained request and evaluation evidence.
+
+
+## Offline retained-receipt inspection
+
+```sh
+./bin/mantik news-local-inspect --dir /private/new-extraction-attempt \
+  > /private/inspection.json
+```
+
+This command reads `prepared.json` and, when present, `finished.json`. It never
+contacts the configured endpoint, samples a clock, writes a receipt, retries a
+request or submits news. The directory must be an absolute, clean path owned by
+the current user with no group/other permissions. Receipt files must also be
+private and owned by that user. Directory/file symlinks, FIFOs, nonregular files,
+unsafe permissions and files larger than 8 MiB each are rejected. Reads are
+bounded and confined to the opened directory. Unknown/duplicate/noncanonical
+JSON field names and malformed files fail without a partial report or copied
+private body text in the error.
+
+The inspector supports the known v2 receipt, quote prompt and extraction
+contract. It reconstructs the source from the captured request, checks the
+canonical request against the compiled prompt/configuration, and verifies source,
+contract, event and prepared-receipt pins. A finished receipt must agree with
+that original prepared state. HTTP bytes are decoded and checked, model content
+is recovered from the envelope, quote anchoring is recomputed, and the derived
+extraction result is replayed through the existing checks. Recalculating a
+receipt's outer hash does not make an inconsistent artifact or claim pass.
+The same pure response interpretation is used for capture and inspection; replay
+has no HTTP client.
+
+A missing finished file produces state `prepared_only` and disposition
+`completion_unknown`, with no invented outcome or claims. A present malformed
+finished file is an error, not an absent completion. Finished captures retain
+state `finished` even when the extractor abstained or the request failed. HTTP
+errors, incomplete captures, malformed envelopes, rejected quotes and reported
+transport/cancellation results remain inspectable; they are not filtered out.
+If a capture is still being written, inspection may fail on its incomplete file.
+Inspect again after the writer finishes; do not start another model request.
+The pair is checked for consistency, not read under a writer lock or attested
+as an atomic filesystem snapshot.
+
+The compact `mantik-local-extraction-inspection-v1` report includes configuration,
+source/contract/receipt hashes, disposition, outcome/reason, claim count and
+available artifact pins. It does not copy originals, prompts, HTTP bodies or
+claim text. It has a deterministic hash and lists the completed consistency
+checks. Original detailed evidence remains in the receipt files.
+
+Authority is `retained_local_bytes_consistency_only`; `execution_attested` and
+qualification credit are false. Reported network status, timing, cancellation,
+endpoint routing and model execution cannot be independently proven from these
+files. A timeout result can be reproduced from the reported cancellation but
+its occurrence is not attested. Someone who replaces all inputs consistently can
+create another internally consistent report: hashes are not signatures or proof
+of provider origin. Inspection does not establish source truth or model quality.
+Legacy v1 or unknown receipt versions are rejected as unsupported without
+rewriting them. Unknown prompt/contract versions also fail rather than silently
+using the current interpretation.

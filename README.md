@@ -132,6 +132,8 @@ extractor accuracy. [Local model extraction](docs/reference/local-extraction.md)
 retains one explicitly configured local request and its checked response in a
 new private directory, without automatic retries or service admission. It derives
 byte spans from unique exact quotes while retaining the original model content.
+`news-local-inspect` validates the retained request/response/derivation offline,
+including failures and unknown completion, without contacting the endpoint.
 [Retained extraction attempts](docs/reference/retained-extractions.md)
 capture an article and deadline before completion, retain exact recorded output
 and abstentions, and expose the complete bounded attempt history.
