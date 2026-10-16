@@ -118,6 +118,7 @@ recovery or provider behavior.
 | `POST /v1/news-reviews` | `receiver_id`, `request_id`, `case_id`, `version`, optional `type_id` |
 | `POST /v1/news-reviews/ID/complete` | `receiver_id`, `steps` array |
 | `GET /v1/news-reviews/ID` | No query parameters |
+| `GET /v1/news-cases/ID/reviews` | Complete bounded case review history; no query parameters |
 
 All routes use the existing bearer authentication boundary. Successful writes
 and inspection return the retained attempt and live applicability flags. Invalid
@@ -239,3 +240,53 @@ Schema-19 binaries refuse schema 20. Deployment requires a verified backup and
 a planned restore rollback; preserving post-upgrade evidence is part of that
 plan. Do not downgrade by removing schema records or constraints. No original
 pilot database is upgraded by development checks.
+
+## Complete case review history
+
+```sh
+./bin/mantik news-reviews --api-url "$MANTIK_API_URL" \
+  --case "$MANTIK_NEWS_CASE_ID"
+./bin/mantik news-review --api-url "$MANTIK_API_URL" --id REVIEW_ID
+```
+
+The authenticated history route returns `mantik-case-review-history-v1` for one
+exact news case. It includes every retained review across evidence versions and
+case generations, including unpublished abstentions, pending attempts, rejected
+tool calls, expired results and superseded output. An existing case with no
+attempts returns an empty list; an unknown case returns 404. The same global
+32-attempt storage limit bounds each complete response. There is no pagination,
+ranking or outcome filter; query parameters are rejected.
+
+The response contains the current case metadata and one compact summary per
+attempt, ordered by start time then request ID. Each summary retains the subject
+and evidence snapshot hash, selected type/profile hash, optional hypothesis
+inventory/catalogue hashes, stored status and timestamps, live applicability,
+result ID, artifact digest, outcome/reason, proposal reason codes, optional exact
+reuse reference, artifact/tool counts, rejected-tool count and mandatory checks.
+`attempt_sha256` binds the complete Go-JSON attempt returned by targeted
+`news-review` inspection. Original excerpts, raw model artifacts, complete news
+groups and full hypothesis inventories are not copied into the history response.
+
+Status and outcome counts are separate: an expired result can contain a checked
+hypothesis proposal while remaining inapplicable. A pending attempt stays pending
+until a completion records its disposition; this read does not sample a clock or
+expire it. Automatic abstentions retain their failed/not-run check records and
+reason codes, rather than disappearing from the search history. Closing or
+reopening a case changes current applicability without rewriting old attempts.
+
+Memory reads use one lock. PostgreSQL reads pin the receiver, current case and
+all matching attempts in one read-only repeatable-read transaction. The reader
+validates source snapshot/result/artifact bindings and retained profile/inventory
+pins before deriving summaries. Corrupt or excessive history fails the complete
+request rather than omitting an attempt. Detached output cannot mutate stored
+history. The complete response has its own SHA-256 over compact Go JSON with
+`sha256` set to the empty string; stable retained state produces the same hash.
+The CLI checks metadata bindings, ordering, counts, profile pins and report hash.
+
+Authority is `recorded_review_attempt_history_only`, with false qualification
+credit. This is retained recorded-model review activity for an observation case;
+it is not hypothesis validity, trial performance or evidence that a search was
+exhaustive. Use publication links and the separate combined hypothesis/trial
+history for research outcomes. Rejected commands that never created an attempt,
+unregistered experiments and provider activity are outside this report. No
+automatic dispatch, publication, trial, migration or operation is triggered.

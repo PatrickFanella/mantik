@@ -209,6 +209,15 @@ selected declaration against retained publications. Older attempts are not
 rewritten and schema-19 binaries refuse the new schema. See
 [hypothesis inspection](reference/research-review.md#inspect-existing-hypotheses-in-a-recorded-review).
 
+Case review history retains the search process before hypothesis publication:
+`news-reviews --case ID` reports every retained attempt, including abstentions,
+pending, expired and superseded work. It binds compact summaries to full targeted
+attempts and keeps status counts distinct from model outcomes. One memory lock
+or read-only PostgreSQL snapshot pins the current case and all its review
+versions/generations. This case-owned history remains separate from hypothesis
+validity and native/external trial assessments; no raw model artifacts or source
+excerpts enter the compact report.
+
 `internal/workertrial` binds a receiver-fenced external job declaration to an
 exact completed native trial and its registered recipe. Schema 17 atomically
 retains the declaration and three original input texts. The service exposes

@@ -149,6 +149,9 @@ The local `news-reuse-review-v1` recorded profile can inspect a validated
 catalogue/inventory hashes and checks current evidence and inspected methods.
 Retained service reviews capture their own catalogue inventory at start and
 independently recheck the exact declaration when publishing reuse.
+`news-reviews --case ID` exposes the complete retained review history for an
+observation case, including unpublished abstentions and stale or expired output,
+with targeted links by review ID and hashes for the full retained attempts.
 
 The [capture journal](docs/reference/alpaca-journal.md) retains validated recordings
 and supports receiver-bound submission and recovery through `alpaca-retain`,
