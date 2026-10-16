@@ -217,6 +217,11 @@ can admit one eligible result through a separate atomic news/provenance path;
 ordinary recording submission cannot claim extraction approval. Candidate
 completion alone does not admit news or verify source truth. See
 [retained extraction attempts](reference/retained-extractions.md).
+The separate [local extractor](reference/local-extraction.md) retains a prepared
+request before one bounded compatibility POST and a finished capture afterward.
+It uses an explicit private origin and local model route, with no service mutation
+or automatic retry.
+
 Offline [corpus evaluation](reference/extraction-evaluation.md) replays every
 recorded output against supplied annotations and retains per-case disagreements,
 including structurally valid claims with different assertions. It measures
