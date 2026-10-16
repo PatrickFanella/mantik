@@ -130,8 +130,10 @@ source-only input and checks recorded extractor artifacts into claim candidates
 or retained abstention results. It does not admit those candidates or establish
 extractor accuracy. [Retained extraction attempts](docs/reference/retained-extractions.md)
 capture an article and deadline before completion, retain exact recorded output
-and abstentions, and expose the complete bounded attempt history. Candidate
-admission remains separate. The
+and abstentions, and expose the complete bounded attempt history.
+[Explicit reviewed admission](docs/reference/reviewed-extraction-admission.md)
+requires exact retained hashes and commits provenance with news case routing;
+ordinary recording submission cannot fabricate that provenance. The
 [private news journal](docs/reference/news-journal.md) retains source/claim
 revisions with content conflicts, verified predecessors and explicit original
 inspection. The [event-group view](docs/reference/news-events.md) links declared

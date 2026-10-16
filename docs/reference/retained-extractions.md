@@ -118,8 +118,10 @@ Authority remains `claim_candidates_only`; history authority is
 `recorded_extraction_history_only`, with false qualification credit. These are
 retained recorded-model attempts, not verified source truth or extractor quality.
 Predecessor references retain their supplied shape but this ledger does not
-verify their existence or infer a current correction chain. Source admission,
-reviewed conversion of candidates with exact provenance, event equivalence,
+verify their existence or infer a current correction chain.
+[Explicit reviewed admission](reviewed-extraction-admission.md) now loads exact
+eligible attempts and atomically retains their provenance-bearing news records
+and approval receipts. Event equivalence,
 source independence and measured extractor behavior remain separate work in
 issue 12. No extraction receipt closes a news case, admits a recording, publishes
 a hypothesis, grants execution authority or creates an economic effect.

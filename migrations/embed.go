@@ -76,3 +76,6 @@ var ReviewHypothesisInventories string
 
 //go:embed 0021_news_extractions.sql
 var NewsExtractions string
+
+//go:embed 0022_reviewed_extraction_admissions.sql
+var ReviewedExtractionAdmissions string

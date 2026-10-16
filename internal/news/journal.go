@@ -218,7 +218,7 @@ func (j *Journal) readRecord(key string) (Retained, error) {
 		return stored, err
 	}
 	expected, err := Normalize(stored.Recording)
-	if err != nil || stored.Schema != retainedSchema || stored.JournalID != j.ID || !reflect.DeepEqual(stored.Result, expected) || recordKey(stored.Recording.SourceID, stored.Recording.ArticleID, stored.Recording.EvidenceClass, stored.Recording.Revision) != key {
+	if err != nil || !OperatorRecording(stored.Recording) || stored.Schema != retainedSchema || stored.JournalID != j.ID || !reflect.DeepEqual(stored.Result, expected) || recordKey(stored.Recording.SourceID, stored.Recording.ArticleID, stored.Recording.EvidenceClass, stored.Recording.Revision) != key {
 		return stored, ErrNewsCorrupt
 	}
 	return stored, nil
@@ -304,6 +304,9 @@ func (j *Journal) Status() (JournalStatus, error) {
 	return j.audit()
 }
 func (j *Journal) Retain(r Recording) (RetentionReceipt, error) {
+	if !OperatorRecording(r) {
+		return RetentionReceipt{}, errors.New("news journal retention requires an operator-recorded source without extraction provenance")
+	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.closed {
