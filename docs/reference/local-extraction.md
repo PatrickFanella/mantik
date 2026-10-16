@@ -132,7 +132,7 @@ so repeated local requests do not promise identical receipts.
 Authority is `local_model_claim_candidates_only`, and qualification credit is
 false. The source's unqualified evidence class, attribution and exact spans
 still require independent checks; a valid candidate is not established truth.
-Use [offline evaluation](extraction-evaluation.md) with separately reviewed
+Use [local capture evaluation](local-extraction-evaluation.md) with separately reviewed
 expected responses to assess the retained artifacts. The local receipt is not
 accepted as a recorded-fixture extraction attempt or an admission receipt.
 [Local capture import](local-captures.md) can retain validated copies in a separate

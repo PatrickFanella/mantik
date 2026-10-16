@@ -18,15 +18,12 @@ func privateLocalFile(info os.FileInfo) bool {
 	return ok && int(owner.Uid) == os.Getuid() && info.Mode().Perm()&0077 == 0
 }
 
-func readLocalReceipt(root *os.Root, name string) (*extraction.LocalReceipt, error) {
+func readPrivateLocalFile(root *os.Root, name string, limit int64) ([]byte, error) {
 	info, err := root.Lstat(name)
 	if err != nil {
-		if name == "finished.json" && errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
-		return nil, extraction.ErrLocalEvidence
+		return nil, err
 	}
-	if !info.Mode().IsRegular() || !privateLocalFile(info) || info.Size() > extraction.MaxLocalReceiptBytes {
+	if !info.Mode().IsRegular() || !privateLocalFile(info) || info.Size() > limit {
 		return nil, extraction.ErrLocalEvidence
 	}
 	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
@@ -38,8 +35,18 @@ func readLocalReceipt(root *os.Root, name string) (*extraction.LocalReceipt, err
 		_ = f.Close()
 		return nil, extraction.ErrLocalEvidence
 	}
-	raw, readErr := io.ReadAll(io.LimitReader(f, extraction.MaxLocalReceiptBytes+1))
-	if errors.Join(readErr, f.Close()) != nil || len(raw) > extraction.MaxLocalReceiptBytes {
+	raw, readErr := io.ReadAll(io.LimitReader(f, limit+1))
+	if errors.Join(readErr, f.Close()) != nil || int64(len(raw)) > limit {
+		return nil, extraction.ErrLocalEvidence
+	}
+	return raw, nil
+}
+func readLocalReceipt(root *os.Root, name string) (*extraction.LocalReceipt, error) {
+	raw, err := readPrivateLocalFile(root, name, extraction.MaxLocalReceiptBytes)
+	if err != nil {
+		if name == "finished.json" && errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
 		return nil, extraction.ErrLocalEvidence
 	}
 	var receipt extraction.LocalReceipt
@@ -81,19 +88,11 @@ func loadLocalReceipts(dir string) (extraction.LocalReceipt, *extraction.LocalRe
 	if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
 		return extraction.LocalReceipt{}, nil, extraction.ErrLocalEvidence
 	}
-	info, err := os.Lstat(dir)
-	if err != nil || !info.IsDir() || !privateLocalFile(info) {
-		return extraction.LocalReceipt{}, nil, extraction.ErrLocalEvidence
-	}
-	root, err := os.OpenRoot(dir)
+	root, err := openPrivateLocalRoot(dir)
 	if err != nil {
-		return extraction.LocalReceipt{}, nil, extraction.ErrLocalEvidence
+		return extraction.LocalReceipt{}, nil, err
 	}
 	defer root.Close()
-	opened, err := root.Stat(".")
-	if err != nil || !os.SameFile(info, opened) || !opened.IsDir() || !privateLocalFile(opened) {
-		return extraction.LocalReceipt{}, nil, extraction.ErrLocalEvidence
-	}
 	prepared, err := readLocalReceipt(root, "prepared.json")
 	if err != nil {
 		return extraction.LocalReceipt{}, nil, err
@@ -103,4 +102,24 @@ func loadLocalReceipts(dir string) (extraction.LocalReceipt, *extraction.LocalRe
 		return extraction.LocalReceipt{}, nil, err
 	}
 	return *prepared, finished, nil
+}
+
+func openPrivateLocalRoot(dir string) (*os.Root, error) {
+	if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
+		return nil, extraction.ErrLocalEvidence
+	}
+	info, err := os.Lstat(dir)
+	if err != nil || !info.IsDir() || !privateLocalFile(info) {
+		return nil, extraction.ErrLocalEvidence
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, extraction.ErrLocalEvidence
+	}
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(info, opened) || !opened.IsDir() || !privateLocalFile(opened) {
+		_ = root.Close()
+		return nil, extraction.ErrLocalEvidence
+	}
+	return root, nil
 }

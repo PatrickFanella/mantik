@@ -242,6 +242,12 @@ Offline [corpus evaluation](reference/extraction-evaluation.md) replays every
 recorded output against supplied annotations and retains per-case disagreements,
 including structurally valid claims with different assertions. It measures
 annotation agreement without provider provenance or qualification credit.
+[Local capture evaluation](reference/local-extraction-evaluation.md) uses the
+same exact comparison with retained local interpretation. It keeps all receipt
+bytes, compares finished failures as observed, and reports unknown completion
+without fabricating an abstention. Duplicate snapshots are rejected; snapshots
+sharing a prepared receipt are disclosed without a claim of independent
+generations.
 
 Case review history retains the search process before hypothesis publication:
 `news-reviews --case ID` reports every retained attempt, including abstentions,

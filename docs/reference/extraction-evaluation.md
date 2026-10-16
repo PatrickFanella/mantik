@@ -88,3 +88,7 @@ provider request, hypothesis publication or economic effect. The report cannot
 replace an extraction attempt or the explicit approval required by
 [reviewed extraction admission](reviewed-extraction-admission.md). Issue 12
 remains open for measured extractor behavior and its remaining acceptance work.
+
+For prepared/finished local receipts, use [local capture evaluation](local-extraction-evaluation.md).
+It preserves the captured transport interpretation and unknown completion rather
+than converting a local capture into recorded-fixture output.
