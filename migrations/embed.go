@@ -79,3 +79,6 @@ var NewsExtractions string
 
 //go:embed 0022_reviewed_extraction_admissions.sql
 var ReviewedExtractionAdmissions string
+
+//go:embed 0023_local_extraction_captures.sql
+var LocalExtractionCaptures string
