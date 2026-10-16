@@ -241,6 +241,10 @@ func profileContracts(t *testing.T, s profileBackend) {
 	if _, err = s.StartReviewProfile(ctx, receiver, "method", caseID, 1, investigation.MethodTypeID, noClock); err != nil {
 		t.Fatal("capacity blocked exact profile retry", err)
 	}
+	if _, err = s.StartReviewProfile(ctx, receiver, "overflow-reuse", caseID, 2, investigation.ReuseTypeID, noClock); !errors.Is(err, review.ErrCapacity) {
+		t.Fatal("reuse bypassed shared capacity", err)
+	}
+
 }
 func TestPostgresContractsReviewProfileUpgrade(t *testing.T) {
 	s := timerPostgres(t, "profileupgrade")
@@ -256,7 +260,7 @@ func TestPostgresContractsReviewProfileUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.pool.Exec(ctx, "UPDATE mantik_news_reviews SET payload=payload-'profile'; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_profile; DELETE FROM mantik_schema WHERE version=19"); err != nil {
+	if _, err = s.pool.Exec(ctx, "UPDATE mantik_news_reviews SET payload=payload-'profile'; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_inventory; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_profile; DELETE FROM mantik_schema WHERE version>=19"); err != nil {
 		t.Fatal(err)
 	}
 	config := s.pool.Config().ConnString()

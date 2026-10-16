@@ -142,8 +142,8 @@ func TestHypothesisReviewBoundsAndProfileIsolation(t *testing.T) {
 	if _, err := RunWithType(context.Background(), j, g.ID, r.ReceivedAt, ReuseTypeID, m); err == nil || called {
 		t.Fatal("missing inventory reached model")
 	}
-	if _, err := ProfileFor(ReuseTypeID); err == nil {
-		t.Fatal("local-only profile accepted for retained service review")
+	if profile, err := ProfileFor(ReuseTypeID); err != nil || profile.Validate() != nil {
+		t.Fatal("reuse profile cannot be pinned", err)
 	}
 	for _, typeID := range []string{TypeID, MethodTypeID} {
 		for _, input := range []string{string(raw(steps[2])), `{"kind":"tool","tool":{"name":"inspect_news_claim","claim_key":"x","hypothesis_id":""}}`, `{"kind":"proposal","proposal":{"candidate":{"reuse":null}}}`} {

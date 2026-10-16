@@ -146,8 +146,9 @@ candidates. Service attempts retain their selected profile and bind finalized
 results to its hash; older unpinned reviews continue to use v1.
 The local `news-reuse-review-v1` recorded profile can inspect a validated
 `hypotheses` export and propose reusing an exact declared question. It binds the
-catalogue/inventory hashes and checks current evidence and inspected methods;
-retained service reviews do not yet accept this profile.
+catalogue/inventory hashes and checks current evidence and inspected methods.
+Retained service reviews capture their own catalogue inventory at start and
+independently recheck the exact declaration when publishing reuse.
 
 The [capture journal](docs/reference/alpaca-journal.md) retains validated recordings
 and supports receiver-bound submission and recovery through `alpaca-retain`,

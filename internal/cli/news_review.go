@@ -27,7 +27,7 @@ func runNewsReview(ctx context.Context, command string, args []string, out, errO
 		fs.StringVar(&receiver, "receiver-id", "", "explicit pinned research receiver identity")
 	}
 	if command == "news-review-start" {
-		fs.StringVar(&typeID, "type", investigation.TypeID, "news-review-v1 or news-method-review-v1")
+		fs.StringVar(&typeID, "type", investigation.TypeID, "news-review-v1, news-method-review-v1 or news-reuse-review-v1")
 		fs.StringVar(&caseID, "case", "", "news research case ID")
 		fs.IntVar(&version, "version", 0, "current case evidence version")
 	}

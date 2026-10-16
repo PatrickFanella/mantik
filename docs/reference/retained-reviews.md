@@ -115,7 +115,7 @@ recovery or provider behavior.
 
 | Method and path | Input |
 | --- | --- |
-| `POST /v1/news-reviews` | `receiver_id`, `request_id`, `case_id`, `version` |
+| `POST /v1/news-reviews` | `receiver_id`, `request_id`, `case_id`, `version`, optional `type_id` |
 | `POST /v1/news-reviews/ID/complete` | `receiver_id`, `steps` array |
 | `GET /v1/news-reviews/ID` | No query parameters |
 
@@ -185,3 +185,57 @@ upgrade original pilot databases. Verification covers legacy pending/completed
 records, concurrent starts/completions, immutable profile retries, method-set
 publication conflicts, stale/expired retention, atomic write failure, capacity,
 restart, migration checksums, authenticated CLI/HTTP and isolated backup/restore.
+
+## Retained hypothesis inventory and reuse
+
+```sh
+./bin/mantik news-review-start --api-url "$MANTIK_API_URL" \
+  --receiver-id "$MANTIK_RECEIVER_ID" --id reuse-review-1 \
+  --case "$MANTIK_NEWS_CASE_ID" --version CURRENT_VERSION \
+  --type news-reuse-review-v1
+./bin/mantik news-review-complete --api-url "$MANTIK_API_URL" \
+  --receiver-id "$MANTIK_RECEIVER_ID" --id reuse-review-1 \
+  --model-fixture /absolute/private/reuse-review-artifacts.json
+```
+
+The service captures its complete retained hypothesis catalogue under the same
+lock used for news admission, review starts and hypothesis publication. It
+validates all sealed declarations and derives a canonical inventory of at most
+32 distinct declaration references. Repeated identical publications share a tool
+reference; their complete attribution remains in the catalogue identified by its
+hash. An empty catalogue produces a valid empty inventory. Corrupt or excessive
+catalogues reject the start as a whole, without a partial attempt. A review start
+cannot precede a captured publication's timestamp.
+
+The attempt retains server-owned `hypothesis_inventory` with its schema,
+receiver, source catalogue hash, sealed declarations and inventory hash. HTTP
+start accepts only the existing receiver/request/case/version/type fields.
+Neither start nor completion accepts caller-supplied inventories, catalogue pins,
+checks or finalized results. Exact start retries return the original inventory
+without consulting the clock or a later catalogue. All profiles share the same
+32-attempt capacity; completed, failed, expired and superseded work is retained.
+
+Completion runs the [same bounded interpreter](research-review.md#inspect-existing-hypotheses-in-a-recorded-review)
+outside storage locks. Models see compact summaries and receive full declarations
+only after targeted inspection. A reuse candidate must bind an inspected exact
+declaration, inspected native methods and eligible current news. Finalized
+results bind the profile, inventory and source catalogue hashes plus receiver.
+Storage checks those pins again before committing. Later catalogue additions do
+not change the captured inventory. Stale news and deadline expiry still retain
+the result while preventing current applicability; no fallback captures newer
+evidence during completion or retry.
+
+Hypothesis publication remains a separate request. It independently checks the
+selected declaration against authoritative retained publications under the news
+mutation lock and requires the proposed declaration to name the same exact
+question. New attribution gets a new receipt; no original origin or condition is
+rewritten. The interpretation remains unqualified even when every check passes.
+
+Schema 20 extends the review-profile constraint and requires inventory pins for
+reuse attempts while forbidding them on older profiles. Application reads also
+check the canonical inventory hash and sealed declarations before evaluation.
+Existing pending/completed attempts and JSON payloads are unchanged by migration.
+Schema-19 binaries refuse schema 20. Deployment requires a verified backup and
+a planned restore rollback; preserving post-upgrade evidence is part of that
+plan. Do not downgrade by removing schema records or constraints. No original
+pilot database is upgraded by development checks.

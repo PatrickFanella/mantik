@@ -6,8 +6,10 @@ import (
 	"errors"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/investigation"
 	"git.subcult.tv/subculture-collective/mantik/internal/newscase"
+	researchquestion "git.subcult.tv/subculture-collective/mantik/internal/question"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"github.com/jackc/pgx/v5"
 )
@@ -61,7 +63,20 @@ func (m *Memory) StartReviewProfile(ctx context.Context, receiver, id, caseID st
 	if len(m.reviews) >= review.MaxAttempts {
 		return review.View{}, review.ErrCapacity
 	}
-	a, err := review.StartProfile(m.news, receiver, id, caseID, version, typeID, now())
+	at := now()
+	var inventory *researchquestion.Inventory
+	if typeID == investigation.ReuseTypeID {
+		all := make([]hypothesis.Publication, 0, len(m.publications))
+		for _, p := range m.publications {
+			all = append(all, p)
+		}
+		pin, err := reviewInventory(receiver, all, at)
+		if err != nil {
+			return review.View{}, err
+		}
+		inventory = &pin
+	}
+	a, err := review.StartProfileInventory(m.news, receiver, id, caseID, version, typeID, inventory, at)
 	if err != nil {
 		return review.View{}, err
 	}
@@ -103,6 +118,9 @@ func (m *Memory) CompleteReview(ctx context.Context, receiver, id string, steps 
 		return review.View{}, ErrReceiverMismatch
 	}
 	current := m.reviews[id]
+	if _, err := review.Definition(current); err != nil {
+		return review.View{}, err
+	}
 	if current.Status != "pending" {
 		if current.StepsSHA256 != digest {
 			return review.View{}, review.ErrConflict
@@ -208,7 +226,20 @@ func (p *Postgres) StartReviewProfile(ctx context.Context, receiver, id, caseID 
 		if count >= review.MaxAttempts {
 			return a, review.ErrCapacity
 		}
-		a, err = review.StartProfile(s, receiver, id, caseID, version, typeID, now())
+		at := now()
+		var inventory *researchquestion.Inventory
+		if typeID == investigation.ReuseTypeID {
+			all, err := loadHypothesisPublications(ctx, tx)
+			if err != nil {
+				return a, err
+			}
+			pin, err := reviewInventory(receiver, all, at)
+			if err != nil {
+				return a, err
+			}
+			inventory = &pin
+		}
+		a, err = review.StartProfileInventory(s, receiver, id, caseID, version, typeID, inventory, at)
 		if err != nil {
 			return a, err
 		}
@@ -247,6 +278,9 @@ func (p *Postgres) CompleteReview(ctx context.Context, receiver, id string, step
 		if err != nil {
 			return a, err
 		}
+		if _, err := review.Definition(a); err != nil {
+			return a, err
+		}
 		if a.Status != "pending" {
 			if a.StepsSHA256 != digest {
 				return a, review.ErrConflict
@@ -271,3 +305,16 @@ var _ ReviewStore = (*Postgres)(nil)
 
 var _ ReviewProfileStore = (*Memory)(nil)
 var _ ReviewProfileStore = (*Postgres)(nil)
+
+func reviewInventory(receiver string, all []hypothesis.Publication, at time.Time) (researchquestion.Inventory, error) {
+	c, err := hypothesis.MakeCatalogue(receiver, all)
+	if err != nil {
+		return researchquestion.Inventory{}, err
+	}
+	for _, p := range all {
+		if p.PublishedAt.After(at) {
+			return researchquestion.Inventory{}, review.ErrConflict
+		}
+	}
+	return c.ReviewInventory()
+}

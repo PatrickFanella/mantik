@@ -70,3 +70,6 @@ var ExternalTrialAttempts string
 
 //go:embed 0019_review_profiles.sql
 var ReviewProfiles string
+
+//go:embed 0020_review_hypothesis_inventories.sql
+var ReviewHypothesisInventories string

@@ -90,6 +90,23 @@ func RunPinned(ctx context.Context, pin Pin, model Model) (Result, error) {
 // RunPinnedProfile accepts only an exact currently supported application profile.
 // A retained profile mismatch fails before any model invocation.
 func RunPinnedProfile(ctx context.Context, pin Pin, p Profile, model Model) (Result, error) {
+	if p.Contract.TypeID == ReuseTypeID {
+		return Result{}, ErrProfile
+	}
+	return runPinnedProfile(ctx, pin, p, nil, model)
+}
+
+// RunPinnedProfileInventory requires a trusted server-captured inventory from
+// the same receiver as the retained news pin. Neither is model/HTTP input.
+func RunPinnedProfileInventory(ctx context.Context, pin Pin, p Profile, inventory question.Inventory, model Model) (Result, error) {
+	if p.Contract.TypeID != ReuseTypeID || inventory.Validate() != nil || inventory.ReceiverID != pin.Subject.ReceiverID {
+		return Result{}, ErrProfile
+	}
+	inventory = detached(inventory)
+	return runPinnedProfile(ctx, pin, p, &inventory, model)
+}
+
+func runPinnedProfile(ctx context.Context, pin Pin, p Profile, inventory *question.Inventory, model Model) (Result, error) {
 	if p.Validate() != nil {
 		return Result{}, ErrProfile
 	}
@@ -99,7 +116,7 @@ func RunPinnedProfile(ctx context.Context, pin Pin, p Profile, model Model) (Res
 	}
 	pin = detached(pin)
 	p = detached(p)
-	return run(ctx, pin.Subject, pin.Group, model, p.Contract, p.SHA256, nil)
+	return run(ctx, pin.Subject, pin.Group, model, p.Contract, p.SHA256, inventory)
 }
 func run(ctx context.Context, subject Subject, group news.EventGroup, model Model, contract Contract, profileSHA string, inventory *question.Inventory) (Result, error) {
 	schema := Schema
