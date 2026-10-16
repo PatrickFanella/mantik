@@ -25,7 +25,7 @@ func TestLocalExtractionRetainsBeforeSendAndChecksCandidates(t *testing.T) {
 	const model = "ollama/fixture:small"
 	var calls atomic.Int32
 	var prepared atomic.Bool
-	content, _ := json.Marshal(FixtureResponse())
+	content, _ := json.Marshal(quoteFixture())
 	envelope := localReply(model, string(content), "stop")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -56,6 +56,13 @@ func TestLocalExtractionRetainsBeforeSendAndChecksCandidates(t *testing.T) {
 	}
 	if receipts[0].Status != "prepared" || receipts[0].Disposition != "not_sent" || receipts[0].Result != nil || receipts[0].EventKey != "fixture-event" || result.Status != "finished" || result.Disposition != "response_complete" || result.Result.Outcome != "extracted" || result.QualificationCredit || result.Result.QualificationCredit {
 		t.Fatal("receipt authority/state")
+	}
+	if result.Schema != LocalSchema || result.PromptVersion != "source-quotes-v2" || result.ModelArtifact == nil || result.Anchoring == nil || result.Anchoring.Status != "derived" || result.ModelArtifact.SHA256 != result.Anchoring.ModelArtifactSHA256 || result.Anchoring.CandidateArtifactSHA256 != result.Result.Artifact.SHA256 || result.Anchoring.ArticleSHA256 != result.ArticleSHA256 || result.Anchoring.EventKey != result.EventKey {
+		t.Fatal("raw/derived provenance missing or changed")
+	}
+	modelBytes, _ := base64.StdEncoding.DecodeString(result.ModelArtifact.Base64)
+	if string(modelBytes) != string(content) || result.Result.Artifact.RawBase64 == result.ModelArtifact.Base64 {
+		t.Fatal("original quote response replaced by derived artifact")
 	}
 	if !reflect.DeepEqual(result, receipts[1]) || result.StartedAt.After(result.CompletedAt) || result.ArticleSHA256 != result.Result.ArticleSHA256 || result.ContractSHA256 != result.Result.ContractSHA256 {
 		t.Fatal("receipt pins")
@@ -96,7 +103,8 @@ func TestLocalExtractionRetainsBeforeSendAndChecksCandidates(t *testing.T) {
 
 func TestLocalExtractionFailureEvidenceAndNoRetries(t *testing.T) {
 	const model = "ollama/fixture:small"
-	good, _ := json.Marshal(FixtureResponse())
+	good, _ := json.Marshal(quoteFixture())
+	legacy, _ := json.Marshal(FixtureResponse())
 	tests := []struct {
 		name                string
 		status              int
@@ -109,7 +117,8 @@ func TestLocalExtractionFailureEvidenceAndNoRetries(t *testing.T) {
 		{"different-model", 200, localReply("ollama/other", string(good), "stop"), "invalid_envelope", "extractor_unavailable"},
 		{"duplicate-envelope-field", 200, []byte(`{"model":"x","model":"y"}`), "invalid_envelope", "extractor_unavailable"},
 		{"truncated-generation", 200, localReply(model, string(good), "length"), "incomplete_completion", "extractor_incomplete"},
-		{"malformed-content", 200, localReply(model, "{not-json", "stop"), "response_complete", "malformed_extractor_artifact"},
+		{"legacy-offsets", 200, localReply(model, string(legacy), "stop"), "quote_anchoring_rejected", "extractor_unavailable"},
+		{"malformed-content", 200, localReply(model, "{not-json", "stop"), "quote_anchoring_rejected", "extractor_unavailable"},
 		{"oversize-http", 200, []byte(strings.Repeat("x", MaxLocalHTTPBytes+1)), "incomplete_http_capture", "extractor_incomplete"},
 	}
 	for _, tt := range tests {

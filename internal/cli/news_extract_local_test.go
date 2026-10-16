@@ -25,7 +25,16 @@ func TestLocalExtractionCLIPrivateEvidenceAndNoImplicitRetry(t *testing.T) {
 	}
 	dir := filepath.Join(root, "attempt")
 	var calls atomic.Int32
-	content, _ := json.Marshal(extraction.FixtureResponse())
+	response := extraction.FixtureResponse()
+	quoted := extraction.QuoteResponse{Outcome: response.Outcome, ReasonCode: response.ReasonCode, Claims: []extraction.QuoteClaim{}}
+	for _, c := range response.Claims {
+		q := extraction.QuoteClaim{ID: c.ID, Code: c.Code, Assertion: c.Assertion, Assessment: c.Assessment, Entities: c.Entities, Symbols: c.Symbols, Evidence: []extraction.Quote{}}
+		for _, e := range c.Evidence {
+			q.Evidence = append(q.Evidence, extraction.Quote{Quote: e.Quote})
+		}
+		quoted.Claims = append(quoted.Claims, q)
+	}
+	content, _ := json.Marshal(quoted)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if _, err := os.Stat(filepath.Join(dir, "prepared.json")); err != nil {
@@ -46,6 +55,9 @@ func TestLocalExtractionCLIPrivateEvidenceAndNoImplicitRetry(t *testing.T) {
 	var receipt extraction.LocalReceipt
 	if json.Unmarshal(out.Bytes(), &receipt) != nil || receipt.Result.Outcome != "extracted" || receipt.QualificationCredit || calls.Load() != 1 {
 		t.Fatal("wrong local receipt", out.String())
+	}
+	if receipt.Schema != extraction.LocalSchema || receipt.ModelArtifact == nil || receipt.Anchoring == nil || receipt.ModelArtifact.SHA256 != receipt.Anchoring.ModelArtifactSHA256 || receipt.Anchoring.CandidateArtifactSHA256 != receipt.Result.Artifact.SHA256 {
+		t.Fatal("CLI lost quote derivation provenance")
 	}
 	for _, name := range []string{"prepared.json", "finished.json"} {
 		path := filepath.Join(dir, name)
