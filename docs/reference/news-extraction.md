@@ -124,3 +124,9 @@ Unicode spans, whole-result rejection, source/callback alias isolation,
 malformed/authority artifacts, cooperative transport timeout, corrections,
 retractions, duplicate/late sources and CLI failure output. Existing recording,
 journal and storage checks verify compatibility after sharing source validation.
+
+[Local model extraction](local-extraction.md) now invokes one explicitly configured
+local compatibility endpoint and retains its request/response before returning
+checked candidates. It is a separate command; this recorded command stays
+offline. The local adapter does not activate service dispatch or establish
+model accuracy.
