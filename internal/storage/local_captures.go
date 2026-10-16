@@ -206,3 +206,15 @@ func (p *Postgres) LocalCaptures(ctx context.Context) (extraction.LocalCaptureHi
 
 var _ LocalCaptureStore = (*Memory)(nil)
 var _ LocalCaptureStore = (*Postgres)(nil)
+
+func readLocalCapture(ctx context.Context, tx pgx.Tx, id, receiver string) (extraction.LocalCapture, error) {
+	var raw []byte
+	err := tx.QueryRow(ctx, "SELECT payload FROM mantik_local_extraction_captures WHERE id=$1", id).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return extraction.LocalCapture{}, extraction.ErrNotFound
+	}
+	if err != nil {
+		return extraction.LocalCapture{}, err
+	}
+	return decodeLocalCapture(ctx, raw, id, receiver)
+}

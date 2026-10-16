@@ -82,3 +82,6 @@ var ReviewedExtractionAdmissions string
 
 //go:embed 0023_local_extraction_captures.sql
 var LocalExtractionCaptures string
+
+//go:embed 0024_local_capture_admissions.sql
+var LocalCaptureAdmissions string

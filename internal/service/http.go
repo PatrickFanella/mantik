@@ -41,6 +41,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	extractionRoutes(mux, store, clock)
 	localCaptureRoutes(mux, store, clock)
 	extractionAdmissionRoutes(mux, store, clock)
+	localCaptureAdmissionRoutes(mux, store, clock)
 	hypothesisRoutes(mux, store, clock)
 	trialRoutes(mux, store, clock)
 	trialAttemptRoutes(mux, store, clock)

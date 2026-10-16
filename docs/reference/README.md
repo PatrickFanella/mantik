@@ -13,6 +13,7 @@
 - [Recorded article extraction](news-extraction.md)
 - [Local model extraction](local-extraction.md)
 - [Retained local captures](local-captures.md)
+- [Reviewed local-capture admission](reviewed-local-admission.md)
 - [Recorded extraction evaluation](extraction-evaluation.md)
 - [Retained recorded extraction attempts](retained-extractions.md)
 - [Reviewed extraction admission](reviewed-extraction-admission.md)

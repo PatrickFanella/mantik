@@ -50,10 +50,11 @@ link the two records. The earlier prepared-only import keeps its unknown
 completion. Distinct IDs remain distinct even when their evidence matches.
 
 A receiver permits at most 32 captures, including failures and unknown outcomes.
-Exact retries remain available at capacity. There is no pruning, completion,
-retry, model execution, news admission or operations action in this API. The
+Exact retries remain available at capacity. The import/read API has no pruning, completion,
+retry, model execution, news admission or operations action. The
 recorded-fixture `news-extraction-admit` path cannot read these captures.
-Approval of local candidates remains separate development work.
+[Explicit local-capture approval](reviewed-local-admission.md) uses separate
+commands, provenance and transaction receipts after operator review.
 
 ## HTTP and evidence contracts
 
@@ -86,10 +87,11 @@ capture read. Targeted reads and import responses receive full replay validation
 
 ## Persistence and recovery
 
-Schema 23 adds only `mantik_local_extraction_captures`. Migration checksums and
+Schema 23 adds only `mantik_local_extraction_captures`; schema 24 adds the
+separate local approval ledger and news provenance contract. Migration checksums and
 receiver identity remain guarded. Existing recorded attempts, admissions,
 research and operations are not rewritten. A schema-22 binary refuses a
-schema-23 database; rollback requires the previous binary plus a verified
+schema-23 database, and a schema-23 binary refuses schema 24; rollback requires the previous binary plus a verified
 pre-upgrade backup on separate resources. Do not downgrade the schema ledger or
 delete imported captures to make an older binary start.
 
