@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/library"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -51,24 +52,29 @@ type ClaimRef struct {
 	Code  string `json:"code"`
 }
 type ToolCall struct {
-	Name     string `json:"name"`
-	ClaimKey string `json:"claim_key"`
+	Name         string `json:"name"`
+	ClaimKey     string `json:"claim_key,omitempty"`
+	MethodID     string `json:"method_id,omitempty"`
+	MethodSHA256 string `json:"method_sha256,omitempty"`
 }
 type ToolResult struct {
-	Call      int              `json:"call"`
-	Name      string           `json:"name"`
-	Status    string           `json:"status"`
-	Code      string           `json:"code"`
-	State     string           `json:"state,omitempty"`
-	RecordKey string           `json:"record_key,omitempty"`
-	Reference string           `json:"reference,omitempty"`
-	Claim     *news.BoundClaim `json:"claim,omitempty"`
+	Call      int                   `json:"call"`
+	Name      string                `json:"name"`
+	Status    string                `json:"status"`
+	Code      string                `json:"code"`
+	State     string                `json:"state,omitempty"`
+	RecordKey string                `json:"record_key,omitempty"`
+	Reference string                `json:"reference,omitempty"`
+	Claim     *news.BoundClaim      `json:"claim,omitempty"`
+	MethodRef *library.MethodRef    `json:"method_ref,omitempty"`
+	Method    *library.NativeMethod `json:"method,omitempty"`
 }
 type Candidate struct {
-	Kind           string   `json:"kind"`
-	ClaimCode      string   `json:"claim_code"`
-	RefutationCode string   `json:"refutation_code"`
-	EvidenceKeys   []string `json:"evidence_keys"`
+	Kind           string              `json:"kind"`
+	ClaimCode      string              `json:"claim_code"`
+	RefutationCode string              `json:"refutation_code"`
+	EvidenceKeys   []string            `json:"evidence_keys"`
+	Methods        []library.MethodRef `json:"methods,omitempty"`
 }
 type Proposal struct {
 	Outcome     string     `json:"outcome"`
@@ -86,11 +92,12 @@ type Step struct {
 // Frame never carries a full article, raw model transcript or narrative report.
 // Excerpts appear only in successful, specifically requested ToolResults.
 type Frame struct {
-	Schema   string       `json:"schema"`
-	Contract Contract     `json:"contract"`
-	Subject  Subject      `json:"subject"`
-	Claims   []ClaimRef   `json:"claims"`
-	Results  []ToolResult `json:"results"`
+	Schema   string              `json:"schema"`
+	Contract Contract            `json:"contract"`
+	Subject  Subject             `json:"subject"`
+	Claims   []ClaimRef          `json:"claims"`
+	Results  []ToolResult        `json:"results"`
+	Methods  []library.MethodRef `json:"methods,omitempty"`
 }
 type Model interface {
 	Next(context.Context, Frame) ([]byte, error)

@@ -36,6 +36,7 @@ func runResearchReview(ctx context.Context, args []string, out, errOut io.Writer
 	event := fs.String("event", "", "exact event-group ID from news-events")
 	asOf := fs.String("as-of", "", "explicit RFC3339 receipt cutoff")
 	file := fs.String("model-fixture", "", "private JSON array of recorded model artifacts; no provider calls")
+	typeID := fs.String("type", investigation.TypeID, "news-review-v1 or local news-method-review-v1")
 	export := fs.Bool("export-contract", false, "print the immutable news-review contract")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -46,11 +47,15 @@ func runResearchReview(ctx context.Context, args []string, out, errOut io.Writer
 	if fs.NArg() != 0 {
 		return errors.New("unexpected research-review positional arguments")
 	}
+	contract, err := investigation.DefinitionFor(*typeID)
+	if err != nil {
+		return err
+	}
 	if *export {
 		if *journal != "" || *event != "" || *asOf != "" || *file != "" {
 			return errors.New("contract export cannot be combined with a review")
 		}
-		return emit(out, investigation.Definition())
+		return emit(out, contract)
 	}
 	cutoff, err := time.Parse(time.RFC3339Nano, *asOf)
 	if err != nil || *journal == "" || *event == "" || *file == "" {
@@ -76,7 +81,7 @@ func runResearchReview(ctx context.Context, args []string, out, errOut io.Writer
 		return err
 	}
 	defer func() { retErr = errors.Join(retErr, j.Close()) }()
-	result, err := investigation.Run(ctx, j, *event, cutoff, &recordedReviewModel{steps: steps})
+	result, err := investigation.RunWithType(ctx, j, *event, cutoff, *typeID, &recordedReviewModel{steps: steps})
 	if err != nil {
 		return err
 	}

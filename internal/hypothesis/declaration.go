@@ -14,14 +14,13 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/library"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
 const Schema = "mantik-hypothesis-declaration-v1"
 const ResultSchema = "mantik-hypothesis-declaration-result-v1"
-const MethodSchema = "native-strategy-config-v1"
+const MethodSchema = library.NativeMethodSchema
 const MaxBytes = 64 << 10
 
 var ErrInvalid = errors.New("invalid or unsupported hypothesis declaration")
@@ -41,11 +40,7 @@ type Condition struct {
 	Threshold  int64  `json:"threshold"`
 	Unit       string `json:"unit"`
 }
-type MethodRef struct {
-	Schema string `json:"schema"`
-	ID     string `json:"id"`
-	SHA256 string `json:"sha256"`
-}
+type MethodRef = library.MethodRef
 type Origin struct {
 	Reference       string `json:"reference"`
 	ClaimKey        string `json:"claim_key"`
@@ -64,11 +59,7 @@ type Declaration struct {
 	Methods        []MethodRef `json:"methods"`
 	Origins        []Origin    `json:"origins"`
 }
-type NativeMethod struct {
-	Schema   string                 `json:"schema"`
-	Entry    library.Entry          `json:"entry"`
-	Strategy domain.StrategyVersion `json:"strategy"`
-}
+type NativeMethod = library.NativeMethod
 type Result struct {
 	Schema              string         `json:"schema"`
 	ID                  string         `json:"id"`
@@ -84,17 +75,11 @@ type Result struct {
 }
 
 func PinMethod(id string) (MethodRef, NativeMethod, error) {
-	strategy, err := library.Strategy(id)
+	ref, method, err := library.PinMethod(id)
 	if err != nil {
 		return MethodRef{}, NativeMethod{}, ErrInvalid
 	}
-	entry, err := library.ResolveStrategy(strategy)
-	if err != nil {
-		return MethodRef{}, NativeMethod{}, ErrInvalid
-	}
-	method := NativeMethod{Schema: MethodSchema, Entry: entry, Strategy: strategy}
-	raw, _ := json.Marshal(method)
-	return MethodRef{Schema: MethodSchema, ID: id, SHA256: news.SHA256(string(raw))}, method, nil
+	return ref, method, nil
 }
 func text(s string, max int) bool {
 	return s != "" && len(s) <= max && utf8.ValidString(s) && strings.TrimSpace(s) == s && !strings.ContainsFunc(s, unicode.IsControl)

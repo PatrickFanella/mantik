@@ -35,7 +35,8 @@ group SHA-256. Later evidence cannot change that pinned view. The first model
 frame contains only this subject, the contract, claim keys, lineage states and
 claim codes. It contains no full article or source assertion text.
 
-The only tool is `inspect_news_claim`, taking one exact key from that snapshot:
+The default `news-review-v1` profile permits only `inspect_news_claim`, taking
+one exact key from that snapshot:
 
 ```json
 {"kind":"tool","tool":{"name":"inspect_news_claim","claim_key":"NEWS_CLAIM_KEY"}}
@@ -118,3 +119,74 @@ and preserve recorded-model attempts and stale completions. The local command
 does not write that ledger. Automatic dispatch, worker leases, provider clients,
 hypothesis publication, evaluation recipes and additional decision types remain
 separate implementation units.
+
+## Method-aware local review profile
+
+`research-review --type news-method-review-v1` selects a separate application-owned
+contract with schema `mantik-news-method-review-v1`. The default remains
+`news-review-v1`. The new profile is available only through the local recorded
+fixture runner; retained service reviews continue to evaluate v1. It does not
+publish a hypothesis, register a trial, execute a method or call a provider.
+
+```sh
+./bin/mantik research-review --type news-method-review-v1 --export-contract
+./bin/mantik research-review --type news-method-review-v1 \
+  --journal /absolute/private/news-journal --event NEWS_EVENT_GROUP_ID \
+  --as-of 2026-10-15T18:00:00Z \
+  --model-fixture /absolute/private/method-review-artifacts.json
+```
+
+The initial model frame adds only the two built-in native strategy references:
+schema, ID and exact method SHA-256. It includes no full method configurations
+until requested. These pins use the same `native-strategy-config-v1` byte
+contract as hypothesis declarations. Pin construction now lives in the neutral
+library module; existing declaration/configuration hashes are unchanged.
+
+The new tool takes an exact advertised ID and SHA-256:
+
+```json
+{"kind":"tool","tool":{"name":"inspect_native_method","method_id":"demo-threshold-v1","method_sha256":"EXPECTED_NATIVE_METHOD_SHA256"}}
+```
+
+A successful typed result includes that reference and the compiled native method
+configuration: library inputs, instruments, outputs, safety requirements,
+mandatory evaluation definitions, strategy parameters and safety limits. Reading
+these definitions does not run their evaluations or produce passing evaluation
+results. Unknown IDs or wrong hashes return typed rejections without a method
+body. A method call cannot include a nonempty claim key; a claim-inspection call
+cannot include nonempty method arguments. No tool can supply replacement code,
+change configuration, write files or operate a worker.
+
+A `propose_hypothesis` candidate must add a `methods` array containing one or two
+distinct references in the same `{schema,id,sha256}` shape. Every reference must
+have been successfully inspected during that run. Missing, duplicate,
+uninspected, incompatible-schema and changed-hash references finalize an
+abstention with `method_not_eligible`. The application adds mandatory
+`method_binding` to the original five checks; model JSON cannot supply its
+result. The existing current-news-claim eligibility checks still apply.
+Explicit abstention and evidence requests need no method candidate.
+
+Method binding establishes the identity of proposed research methods. It does
+not establish their relevance to the claim, produce a complete pre-test
+hypothesis declaration, qualify their evidence or grant execution permission.
+The result retains `research_only_unqualified` authority and false qualification
+credit. Subsequent hypothesis publication still requires the separately
+validated declaration and an applicable retained service review; a local result
+cannot be imported as that review.
+
+Both profiles share the existing eight-turn, four-tool and 30-second cooperative
+limits. Two method inspections plus one claim inspection leave room for a
+proposal within that budget. Invalid model schema, attempted authority changes,
+missing source evidence, unavailable/incomplete models and timeouts retain the
+same finalized-abstention rules. Tool-result and inventory frames are detached
+copies; model mutation cannot change safety limits, checks, pins or the next
+frame. Full articles, earlier raw model artifacts and narrative explanations do
+not enter interpretation.
+
+New method-call and candidate fields remain forbidden in legacy v1, even when
+their supplied values are empty. Unknown profile IDs fail before a model is
+called. Verification covers golden published method hashes, targeted contract
+inspection, two-method candidates, frame-mutation isolation, wrong/missing/
+duplicate pins, tool authority/argument rejection, legacy field rejection,
+budgets, cancellation and exact CLI fixture preservation. Recorded behavior is
+not provider verification, profitability evidence or operational qualification.

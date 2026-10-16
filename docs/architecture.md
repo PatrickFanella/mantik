@@ -185,6 +185,14 @@ native/Python profiles with separate acquisition/host-receipt schemas and shared
 ownership/deadline/recovery controls. Service dispatch/import remain unfinished. See the
 [external fixture comparison](reference/backtesting-fixture.md).
 
+The opt-in local `news-method-review-v1` investigation profile exposes compiled
+native method references and targeted read-only contract inspection. Its
+application-owned `method_binding` check requires candidates to cite methods
+successfully inspected in that run. Neutral library pin construction preserves
+the existing `native-strategy-config-v1` hashes. Retained service reviews keep
+the original news-review v1 profile; no model, provider or worker activation is
+introduced. See [recorded review profiles](reference/research-review.md#method-aware-local-review-profile).
+
 `internal/workertrial` binds a receiver-fenced external job declaration to an
 exact completed native trial and its registered recipe. Schema 17 atomically
 retains the declaration and three original input texts. The service exposes
