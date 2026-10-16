@@ -220,7 +220,9 @@ completion alone does not admit news or verify source truth. See
 The separate [local extractor](reference/local-extraction.md) retains a prepared
 request before one bounded compatibility POST and a finished capture afterward.
 It uses an explicit private origin and local model route, with no service mutation
-or automatic retry.
+or automatic retry. Local v2 retains quote-only model content separately from
+deterministic unique-quote byte-span derivation. It preserves the recorded
+protocol and all existing claim checks.
 
 Offline [corpus evaluation](reference/extraction-evaluation.md) replays every
 recorded output against supplied annotations and retains per-case disagreements,
