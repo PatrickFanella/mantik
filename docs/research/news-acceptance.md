@@ -156,3 +156,13 @@ cohort. The evaluator preserves disagreements; it cannot supply independent
 annotations or a representative sample. Automatic event grouping, syndication
 and source-independence assessment remain separate requirements. Do not close
 dependent issues from the synthetic rehearsal or annotation-agreement counts.
+
+## Selected OpenAI route
+
+The owner selected `gpt-6.1-sol` after retiring the local GPU. The separate
+[Switchyard adapter](../reference/switchyard-extraction.md) now supports retained
+requests and offline inspection for `openai/gpt-6.1-sol`; it does not relabel old
+Ollama captures. This implementation is fixture-tested only. Deployed provider
+access, billing path, generation-limit forwarding, actual extraction quality,
+provider-capture evaluation and reviewed admission remain unproven. The proposed
+historical real-source cohort has not run and its annotations remain drafts.

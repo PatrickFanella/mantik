@@ -63,13 +63,17 @@ func (r localReplay) Extract(context.Context, Frame) ([]byte, error) { return r.
 // HTTP client or receipt writes. Reported transport/timing metadata cannot
 // attest that a model ran, that a timeout occurred, or that the source is true.
 func InspectLocal(ctx context.Context, prepared LocalReceipt, finished *LocalReceipt) (LocalInspection, error) {
+	return inspectCaptured(ctx, prepared, finished, LocalSchema, LocalInspectionSchema, "local_model_claim_candidates_only", prepared.Config.Validate)
+}
+
+func inspectCaptured(ctx context.Context, prepared LocalReceipt, finished *LocalReceipt, schema, inspectionSchema, authority string, validate func() error) (LocalInspection, error) {
 	if err := ctx.Err(); err != nil {
 		return LocalInspection{}, err
 	}
-	if prepared.Schema != LocalSchema || finished != nil && finished.Schema != LocalSchema {
+	if prepared.Schema != schema || finished != nil && finished.Schema != schema {
 		return LocalInspection{}, ErrLocalVersion
 	}
-	if prepared.Config.Validate() != nil || prepared.PromptVersion != LocalPromptVersion || !validAt(prepared.StartedAt) || !eventKey.MatchString(prepared.EventKey) || !prepared.Request.Complete {
+	if validate() != nil || prepared.PromptVersion != LocalPromptVersion || !validAt(prepared.StartedAt) || !eventKey.MatchString(prepared.EventKey) || !prepared.Request.Complete {
 		return LocalInspection{}, ErrLocalEvidence
 	}
 	raw, err := inspectBytes(prepared.Request, maxLocalRequestBytes)
@@ -81,17 +85,17 @@ func InspectLocal(ctx context.Context, prepared LocalReceipt, finished *LocalRec
 		return LocalInspection{}, ErrLocalEvidence
 	}
 	article, err := news.ReadArticle(bytes.NewReader([]byte(request.Messages[1].Content)))
-	if err != nil || !bytes.Equal(raw, localRequestBytes(article, prepared.Config)) {
+	if err != nil || !bytes.Equal(raw, captureRequestBytes(article, prepared.Config, schema)) {
 		return LocalInspection{}, ErrLocalEvidence
 	}
-	expected := LocalReceipt{Schema: LocalSchema, Config: prepared.Config, PromptVersion: LocalPromptVersion,
+	expected := LocalReceipt{Schema: schema, Config: prepared.Config, PromptVersion: LocalPromptVersion,
 		ArticleSHA256: hash(article), ContractSHA256: hash(Definition()), EventKey: prepared.EventKey,
 		StartedAt: prepared.StartedAt, Status: "prepared", Disposition: "not_sent", Request: prepared.Request,
-		Authority: "local_model_claim_candidates_only"}
+		Authority: authority}
 	if !reflect.DeepEqual(sealLocal(expected), prepared) {
 		return LocalInspection{}, ErrLocalEvidence
 	}
-	report := LocalInspection{Schema: LocalInspectionSchema, State: "prepared_only", Config: prepared.Config,
+	report := LocalInspection{Schema: inspectionSchema, State: "prepared_only", Config: prepared.Config,
 		PromptVersion: prepared.PromptVersion, ArticleSHA256: prepared.ArticleSHA256, ContractSHA256: prepared.ContractSHA256,
 		EventKey: prepared.EventKey, PreparedSHA256: prepared.SHA256, Disposition: "completion_unknown",
 		Checks: []string{"prepared_hash", "request_source_contract"}, Authority: "retained_local_bytes_consistency_only"}

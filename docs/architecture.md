@@ -249,6 +249,14 @@ without fabricating an abstention. Duplicate snapshots are rejected; snapshots
 sharing a prepared receipt are disclosed without a claim of independent
 generations.
 
+The [Switchyard extractor](reference/switchyard-extraction.md) pins the selected
+`openai/gpt-6.1-sol` provider route with a separate capture schema and authority.
+It shares bounded transport and offline replay mechanics with local extraction,
+while local model policy and historical receipt bytes stay compatible. Requested
+reasoning and token limits are retained intent; effective provider enforcement
+must be established separately before live requests. Its captures cannot enter
+local-only import, admission or evaluation paths.
+
 Case review history retains the search process before hypothesis publication:
 `news-reviews --case ID` reports every retained attempt, including abstentions,
 pending, expired and superseded work. It binds compact summaries to full targeted

@@ -12,6 +12,7 @@
 - [Recorded news claims](news.md)
 - [Recorded article extraction](news-extraction.md)
 - [Local model extraction](local-extraction.md)
+- [OpenAI extraction through Switchyard](switchyard-extraction.md)
 - [Retained local captures](local-captures.md)
 - [Local extraction evaluation](local-extraction-evaluation.md)
 - [Reviewed local-capture admission](reviewed-local-admission.md)

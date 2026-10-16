@@ -134,6 +134,12 @@ new private directory, without automatic retries or service admission. It derive
 byte spans from unique exact quotes while retaining the original model content.
 `news-local-inspect` validates the retained request/response/derivation offline,
 including failures and unknown completion, without contacting the endpoint.
+
+[OpenAI extraction through Switchyard](docs/reference/switchyard-extraction.md)
+adds a separate retained request and offline inspection path for the selected
+`openai/gpt-6.1-sol` route. Gateway parameter enforcement and actual provider
+execution remain unverified; fixture tests do not grant qualification.
+
 [Local capture evaluation](docs/reference/local-extraction-evaluation.md) compares
 a complete retained cohort with supplied annotations, preserving failed results
 and reporting unknown completion separately without new model requests.
