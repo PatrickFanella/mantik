@@ -212,8 +212,10 @@ rewritten and schema-19 binaries refuse the new schema. See
 The separate extraction ledger retains source-only articles and intents before
 recorded extraction completion. Receiver-fenced writes retain exact raw output
 and recomputed checks atomically, including abstentions and expired results.
-Its bounded complete history includes pending work. These candidates are not
-news admissions or reviewed source truth. See
+Its bounded complete history includes pending work. Explicit operator approval
+can admit one eligible result through a separate atomic news/provenance path;
+ordinary recording submission cannot claim extraction approval. Candidate
+completion alone does not admit news or verify source truth. See
 [retained extraction attempts](reference/retained-extractions.md).
 
 Case review history retains the search process before hypothesis publication:

@@ -297,7 +297,7 @@ func TestPostgresContractsV4OperationalUpgrade(t *testing.T) {
 		}
 	}
 	before.State.Operations = nil
-	if _, err := store.pool.Exec(ctx, "DROP TABLE mantik_news_extractions; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_input_contract; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_operations; DROP TABLE mantik_external_trial_attempt_outputs; DROP TABLE mantik_external_trial_attempts; DROP TABLE mantik_external_trial_job_inputs; DROP TABLE mantik_external_trial_jobs; DROP TABLE mantik_trial_run_artifacts; DROP TABLE mantik_trial_runs; DROP TABLE mantik_trial_attempts; DROP TABLE mantik_hypothesis_trials; DROP TABLE mantik_hypothesis_publications; DROP TABLE mantik_news_reviews; DROP TABLE mantik_news_cases; DROP TABLE mantik_feed_evidence; DROP TABLE mantik_feed_collectors; DELETE FROM mantik_schema WHERE version>=5"); err != nil {
+	if _, err := store.pool.Exec(ctx, "DROP TABLE mantik_news_extraction_admissions; DROP TABLE mantik_news_extractions; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_input_contract; ALTER TABLE mantik_state DROP CONSTRAINT mantik_state_requires_operations; DROP TABLE mantik_external_trial_attempt_outputs; DROP TABLE mantik_external_trial_attempts; DROP TABLE mantik_external_trial_job_inputs; DROP TABLE mantik_external_trial_jobs; DROP TABLE mantik_trial_run_artifacts; DROP TABLE mantik_trial_runs; DROP TABLE mantik_trial_attempts; DROP TABLE mantik_hypothesis_trials; DROP TABLE mantik_hypothesis_publications; DROP TABLE mantik_news_reviews; DROP TABLE mantik_news_cases; DROP TABLE mantik_feed_evidence; DROP TABLE mantik_feed_collectors; DELETE FROM mantik_schema WHERE version>=5"); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := json.Marshal(before.State)

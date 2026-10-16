@@ -12,6 +12,7 @@
 - [Recorded news claims](news.md)
 - [Recorded article extraction](news-extraction.md)
 - [Retained recorded extraction attempts](retained-extractions.md)
+- [Reviewed extraction admission](reviewed-extraction-admission.md)
 - [Private news journal](news-journal.md)
 - [Receipt-cutoff event groups](news-events.md)
 - [Receiver-bound news research cases](news-cases.md)

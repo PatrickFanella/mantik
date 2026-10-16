@@ -40,6 +40,10 @@ func (a Article) source() Recording {
 		Original: a.Original, OriginalSHA256: a.OriginalSHA256}
 }
 
+func ArticleFromRecording(r Recording) (Article, error) {
+	return (Article{Schema: ArticleSchema, SourceID: r.SourceID, ArticleID: r.ArticleID, Revision: r.Revision, Kind: r.Kind, Supersedes: r.Supersedes, Publisher: r.Publisher, URL: r.URL, PublishedAt: r.PublishedAt, AvailableAt: r.AvailableAt, ReceivedAt: r.ReceivedAt, EvidenceClass: r.EvidenceClass, AccessRef: r.AccessRef, RawRef: r.RawRef, Original: r.Original, OriginalSHA256: r.OriginalSHA256}).Canonical()
+}
+
 func (a Article) Validate() error {
 	if a.Schema != ArticleSchema {
 		return errors.New("unsupported news article schema")

@@ -54,6 +54,9 @@ func (m *Memory) NewsRecord(ctx context.Context, key string) (newscase.Record, e
 	return clone(r), nil
 }
 func (m *Memory) AdmitNews(ctx context.Context, receiver string, r news.Recording, now func() time.Time) (newscase.Receipt, error) {
+	if !news.OperatorRecording(r) {
+		return newscase.Receipt{}, newscase.ErrInvalid
+	}
 	if err := ctx.Err(); err != nil {
 		return newscase.Receipt{}, err
 	}
@@ -147,6 +150,9 @@ func (p *Postgres) newsMutation(ctx context.Context, receiver string, apply func
 	return value, tx.Commit(ctx)
 }
 func (p *Postgres) AdmitNews(ctx context.Context, receiver string, r news.Recording, now func() time.Time) (newscase.Receipt, error) {
+	if !news.OperatorRecording(r) {
+		return newscase.Receipt{}, newscase.ErrInvalid
+	}
 	value, err := p.newsMutation(ctx, receiver, func(s newscase.State) (newscase.State, any, error) { return newscase.Admit(s, r, now()) })
 	if err != nil {
 		return newscase.Receipt{}, err

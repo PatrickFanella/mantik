@@ -280,7 +280,7 @@ func TestPostgresContractsExternalJobUpgrade(t *testing.T) {
 	}
 	defer connection.Close(ctx)
 	r, run, at := externalSource(t, s)
-	if _, err := connection.Exec(ctx, "DROP TABLE mantik_news_extractions; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_inventory; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_profile; DROP TABLE mantik_external_trial_attempt_outputs; DROP TABLE mantik_external_trial_attempts; DROP TABLE mantik_external_trial_job_inputs; DROP TABLE mantik_external_trial_jobs; DELETE FROM mantik_schema WHERE version>=17"); err != nil {
+	if _, err := connection.Exec(ctx, "DROP TABLE mantik_news_extraction_admissions; DROP TABLE mantik_news_extractions; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_inventory; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_profile; DROP TABLE mantik_external_trial_attempt_outputs; DROP TABLE mantik_external_trial_attempts; DROP TABLE mantik_external_trial_job_inputs; DROP TABLE mantik_external_trial_jobs; DELETE FROM mantik_schema WHERE version>=17"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
