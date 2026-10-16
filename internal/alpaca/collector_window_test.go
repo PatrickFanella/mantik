@@ -11,6 +11,26 @@ import (
 	"time"
 )
 
+// Keep at least one full minute open after provider minute precision is applied.
+// Advancing the injected clock by two minutes must then reach the close boundary.
+func collectorSessionCloseFixture(at time.Time) time.Time {
+	return at.Add(2 * time.Minute).Truncate(time.Minute)
+}
+
+func TestCollectorSessionCloseFixtureMargin(t *testing.T) {
+	zone, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, elapsed := range []time.Duration{0, 59 * time.Second, time.Minute - time.Nanosecond} {
+		at := time.Date(2026, 10, 16, 11, 43, 0, 0, zone).Add(elapsed)
+		closeAt := collectorSessionCloseFixture(at)
+		if closeAt.Sub(at) < time.Minute || closeAt.After(at.Add(2*time.Minute)) || closeAt.Second() != 0 || closeAt.Nanosecond() != 0 {
+			t.Fatalf("fixture lacks a full open minute or misses the injected stop: at=%s close=%s", at, closeAt)
+		}
+	}
+}
+
 func TestRegularCollectorCalendarFirstAndStopBoundaries(t *testing.T) {
 	for _, mode := range []string{"completed", "closed", "calendar_failed", "calendar_publication_failed", "quote_unusable", "session_close", "deadline", "clock_backwards", "cancelled", "pacing_deadline"} {
 		t.Run(mode, func(t *testing.T) {
@@ -35,7 +55,7 @@ func TestRegularCollectorCalendarFirstAndStopBoundaries(t *testing.T) {
 					}
 					closeTime := "23:59"
 					if mode == "session_close" {
-						closeTime = time.Now().Add(time.Minute).In(zone).Format("15:04")
+						closeTime = collectorSessionCloseFixture(time.Now().In(zone)).Format("15:04")
 					}
 					_, _ = fmt.Fprintf(w, `[{"date":%q,"open":"00:00","close":%q}]`, r.URL.Query().Get("start"), closeTime)
 					return
