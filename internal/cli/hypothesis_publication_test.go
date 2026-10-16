@@ -42,6 +42,10 @@ func TestHypothesisPublicationCLIAndAPI(t *testing.T) {
 		}
 		return out.Bytes()
 	}
+	var empty hypothesis.Catalogue
+	if err = json.Unmarshal(run("hypotheses"), &empty); err != nil || empty.Validate() != nil || empty.ReceiverID != catalog.ReceiverID || empty.PublicationCount != 0 {
+		t.Fatal(empty, err)
+	}
 	var a review.View
 	if err = json.Unmarshal(run("news-review-start", "--id", "review", "--receiver-id", catalog.ReceiverID, "--case", admitted.Matches[0].CaseID, "--version", "1"), &a); err != nil {
 		t.Fatal(err)
@@ -71,6 +75,10 @@ func TestHypothesisPublicationCLIAndAPI(t *testing.T) {
 	if err = json.Unmarshal(run("hypothesis", "--id", p.Sealed.ID), &q); err != nil || len(q.Publications) != 1 || !reflect.DeepEqual(q.Publications[0], p) {
 		t.Fatal(q, err)
 	}
+	var discovered hypothesis.Catalogue
+	if err = json.Unmarshal(run("hypotheses"), &discovered); err != nil || discovered.Validate() != nil || discovered.PublicationCount != 1 || discovered.QuestionCount != 1 || !reflect.DeepEqual(discovered.Questions[0], q) {
+		t.Fatal(discovered, err)
+	}
 	if content, err := os.ReadFile(file); err != nil || !bytes.Equal(content, raw) {
 		t.Fatal("CLI changed declaration", err)
 	}
@@ -93,6 +101,10 @@ func TestHypothesisPublicationCLIAndAPI(t *testing.T) {
 	}
 	call("POST", "/v1/hypothesis-publications", string(body), false, 401)
 	call("GET", "/v1/hypotheses/"+p.Sealed.ID, "", false, 401)
+	call("GET", "/v1/hypotheses", "", false, 401)
+	call("GET", "/v1/hypotheses?best=true", "", true, 422)
+	call("GET", "/v1/hypotheses?limit=1", "", true, 422)
+	call("POST", "/v1/hypotheses", `{}`, true, 405)
 	call("POST", "/v1/hypothesis-publications", strings.Replace(string(body), `"request_id":`, `"request_id":"forged","request_id":`, 1), true, 422)
 	call("POST", "/v1/hypothesis-publications", strings.Replace(string(body), `"declaration":`, `"sealed":{"qualification_credit":true},"declaration":`, 1), true, 422)
 	call("GET", "/v1/hypotheses/"+p.Sealed.ID+"?original=true", "", true, 422)
@@ -102,11 +114,31 @@ func TestHypothesisPublicationCLIAndAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	run(publish...)
+	var closed hypothesis.Catalogue
+	if err = json.Unmarshal(run("hypotheses"), &closed); err != nil || !reflect.DeepEqual(discovered, closed) {
+		t.Fatal("closing a case changed discovery history", err)
+	}
 	call("POST", "/v1/hypothesis-publications", string(body), true, 409)
-	for _, args := range [][]string{{"hypothesis"}, {"hypothesis-publish", "--id", "empty"}, {"hypothesis", "--id", p.Sealed.ID, "--api-url", "https://example.invalid"}} {
+	for _, args := range [][]string{{"hypothesis"}, {"hypothesis-publish", "--id", "empty"}, {"hypotheses", "--id", p.Sealed.ID}, {"hypothesis", "--id", p.Sealed.ID, "--api-url", "https://example.invalid"}} {
 		var out bytes.Buffer
 		if err = Run(ctx, args, &out, &out); err == nil {
 			t.Fatal("incomplete args accepted")
 		}
+	}
+}
+
+func TestHypothesisCatalogueCLIRejectsInvalidReceipt(t *testing.T) {
+	c, err := hypothesis.MakeCatalogue("receiver-abcdefghijklmnop", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.PublicationCount = 1
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(c)
+	}))
+	defer server.Close()
+	var out bytes.Buffer
+	if err = Run(context.Background(), []string{"hypotheses", "--api-url", server.URL}, &out, &out); err == nil || out.Len() != 0 {
+		t.Fatal("corrupt catalogue emitted", out.String(), err)
 	}
 }

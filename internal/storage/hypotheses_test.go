@@ -19,6 +19,7 @@ import (
 type hypothesisBackend interface {
 	reviewBackend
 	HypothesisStore
+	HypothesisCatalogueStore
 }
 
 func TestMemoryHypothesisPublication(t *testing.T) { hypothesisContracts(t, NewMemory()) }
@@ -58,6 +59,10 @@ func hypothesisContracts(t *testing.T, s hypothesisBackend) {
 		t.Fatal(err)
 	}
 	receiver := catalog.ReceiverID
+	empty, err := s.HypothesisCatalogue(ctx)
+	if err != nil || empty.Validate() != nil || empty.ReceiverID != receiver || empty.PublicationCount != 0 {
+		t.Fatal(empty, err)
+	}
 	receipt, err := s.AdmitNews(ctx, receiver, r, now)
 	if err != nil {
 		t.Fatal(err)
@@ -101,6 +106,10 @@ func hypothesisContracts(t *testing.T, s hypothesisBackend) {
 			if err != nil || !p.QuestionReused || p.Sealed.ID != first.Sealed.ID {
 				t.Error(p, err)
 			}
+			c, err := s.HypothesisCatalogue(ctx)
+			if err != nil || c.Validate() != nil || c.QuestionCount != 1 || c.PublicationCount < 2 || c.PublicationCount > 9 {
+				t.Error("incoherent concurrent catalogue", c, err)
+			}
 		})
 	}
 	wg.Wait()
@@ -123,6 +132,10 @@ func hypothesisContracts(t *testing.T, s hypothesisBackend) {
 	casesAfter, _ := s.NewsCases(ctx)
 	if !reflect.DeepEqual(before, after) || !reflect.DeepEqual(casesBefore, casesAfter) {
 		t.Fatal("publication changed news or execution state")
+	}
+	catalogueBefore, err := s.HypothesisCatalogue(ctx)
+	if err != nil || catalogueBefore.Validate() != nil || catalogueBefore.QuestionCount != 2 || catalogueBefore.PublicationCount != 10 {
+		t.Fatal(catalogueBefore, err)
 	}
 	if pg, ok := s.(*Postgres); ok {
 		config := pg.pool.Config().ConnString()
@@ -150,6 +163,10 @@ func hypothesisContracts(t *testing.T, s hypothesisBackend) {
 		if _, err = reopened.pool.Exec(ctx, "ALTER TABLE mantik_hypothesis_publications DROP CONSTRAINT reject_publication"); err != nil {
 			t.Fatal(err)
 		}
+	}
+	catalogueAfter, err := s.HypothesisCatalogue(ctx)
+	if err != nil || !reflect.DeepEqual(catalogueBefore, catalogueAfter) {
+		t.Fatal("restart or failed write changed catalogue", err)
 	}
 	if _, err = s.CloseNewsCase(ctx, receiver, caseID, 1, now); err != nil {
 		t.Fatal(err)
@@ -194,6 +211,15 @@ func hypothesisContracts(t *testing.T, s hypothesisBackend) {
 	if err != nil || len(q.Publications) != 31 || q.QualificationCredit || q.Authority != "research_declaration_only" {
 		t.Fatal(q, err)
 	}
+	full, err := s.HypothesisCatalogue(ctx)
+	if err != nil || full.Validate() != nil || full.PublicationCount != 32 || full.QuestionCount != 2 {
+		t.Fatal("catalogue lost closed or superseded publications", full, err)
+	}
+	full.Questions[0].Publications[0].Sealed.Declaration.Methods[0].SHA256 = "mutated"
+	again, err := s.HypothesisCatalogue(ctx)
+	if err != nil || again.Validate() != nil {
+		t.Fatal("caller mutated stored catalogue", err)
+	}
 	q.Publications[0].Sealed.Declaration.Mechanism.Statement = "mutated"
 	actual, err := s.Hypothesis(ctx, first.Sealed.ID)
 	if err != nil || actual.Publications[0].Sealed.Declaration.Mechanism.Statement == "mutated" {
@@ -204,6 +230,23 @@ func hypothesisContracts(t *testing.T, s hypothesisBackend) {
 	}
 	if _, err = s.PublishHypothesis(ctx, receiver, "missing", "missing", d, now); !errors.Is(err, hypothesis.ErrCapacity) && !errors.Is(err, review.ErrNotFound) {
 		t.Fatal(err)
+	}
+	// Corrupt one retained binding: discovery must fail as a whole rather than
+	// silently dropping the publication or returning an apparently valid subset.
+	switch backend := s.(type) {
+	case *Memory:
+		backend.mu.Lock()
+		bad := backend.publications["first"]
+		bad.Sealed.DeclarationSHA256 = "changed"
+		backend.publications["first"] = bad
+		backend.mu.Unlock()
+	case *Postgres:
+		if _, err = backend.pool.Exec(ctx, `UPDATE mantik_hypothesis_publications SET payload=jsonb_set(payload,'{sealed,declaration_sha256}','"changed"') WHERE id='first'`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = s.HypothesisCatalogue(ctx); err == nil {
+		t.Fatal("corrupt retained binding returned a catalogue")
 	}
 }
 func TestPostgresContractsHypothesisUpgrade(t *testing.T) {

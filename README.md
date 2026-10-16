@@ -247,7 +247,8 @@ requires additional interruption and deadline scenarios before qualification.
 Preparation and a passing smoke check do not complete that pilot.
 
 See [retained hypothesis publications](docs/reference/retained-hypotheses.md) for
-current-review binding, exact-question reuse and retained attribution.
+current-review binding, exact-question reuse, retained attribution and the
+`hypotheses` catalogue command for discovering existing research questions.
 
 See [hypothesis-linked trial registration](docs/reference/hypothesis-trials.md)
 for retained experiment plans, publication binding and planned lineage.

@@ -11,6 +11,25 @@ import (
 )
 
 func hypothesisRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
+	if catalogue, ok := store.(storage.HypothesisCatalogueStore); ok {
+		mux.HandleFunc("GET /v1/hypotheses", func(w http.ResponseWriter, r *http.Request) {
+			if len(r.URL.Query()) != 0 {
+				hypothesisError(w, hypothesis.ErrInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			c, err := catalogue.HypothesisCatalogue(ctx)
+			if err == nil {
+				err = c.Validate()
+			}
+			if err != nil {
+				hypothesisError(w, err)
+				return
+			}
+			write(w, 200, c)
+		})
+	}
 	backend, ok := store.(storage.HypothesisStore)
 	if !ok {
 		return
