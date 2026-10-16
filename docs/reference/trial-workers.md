@@ -3,8 +3,9 @@
 The service can retain an external comparison job against one exact completed
 native trial run. This connects a registered hypothesis/recipe and its native
 reference to the [durable local external worker](backtesting-fixture.md#durable-external-worker-commands).
-The HTTP service does not launch containers or accept comparison results in this
-unit. Declaration, local execution and later result admission are separate acts.
+The HTTP service retains declarations, execution intents and caller-reported
+outcomes. It validates comparison bytes and preserves exact stdout/stderr, while
+local execution and host verification remain separate acts.
 
 ## Declare and export
 
@@ -103,8 +104,9 @@ Schema-16 binaries reject schema 17. Deployment requires a verified backup and
 planned restore rollback; this development change does not migrate existing
 pilot databases. The existing native assessment histories describe native
 attempts and are not amended to pretend that a declared external job executed.
-External result/host-receipt admission and a complete combined research-attempt
-history remain subsequent work under the broader research lifecycle.
+External attempt retention is described below. Trusted host-receipt admission
+and a combined native/external hypothesis assessment remain subsequent work
+under the broader research lifecycle.
 
 ## API and verification
 
@@ -117,7 +119,8 @@ history remain subsequent work under the broader research lifecycle.
 All paths use bearer authentication and reject query parameters. Invalid or
 unsupported commands return 422, wrong receiver or identity/source/clock/capacity
 conflicts 409, unknown sources/declarations 404, and persistence failures 503.
-There is no HTTP launch, completion, cancellation or result-import route.
+There is no HTTP process-launch or process-cancellation route. Reporting an
+outcome does not operate a container.
 
 Verification covers real native source creation, concurrent declarations,
 receiver/source/code-pin conflicts, detached readback, exact retries without clock
@@ -128,3 +131,108 @@ bundle export. An isolated runtime rehearsal verifies local external execution
 from the service-exported bundle, retained declaration identity after that
 execution, application restart, backup/restore and old-binary refusal. Synthetic
 execution does not establish profitability, source truth or operational authority.
+
+## Retain every external attempt
+
+Before explicitly launching a physical attempt, retain its own logical intent:
+
+```sh
+./bin/mantik trial-worker-attempt-start --api-url "$MANTIK_API_URL" \
+  --receiver-id "$MANTIK_RECEIVER_ID" --id physical-attempt-1 \
+  --job external-comparison-1 --declaration-sha256 "$MANTIK_DECLARATION_SHA"
+```
+
+Save the returned intent SHA. Launch using the exported job and inputs above.
+After the local launcher returns a terminal receipt, submit its exact captured
+streams and disposition. For example, after a completed comparison:
+
+```sh
+./bin/mantik trial-worker-attempt-report --api-url "$MANTIK_API_URL" \
+  --receiver-id "$MANTIK_RECEIVER_ID" --id physical-attempt-1 \
+  --intent-sha256 "$MANTIK_INTENT_SHA" --status completed \
+  --stdout-file "$MANTIK_EXPORT_DIR/physical-attempt-1/stdout.json" \
+  --stderr-file "$MANTIK_EXPORT_DIR/physical-attempt-1/stderr.txt"
+./bin/mantik trial-worker-attempts --api-url "$MANTIK_API_URL" \
+  --id external-comparison-1
+./bin/mantik trial-worker-attempt --api-url "$MANTIK_API_URL" \
+  --id physical-attempt-1
+./bin/mantik trial-worker-attempt-output --api-url "$MANTIK_API_URL" \
+  --id physical-attempt-1 --name stdout --raw
+```
+
+Use a different intent and private local output directory for each physical
+attempt. The service cannot enforce that callers register before launching or
+submit every attempt. A retained intent with no report remains pending; neither
+absence nor age is treated as proof that a process stopped. Recover a local
+interruption through `external-worker-reconcile` and actual host inspection
+before reporting it. Reporting `cancelled` does not cancel a container.
+
+`mantik-external-trial-attempt-v1` is an immutable intent pinned to the receiver,
+request ID, external declaration receipt and sealed job hash. Its authority is
+`research_external_attempt_intent_only`. Execution-started, host-state-known and
+qualification-credit flags are false. The same start request returns this
+original intent even after a terminal report, without sampling the clock.
+Changed declaration pins conflict. New starts cannot precede the declaration or
+any retained external intent or outcome. The receiver retains at most 64 intents
+across all jobs; capacity never evicts attempts and exact retries still work.
+
+`mantik-external-trial-outcome-v1` retains one terminal report's request hash,
+intent identity, caller-reported status, server retention timestamp, exact stream
+hashes/byte counts, comparison validity and, when valid, its original producer
+hash, status and all-match flag. The statuses are `completed`, `mismatch`,
+`failed`, `incomplete`, `cancelled`, `timed_out` and `wait_interrupted`.
+`completed` requires a valid matching comparison, `mismatch` a valid comparison
+with differences, and `failed` the adapter's valid library-failure envelope.
+Malformed, wrong-pin or oversized comparison output can be retained as
+`incomplete`; cancellation/timeout/interruption reports also preserve their
+streams, whether or not a valid comparison was present. A valid comparison in a
+cancelled or incomplete report does not upgrade its reported disposition.
+
+The service checks the exact compact producer hash, adapter/lock/input pins,
+method identities and comparison arithmetic. These checks establish protocol
+consistency. They do not independently reproduce the library computation or
+attest image identity, resource limits, liveness, termination or deadlines.
+Authority is `caller_reported_external_attempt_only`; host state and
+qualification credit remain false. Server retention time is not process finish
+time. Local acquisition/host receipts stay in the private launcher directory;
+this API does not accept them as trusted execution evidence. Native assessments,
+source native-run deadline flags, declarations and operations state stay intact.
+
+A receiver/intent mismatch or changed report conflicts. An exact report retry
+returns the original outcome before sampling the clock. Once retained, an
+outcome cannot be overwritten, even by a later success report. An incorrect
+success statement is rejected and leaves its intent pending; callers can retain
+the same output with an honest incomplete disposition. All per-job history is
+returned in request-ID order, including pending, failed and mismatched attempts,
+without ranking or qualification. Raw streams are fetched separately.
+
+Schema 18 adds `mantik_external_trial_attempts` and
+`mantik_external_trial_attempt_outputs`. Under the receiver lock the service
+commits outcome metadata and both exact text streams atomically. Failed writes
+leave the original pending intent. History reads use one repeatable-read
+snapshot. Stdout is bounded to 16 MiB, stderr to 64 KiB; both must be valid UTF-8
+without NUL because PostgreSQL retains text. Valid comparisons keep the existing
+64 KiB producer bound. The JSON request bound allows sixfold string escaping;
+strict parsing rejects duplicate/unknown/case-aliased keys and trailing data.
+CLI report inputs must be regular files within these bounds. No worker, model,
+provider or Docker call occurs under the storage lock.
+
+Schema-17 binaries reject schema 18. Upgrade requires a verified backup and
+planned restore rollback; development does not upgrade the original pilots.
+Verification covers concurrent starts/reports, immutable retries, incomplete and
+mismatched output, partial library failures, pin/receiver conflicts, pending
+history, clock rollback, capacity without eviction, atomic write failure,
+restart/restore, migration checksums and authenticated HTTP/CLI exact readback.
+
+| Method and path | Contract |
+| --- | --- |
+| `POST /v1/external-trial-attempts` | Retain receiver/request/job/declaration-pinned intent |
+| `POST /v1/external-trial-attempts/ID/report` | Retain one terminal caller report and its exact streams |
+| `GET /v1/external-trial-attempts/ID` | Intent and optional terminal outcome metadata |
+| `GET /v1/external-trial-jobs/ID/attempts` | All retained attempt metadata for the job |
+| `GET /v1/external-trial-attempts/ID/outputs/NAME` | Exact `stdout` or `stderr` artifact wrapper |
+
+These paths use bearer authentication, reject query parameters and share the
+status-code mapping above. Pending output reads conflict rather than invent an
+empty result. `--raw` verifies the wrapper against the retained outcome before
+printing bytes without adding a newline.

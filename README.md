@@ -271,7 +271,11 @@ four built-in synthetic methods in a pinned Python container. Its separate
 `external-worker-job`, `external-worker-launch`, `external-worker-reconcile` and
 `external-worker-result` commands retain and validate owned attempts, mismatches
 and interruptions. Native worker v1 remains unchanged. Automatic service dispatch
-and trial result import remain separate work. The service can
+and qualification of imported results remain separate work. The service can
 [declare an external job against a retained native trial](docs/reference/trial-workers.md)
 through `trial-worker-declare`, `trial-worker` and `trial-worker-input`; it retains
 the exact input bundle for explicit local launch without dispatching a process.
+The `trial-worker-attempt-*` commands retain an intent, caller-reported outcome
+and exact output bytes for every submitted external attempt. History includes
+pending and unsuccessful attempts; a report grants no host attestation or
+qualification credit.

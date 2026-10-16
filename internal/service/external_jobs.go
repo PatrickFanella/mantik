@@ -12,6 +12,7 @@ import (
 )
 
 func externalJobRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
+	externalAttemptRoutes(mux, store, clock)
 	backend, ok := store.(storage.ExternalJobStore)
 	if !ok {
 		return
