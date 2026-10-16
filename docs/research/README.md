@@ -34,3 +34,5 @@ source inspection do not establish reproduction or performance.
 
 - [Recorded-news acceptance audit](news-acceptance.md) — delivered interfaces,
   retained rehearsal evidence and remaining extraction limits.
+- [Recorded research contract audit](research-contract-acceptance.md) — review,
+  hypothesis and worker coverage, retained evidence and open dependencies.
