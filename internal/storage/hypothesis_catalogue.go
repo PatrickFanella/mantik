@@ -35,9 +35,24 @@ func (p *Postgres) HypothesisCatalogue(ctx context.Context) (hypothesis.Catalogu
 	if err = tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton").Scan(&receiver); err != nil {
 		return hypothesis.Catalogue{}, err
 	}
-	rows, err := tx.Query(ctx, "SELECT id,question_id,payload FROM mantik_hypothesis_publications ORDER BY id LIMIT $1", hypothesis.MaxPublications+1)
+	all, err := loadHypothesisPublications(ctx, tx)
 	if err != nil {
 		return hypothesis.Catalogue{}, err
+	}
+	c, err := hypothesis.MakeCatalogue(receiver, all)
+	if err != nil {
+		return hypothesis.Catalogue{}, err
+	}
+	return c, tx.Commit(ctx)
+}
+
+var _ HypothesisCatalogueStore = (*Memory)(nil)
+var _ HypothesisCatalogueStore = (*Postgres)(nil)
+
+func loadHypothesisPublications(ctx context.Context, tx pgx.Tx) ([]hypothesis.Publication, error) {
+	rows, err := tx.Query(ctx, "SELECT id,question_id,payload FROM mantik_hypothesis_publications ORDER BY id LIMIT $1", hypothesis.MaxPublications+1)
+	if err != nil {
+		return nil, err
 	}
 	all := []hypothesis.Publication{}
 	for rows.Next() {
@@ -52,21 +67,17 @@ func (p *Postgres) HypothesisCatalogue(ctx context.Context) (hypothesis.Catalogu
 		}
 		if err != nil {
 			rows.Close()
-			return hypothesis.Catalogue{}, err
+			return nil, err
 		}
 		all = append(all, publication)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return hypothesis.Catalogue{}, err
+		return nil, err
 	}
-	c, err := hypothesis.MakeCatalogue(receiver, all)
-	if err != nil {
-		return hypothesis.Catalogue{}, err
+	if len(all) > hypothesis.MaxPublications {
+		return nil, hypothesis.ErrCapacity
 	}
-	return c, tx.Commit(ctx)
+	return all, nil
 }
-
-var _ HypothesisCatalogueStore = (*Memory)(nil)
-var _ HypothesisCatalogueStore = (*Postgres)(nil)

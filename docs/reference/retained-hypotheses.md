@@ -123,8 +123,9 @@ a winner, prove current evidence applicability, or include trial outcomes.
 Use the question's combined research history to inspect all plans and attempts
 before drawing conclusions. The explicitly local
 [`news-reuse-review-v1` recorded profile](research-review.md#inspect-existing-hypotheses-in-a-recorded-review)
-can inspect a validated catalogue export. Retained service reviews do not yet
-consume catalogue pins. Discovery adds no automatic review, publication, trial
+can inspect a validated catalogue export. Retained service reviews capture an
+application-owned catalogue inventory when that profile starts. Discovery adds
+no automatic review, publication, trial
 or order.
 
 ## HTTP contract
@@ -153,3 +154,22 @@ publication history for that question. It does not select full articles, raw
 model artifacts, unrelated questions or execution history. None of these routes accepts
 query parameters. Invalid input returns 422, missing question/review 404,
 receiver/evidence/identity/clock/capacity conflict 409, and storage failure 503.
+
+## Publication from a retained reuse review
+
+A current completed `news-reuse-review-v1` attempt can support publication after
+all seven required application checks pass. Publication independently verifies
+the profile and captured inventory hashes, the selected declaration/tool result,
+the exact method set and current source excerpts. The selected sealed declaration
+must still exist in authoritative retained publications and must have been
+published by the review's start time. The new declaration must produce that same
+exact question ID. A changed horizon, mechanism, prediction, null/refutation
+conditions or method set is a different question and conflicts with reuse.
+
+The new declaration may carry a different label and current, independently
+checked source attribution. It receives its own publication receipt with
+`question_reused: true`; earlier publications and their origins are unchanged.
+Later publications can extend the catalogue without rebinding a review that
+already captured it. Reuse does not rewrite test conditions, select favorable
+trial outcomes or establish semantic relevance or research validity. Native and
+external attempt history retain their separate authority and qualification rules.

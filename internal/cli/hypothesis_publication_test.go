@@ -156,6 +156,29 @@ func TestHypothesisPublicationCLIAndAPI(t *testing.T) {
 			t.Fatal("review changed private input", path, err)
 		}
 	}
+	var serverStart review.View
+	if err = json.Unmarshal(run("news-review-start", "--id", "service-reuse", "--receiver-id", catalog.ReceiverID, "--case", admitted.Matches[0].CaseID, "--version", "1", "--type", investigation.ReuseTypeID), &serverStart); err != nil || serverStart.Attempt.HypothesisInventory == nil || serverStart.Attempt.HypothesisInventory.CatalogueSHA256 != discovered.SHA256 {
+		t.Fatal(serverStart, err)
+	}
+	serverSteps := append([]investigation.Step{}, reuseSteps...)
+	rawSteps, _ := json.Marshal(serverSteps)
+	_ = json.Unmarshal(rawSteps, &serverSteps)
+	serverSteps[0].Tool.ClaimKey = c.Claim.Key
+	serverSteps[len(serverSteps)-1].Proposal.ClaimKeys = []string{c.Claim.Key}
+	serverSteps[len(serverSteps)-1].Proposal.Candidate.EvidenceKeys = []string{c.Claim.Key}
+	serverFile := filepath.Join(dir, "server-reuse.json")
+	rawSteps, _ = json.Marshal(serverSteps)
+	if err = os.WriteFile(serverFile, rawSteps, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var serverDone review.View
+	if err = json.Unmarshal(run("news-review-complete", "--id", "service-reuse", "--receiver-id", catalog.ReceiverID, "--model-fixture", serverFile), &serverDone); err != nil || serverDone.Attempt.Result.Schema != investigation.ReuseSchema || serverDone.Attempt.Result.Outcome != "propose_hypothesis" || !review.ResultMatchesProfile(serverDone.Attempt, *serverDone.Attempt.Result) {
+		t.Fatal(serverDone, err)
+	}
+	var serverPublication hypothesis.Publication
+	if err = json.Unmarshal(run("hypothesis-publish", "--id", "service-reused", "--review", "service-reuse", "--receiver-id", catalog.ReceiverID, "--file", file), &serverPublication); err != nil || !serverPublication.QuestionReused || serverPublication.Sealed.ID != p.Sealed.ID {
+		t.Fatal(serverPublication, err)
+	}
 	if content, err := os.ReadFile(file); err != nil || !bytes.Equal(content, raw) {
 		t.Fatal("CLI changed declaration", err)
 	}
@@ -181,19 +204,25 @@ func TestHypothesisPublicationCLIAndAPI(t *testing.T) {
 	call("GET", "/v1/hypotheses", "", false, 401)
 	call("GET", "/v1/hypotheses?best=true", "", true, 422)
 	call("GET", "/v1/hypotheses?limit=1", "", true, 422)
+	call("POST", "/v1/news-reviews", `{"receiver_id":"`+catalog.ReceiverID+`","request_id":"forged-pin","case_id":"`+admitted.Matches[0].CaseID+`","version":1,"type_id":"news-reuse-review-v1","hypothesis_inventory":{}}`, true, 400)
+	call("POST", "/v1/news-reviews/service-reuse/complete", `{"receiver_id":"`+catalog.ReceiverID+`","steps":[],"hypothesis_inventory":{}}`, true, 400)
 	call("POST", "/v1/hypotheses", `{}`, true, 405)
-	call("POST", "/v1/news-reviews", `{"receiver_id":"`+catalog.ReceiverID+`","request_id":"unsupported-reuse","case_id":"`+admitted.Matches[0].CaseID+`","version":1,"type_id":"news-reuse-review-v1"}`, true, 422)
+	call("POST", "/v1/news-reviews", `{"receiver_id":"`+catalog.ReceiverID+`","request_id":"unsupported-reuse","case_id":"`+admitted.Matches[0].CaseID+`","version":1,"type_id":"news-reuse-review-v1"}`, true, 200)
 	call("POST", "/v1/hypothesis-publications", strings.Replace(string(body), `"request_id":`, `"request_id":"forged","request_id":`, 1), true, 422)
 	call("POST", "/v1/hypothesis-publications", strings.Replace(string(body), `"declaration":`, `"sealed":{"qualification_credit":true},"declaration":`, 1), true, 422)
 	call("GET", "/v1/hypotheses/"+p.Sealed.ID+"?original=true", "", true, 422)
 	call("GET", "/v1/hypotheses/hypothesis-"+strings.Repeat("0", 64), "", true, 404)
 	call("POST", "/v1/hypothesis-publications", strings.Replace(string(body), `"review_id":"review"`, `"review_id":"missing"`, 1), true, 404)
+	var beforeClose hypothesis.Catalogue
+	if err = json.Unmarshal(run("hypotheses"), &beforeClose); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = s.CloseNewsCase(ctx, catalog.ReceiverID, admitted.Matches[0].CaseID, 1, time.Now); err != nil {
 		t.Fatal(err)
 	}
 	run(publish...)
 	var closed hypothesis.Catalogue
-	if err = json.Unmarshal(run("hypotheses"), &closed); err != nil || !reflect.DeepEqual(discovered, closed) {
+	if err = json.Unmarshal(run("hypotheses"), &closed); err != nil || !reflect.DeepEqual(beforeClose, closed) {
 		t.Fatal("closing a case changed discovery history", err)
 	}
 	call("POST", "/v1/hypothesis-publications", string(body), true, 409)

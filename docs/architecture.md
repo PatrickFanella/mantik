@@ -202,8 +202,11 @@ inventory hashes, current evidence class/instrument and inspected method set.
 Neutral pre-test declaration types live in `question`; `hypothesis` preserves
 its aliases, wire schemas and hashes while owning publication lineage. This
 avoids making investigation depend on publication or storage. The new local
-profile is rejected by retained service review start until catalogue pinning
-and a storage compatibility fence are implemented. See
+profile also supports retained service attempts under schema 20. The service
+captures its own catalogue inventory under the news/publication mutation lock;
+completion uses that original pin and publication independently rechecks its
+selected declaration against retained publications. Older attempts are not
+rewritten and schema-19 binaries refuse the new schema. See
 [hypothesis inspection](reference/research-review.md#inspect-existing-hypotheses-in-a-recorded-review).
 
 `internal/workertrial` binds a receiver-fenced external job declaration to an

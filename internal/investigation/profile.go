@@ -19,17 +19,12 @@ type Profile struct {
 }
 
 func ProfileFor(id string) (Profile, error) {
-	// Catalogue-aware reviews are local recorded fixtures until service storage
-	// can retain the catalogue pin and enforce its own compatibility fence.
-	if id == ReuseTypeID {
-		return Profile{}, ErrProfile
-	}
 	c, err := DefinitionFor(id)
 	if err != nil {
 		return Profile{}, err
 	}
 	p := Profile{Schema: ProfileSchema, Contract: c, Methods: []library.MethodRef{}}
-	if id == MethodTypeID {
+	if id == MethodTypeID || id == ReuseTypeID {
 		p.Methods, err = methodInventory()
 		if err != nil {
 			return Profile{}, err

@@ -62,6 +62,9 @@ func preparePublication(publications []hypothesis.Publication, receiver, id, rev
 	if a.ID == "" {
 		return hypothesis.Publication{}, false, review.ErrNotFound
 	}
+	if !hypothesis.ReuseSourceExists(a, publications) {
+		return hypothesis.Publication{}, false, hypothesis.ErrConflict
+	}
 	at := now()
 	reused := false
 	for _, p := range publications {

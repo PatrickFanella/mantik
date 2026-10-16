@@ -268,8 +268,11 @@ validity. The declaration's existing conditions remain unchanged; the proposal
 does not add its current claims to a publication or update the hypothesis.
 Inspect the separate combined research history before judging prior results.
 
-This profile runs recorded local fixtures only. Service review start rejects
-it until storage can retain an application-owned catalogue pin and enforce its
-schema fence. Existing `news-review-v1` and `news-method-review-v1` contracts and
+This profile supports recorded local fixtures and
+[retained service reviews](retained-reviews.md#retained-hypothesis-inventory-and-reuse).
+Local review validates the supplied export. Service review start accepts no
+catalogue file or pin: storage captures its own inventory under the shared
+news/publication lock and retains it with the attempt under schema 20.
+Existing `news-review-v1` and `news-method-review-v1` contracts and
 hashes remain unchanged; both reject the new model fields even when empty or
-null. There are no provider calls, automatic publication, trials or orders.
+null. This does not activate provider calls, automatic publication, trials or orders.

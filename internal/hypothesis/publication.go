@@ -96,7 +96,7 @@ func Publish(s newscase.State, a review.Attempt, receiver, id string, d Declarat
 	if c == nil || c.Kind != "research_hypothesis" || c.ClaimCode != d.Mechanism.Code || c.RefutationCode != d.Refutation.Code || len(c.EvidenceKeys) != len(d.Origins) || len(c.EvidenceKeys) != len(r.Proposal.ClaimKeys) || len(c.EvidenceKeys) < 1 || len(c.EvidenceKeys) > 4 {
 		return Publication{}, ErrConflict
 	}
-	if contract.TypeID == investigation.MethodTypeID {
+	if contract.TypeID == investigation.MethodTypeID || contract.TypeID == investigation.ReuseTypeID {
 		if len(c.Methods) != len(sealed.Declaration.Methods) {
 			return Publication{}, ErrConflict
 		}
@@ -120,6 +120,27 @@ func Publish(s newscase.State, a review.Attempt, receiver, id string, d Declarat
 				return Publication{}, ErrConflict
 			}
 		}
+	}
+	if contract.TypeID == investigation.ReuseTypeID {
+		if c.Reuse == nil || c.Reuse.ID != sealed.ID || a.HypothesisInventory == nil {
+			return Publication{}, ErrConflict
+		}
+		inspected := false
+		for _, pinned := range a.HypothesisInventory.Declarations {
+			if pinned.ID != c.Reuse.ID || pinned.DeclarationSHA256 != c.Reuse.DeclarationSHA256 {
+				continue
+			}
+			for _, tool := range r.Tools {
+				if tool.Name == "inspect_hypothesis" && tool.Status == "ok" && tool.HypothesisRef != nil && *tool.HypothesisRef == *c.Reuse && tool.Hypothesis != nil && reflect.DeepEqual(*tool.Hypothesis, pinned) {
+					inspected = true
+				}
+			}
+		}
+		if !inspected {
+			return Publication{}, ErrConflict
+		}
+	} else if c.Reuse != nil {
+		return Publication{}, ErrConflict
 	}
 
 	keys := map[string]bool{}
@@ -154,6 +175,34 @@ func Publish(s newscase.State, a review.Attempt, receiver, id string, d Declarat
 		}
 	}
 	return Publication{Schema: PublicationSchema, ID: id, ReceiverID: receiver, ReviewID: a.ID, ReviewResultID: resultID, Subject: a.Pin.Subject, PublishedAt: now.UTC(), OriginBindingVerified: true, Sealed: sealed}, nil
+}
+
+// ReuseSourceExists rechecks the selected declaration against authoritative
+// retained publications inside storage's publication transaction. Later
+// publications may extend the catalogue without invalidating the captured pin.
+func ReuseSourceExists(a review.Attempt, publications []Publication) bool {
+	c, err := review.Definition(a)
+	if err != nil {
+		return false
+	}
+	if c.TypeID != investigation.ReuseTypeID {
+		return true
+	}
+	if a.Result == nil || a.Result.Proposal == nil || a.Result.Proposal.Candidate == nil || a.Result.Proposal.Candidate.Reuse == nil {
+		return false
+	}
+	ref := *a.Result.Proposal.Candidate.Reuse
+	for _, pinned := range a.HypothesisInventory.Declarations {
+		if pinned.ID != ref.ID || pinned.DeclarationSHA256 != ref.DeclarationSHA256 {
+			continue
+		}
+		for _, p := range publications {
+			if p.ReceiverID == a.Pin.Subject.ReceiverID && !p.PublishedAt.After(a.StartedAt) && reflect.DeepEqual(p.Sealed, pinned) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // PublicationCommand carries operator input only; pins and receipts are server-owned.
