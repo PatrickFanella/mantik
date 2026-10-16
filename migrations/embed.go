@@ -73,3 +73,6 @@ var ReviewProfiles string
 
 //go:embed 0020_review_hypothesis_inventories.sql
 var ReviewHypothesisInventories string
+
+//go:embed 0021_news_extractions.sql
+var NewsExtractions string

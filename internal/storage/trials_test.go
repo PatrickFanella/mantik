@@ -214,7 +214,7 @@ func TestPostgresContractsTrialUpgrade(t *testing.T) {
 	before, _ := s.Hypothesis(ctx, publication.Sealed.ID)
 	reviewBefore, _ := s.Review(ctx, "review")
 	config := s.pool.Config().ConnString()
-	if _, err = s.pool.Exec(ctx, "ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_inventory; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_profile; DROP TABLE mantik_external_trial_attempt_outputs; DROP TABLE mantik_external_trial_attempts; DROP TABLE mantik_external_trial_job_inputs; DROP TABLE mantik_external_trial_jobs; DROP TABLE mantik_trial_run_artifacts; DROP TABLE mantik_trial_runs; DROP TABLE mantik_trial_attempts; DROP TABLE mantik_hypothesis_trials; DELETE FROM mantik_schema WHERE version>=14"); err != nil {
+	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_news_extractions; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_inventory; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_profile; DROP TABLE mantik_external_trial_attempt_outputs; DROP TABLE mantik_external_trial_attempts; DROP TABLE mantik_external_trial_job_inputs; DROP TABLE mantik_external_trial_jobs; DROP TABLE mantik_trial_run_artifacts; DROP TABLE mantik_trial_runs; DROP TABLE mantik_trial_attempts; DROP TABLE mantik_hypothesis_trials; DELETE FROM mantik_schema WHERE version>=14"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
