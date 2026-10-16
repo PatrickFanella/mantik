@@ -112,7 +112,19 @@ func text(s string, max int) bool {
 func validTime(t time.Time) bool { return !t.IsZero() && t.UTC().Year() > 0 && t.UTC().Year() <= 9999 }
 
 func (r Recording) Validate() error {
-	if r.Schema != RecordingSchema || !key.MatchString(r.SourceID) || !key.MatchString(r.ArticleID) || r.Revision < 1 || r.Revision > 1000000 || r.ExtractionMethod != "operator_recorded_v1" || !text(r.Publisher, 256) || !text(r.AccessRef, 256) || !text(r.RawRef, 256) {
+	if r.ExtractionMethod != "operator_recorded_v1" {
+		return errors.New("unsupported news extraction method")
+	}
+	if err := r.validateSource(); err != nil {
+		return err
+	}
+	return r.validateClaims()
+}
+
+// Source validation is also used before any claims have been extracted. Keep
+// source metadata independent of model artifacts and the operator-recorded API.
+func (r Recording) validateSource() error {
+	if r.Schema != RecordingSchema || !key.MatchString(r.SourceID) || !key.MatchString(r.ArticleID) || r.Revision < 1 || r.Revision > 1000000 || !text(r.Publisher, 256) || !text(r.AccessRef, 256) || !text(r.RawRef, 256) {
 		return errors.New("incomplete news source identity or recording contract")
 	}
 	if !slices.Contains([]string{"synthetic_unqualified", "recorded_market_unqualified", "prospective_market_unqualified"}, r.EvidenceClass) {
@@ -141,6 +153,10 @@ func (r Recording) Validate() error {
 	default:
 		return errors.New("unsupported news recording kind")
 	}
+	return nil
+}
+
+func (r Recording) validateClaims() error {
 	if len(r.Claims) < 1 || len(r.Claims) > 16 {
 		return errors.New("news recording requires 1..16 structured claims")
 	}

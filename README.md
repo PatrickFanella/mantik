@@ -124,7 +124,11 @@ separate work. `alpaca-normalize` converts retained Alpaca quote/calendar
 recordings offline; the bounded read client is tested against local servers. See [Alpaca contracts](docs/reference/alpaca.md).
 The [recorded news boundary](docs/reference/news.md) validates operator-supplied
 claims against exact source excerpts, with causal timestamps, explicit uncertainty
-and revision declarations. `news-normalize` is offline. The
+and revision declarations. `news-normalize` is offline.
+[Recorded article extraction](docs/reference/news-extraction.md) adds a
+source-only input and checks recorded extractor artifacts into claim candidates
+or retained abstention results. It does not admit those candidates or establish
+extractor accuracy. The
 [private news journal](docs/reference/news-journal.md) retains source/claim
 revisions with content conflicts, verified predecessors and explicit original
 inspection. The [event-group view](docs/reference/news-events.md) links declared
