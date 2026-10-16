@@ -209,6 +209,13 @@ selected declaration against retained publications. Older attempts are not
 rewritten and schema-19 binaries refuse the new schema. See
 [hypothesis inspection](reference/research-review.md#inspect-existing-hypotheses-in-a-recorded-review).
 
+The separate extraction ledger retains source-only articles and intents before
+recorded extraction completion. Receiver-fenced writes retain exact raw output
+and recomputed checks atomically, including abstentions and expired results.
+Its bounded complete history includes pending work. These candidates are not
+news admissions or reviewed source truth. See
+[retained extraction attempts](reference/retained-extractions.md).
+
 Case review history retains the search process before hypothesis publication:
 `news-reviews --case ID` reports every retained attempt, including abstentions,
 pending, expired and superseded work. It binds compact summaries to full targeted

@@ -38,6 +38,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	libraryRoutes(mux)
 	newsRoutes(mux, store, clock)
 	reviewRoutes(mux, store, clock)
+	extractionRoutes(mux, store, clock)
 	hypothesisRoutes(mux, store, clock)
 	trialRoutes(mux, store, clock)
 	trialAttemptRoutes(mux, store, clock)

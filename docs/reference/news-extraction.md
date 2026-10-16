@@ -107,10 +107,13 @@ An exact quote does not establish that the proposed assertion follows from it.
 
 The result is neither a `mantik-news-recording-v1` object nor an admission
 receipt. It cannot be passed to `news-retain` or `news-submit` as a recording.
-Durable extraction-attempt retention, reviewed conversion/admission with exact
-provenance, automatic dispatch, provider access and measured extractor quality
-remain subsequent work. Issue 12 and its dependent issues remain open. No
-database migration, existing service upgrade or operation is performed.
+[Service-owned extraction attempts](retained-extractions.md) now retain intents
+and recorded completions through separate authenticated commands. The local
+`news-extract` command remains a standalone result printer. Reviewed conversion/
+admission with exact provenance, automatic dispatch, provider access and measured
+extractor quality remain subsequent work. Issue 12 and its dependent issues
+remain open. This standalone command performs no migration, service upgrade or
+operation.
 
 Verification covers exact original/artifact retention, repeatable receipts,
 Unicode spans, whole-result rejection, source/callback alias isolation,

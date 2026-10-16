@@ -83,7 +83,7 @@ func TestPostgresContractsCollectorAdmissionUpgrade(t *testing.T) {
 		}
 	}
 	before, _ := s.FeedCollectors(ctx)
-	if _, err := s.pool.Exec(ctx, "ALTER TABLE mantik_feed_collectors DROP CONSTRAINT mantik_collectors_require_admissions; UPDATE mantik_feed_collectors SET payload=payload-'admissions'; DROP TABLE mantik_external_trial_attempt_outputs; DROP TABLE mantik_external_trial_attempts; DROP TABLE mantik_external_trial_job_inputs; DROP TABLE mantik_external_trial_jobs; DROP TABLE mantik_trial_run_artifacts; DROP TABLE mantik_trial_runs; DROP TABLE mantik_trial_attempts; DROP TABLE mantik_hypothesis_trials; DROP TABLE mantik_hypothesis_publications; DROP TABLE mantik_news_reviews; DROP TABLE mantik_news_cases; DROP TABLE mantik_feed_evidence; DELETE FROM mantik_schema WHERE version>=9"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_news_extractions; ALTER TABLE mantik_feed_collectors DROP CONSTRAINT mantik_collectors_require_admissions; UPDATE mantik_feed_collectors SET payload=payload-'admissions'; DROP TABLE mantik_external_trial_attempt_outputs; DROP TABLE mantik_external_trial_attempts; DROP TABLE mantik_external_trial_job_inputs; DROP TABLE mantik_external_trial_jobs; DROP TABLE mantik_trial_run_artifacts; DROP TABLE mantik_trial_runs; DROP TABLE mantik_trial_attempts; DROP TABLE mantik_hypothesis_trials; DROP TABLE mantik_hypothesis_publications; DROP TABLE mantik_news_reviews; DROP TABLE mantik_news_cases; DROP TABLE mantik_feed_evidence; DELETE FROM mantik_schema WHERE version>=9"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
