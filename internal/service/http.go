@@ -44,6 +44,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	trialRunRoutes(mux, store, clock)
 	externalJobRoutes(mux, store, clock)
 	trialAssessmentRoutes(mux, store)
+	researchHistoryRoutes(mux, store)
 	exceptionRoutes(mux, store)
 	caseRoutes(mux, store)
 	activityRoutes(mux, store)

@@ -105,7 +105,7 @@ planned restore rollback; this development change does not migrate existing
 pilot databases. The existing native assessment histories describe native
 attempts and are not amended to pretend that a declared external job executed.
 External attempt retention is described below. Trusted host-receipt admission
-and a combined native/external hypothesis assessment remain subsequent work
+remains subsequent work
 under the broader research lifecycle.
 
 ## API and verification
@@ -236,3 +236,9 @@ These paths use bearer authentication, reject query parameters and share the
 status-code mapping above. Pending output reads conflict rather than invent an
 empty result. `--raw` verifies the wrapper against the retained outcome before
 printing bytes without adding a newline.
+
+The [combined research histories](trial-assessments.md#combined-native-and-external-history)
+join these declarations/reports to their source native assessments across every
+registered plan. They preserve separate native condition evidence and external
+protocol/report disposition; external metric agreement does not promote a
+hypothesis or change its native assessment.

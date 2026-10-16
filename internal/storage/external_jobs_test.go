@@ -261,6 +261,10 @@ func externalContracts(t *testing.T, s externalBackend, config string) {
 	if _, err = s.DeclareExternalJob(ctx, c, func() time.Time { panic("capacity retry clock") }); err != nil {
 		t.Fatal(err)
 	}
+	full, err := s.(storage.ExternalHistoryStore).ExternalTrialHistory(ctx, r.ID)
+	if err != nil || full.Validate() != nil || full.JobCount != workertrial.MaxJobs || full.UnattemptedJobs != workertrial.MaxJobs {
+		t.Fatal("full job catalogue truncated", err)
+	}
 	after, _ := s.Snapshot(ctx)
 	retainedRun, err := s.TrialRun(ctx, run.AttemptID)
 	if err != nil || !reflect.DeepEqual(run, retainedRun) || !reflect.DeepEqual(before, after) {

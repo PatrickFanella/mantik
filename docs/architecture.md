@@ -194,7 +194,11 @@ intents, immutable caller-reported outcomes and exact stdout/stderr texts.
 Comparison validation binds source/input pins and arithmetic; it does not verify
 that a process ran or establish financial qualification. Complete per-job history
 includes pending intents and all reported dispositions, without selecting a
-winner. See [trial worker handoff](reference/trial-workers.md).
+winner. `internal/researchhistory` joins this metadata with native condition
+assessments and rechecks every captured catalogue before returning a trial or
+hypothesis response. No replay bodies or output streams are loaded for external
+history. See [trial worker handoff](reference/trial-workers.md) and
+[combined research history](reference/trial-assessments.md#combined-native-and-external-history).
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00
