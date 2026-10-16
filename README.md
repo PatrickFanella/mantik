@@ -133,7 +133,10 @@ capture an article and deadline before completion, retain exact recorded output
 and abstentions, and expose the complete bounded attempt history.
 [Explicit reviewed admission](docs/reference/reviewed-extraction-admission.md)
 requires exact retained hashes and commits provenance with news case routing;
-ordinary recording submission cannot fabricate that provenance. The
+ordinary recording submission cannot fabricate that provenance.
+[Offline extraction evaluation](docs/reference/extraction-evaluation.md) compares
+every recorded output with supplied expected claims or abstentions, retaining
+structural failures and exact claim mismatches without qualification credit. The
 [private news journal](docs/reference/news-journal.md) retains source/claim
 revisions with content conflicts, verified predecessors and explicit original
 inspection. The [event-group view](docs/reference/news-events.md) links declared

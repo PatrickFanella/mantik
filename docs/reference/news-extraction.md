@@ -112,8 +112,10 @@ and recorded completions through separate authenticated commands. The local
 `news-extract` command remains a standalone result printer.
 [Reviewed service admission](reviewed-extraction-admission.md) requires an exact
 retained completed attempt and explicit approval; it cannot admit this local
-report directly. Automatic dispatch, provider access and measured extractor
-quality remain subsequent work. Issue 12 and its dependent issues
+report directly. [Offline corpus evaluation](extraction-evaluation.md) compares all recorded
+outputs with supplied annotations, including valid-but-disagreeing assertions.
+Automatic dispatch, provider access and measured extractor quality remain
+subsequent work. Issue 12 and its dependent issues
 remain open. This standalone command performs no migration, service upgrade or
 operation.
 

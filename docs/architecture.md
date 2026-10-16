@@ -217,6 +217,10 @@ can admit one eligible result through a separate atomic news/provenance path;
 ordinary recording submission cannot claim extraction approval. Candidate
 completion alone does not admit news or verify source truth. See
 [retained extraction attempts](reference/retained-extractions.md).
+Offline [corpus evaluation](reference/extraction-evaluation.md) replays every
+recorded output against supplied annotations and retains per-case disagreements,
+including structurally valid claims with different assertions. It measures
+annotation agreement without provider provenance or qualification credit.
 
 Case review history retains the search process before hypothesis publication:
 `news-reviews --case ID` reports every retained attempt, including abstentions,
