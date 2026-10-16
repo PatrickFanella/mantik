@@ -185,6 +185,12 @@ native/Python profiles with separate acquisition/host-receipt schemas and shared
 ownership/deadline/recovery controls. Service dispatch/import remain unfinished. See the
 [external fixture comparison](reference/backtesting-fixture.md).
 
+`internal/workertrial` binds a receiver-fenced external job declaration to an
+exact completed native trial and its registered recipe. Schema 17 atomically
+retains the declaration and three original input texts. The service exposes
+targeted export for explicit local launch; declaration does not start a worker,
+attest host state or import a result. See [trial worker handoff](reference/trial-workers.md).
+
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00
 notional, a 95.00 stop, a 110.00 target, a one-hour holding limit, and quotes
