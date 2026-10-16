@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
+	"git.subcult.tv/subculture-collective/mantik/internal/question"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
 )
 
@@ -85,4 +86,20 @@ func (c Catalogue) Validate() error {
 		return ErrInvalid
 	}
 	return nil
+}
+
+// ReviewInventory validates the complete catalogue before deriving targeted
+// declaration-tool inputs. Repeated identical publications share one tool ref;
+// their full attribution remains in the catalogue identified by its hash.
+func (c Catalogue) ReviewInventory() (question.Inventory, error) {
+	if err := c.Validate(); err != nil {
+		return question.Inventory{}, err
+	}
+	declarations := []Result{}
+	for _, q := range c.Questions {
+		for _, p := range q.Publications {
+			declarations = append(declarations, p.Sealed)
+		}
+	}
+	return question.MakeInventory(c.ReceiverID, c.SHA256, declarations)
 }

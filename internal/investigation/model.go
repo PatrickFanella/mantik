@@ -9,6 +9,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/library"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
+	"git.subcult.tv/subculture-collective/mantik/internal/question"
 )
 
 const Schema = "mantik-news-review-v1"
@@ -52,22 +53,26 @@ type ClaimRef struct {
 	Code  string `json:"code"`
 }
 type ToolCall struct {
-	Name         string `json:"name"`
-	ClaimKey     string `json:"claim_key,omitempty"`
-	MethodID     string `json:"method_id,omitempty"`
-	MethodSHA256 string `json:"method_sha256,omitempty"`
+	Name              string `json:"name"`
+	ClaimKey          string `json:"claim_key,omitempty"`
+	MethodID          string `json:"method_id,omitempty"`
+	MethodSHA256      string `json:"method_sha256,omitempty"`
+	HypothesisID      string `json:"hypothesis_id,omitempty"`
+	DeclarationSHA256 string `json:"declaration_sha256,omitempty"`
 }
 type ToolResult struct {
-	Call      int                   `json:"call"`
-	Name      string                `json:"name"`
-	Status    string                `json:"status"`
-	Code      string                `json:"code"`
-	State     string                `json:"state,omitempty"`
-	RecordKey string                `json:"record_key,omitempty"`
-	Reference string                `json:"reference,omitempty"`
-	Claim     *news.BoundClaim      `json:"claim,omitempty"`
-	MethodRef *library.MethodRef    `json:"method_ref,omitempty"`
-	Method    *library.NativeMethod `json:"method,omitempty"`
+	Call          int                   `json:"call"`
+	Name          string                `json:"name"`
+	Status        string                `json:"status"`
+	Code          string                `json:"code"`
+	State         string                `json:"state,omitempty"`
+	RecordKey     string                `json:"record_key,omitempty"`
+	Reference     string                `json:"reference,omitempty"`
+	Claim         *news.BoundClaim      `json:"claim,omitempty"`
+	MethodRef     *library.MethodRef    `json:"method_ref,omitempty"`
+	Method        *library.NativeMethod `json:"method,omitempty"`
+	HypothesisRef *question.Ref         `json:"hypothesis_ref,omitempty"`
+	Hypothesis    *question.Result      `json:"hypothesis,omitempty"`
 }
 type Candidate struct {
 	Kind           string              `json:"kind"`
@@ -75,6 +80,7 @@ type Candidate struct {
 	RefutationCode string              `json:"refutation_code"`
 	EvidenceKeys   []string            `json:"evidence_keys"`
 	Methods        []library.MethodRef `json:"methods,omitempty"`
+	Reuse          *question.Ref       `json:"reuse,omitempty"`
 }
 type Proposal struct {
 	Outcome     string     `json:"outcome"`
@@ -92,12 +98,16 @@ type Step struct {
 // Frame never carries a full article, raw model transcript or narrative report.
 // Excerpts appear only in successful, specifically requested ToolResults.
 type Frame struct {
-	Schema   string              `json:"schema"`
-	Contract Contract            `json:"contract"`
-	Subject  Subject             `json:"subject"`
-	Claims   []ClaimRef          `json:"claims"`
-	Results  []ToolResult        `json:"results"`
-	Methods  []library.MethodRef `json:"methods,omitempty"`
+	Schema                    string              `json:"schema"`
+	Contract                  Contract            `json:"contract"`
+	Subject                   Subject             `json:"subject"`
+	Claims                    []ClaimRef          `json:"claims"`
+	Results                   []ToolResult        `json:"results"`
+	Methods                   []library.MethodRef `json:"methods,omitempty"`
+	Hypotheses                []question.Summary  `json:"hypotheses,omitempty"`
+	HypothesisInventorySHA256 string              `json:"hypothesis_inventory_sha256,omitempty"`
+	HypothesisCatalogueSHA256 string              `json:"hypothesis_catalogue_sha256,omitempty"`
+	HypothesisReceiverID      string              `json:"hypothesis_receiver_id,omitempty"`
 }
 type Model interface {
 	Next(context.Context, Frame) ([]byte, error)
@@ -116,21 +126,24 @@ type Artifact struct {
 	Raw    string `json:"raw,omitempty"`
 }
 type Result struct {
-	Schema              string       `json:"schema"`
-	ID                  string       `json:"id"`
-	TypeID              string       `json:"type_id"`
-	Status              string       `json:"status"`
-	Subject             Subject      `json:"subject"`
-	Outcome             string       `json:"outcome"`
-	ReasonCode          string       `json:"reason_code"`
-	Authority           string       `json:"authority"`
-	QualificationCredit bool         `json:"qualification_credit"`
-	ProfileSHA256       string       `json:"profile_sha256,omitempty"`
-	FinalizedAt         time.Time    `json:"finalized_at"`
-	Proposal            *Proposal    `json:"proposal,omitempty"`
-	Tools               []ToolResult `json:"tools"`
-	Artifacts           []Artifact   `json:"artifacts"`
-	Checks              []Check      `json:"checks"`
+	Schema                    string       `json:"schema"`
+	ID                        string       `json:"id"`
+	TypeID                    string       `json:"type_id"`
+	Status                    string       `json:"status"`
+	Subject                   Subject      `json:"subject"`
+	Outcome                   string       `json:"outcome"`
+	ReasonCode                string       `json:"reason_code"`
+	Authority                 string       `json:"authority"`
+	QualificationCredit       bool         `json:"qualification_credit"`
+	ProfileSHA256             string       `json:"profile_sha256,omitempty"`
+	HypothesisInventorySHA256 string       `json:"hypothesis_inventory_sha256,omitempty"`
+	HypothesisCatalogueSHA256 string       `json:"hypothesis_catalogue_sha256,omitempty"`
+	HypothesisReceiverID      string       `json:"hypothesis_receiver_id,omitempty"`
+	FinalizedAt               time.Time    `json:"finalized_at"`
+	Proposal                  *Proposal    `json:"proposal,omitempty"`
+	Tools                     []ToolResult `json:"tools"`
+	Artifacts                 []Artifact   `json:"artifacts"`
+	Checks                    []Check      `json:"checks"`
 }
 
 func detached[T any](value T) T {

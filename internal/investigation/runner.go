@@ -13,6 +13,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/library"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
+	"git.subcult.tv/subculture-collective/mantik/internal/question"
 )
 
 var code = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
@@ -27,8 +28,25 @@ func Run(ctx context.Context, journal *news.Journal, event string, asOf time.Tim
 }
 
 // RunWithType supports explicitly selected local recorded-review contracts.
-// Retained service reviews continue to use the original v1 RunPinned path.
+// Catalogue-aware reviews require RunWithInventory instead.
 func RunWithType(ctx context.Context, journal *news.Journal, event string, asOf time.Time, typeID string, model Model) (Result, error) {
+	if typeID == ReuseTypeID {
+		return Result{}, errors.New("hypothesis reuse review requires an application-built inventory")
+	}
+	return runLocal(ctx, journal, event, asOf, typeID, nil, model)
+}
+
+// RunWithInventory consumes an application-built, validated catalogue projection.
+// The model receives compact summaries until it requests a targeted declaration.
+func RunWithInventory(ctx context.Context, journal *news.Journal, event string, asOf time.Time, inventory question.Inventory, model Model) (Result, error) {
+	if inventory.Validate() != nil {
+		return Result{}, question.ErrInvalid
+	}
+	inventory = detached(inventory)
+	return runLocal(ctx, journal, event, asOf, ReuseTypeID, &inventory, model)
+}
+
+func runLocal(ctx context.Context, journal *news.Journal, event string, asOf time.Time, typeID string, inventory *question.Inventory, model Model) (Result, error) {
 	contract, err := DefinitionFor(typeID)
 	if err != nil {
 		return Result{}, err
@@ -55,7 +73,7 @@ func RunWithType(ctx context.Context, journal *news.Journal, event string, asOf 
 	}
 	raw, _ := json.Marshal(group)
 	subject := Subject{JournalID: view.JournalID, EventGroupID: group.ID, EventKey: group.EventKey, EvidenceClass: group.EvidenceClass, AsOf: view.AsOf, SnapshotSHA256: news.SHA256(string(raw))}
-	return run(ctx, subject, *group, model, contract, "")
+	return run(ctx, subject, *group, model, contract, "", inventory)
 }
 
 // RunPinned consumes a trusted application-built service snapshot. HTTP and model
@@ -66,7 +84,7 @@ func RunPinned(ctx context.Context, pin Pin, model Model) (Result, error) {
 		return Result{}, errors.New("invalid application review pin")
 	}
 	pin = detached(pin)
-	return run(ctx, pin.Subject, pin.Group, model, Definition(), "")
+	return run(ctx, pin.Subject, pin.Group, model, Definition(), "", nil)
 }
 
 // RunPinnedProfile accepts only an exact currently supported application profile.
@@ -81,13 +99,16 @@ func RunPinnedProfile(ctx context.Context, pin Pin, p Profile, model Model) (Res
 	}
 	pin = detached(pin)
 	p = detached(p)
-	return run(ctx, pin.Subject, pin.Group, model, p.Contract, p.SHA256)
+	return run(ctx, pin.Subject, pin.Group, model, p.Contract, p.SHA256, nil)
 }
-func run(ctx context.Context, subject Subject, group news.EventGroup, model Model, contract Contract, profileSHA string) (Result, error) {
+func run(ctx context.Context, subject Subject, group news.EventGroup, model Model, contract Contract, profileSHA string, inventory *question.Inventory) (Result, error) {
 	schema := Schema
 	var methods []library.MethodRef
-	if contract.TypeID == MethodTypeID {
+	if contract.TypeID == MethodTypeID || contract.TypeID == ReuseTypeID {
 		schema = MethodSchema
+		if contract.TypeID == ReuseTypeID {
+			schema = ReuseSchema
+		}
 		var err error
 		methods, err = methodInventory()
 		if err != nil {
@@ -103,6 +124,11 @@ func run(ctx context.Context, subject Subject, group news.EventGroup, model Mode
 		frame.Claims = append(frame.Claims, ClaimRef{Key: c.Claim.Key, State: c.State, Code: c.Claim.Code})
 	}
 	result := Result{ProfileSHA256: profileSHA, Schema: schema, TypeID: contract.TypeID, Status: "finalized", Subject: subject, Authority: "research_only_unqualified", Tools: []ToolResult{}, Artifacts: []Artifact{}, Checks: []Check{}}
+	if inventory != nil {
+		frame.Hypotheses = inventory.Summaries()
+		frame.HypothesisInventorySHA256, frame.HypothesisCatalogueSHA256, frame.HypothesisReceiverID = inventory.SHA256, inventory.CatalogueSHA256, inventory.ReceiverID
+		result.HypothesisInventorySHA256, result.HypothesisCatalogueSHA256, result.HypothesisReceiverID = inventory.SHA256, inventory.CatalogueSHA256, inventory.ReceiverID
+	}
 	checks := map[string]string{}
 	for _, id := range contract.RequiredChecks {
 		checks[id] = "not_run"
@@ -148,7 +174,7 @@ func run(ctx context.Context, subject Subject, group news.EventGroup, model Mode
 			return fail("completion", "model_unavailable")
 		}
 		step, err := decodeStep(raw)
-		if err != nil || contract.TypeID == TypeID && !legacyFields(raw) {
+		if err != nil || contract.TypeID == TypeID && !legacyFields(raw) || contract.TypeID != ReuseTypeID && !noReuseFields(raw) {
 			return fail("model_schema", "malformed_model_artifact")
 		}
 		checks["model_schema"] = "passed"
@@ -161,7 +187,7 @@ func run(ctx context.Context, subject Subject, group news.EventGroup, model Mode
 			var tool ToolResult
 			switch call.Name {
 			case "inspect_news_claim":
-				if call.MethodID != "" || call.MethodSHA256 != "" {
+				if call.MethodID != "" || call.MethodSHA256 != "" || call.HypothesisID != "" || call.DeclarationSHA256 != "" {
 					return fail("model_schema", "invalid_tool_arguments")
 				}
 				tool = ToolResult{Call: calls, Name: call.Name, Status: "rejected", Code: "claim_not_in_snapshot"}
@@ -175,13 +201,21 @@ func run(ctx context.Context, subject Subject, group news.EventGroup, model Mode
 					tool.Claim = &c
 				}
 			case "inspect_native_method":
-				if contract.TypeID != MethodTypeID {
+				if contract.TypeID != MethodTypeID && contract.TypeID != ReuseTypeID {
 					return fail("authority_boundary", "tool_not_permitted")
 				}
-				if call.ClaimKey != "" || call.MethodID == "" || call.MethodSHA256 == "" {
+				if call.ClaimKey != "" || call.MethodID == "" || call.MethodSHA256 == "" || call.HypothesisID != "" || call.DeclarationSHA256 != "" {
 					return fail("model_schema", "invalid_tool_arguments")
 				}
 				tool = inspectMethod(*call, calls)
+			case "inspect_hypothesis":
+				if contract.TypeID != ReuseTypeID || inventory == nil {
+					return fail("authority_boundary", "tool_not_permitted")
+				}
+				if call.ClaimKey != "" || call.MethodID != "" || call.MethodSHA256 != "" || call.HypothesisID == "" || call.DeclarationSHA256 == "" {
+					return fail("model_schema", "invalid_tool_arguments")
+				}
+				tool = inspectHypothesis(*call, calls, *inventory)
 			default:
 				return fail("authority_boundary", "tool_not_permitted")
 			}
@@ -210,11 +244,17 @@ func run(ctx context.Context, subject Subject, group news.EventGroup, model Mode
 			}
 		}
 		checks["evidence_binding"] = "passed"
-		if contract.TypeID == MethodTypeID {
+		if contract.TypeID == MethodTypeID || contract.TypeID == ReuseTypeID {
 			if !boundMethods(*p, result.Tools) {
 				return fail("method_binding", "method_not_eligible")
 			}
 			checks["method_binding"] = "passed"
+		}
+		if contract.TypeID == ReuseTypeID {
+			if !boundHypothesis(*p, result.Tools, subject) {
+				return fail("hypothesis_binding", "hypothesis_not_eligible")
+			}
+			checks["hypothesis_binding"] = "passed"
 		}
 		checks["completion"] = "passed"
 		return finish(p.Outcome, "model_proposal_checked", p)
