@@ -23,6 +23,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/trial"
+	"git.subcult.tv/subculture-collective/mantik/internal/workertrial"
 )
 
 func TestTrialRegistrationCLIAndAPI(t *testing.T) {
@@ -131,6 +132,7 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 		t.Fatal(native, err)
 	}
 	var nativeRetry trial.Run
+	t.Run("external-worker-handoff", func(t *testing.T) { testTrialWorkerHandoff(t, ctx, server.URL, catalog.ReceiverID, native) })
 	if err = json.Unmarshal(run(executeArgs...), &nativeRetry); err != nil || !reflect.DeepEqual(native, nativeRetry) {
 		t.Fatal("native retry reran execution", err)
 	}
@@ -208,6 +210,16 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 		}
 	}
 	intentBody, _ := json.Marshal(trial.AttemptCommand{ReceiverID: catalog.ReceiverID, RequestID: "intent-two", TrialID: first.ID})
+	workerBody, _ := json.Marshal(workertrial.Command{ReceiverID: catalog.ReceiverID, RequestID: "external-next", AttemptID: native.AttemptID, NativeRunSHA256: native.SHA256, ImageSHA256: "sha256:" + strings.Repeat("a", 64), AdapterSHA256: strings.Repeat("b", 64), RequirementsSHA256: strings.Repeat("c", 64)})
+	call("POST", "/v1/external-trial-jobs", string(workerBody), false, 401)
+	call("GET", "/v1/external-trial-jobs/external", "", false, 401)
+	call("GET", "/v1/external-trial-jobs/external/inputs/native.json", "", false, 401)
+	call("POST", "/v1/external-trial-jobs", strings.Replace(string(workerBody), `"request_id":`, `"qualification_credit":true,"request_id":`, 1), true, 422)
+	call("POST", "/v1/external-trial-jobs", strings.Replace(string(workerBody), `"request_id":`, `"request_id":"duplicate","request_id":`, 1), true, 422)
+	call("GET", "/v1/external-trial-jobs/external?launch=true", "", true, 422)
+	call("GET", "/v1/external-trial-jobs/missing", "", true, 404)
+	call("GET", "/v1/external-trial-jobs/external/inputs/other.json", "", true, 422)
+	call("POST", "/v1/external-trial-jobs/external/launch", `{}`, true, 404)
 	call("POST", "/v1/trial-attempts", string(intentBody), false, 401)
 	call("GET", "/v1/trial-attempts/intent", "", false, 401)
 	call("POST", "/v1/trial-attempts", strings.Replace(string(intentBody), `"trial_id":`, `"result":{},"trial_id":`, 1), true, 422)

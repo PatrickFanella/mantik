@@ -61,3 +61,6 @@ var TrialAttemptIntents string
 
 //go:embed 0016_native_trial_runs.sql
 var NativeTrialRuns string
+
+//go:embed 0017_external_trial_jobs.sql
+var ExternalTrialJobs string
