@@ -40,13 +40,26 @@ func retainLocalReceipt(dir string, r extraction.LocalReceipt) error {
 }
 
 func runNewsExtractLocal(ctx context.Context, args []string, out, errOut io.Writer) error {
-	fs := flag.NewFlagSet("news-extract-local", flag.ContinueOnError)
+	return runNewsExtractCaptured(ctx, args, out, errOut, false)
+}
+
+func runNewsExtractCaptured(ctx context.Context, args []string, out, errOut io.Writer, switchyard bool) error {
+	command := "news-extract-local"
+	modelHelp := "explicit ollama/MODEL; no cloud models"
+	if switchyard {
+		command, modelHelp = "news-extract-switchyard", "explicit openai/gpt-6.1-sol route"
+	}
+	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	article := fs.String("article", "", "local source-only article JSON")
 	endpoint := fs.String("endpoint", "", "private literal IP origin for Switchyard-compatible chat")
-	model := fs.String("model", "", "explicit ollama/MODEL; no cloud models")
+	model := fs.String("model", "", modelHelp)
 	key := fs.String("event-key", "", "operator-declared event key")
-	tokens := fs.Int("max-tokens", 1024, "maximum generated tokens, 64–4096")
+	tokens := fs.Int("max-tokens", 1024, "requested generation limit, 64–4096; gateway enforcement not attested")
+	var reasoning *string
+	if switchyard {
+		reasoning = fs.String("reasoning-effort", "low", "requested reasoning effort; low only")
+	}
 	dir := fs.String("output-dir", "", "new absolute private receipt directory; never reused")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -58,8 +71,13 @@ func runNewsExtractLocal(ctx context.Context, args []string, out, errOut io.Writ
 		return err
 	}
 	config := extraction.LocalConfig{Endpoint: *endpoint, Model: *model, MaxTokens: *tokens}
-	if fs.NArg() != 0 || *article == "" || *key == "" || !filepath.IsAbs(*dir) || filepath.Clean(*dir) != *dir || config.Validate() != nil {
-		return errors.New("news-extract-local requires article, event-key, local endpoint, explicit model and new absolute output-dir")
+	validate := config.Validate
+	if switchyard {
+		config.ReasoningEffort = *reasoning
+		validate = extraction.SwitchyardConfig(config).Validate
+	}
+	if fs.NArg() != 0 || *article == "" || *key == "" || !filepath.IsAbs(*dir) || filepath.Clean(*dir) != *dir || validate() != nil {
+		return errors.New(command + " requires article, event-key, private endpoint, permitted explicit model and new absolute output-dir")
 	}
 	raw, err := readExtractionFile(*article, news.MaxRecordingBytes)
 	if err != nil {
@@ -73,6 +91,15 @@ func runNewsExtractLocal(ctx context.Context, args []string, out, errOut io.Writ
 	// one whose response was lost. The directory remains evidence on any error.
 	if err := os.Mkdir(*dir, 0700); err != nil {
 		return errors.New("local extraction output directory must be new")
+	}
+	if switchyard {
+		r, err := extraction.RunSwitchyard(ctx, a, *key, extraction.SwitchyardConfig(config), os.Getenv("MANTIK_SWITCHYARD_MODEL_TOKEN"), func(r extraction.SwitchyardReceipt) error {
+			return retainLocalReceipt(*dir, extraction.LocalReceipt(r))
+		})
+		if err != nil {
+			return err
+		}
+		return emit(out, r)
 	}
 	r, err := extraction.RunLocal(ctx, a, *key, config, os.Getenv("MANTIK_LOCAL_MODEL_TOKEN"), func(r extraction.LocalReceipt) error {
 		return retainLocalReceipt(*dir, r)

@@ -28,20 +28,28 @@ const MaxLocalHTTPBytes = 512 << 10
 var localModelName = regexp.MustCompile(`^ollama/[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$`)
 
 type LocalConfig struct {
-	Endpoint  string `json:"endpoint"`
-	Model     string `json:"model"`
-	MaxTokens int    `json:"max_tokens"`
+	Endpoint        string `json:"endpoint"`
+	Model           string `json:"model"`
+	MaxTokens       int    `json:"max_tokens"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
 func (c LocalConfig) Validate() error {
+	if c.ReasoningEffort != "" || !localModelName.MatchString(c.Model) || strings.Contains(strings.ToLower(c.Model), "cloud") {
+		return errors.New("local extraction requires an explicit non-cloud ollama model")
+	}
+	return validateCaptureEndpoint(c)
+}
+
+func validateCaptureEndpoint(c LocalConfig) error {
 	u, err := url.Parse(c.Endpoint)
 	if err != nil || u == nil {
-		return errors.New("invalid local extraction configuration")
+		return errors.New("invalid extraction endpoint")
 	}
 	ip, e := netip.ParseAddr(u.Hostname())
 	port, pe := strconv.Atoi(u.Port())
-	if e != nil || ip.Zone() != "" || !(ip.Unmap().IsLoopback() || ip.Unmap().IsPrivate()) || pe != nil || port < 1 || port > 65535 || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Opaque != "" || (u.Path != "" && u.Path != "/") || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawFragment != "" || !localModelName.MatchString(c.Model) || strings.Contains(strings.ToLower(c.Model), "cloud") || c.MaxTokens < 64 || c.MaxTokens > 4096 {
-		return errors.New("local extraction requires a private literal IP origin, explicit ollama model and 64–4096 tokens")
+	if e != nil || ip.Zone() != "" || !(ip.Unmap().IsLoopback() || ip.Unmap().IsPrivate()) || pe != nil || port < 1 || port > 65535 || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Opaque != "" || (u.Path != "" && u.Path != "/") || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawFragment != "" || c.MaxTokens < 64 || c.MaxTokens > 4096 {
+		return errors.New("extraction requires a private literal IP origin and 64–4096 requested tokens")
 	}
 	return nil
 }
@@ -90,12 +98,13 @@ type localMessage struct {
 	Content string `json:"content"`
 }
 type localRequest struct {
-	Model          string         `json:"model"`
-	Messages       []localMessage `json:"messages"`
-	Stream         bool           `json:"stream"`
-	MaxTokens      int            `json:"max_tokens"`
-	Temperature    int            `json:"temperature"`
-	ResponseFormat struct {
+	Model           string         `json:"model"`
+	Messages        []localMessage `json:"messages"`
+	Stream          bool           `json:"stream"`
+	MaxTokens       int            `json:"max_tokens"`
+	Temperature     int            `json:"temperature"`
+	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
+	ResponseFormat  struct {
 		Type string `json:"type"`
 	} `json:"response_format"`
 }
@@ -135,7 +144,7 @@ type localExtractor struct {
 
 func (m *localExtractor) Extract(ctx context.Context, f Frame) ([]byte, error) {
 	r := m.receipt
-	raw := localRequestBytes(f.Article, r.Config)
+	raw := captureRequestBytes(f.Article, r.Config, r.Schema)
 	r.Request = localBytes(raw, true)
 	r.Status, r.Disposition = "prepared", "not_sent"
 	*r = sealLocal(*r)
@@ -212,11 +221,15 @@ func RunLocal(ctx context.Context, article news.Article, key string, config Loca
 	if err := config.Validate(); err != nil {
 		return LocalReceipt{}, err
 	}
+	return runCaptured(ctx, article, key, config, token, retain, LocalSchema, "local_model_claim_candidates_only")
+}
+
+func runCaptured(ctx context.Context, article news.Article, key string, config LocalConfig, token string, retain func(LocalReceipt) error, schema, authority string) (LocalReceipt, error) {
 	if retain == nil || len(token) > 512 || strings.ContainsFunc(token, unicode.IsControl) {
 		return LocalReceipt{}, errors.New("local extraction requires a receipt sink and bounded optional token")
 	}
-	r := LocalReceipt{Schema: LocalSchema, Config: config, PromptVersion: LocalPromptVersion,
-		StartedAt: time.Now().UTC(), EventKey: key, Authority: "local_model_claim_candidates_only"}
+	r := LocalReceipt{Schema: schema, Config: config, PromptVersion: LocalPromptVersion,
+		StartedAt: time.Now().UTC(), EventKey: key, Authority: authority}
 	a, err := article.Canonical()
 	if err != nil || !eventKey.MatchString(key) {
 		return LocalReceipt{}, ErrInvalid

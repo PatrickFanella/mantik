@@ -57,7 +57,15 @@ func readLocalReceipt(root *os.Root, name string) (*extraction.LocalReceipt, err
 }
 
 func runLocalInspection(ctx context.Context, args []string, out, errOut io.Writer) error {
-	fs := flag.NewFlagSet("news-local-inspect", flag.ContinueOnError)
+	return runCapturedInspection(ctx, args, out, errOut, false)
+}
+
+func runCapturedInspection(ctx context.Context, args []string, out, errOut io.Writer, switchyard bool) error {
+	command := "news-local-inspect"
+	if switchyard {
+		command = "news-switchyard-inspect"
+	}
+	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	dir := fs.String("dir", "", "private retained local extraction directory; offline read only")
 	if err := fs.Parse(args); err != nil {
@@ -70,11 +78,23 @@ func runLocalInspection(ctx context.Context, args []string, out, errOut io.Write
 		return err
 	}
 	if fs.NArg() != 0 || !filepath.IsAbs(*dir) || filepath.Clean(*dir) != *dir {
-		return errors.New("news-local-inspect requires an absolute private directory")
+		return errors.New(command + " requires an absolute private directory")
 	}
 	prepared, finished, err := loadLocalReceipts(*dir)
 	if err != nil {
 		return err
+	}
+	if switchyard {
+		var f *extraction.SwitchyardReceipt
+		if finished != nil {
+			copy := extraction.SwitchyardReceipt(*finished)
+			f = &copy
+		}
+		report, err := extraction.InspectSwitchyard(ctx, extraction.SwitchyardReceipt(prepared), f)
+		if err != nil {
+			return err
+		}
+		return emit(out, report)
 	}
 	report, err := extraction.InspectLocal(ctx, prepared, finished)
 	if err != nil {
