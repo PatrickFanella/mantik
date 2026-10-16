@@ -125,6 +125,7 @@ type Result struct {
 	ReasonCode          string       `json:"reason_code"`
 	Authority           string       `json:"authority"`
 	QualificationCredit bool         `json:"qualification_credit"`
+	ProfileSHA256       string       `json:"profile_sha256,omitempty"`
 	FinalizedAt         time.Time    `json:"finalized_at"`
 	Proposal            *Proposal    `json:"proposal,omitempty"`
 	Tools               []ToolResult `json:"tools"`

@@ -140,9 +140,10 @@ and operations authority remain separate. The
 [hypothesis declaration contract](docs/reference/hypothesis-declarations.md)
 validates proposed mechanisms, test conditions, horizons and exact native method
 pins before lifecycle publication or experiment execution.
-The opt-in `news-method-review-v1` local profile also permits targeted native
-method-contract inspection and requires independently checked method pins on
-hypothesis candidates.
+The opt-in `news-method-review-v1` profile permits targeted native method-contract
+inspection and requires independently checked method pins on hypothesis
+candidates. Service attempts retain their selected profile and bind finalized
+results to its hash; older unpinned reviews continue to use v1.
 
 The [capture journal](docs/reference/alpaca-journal.md) retains validated recordings
 and supports receiver-bound submission and recovery through `alpaca-retain`,

@@ -126,3 +126,62 @@ receiver/identity/evidence/capacity conflicts 409, and persistence failures 503.
 Structured interpreter abstentions are retained successful completions, not HTTP
 errors. Provider clients, automatic dispatch, leases, hypothesis publication and
 additional decision types remain separate units.
+
+## Explicit retained review profiles
+
+New review attempts pin an application-owned `mantik-review-profile-pin-v1`
+record containing the complete review contract, advertised native method
+inventory and a canonical SHA-256. The contract fixes the type, allowed tools,
+required evidence/checks, completion outcomes, budgets, deadline policy and
+research authority. The caller selects a known type, never supplies a contract,
+method inventory or risk configuration.
+
+```sh
+./bin/mantik news-review-start --api-url "$MANTIK_API_URL" \
+  --receiver-id "$MANTIK_RECEIVER_ID" --id method-review-1 \
+  --case "$MANTIK_NEWS_CASE_ID" --version 1 --type news-method-review-v1
+./bin/mantik news-review-complete --api-url "$MANTIK_API_URL" \
+  --receiver-id "$MANTIK_RECEIVER_ID" --id method-review-1 \
+  --model-fixture /absolute/private/method-review-artifacts.json
+```
+
+The default type remains `news-review-v1`. The opt-in
+[method-aware profile](research-review.md#method-aware-local-review-profile)
+adds targeted native method inspection and mandatory method binding. Completion
+has no type-selection field: it uses the retained profile and binds the result's
+`profile_sha256` to that exact pin before computing the finalized result ID.
+Profile definitions and method inventories must match a supported compiled
+version. Changed or unknown stored profiles fail before any model call; they
+are not silently reinterpreted using a new default.
+
+Older attempts without a profile retain their legacy v1 interpretation, including
+pending attempts completed after upgrade. Their results have no profile hash.
+New default-v1 attempts also retain an explicit profile/hash. An exact start
+retry returns its original attempt, including after completion or at capacity,
+without sampling the clock. Selecting a different type for the same request ID
+conflicts. All profiles share the existing global 32-attempt limit, version/
+generation fence, deadline, immutable completion and retained stale/expired
+output behavior. No model or provider runs under a storage lock.
+
+The start API adds optional `type_id` to `POST /v1/news-reviews`. Omitted or empty
+values select v1; unknown types return 422. Start bodies are bounded to 4 KiB and
+reject duplicate, unknown and noncanonical field names. Existing completion
+bodies retain their separate bound and original model-artifact preservation;
+invalid model JSON remains evidence that can finalize abstention. Neither
+completion nor start accepts a caller-supplied profile or automatic check record.
+
+A current completed method-aware review may support hypothesis publication only
+when all six application checks passed, its exact inspected compiled method
+contracts remain bound, and the declaration uses precisely the candidate's
+method set. Changing that set conflicts. Existing source-excerpt, origin,
+mechanism/refutation, receiver, case applicability and final-result hash checks
+still apply. Publication remains an unqualified research act and starts no
+trial or operation automatically.
+
+Schema 19 adds a review-profile shape constraint and fences out schema-18
+binaries. It leaves existing review payloads untouched. Deployment requires a
+verified backup and planned restore rollback; this development change does not
+upgrade original pilot databases. Verification covers legacy pending/completed
+records, concurrent starts/completions, immutable profile retries, method-set
+publication conflicts, stale/expired retention, atomic write failure, capacity,
+restart, migration checksums, authenticated CLI/HTTP and isolated backup/restore.
