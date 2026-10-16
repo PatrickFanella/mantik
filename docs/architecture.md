@@ -226,6 +226,11 @@ protocol and all existing claim checks. Offline local receipt inspection recompu
 that chain from captured bytes; its report grants no model-execution attestation
 or service admission, including when saved network/cancellation metadata is
 internally consistent.
+A separate [local capture ledger](reference/local-captures.md), added in schema 23,
+imports validated prepared/finished receipts as immutable caller reports. Receiver
+fencing, bounded capacity, replay on reads and transactional inserts retain their
+provenance independently of recorded-fixture attempts. Imports cannot use the
+recorded approval path or mutate research and operations.
 
 Offline [corpus evaluation](reference/extraction-evaluation.md) replays every
 recorded output against supplied annotations and retains per-case disagreements,

@@ -65,30 +65,42 @@ func runLocalInspection(ctx context.Context, args []string, out, errOut io.Write
 	if fs.NArg() != 0 || !filepath.IsAbs(*dir) || filepath.Clean(*dir) != *dir {
 		return errors.New("news-local-inspect requires an absolute private directory")
 	}
-	info, err := os.Lstat(*dir)
-	if err != nil || !info.IsDir() || !privateLocalFile(info) {
-		return extraction.ErrLocalEvidence
-	}
-	root, err := os.OpenRoot(*dir)
-	if err != nil {
-		return extraction.ErrLocalEvidence
-	}
-	defer root.Close()
-	opened, err := root.Stat(".")
-	if err != nil || !os.SameFile(info, opened) || !opened.IsDir() || !privateLocalFile(opened) {
-		return extraction.ErrLocalEvidence
-	}
-	prepared, err := readLocalReceipt(root, "prepared.json")
+	prepared, finished, err := loadLocalReceipts(*dir)
 	if err != nil {
 		return err
 	}
-	finished, err := readLocalReceipt(root, "finished.json")
-	if err != nil {
-		return err
-	}
-	report, err := extraction.InspectLocal(ctx, *prepared, finished)
+	report, err := extraction.InspectLocal(ctx, prepared, finished)
 	if err != nil {
 		return err
 	}
 	return emit(out, report)
+}
+
+// loadLocalReceipts shares private, confined file validation with offline inspection.
+func loadLocalReceipts(dir string) (extraction.LocalReceipt, *extraction.LocalReceipt, error) {
+	if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
+		return extraction.LocalReceipt{}, nil, extraction.ErrLocalEvidence
+	}
+	info, err := os.Lstat(dir)
+	if err != nil || !info.IsDir() || !privateLocalFile(info) {
+		return extraction.LocalReceipt{}, nil, extraction.ErrLocalEvidence
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return extraction.LocalReceipt{}, nil, extraction.ErrLocalEvidence
+	}
+	defer root.Close()
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(info, opened) || !opened.IsDir() || !privateLocalFile(opened) {
+		return extraction.LocalReceipt{}, nil, extraction.ErrLocalEvidence
+	}
+	prepared, err := readLocalReceipt(root, "prepared.json")
+	if err != nil {
+		return extraction.LocalReceipt{}, nil, err
+	}
+	finished, err := readLocalReceipt(root, "finished.json")
+	if err != nil {
+		return extraction.LocalReceipt{}, nil, err
+	}
+	return *prepared, finished, nil
 }

@@ -134,6 +134,8 @@ new private directory, without automatic retries or service admission. It derive
 byte spans from unique exact quotes while retaining the original model content.
 `news-local-inspect` validates the retained request/response/derivation offline,
 including failures and unknown completion, without contacting the endpoint.
+[Local capture imports](docs/reference/local-captures.md) retain those checked
+caller reports in a separate service ledger; import does not admit news.
 [Retained extraction attempts](docs/reference/retained-extractions.md)
 capture an article and deadline before completion, retain exact recorded output
 and abstentions, and expose the complete bounded attempt history.

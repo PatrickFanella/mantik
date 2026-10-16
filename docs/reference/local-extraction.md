@@ -134,9 +134,11 @@ false. The source's unqualified evidence class, attribution and exact spans
 still require independent checks; a valid candidate is not established truth.
 Use [offline evaluation](extraction-evaluation.md) with separately reviewed
 expected responses to assess the retained artifacts. The local receipt is not
-accepted as a service extraction attempt or an admission receipt. Service
-integration, durable remote-dispatch recovery, automatic event grouping and
-measured extraction quality remain separate work.
+accepted as a recorded-fixture extraction attempt or an admission receipt.
+[Local capture import](local-captures.md) can retain validated copies in a separate
+service ledger with caller-reported authority. Service-owned model dispatch,
+durable remote-dispatch recovery, local-candidate approval, automatic event
+grouping and measured extraction quality remain separate work.
 
 
 Existing v1 request/response receipts are historical evidence and are not
