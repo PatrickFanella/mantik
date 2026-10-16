@@ -231,6 +231,12 @@ imports validated prepared/finished receipts as immutable caller reports. Receiv
 fencing, bounded capacity, replay on reads and transactional inserts retain their
 provenance independently of recorded-fixture attempts. Imports cannot use the
 recorded approval path or mutate research and operations.
+Schema 24 adds a separate [reviewed local-capture admission](reference/reviewed-local-admission.md)
+path. Exact receiver/capture/result approval pins are checked against retained
+evidence; a news record with local provenance and its approval receipt commit
+atomically. Explicit admission may open research cases, while capture imports
+and operational execution remain separate. Approval does not attest provider
+execution or promote unqualified source evidence.
 
 Offline [corpus evaluation](reference/extraction-evaluation.md) replays every
 recorded output against supplied annotations and retains per-case disagreements,

@@ -26,7 +26,7 @@ func TestSourceOnlyArticleDoesNotRequireOrAdmitClaims(t *testing.T) {
 	if err := a.ValidateClaims(Fixture().Claims); err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{`"claims":[],`, `"extraction_method":"operator_recorded_v1",`, `"qualification_credit":true,`, `"schema":"duplicate",`, `"Schema":"wrong",`} {
+	for _, field := range []string{`"claims":[],`, `"local_extraction":{},`, `"extraction_method":"operator_recorded_v1",`, `"qualification_credit":true,`, `"schema":"duplicate",`, `"Schema":"wrong",`} {
 		bad := strings.Replace(string(raw), `{`, `{`+field, 1)
 		if _, err := ReadArticle(strings.NewReader(bad)); err == nil {
 			t.Fatal("ambiguous or authority field accepted", field)

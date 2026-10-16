@@ -136,6 +136,8 @@ byte spans from unique exact quotes while retaining the original model content.
 including failures and unknown completion, without contacting the endpoint.
 [Local capture imports](docs/reference/local-captures.md) retain those checked
 caller reports in a separate service ledger; import does not admit news.
+[Explicit local-capture approval](docs/reference/reviewed-local-admission.md)
+binds reviewed candidates to research with distinct caller-reported provenance.
 [Retained extraction attempts](docs/reference/retained-extractions.md)
 capture an article and deadline before completion, retain exact recorded output
 and abstentions, and expose the complete bounded attempt history.

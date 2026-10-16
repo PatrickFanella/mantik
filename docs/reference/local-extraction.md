@@ -137,8 +137,10 @@ expected responses to assess the retained artifacts. The local receipt is not
 accepted as a recorded-fixture extraction attempt or an admission receipt.
 [Local capture import](local-captures.md) can retain validated copies in a separate
 service ledger with caller-reported authority. Service-owned model dispatch,
-durable remote-dispatch recovery, local-candidate approval, automatic event
-grouping and measured extraction quality remain separate work.
+durable remote-dispatch recovery, automatic event grouping and measured
+extraction quality remain separate work. [Local-capture approval](reviewed-local-admission.md)
+can admit eligible imported candidates only through explicit reviewed hashes;
+it preserves caller-reported provenance without execution attestation.
 
 
 Existing v1 request/response receipts are historical evidence and are not
