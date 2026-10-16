@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/investigation"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
@@ -20,11 +21,13 @@ func runNewsReview(ctx context.Context, command string, args []string, out, errO
 	base := fs.String("api-url", defaultURL, "service HTTP origin")
 	id := fs.String("id", "", "stable review request/attempt ID")
 	var receiver, caseID, file string
+	typeID := investigation.TypeID
 	var version int
 	if command != "news-review" {
 		fs.StringVar(&receiver, "receiver-id", "", "explicit pinned research receiver identity")
 	}
 	if command == "news-review-start" {
+		fs.StringVar(&typeID, "type", investigation.TypeID, "news-review-v1 or news-method-review-v1")
 		fs.StringVar(&caseID, "case", "", "news research case ID")
 		fs.IntVar(&version, "version", 0, "current case evidence version")
 	}
@@ -49,6 +52,9 @@ func runNewsReview(ctx context.Context, command string, args []string, out, errO
 		if err = request(ctx, *base, "/v1/news-reviews/"+*id, nil, &view); err != nil {
 			return err
 		}
+		if _, err := review.Definition(view.Attempt); err != nil || view.Attempt.Result != nil && !review.ResultMatchesProfile(view.Attempt, *view.Attempt.Result) {
+			return review.ErrInvalid
+		}
 		return emit(out, view)
 	}
 	if !storage.ValidReceiverID(receiver) {
@@ -58,17 +64,24 @@ func runNewsReview(ctx context.Context, command string, args []string, out, errO
 		if version < 1 || !regexp.MustCompile(`^news-case-[a-f0-9]{64}$`).MatchString(caseID) {
 			return errors.New("review start requires a news case and current evidence version")
 		}
+		if _, err := investigation.DefinitionFor(typeID); err != nil {
+			return review.ErrInvalid
+		}
 		body := struct {
 			ReceiverID string `json:"receiver_id"`
 			RequestID  string `json:"request_id"`
 			CaseID     string `json:"case_id"`
 			Version    int    `json:"version"`
-		}{receiver, *id, caseID, version}
+			TypeID     string `json:"type_id,omitempty"`
+		}{receiver, *id, caseID, version, typeID}
 		if err = request(ctx, *base, "/v1/news-reviews", body, &view); err != nil {
 			return err
 		}
-		if view.Attempt.ID != *id || view.Attempt.Pin.Subject.ReceiverID != receiver || view.Attempt.Pin.Subject.CaseID != caseID || view.Attempt.Pin.Subject.CaseVersion != version {
+		if view.Attempt.ID != *id || view.Attempt.Pin.Subject.ReceiverID != receiver || view.Attempt.Pin.Subject.CaseID != caseID || view.Attempt.Pin.Subject.CaseVersion != version || !review.SameStartProfile(view.Attempt, receiver, caseID, version, typeID) {
 			return errors.New("review start receipt conflicts with pinned request")
+		}
+		if _, err := review.Definition(view.Attempt); err != nil || view.Attempt.Result != nil && !review.ResultMatchesProfile(view.Attempt, *view.Attempt.Result) {
+			return review.ErrInvalid
 		}
 		return emit(out, view)
 	}
@@ -103,6 +116,9 @@ func runNewsReview(ctx context.Context, command string, args []string, out, errO
 	}
 	if view.Attempt.ID != *id || view.Attempt.Pin.Subject.ReceiverID != receiver || view.Attempt.StepsSHA256 != digest {
 		return errors.New("review completion receipt conflicts with recorded artifacts")
+	}
+	if _, err := review.Definition(view.Attempt); err != nil || view.Attempt.Result != nil && !review.ResultMatchesProfile(view.Attempt, *view.Attempt.Result) {
+		return review.ErrInvalid
 	}
 	return emit(out, view)
 }

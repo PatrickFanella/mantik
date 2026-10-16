@@ -18,6 +18,10 @@ type ReviewStore interface {
 	Review(context.Context, string) (review.View, error)
 }
 
+type ReviewProfileStore interface {
+	StartReviewProfile(context.Context, string, string, string, int, string, func() time.Time) (review.View, error)
+}
+
 func (m *Memory) Review(ctx context.Context, id string) (review.View, error) {
 	if err := ctx.Err(); err != nil {
 		return review.View{}, err
@@ -28,9 +32,18 @@ func (m *Memory) Review(ctx context.Context, id string) (review.View, error) {
 	if !ok {
 		return review.View{}, review.ErrNotFound
 	}
+	if _, err := review.Definition(a); err != nil {
+		return review.View{}, err
+	}
 	return clone(review.Inspect(a, m.news)), nil
 }
 func (m *Memory) StartReview(ctx context.Context, receiver, id, caseID string, version int, now func() time.Time) (review.View, error) {
+	return m.StartReviewProfile(ctx, receiver, id, caseID, version, investigation.TypeID, now)
+}
+func (m *Memory) StartReviewProfile(ctx context.Context, receiver, id, caseID string, version int, typeID string, now func() time.Time) (review.View, error) {
+	if _, err := investigation.ProfileFor(typeID); err != nil {
+		return review.View{}, review.ErrInvalid
+	}
 	if err := ctx.Err(); err != nil {
 		return review.View{}, err
 	}
@@ -40,7 +53,7 @@ func (m *Memory) StartReview(ctx context.Context, receiver, id, caseID string, v
 		return review.View{}, ErrReceiverMismatch
 	}
 	if a, ok := m.reviews[id]; ok {
-		if !review.SameStart(a, receiver, caseID, version) {
+		if !review.SameStartProfile(a, receiver, caseID, version, typeID) {
 			return review.View{}, review.ErrConflict
 		}
 		return clone(review.Inspect(a, m.news)), nil
@@ -48,7 +61,7 @@ func (m *Memory) StartReview(ctx context.Context, receiver, id, caseID string, v
 	if len(m.reviews) >= review.MaxAttempts {
 		return review.View{}, review.ErrCapacity
 	}
-	a, err := review.Start(m.news, receiver, id, caseID, version, now())
+	a, err := review.StartProfile(m.news, receiver, id, caseID, version, typeID, now())
 	if err != nil {
 		return review.View{}, err
 	}
@@ -73,6 +86,9 @@ func (m *Memory) CompleteReview(ctx context.Context, receiver, id string, steps 
 	m.mu.Unlock()
 	if !ok {
 		return review.View{}, review.ErrNotFound
+	}
+	if _, err := review.Definition(a); err != nil {
+		return review.View{}, err
 	}
 	var result investigation.Result
 	if a.Status == "pending" {
@@ -115,6 +131,9 @@ func (p *Postgres) Review(ctx context.Context, id string) (review.View, error) {
 		return review.View{}, err
 	}
 	if err = json.Unmarshal(casesRaw, &cases); err != nil {
+		return review.View{}, err
+	}
+	if _, err := review.Definition(a); err != nil {
 		return review.View{}, err
 	}
 	return review.Inspect(a, newscase.State{Cases: cases}), nil
@@ -162,13 +181,19 @@ func loadReview(ctx context.Context, tx pgx.Tx, id string) (review.Attempt, erro
 	return a, err
 }
 func (p *Postgres) StartReview(ctx context.Context, receiver, id, caseID string, version int, now func() time.Time) (review.View, error) {
+	return p.StartReviewProfile(ctx, receiver, id, caseID, version, investigation.TypeID, now)
+}
+func (p *Postgres) StartReviewProfile(ctx context.Context, receiver, id, caseID string, version int, typeID string, now func() time.Time) (review.View, error) {
+	if _, err := investigation.ProfileFor(typeID); err != nil {
+		return review.View{}, review.ErrInvalid
+	}
 	if !review.ID.MatchString(id) {
 		return review.View{}, review.ErrInvalid
 	}
 	return p.reviewMutation(ctx, receiver, func(tx pgx.Tx, s newscase.State) (review.Attempt, error) {
 		a, err := loadReview(ctx, tx, id)
 		if err == nil {
-			if !review.SameStart(a, receiver, caseID, version) {
+			if !review.SameStartProfile(a, receiver, caseID, version, typeID) {
 				return a, review.ErrConflict
 			}
 			return a, nil
@@ -183,7 +208,7 @@ func (p *Postgres) StartReview(ctx context.Context, receiver, id, caseID string,
 		if count >= review.MaxAttempts {
 			return a, review.ErrCapacity
 		}
-		a, err = review.Start(s, receiver, id, caseID, version, now())
+		a, err = review.StartProfile(s, receiver, id, caseID, version, typeID, now())
 		if err != nil {
 			return a, err
 		}
@@ -243,3 +268,6 @@ func (p *Postgres) CompleteReview(ctx context.Context, receiver, id string, step
 
 var _ ReviewStore = (*Memory)(nil)
 var _ ReviewStore = (*Postgres)(nil)
+
+var _ ReviewProfileStore = (*Memory)(nil)
+var _ ReviewProfileStore = (*Postgres)(nil)

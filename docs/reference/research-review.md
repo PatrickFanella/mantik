@@ -124,8 +124,9 @@ separate implementation units.
 
 `research-review --type news-method-review-v1` selects a separate application-owned
 contract with schema `mantik-news-method-review-v1`. The default remains
-`news-review-v1`. The new profile is available only through the local recorded
-fixture runner; retained service reviews continue to evaluate v1. It does not
+`news-review-v1`. The local recorded
+fixture runner supports this profile; [retained service reviews](retained-reviews.md#explicit-retained-review-profiles)
+can also select it explicitly at start while preserving older v1 attempts. It does not
 publish a hypothesis, register a trial, execute a method or call a provider.
 
 ```sh
@@ -171,8 +172,8 @@ not establish their relevance to the claim, produce a complete pre-test
 hypothesis declaration, qualify their evidence or grant execution permission.
 The result retains `research_only_unqualified` authority and false qualification
 credit. Subsequent hypothesis publication still requires the separately
-validated declaration and an applicable retained service review; a local result
-cannot be imported as that review.
+validated declaration and an applicable retained service review with the same
+method set; a local result cannot be imported as that review.
 
 Both profiles share the existing eight-turn, four-tool and 30-second cooperative
 limits. Two method inspections plus one claim inspection leave room for a

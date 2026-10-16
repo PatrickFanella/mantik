@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/investigation"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
+	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
 func reviewRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
@@ -23,13 +25,26 @@ func reviewRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			RequestID  string `json:"request_id"`
 			CaseID     string `json:"case_id"`
 			Version    int    `json:"version"`
+			TypeID     string `json:"type_id,omitempty"`
 		}
-		if !reviewBody(w, r, &body) {
+		if !reviewStartBody(w, r, &body) {
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		view, err := backend.StartReview(ctx, body.ReceiverID, body.RequestID, body.CaseID, body.Version, clock.Now)
+		typeID := body.TypeID
+		if typeID == "" {
+			typeID = investigation.TypeID
+		}
+		var view review.View
+		var err error
+		if profiles, ok := store.(storage.ReviewProfileStore); ok {
+			view, err = profiles.StartReviewProfile(ctx, body.ReceiverID, body.RequestID, body.CaseID, body.Version, typeID, clock.Now)
+		} else if typeID == investigation.TypeID {
+			view, err = backend.StartReview(ctx, body.ReceiverID, body.RequestID, body.CaseID, body.Version, clock.Now)
+		} else {
+			err = review.ErrInvalid
+		}
 		if err != nil {
 			reviewError(w, err)
 			return
@@ -98,4 +113,19 @@ func reviewError(w http.ResponseWriter, err error) {
 	default:
 		newsError(w, err)
 	}
+}
+
+func reviewStartBody(w http.ResponseWriter, r *http.Request, out any) bool {
+	if len(r.URL.Query()) != 0 {
+		write(w, 422, map[string]string{"error": "review writes accept no query parameters"})
+		return false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	defer r.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 4097))
+	if err != nil || len(raw) > 4096 || workerplan.ReadBoundedShape(raw, out, 4096) != nil {
+		write(w, 400, map[string]string{"error": "invalid review start command JSON"})
+		return false
+	}
+	return true
 }

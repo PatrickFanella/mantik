@@ -55,7 +55,7 @@ func RunWithType(ctx context.Context, journal *news.Journal, event string, asOf 
 	}
 	raw, _ := json.Marshal(group)
 	subject := Subject{JournalID: view.JournalID, EventGroupID: group.ID, EventKey: group.EventKey, EvidenceClass: group.EvidenceClass, AsOf: view.AsOf, SnapshotSHA256: news.SHA256(string(raw))}
-	return run(ctx, subject, *group, model, contract)
+	return run(ctx, subject, *group, model, contract, "")
 }
 
 // RunPinned consumes a trusted application-built service snapshot. HTTP and model
@@ -66,9 +66,24 @@ func RunPinned(ctx context.Context, pin Pin, model Model) (Result, error) {
 		return Result{}, errors.New("invalid application review pin")
 	}
 	pin = detached(pin)
-	return run(ctx, pin.Subject, pin.Group, model, Definition())
+	return run(ctx, pin.Subject, pin.Group, model, Definition(), "")
 }
-func run(ctx context.Context, subject Subject, group news.EventGroup, model Model, contract Contract) (Result, error) {
+
+// RunPinnedProfile accepts only an exact currently supported application profile.
+// A retained profile mismatch fails before any model invocation.
+func RunPinnedProfile(ctx context.Context, pin Pin, p Profile, model Model) (Result, error) {
+	if p.Validate() != nil {
+		return Result{}, ErrProfile
+	}
+	raw, _ := json.Marshal(pin.Group)
+	if model == nil || pin.Subject.ReceiverID == "" || pin.Subject.CaseVersion < 1 || pin.Subject.CaseGeneration < 1 || pin.Subject.CaseID != pin.Group.ID || pin.Subject.EventGroupID != pin.Group.ID || pin.Subject.EventKey != pin.Group.EventKey || pin.Subject.EvidenceClass != pin.Group.EvidenceClass || pin.Subject.SnapshotSHA256 != news.SHA256(string(raw)) {
+		return Result{}, errors.New("invalid application review pin")
+	}
+	pin = detached(pin)
+	p = detached(p)
+	return run(ctx, pin.Subject, pin.Group, model, p.Contract, p.SHA256)
+}
+func run(ctx context.Context, subject Subject, group news.EventGroup, model Model, contract Contract, profileSHA string) (Result, error) {
 	schema := Schema
 	var methods []library.MethodRef
 	if contract.TypeID == MethodTypeID {
@@ -87,7 +102,7 @@ func run(ctx context.Context, subject Subject, group news.EventGroup, model Mode
 		claims[c.Claim.Key] = c
 		frame.Claims = append(frame.Claims, ClaimRef{Key: c.Claim.Key, State: c.State, Code: c.Claim.Code})
 	}
-	result := Result{Schema: schema, TypeID: contract.TypeID, Status: "finalized", Subject: subject, Authority: "research_only_unqualified", Tools: []ToolResult{}, Artifacts: []Artifact{}, Checks: []Check{}}
+	result := Result{ProfileSHA256: profileSHA, Schema: schema, TypeID: contract.TypeID, Status: "finalized", Subject: subject, Authority: "research_only_unqualified", Tools: []ToolResult{}, Artifacts: []Artifact{}, Checks: []Check{}}
 	checks := map[string]string{}
 	for _, id := range contract.RequiredChecks {
 		checks[id] = "not_run"

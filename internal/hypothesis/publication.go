@@ -70,7 +70,7 @@ func Publish(s newscase.State, a review.Attempt, receiver, id string, d Declarat
 		return Publication{}, ErrConflict
 	}
 	r := *a.Result
-	if r.Schema != investigation.Schema || r.TypeID != investigation.TypeID || r.Status != "finalized" || r.Outcome != "propose_hypothesis" || r.Proposal == nil || r.Proposal.Outcome != r.Outcome || r.Proposal.Uncertainty != "unverified" || !reflect.DeepEqual(r.Subject, a.Pin.Subject) {
+	if !review.ResultMatchesProfile(a, r) || r.Status != "finalized" || r.Outcome != "propose_hypothesis" || r.Proposal == nil || r.Proposal.Outcome != r.Outcome || r.Proposal.Uncertainty != "unverified" || !reflect.DeepEqual(r.Subject, a.Pin.Subject) {
 		return Publication{}, ErrConflict
 	}
 	resultID := r.ID
@@ -79,7 +79,11 @@ func Publish(s newscase.State, a review.Attempt, receiver, id string, d Declarat
 	if resultID != "review-"+news.SHA256(string(raw)) {
 		return Publication{}, ErrConflict
 	}
-	required := investigation.Definition().RequiredChecks
+	contract, err := review.Definition(a)
+	if err != nil {
+		return Publication{}, ErrConflict
+	}
+	required := contract.RequiredChecks
 	if len(r.Checks) != len(required) {
 		return Publication{}, ErrConflict
 	}
@@ -92,6 +96,32 @@ func Publish(s newscase.State, a review.Attempt, receiver, id string, d Declarat
 	if c == nil || c.Kind != "research_hypothesis" || c.ClaimCode != d.Mechanism.Code || c.RefutationCode != d.Refutation.Code || len(c.EvidenceKeys) != len(d.Origins) || len(c.EvidenceKeys) != len(r.Proposal.ClaimKeys) || len(c.EvidenceKeys) < 1 || len(c.EvidenceKeys) > 4 {
 		return Publication{}, ErrConflict
 	}
+	if contract.TypeID == investigation.MethodTypeID {
+		if len(c.Methods) != len(sealed.Declaration.Methods) {
+			return Publication{}, ErrConflict
+		}
+		seen := map[string]bool{}
+		for _, ref := range c.Methods {
+			if seen[ref.ID] || !slices.Contains(sealed.Declaration.Methods, ref) {
+				return Publication{}, ErrConflict
+			}
+			seen[ref.ID] = true
+			_, method, err := PinMethod(ref.ID)
+			if err != nil {
+				return Publication{}, ErrConflict
+			}
+			inspected := false
+			for _, tool := range r.Tools {
+				if tool.Name == "inspect_native_method" && tool.Status == "ok" && tool.MethodRef != nil && *tool.MethodRef == ref && tool.Method != nil && reflect.DeepEqual(*tool.Method, method) {
+					inspected = true
+				}
+			}
+			if !inspected {
+				return Publication{}, ErrConflict
+			}
+		}
+	}
+
 	keys := map[string]bool{}
 	for _, key := range c.EvidenceKeys {
 		if keys[key] || !slices.Contains(r.Proposal.ClaimKeys, key) {

@@ -67,3 +67,6 @@ var ExternalTrialJobs string
 
 //go:embed 0018_external_trial_attempts.sql
 var ExternalTrialAttempts string
+
+//go:embed 0019_review_profiles.sql
+var ReviewProfiles string
