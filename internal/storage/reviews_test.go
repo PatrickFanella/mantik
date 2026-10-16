@@ -21,6 +21,7 @@ type reviewBackend interface {
 	Store
 	NewsStore
 	ReviewStore
+	ReviewHistoryStore
 }
 
 func TestMemoryReviewAttempts(t *testing.T) { reviewContracts(t, NewMemory()) }
@@ -53,6 +54,10 @@ func reviewContracts(t *testing.T, s reviewBackend) {
 		t.Fatal(err)
 	}
 	id := receipt.Matches[0].CaseID
+	empty, err := s.ReviewHistory(ctx, id)
+	if err != nil || empty.Validate() != nil || empty.AttemptCount != 0 {
+		t.Fatal(empty, err)
+	}
 	if _, err = s.StartReview(ctx, "receiver-abcdefghijklmnop", "wrong", id, 1, now); !errors.Is(err, ErrReceiverMismatch) {
 		t.Fatal(err)
 	}
@@ -72,6 +77,11 @@ func reviewContracts(t *testing.T, s reviewBackend) {
 			if err != nil || !view.ReviewApplicable || view.Attempt.Result == nil {
 				t.Error(view, err)
 			}
+			h, err := s.ReviewHistory(ctx, id)
+			if err != nil || h.Validate() != nil || h.AttemptCount != 1 {
+				t.Error("incoherent concurrent history", h, err)
+			}
+
 		})
 	}
 	wg.Wait()
@@ -120,6 +130,15 @@ func reviewContracts(t *testing.T, s reviewBackend) {
 	if err != nil || closed.Attempt.Status != "superseded" || closed.ReviewApplicable {
 		t.Fatal("closed case consumed review", err)
 	}
+	closedHistory, err := s.ReviewHistory(ctx, id)
+	if err != nil || closedHistory.Validate() != nil || closedHistory.Case.Status != "closed" {
+		t.Fatal(closedHistory, err)
+	}
+	for _, item := range closedHistory.Attempts {
+		if item.EvidenceCurrent || item.ReviewApplicable {
+			t.Fatal("closed case appeared current")
+		}
+	}
 	copy.SourceID = "another-source"
 	if _, err = s.AdmitNews(ctx, receiver, copy, now); err != nil {
 		t.Fatal(err)
@@ -140,6 +159,10 @@ func reviewContracts(t *testing.T, s reviewBackend) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	historyBefore, err := s.ReviewHistory(ctx, id)
+	if err != nil || historyBefore.Validate() != nil || historyBefore.AttemptCount != 5 || historyBefore.StatusCounts["pending"] != 1 || historyBefore.StatusCounts["superseded"] != 2 || historyBefore.StatusCounts["expired"] != 1 {
+		t.Fatal(historyBefore, err)
+	}
 	if pg, ok := s.(*Postgres); ok {
 		config := pg.pool.Config().ConnString()
 		pg.Close()
@@ -156,6 +179,10 @@ func reviewContracts(t *testing.T, s reviewBackend) {
 		actual, err = s.Review(ctx, "current")
 		if err != nil || !reflect.DeepEqual(actual, old) {
 			t.Fatal("restart changed completed attempt", err)
+		}
+		historyAfter, err := s.ReviewHistory(ctx, id)
+		if err != nil || !reflect.DeepEqual(historyBefore, historyAfter) {
+			t.Fatal("restart changed review history", err)
 		}
 		if _, err = s.StartReview(ctx, receiver, "rollback", id, 3, now); err != nil {
 			t.Fatal(err)
@@ -196,10 +223,71 @@ func reviewContracts(t *testing.T, s reviewBackend) {
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatal("review changed operations or fixture state", err)
 	}
+	h, err := s.ReviewHistory(ctx, id)
+	if err != nil || h.Validate() != nil || h.StatusCounts["completed"] != 3 || h.ReasonCounts["malformed_model_artifact"] != 1 || h.OutcomeCounts["abstain"] != 1 || h.OutcomeCounts["request_evidence"] != 5 || h.ArtifactCount != 11 {
+		t.Fatal("unpublished abstention omitted", h, err)
+	}
+	rawHistory, _ := json.Marshal(h)
+	for _, secret := range []string{"UNSELECTED REVIEW SOURCE", `"steps":`, `"raw":`, `"hypothesis_inventory":`} {
+		if strings.Contains(string(rawHistory), secret) {
+			t.Fatal("history copied targeted artifacts", secret)
+		}
+	}
+	for _, item := range h.Attempts {
+		full, err := s.Review(ctx, item.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := json.Marshal(full.Attempt)
+		if item.AttemptSHA256 != news.SHA256(string(body)) {
+			t.Fatal("attempt hash does not bind targeted read", item.ID)
+		}
+	}
+	h.Attempts[0].Checks[0].Passed = !h.Attempts[0].Checks[0].Passed
+	h.Case.RecordKeys[0] = "mutated"
+	fresh, err := s.ReviewHistory(ctx, id)
+	if err != nil || fresh.Validate() != nil || fresh.Case.RecordKeys[0] == "mutated" {
+		t.Fatal("caller mutated history", err)
+	}
 	pending.Attempt.Pin.Group.Claims[0].Claim.Assertion = "tampered"
 	actual, err := s.Review(ctx, "pending")
 	if err != nil || actual.Attempt.Pin.Group.Claims[0].Claim.Assertion == "tampered" {
 		t.Fatal("caller mutated pin", err)
+	}
+	other := news.Fixture()
+	other.SourceID = "other-case-source"
+	other.Claims[0].EventKey = "other-event"
+	separate, err := s.AdmitNews(ctx, receiver, other, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.StartReview(ctx, receiver, "other-case-review", separate.Matches[0].CaseID, 1, now); err != nil {
+		t.Fatal(err)
+	}
+	isolated, err := s.ReviewHistory(ctx, id)
+	if err != nil || !reflect.DeepEqual(fresh, isolated) {
+		t.Fatal("unrelated case contaminated history", err)
+	}
+	if _, err = s.ReviewHistory(ctx, "news-case-"+strings.Repeat("0", 64)); !errors.Is(err, review.ErrNotFound) {
+		t.Fatal(err)
+	}
+	if _, err = s.ReviewHistory(ctx, "invalid"); !errors.Is(err, review.ErrInvalid) {
+		t.Fatal(err)
+	}
+	switch backend := s.(type) {
+	case *Memory:
+		backend.mu.Lock()
+		bad := backend.reviews["current"]
+		bad.Result.ID = "changed"
+		backend.reviews["current"] = bad
+		backend.mu.Unlock()
+	case *Postgres:
+		if _, err = backend.pool.Exec(ctx, `UPDATE mantik_news_reviews SET payload=jsonb_set(payload,'{result,id}','"changed"') WHERE id='current'`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = s.ReviewHistory(ctx, id); err == nil {
+		t.Fatal("corrupt attempt silently omitted or reported")
 	}
 }
 func TestMemoryReviewCapacityAndSnapshotBounds(t *testing.T) {
@@ -224,6 +312,11 @@ func TestMemoryReviewCapacityAndSnapshotBounds(t *testing.T) {
 	if _, err = s.StartReview(ctx, catalog.ReceiverID, "attempt-0", id, 1, now); err != nil {
 		t.Fatal("capacity blocked retry", err)
 	}
+	history, err := s.ReviewHistory(ctx, id)
+	if err != nil || history.Validate() != nil || history.AttemptCount != review.MaxAttempts || history.StatusCounts["pending"] != review.MaxAttempts {
+		t.Fatal("full history truncated", err)
+	}
+
 }
 func TestPostgresContractsReviewUpgrade(t *testing.T) {
 	s := timerPostgres(t, "reviewupgrade")

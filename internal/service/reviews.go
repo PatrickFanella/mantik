@@ -15,6 +15,25 @@ import (
 )
 
 func reviewRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
+	if history, ok := store.(storage.ReviewHistoryStore); ok {
+		mux.HandleFunc("GET /v1/news-cases/{id}/reviews", func(w http.ResponseWriter, r *http.Request) {
+			if len(r.URL.Query()) != 0 || !review.HistoryCaseID.MatchString(r.PathValue("id")) {
+				reviewError(w, review.ErrInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			h, err := history.ReviewHistory(ctx, r.PathValue("id"))
+			if err == nil {
+				err = h.Validate()
+			}
+			if err != nil {
+				reviewError(w, err)
+				return
+			}
+			write(w, 200, h)
+		})
+	}
 	backend, ok := store.(storage.ReviewStore)
 	if !ok {
 		return

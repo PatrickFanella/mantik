@@ -170,6 +170,11 @@ link. It neither proves that a search was exhaustive nor establishes research
 validity, statistical significance, qualification or trading authority. Schema
 16 and existing receipts are unchanged.
 
+For reviews that preceded publication or ended in abstention, use the separate
+[case review history](retained-reviews.md#complete-case-review-history). It
+retains the observation case's search activity without attributing an unpublished
+review to a hypothesis or adding it to trial performance counts.
+
 ## Combined native and external history
 
 The native assessment commands above retain their v1 schemas and behavior.

@@ -90,6 +90,26 @@ func TestRetainedReviewCLI(t *testing.T) {
 			t.Fatal(path, res.StatusCode, want)
 		}
 	}
+	out.Reset()
+	if err = Run(ctx, []string{"news-reviews", "--case", receipt.Matches[0].CaseID, "--api-url", server.URL}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	var history review.History
+	if err = json.Unmarshal(out.Bytes(), &history); err != nil || history.Validate() != nil || history.AttemptCount != 2 || history.OutcomeCounts["abstain"] != 2 || history.Attempts[0].ResultID == "" {
+		t.Fatal(history, err)
+	}
+	historyPath := "/v1/news-cases/" + receipt.Matches[0].CaseID + "/reviews"
+	call("GET", historyPath, "", false, 401)
+	call("GET", historyPath+"?best=true", "", true, 422)
+	call("GET", historyPath+"?limit=1", "", true, 422)
+	call("POST", historyPath, `{}`, true, 405)
+	call("GET", "/v1/news-cases/news-case-"+strings.Repeat("0", 64)+"/reviews", "", true, 404)
+	for _, args := range [][]string{{"news-reviews"}, {"news-reviews", "--case", "invalid"}, {"news-reviews", "--case", receipt.Matches[0].CaseID, "--api-url", "https://example.invalid"}} {
+		out.Reset()
+		if err = Run(ctx, args, &out, &out); err == nil {
+			t.Fatal("invalid history arguments accepted")
+		}
+	}
 	call("POST", "/v1/news-reviews", body, false, 401)
 	call("POST", "/v1/news-reviews", strings.Replace(body, `"type_id":`, `"profile":{},"type_id":`, 1), true, 400)
 	call("POST", "/v1/news-reviews", strings.Replace(body, `"type_id":`, `"type_id":"news-review-v1","type_id":`, 1), true, 400)
@@ -102,5 +122,16 @@ func TestRetainedReviewCLI(t *testing.T) {
 		if err = Run(ctx, args, &out, &out); err == nil {
 			t.Fatal("incomplete arguments accepted")
 		}
+	}
+}
+
+func TestReviewHistoryCLIRejectsCorruptReceipt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"schema":"mantik-case-review-history-v1","attempts":[],"qualification_credit":true}`))
+	}))
+	defer server.Close()
+	var out bytes.Buffer
+	if err := Run(context.Background(), []string{"news-reviews", "--case", "news-case-" + strings.Repeat("0", 64), "--api-url", server.URL}, &out, &out); err == nil || out.Len() != 0 {
+		t.Fatal("corrupt report emitted", err)
 	}
 }
