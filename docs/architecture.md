@@ -189,7 +189,12 @@ ownership/deadline/recovery controls. Service dispatch/import remain unfinished.
 exact completed native trial and its registered recipe. Schema 17 atomically
 retains the declaration and three original input texts. The service exposes
 targeted export for explicit local launch; declaration does not start a worker,
-attest host state or import a result. See [trial worker handoff](reference/trial-workers.md).
+attest host state or import a result. Schema 18 adds independent external attempt
+intents, immutable caller-reported outcomes and exact stdout/stderr texts.
+Comparison validation binds source/input pins and arithmetic; it does not verify
+that a process ran or establish financial qualification. Complete per-job history
+includes pending intents and all reported dispositions, without selecting a
+winner. See [trial worker handoff](reference/trial-workers.md).
 
 A fresh quote at or below 100.00 can open the fixture case if its notional and
 protective levels pass. The decision permits 10 units, at most 1,000.00

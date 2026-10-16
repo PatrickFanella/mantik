@@ -38,30 +38,32 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
-	externalJobs   map[string]workertrial.Record
-	externalInputs map[string]map[string][]byte
-	trialRuns      map[string]trial.Run
-	trialInputs    map[string]string
-	trialResults   map[string]string
-	trialAttempts  map[string]trial.Attempt
-	trials         map[string]trial.Registration
-	publications   map[string]hypothesis.Publication
-	reviews        map[string]review.Attempt
-	news           newscase.State
-	evidence       map[string]FeedEvidenceRecord
-	collectors     feedcollector.State
-	receiverID     string
-	mu             sync.Mutex
-	queued         bool
-	effects        map[string]domain.ActionEffect
-	state          domain.State
-	observations   map[string][]byte
-	receipts       map[string]domain.Receipt
-	events         []domain.Event
+	externalAttempts map[string]workertrial.Attempt
+	externalOutputs  map[string]map[string]string
+	externalJobs     map[string]workertrial.Record
+	externalInputs   map[string]map[string][]byte
+	trialRuns        map[string]trial.Run
+	trialInputs      map[string]string
+	trialResults     map[string]string
+	trialAttempts    map[string]trial.Attempt
+	trials           map[string]trial.Registration
+	publications     map[string]hypothesis.Publication
+	reviews          map[string]review.Attempt
+	news             newscase.State
+	evidence         map[string]FeedEvidenceRecord
+	collectors       feedcollector.State
+	receiverID       string
+	mu               sync.Mutex
+	queued           bool
+	effects          map[string]domain.ActionEffect
+	state            domain.State
+	observations     map[string][]byte
+	receipts         map[string]domain.Receipt
+	events           []domain.Event
 }
 
 func NewMemory() *Memory {
-	return &Memory{externalJobs: map[string]workertrial.Record{}, externalInputs: map[string]map[string][]byte{}, trialRuns: map[string]trial.Run{}, trialInputs: map[string]string{}, trialResults: map[string]string{}, trialAttempts: map[string]trial.Attempt{}, trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
+	return &Memory{externalAttempts: map[string]workertrial.Attempt{}, externalOutputs: map[string]map[string]string{}, externalJobs: map[string]workertrial.Record{}, externalInputs: map[string]map[string][]byte{}, trialRuns: map[string]trial.Run{}, trialInputs: map[string]string{}, trialResults: map[string]string{}, trialAttempts: map[string]trial.Attempt{}, trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
 }
 
 // NewQueuedMemory exercises the persistent delivery contract without a database.

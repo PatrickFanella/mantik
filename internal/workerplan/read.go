@@ -119,7 +119,13 @@ func ReadResult(input io.Reader, j Job) (Result, error) {
 // ReadDatasetShape rejects ambiguous JSON field names before native admission.
 // The caller supplies a typed dataset; this helper grants no data qualification.
 func ReadDatasetShape(raw []byte, value any) error {
-	if len(raw) > MaxInputBytes {
+	return ReadBoundedShape(raw, value, MaxInputBytes)
+}
+
+// ReadBoundedShape applies strict JSON shape rules at an explicit caller bound.
+// Callers must also bound stream reads before allocating raw.
+func ReadBoundedShape(raw []byte, value any, limit int) error {
+	if limit < 0 || len(raw) > limit {
 		return ErrInvalid
 	}
 	return readJSON(raw, value)
