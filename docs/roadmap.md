@@ -100,6 +100,11 @@ Tool-driven investigation, hypothesis lifecycles, isolated research workers, and
 
 **Exit gate:** An unfamiliar observation opens a bounded investigation that reuses the library, runs mandatory evaluations, and produces a finalized structured decision or abstention; generated methods remain unqualified candidates.
 
+The [recorded research contract audit](research/research-contract-acceptance.md)
+maps delivered review, hypothesis and worker contracts to issues #15–#17.
+Their dependency chain still includes #12's unfinished article extraction;
+recorded fixture coverage does not close the integrated M4 exit gate.
+
 - [#15: Define decision workflow and LLM tool contracts](https://git.subcult.tv/subculture-collective/mantik/issues/15). Depends on #3, #12, #9.
 - [#16: Add hypothesis lifecycle and autonomous research-attempt history](https://git.subcult.tv/subculture-collective/mantik/issues/16). Depends on #6, #15.
 - [#17: Add an isolated research-worker protocol for reusable tools](https://git.subcult.tv/subculture-collective/mantik/issues/17). Depends on #5, #15.
