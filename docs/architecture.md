@@ -357,3 +357,9 @@ Paper decisions and fixture effect records cannot authorize live orders. See
 [the planned live stage](roadmap.md#planned-m8-alpaca-live-admission-and-bounded-rollout).
 A healthy service or successful fixture creates no real-market qualification
 evidence.
+
+Schema 25 adds a separate [Switchyard capture ledger](reference/switchyard-captures.md).
+The receiver independently replays caller-reported Switchyard receipts, retains
+immutable imports and exposes full readback plus bounded complete history.
+These records grant no execution attestation, research admission or qualification;
+local-model and recorded-fixture ledgers remain separate.

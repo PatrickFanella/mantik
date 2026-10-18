@@ -137,8 +137,12 @@ including failures and unknown completion, without contacting the endpoint.
 
 [OpenAI extraction through Switchyard](docs/reference/switchyard-extraction.md)
 adds a separate retained request and offline inspection path for the selected
-`openai/gpt-6.1-sol` route. Gateway parameter enforcement and actual provider
-execution remain unverified; fixture tests do not grant qualification.
+`openai/gpt-6.1-sol` route. The deployed route passed one checked synthetic live extraction; exact-release
+fixtures verified request settings and retry behavior against a fake provider.
+Neither gives market qualification or an independent provider spend attestation.
+[Switchyard capture imports](docs/reference/switchyard-captures.md) retain checked
+caller reports in their own service ledger, including failures and unknown
+completion. Import does not admit news or relabel captures as local-model evidence.
 
 [Local capture evaluation](docs/reference/local-extraction-evaluation.md) compares
 a complete retained cohort with supplied annotations, preserving failed results
