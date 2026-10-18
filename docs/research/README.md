@@ -32,7 +32,7 @@ and maps literature and implementations to candidate library work. Original
 papers, reports and operational data remain outside Mantik Git. Recovery and
 source inspection do not establish reproduction or performance.
 
-- [Recorded-news acceptance audit](news-acceptance.md) — delivered interfaces,
-  retained rehearsal evidence and remaining extraction limits.
+- [News acceptance audit](news-acceptance.md) — recorded, local and Switchyard
+  extraction interfaces, retained rehearsals and remaining real-news limits.
 - [Recorded research contract audit](research-contract-acceptance.md) — review,
   hypothesis and worker coverage, retained evidence and open dependencies.
