@@ -110,8 +110,9 @@ not provider execution, effective reasoning/token settings or source truth.
 
 Existing local receipts retain their schemas and serialized configuration when
 the new optional reasoning field is absent. Local inspection, import, admission
-and cohort evaluation reject Switchyard receipt schemas. Provider capture
-evaluation and reviewed admission need their own explicit compatibility work;
+and cohort evaluation reject Switchyard receipt schemas. [Switchyard capture import](switchyard-captures.md) retains validated copies
+in a distinct caller-reported service ledger. Provider capture evaluation and
+reviewed admission need their own explicit compatibility work;
 do not relabel these receipts as Ollama evidence. Both execution attestation
 and qualification credit remain false in inspection. No extraction result is
 profitability evidence or permission to trade.

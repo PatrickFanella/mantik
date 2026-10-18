@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
@@ -55,6 +56,10 @@ func TestSwitchyardExtractionAndOfflineReplay(t *testing.T) {
 			report, err := InspectSwitchyard(context.Background(), saved[0], &saved[1])
 			if err != nil || report.Schema != SwitchyardInspectionSchema || report.Disposition != tc.disposition || report.ExecutionAttested || report.Authority != "retained_switchyard_bytes_consistency_only" {
 				t.Fatal("offline replay", err, report)
+			}
+			capture, err := RetainSwitchyard(context.Background(), "receiver-abcdefghijklmnop", tc.name, saved[0], &saved[1], time.Now())
+			if err != nil || capture.Validate() != nil || capture.ExecutionAttested || capture.QualificationCredit || capture.Inspection.Disposition != tc.disposition {
+				t.Fatal("retained outcome", err)
 			}
 			p, f := LocalReceipt(saved[0]), LocalReceipt(saved[1])
 			if _, err := InspectLocal(context.Background(), p, &f); !errors.Is(err, ErrLocalVersion) {
