@@ -39,6 +39,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	switchyardAdmissions   map[string]extraction.SwitchyardAdmission
 	localCaptureAdmissions map[string]extraction.LocalAdmission
 	switchyardCaptures     map[string]extraction.SwitchyardCapture
 	localCaptures          map[string]extraction.LocalCapture
@@ -69,7 +70,7 @@ type Memory struct {
 }
 
 func NewMemory() *Memory {
-	return &Memory{switchyardCaptures: map[string]extraction.SwitchyardCapture{}, localCaptureAdmissions: map[string]extraction.LocalAdmission{}, localCaptures: map[string]extraction.LocalCapture{}, extractionAdmissions: map[string]extraction.Admission{}, extractions: map[string]extraction.Attempt{}, externalAttempts: map[string]workertrial.Attempt{}, externalOutputs: map[string]map[string]string{}, externalJobs: map[string]workertrial.Record{}, externalInputs: map[string]map[string][]byte{}, trialRuns: map[string]trial.Run{}, trialInputs: map[string]string{}, trialResults: map[string]string{}, trialAttempts: map[string]trial.Attempt{}, trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
+	return &Memory{switchyardAdmissions: map[string]extraction.SwitchyardAdmission{}, switchyardCaptures: map[string]extraction.SwitchyardCapture{}, localCaptureAdmissions: map[string]extraction.LocalAdmission{}, localCaptures: map[string]extraction.LocalCapture{}, extractionAdmissions: map[string]extraction.Admission{}, extractions: map[string]extraction.Attempt{}, externalAttempts: map[string]workertrial.Attempt{}, externalOutputs: map[string]map[string]string{}, externalJobs: map[string]workertrial.Record{}, externalInputs: map[string]map[string][]byte{}, trialRuns: map[string]trial.Run{}, trialInputs: map[string]string{}, trialResults: map[string]string{}, trialAttempts: map[string]trial.Attempt{}, trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
 }
 
 // NewQueuedMemory exercises the persistent delivery contract without a database.

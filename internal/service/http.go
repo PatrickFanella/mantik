@@ -43,6 +43,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	switchyardCaptureRoutes(mux, store, clock)
 	extractionAdmissionRoutes(mux, store, clock)
 	localCaptureAdmissionRoutes(mux, store, clock)
+	switchyardCaptureAdmissionRoutes(mux, store, clock)
 	hypothesisRoutes(mux, store, clock)
 	trialRoutes(mux, store, clock)
 	trialAttemptRoutes(mux, store, clock)
