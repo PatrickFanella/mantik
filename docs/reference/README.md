@@ -51,3 +51,5 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Retained Switchyard captures](switchyard-captures.md)
 
 - [Reviewed Switchyard capture admission](reviewed-switchyard-admission.md)
+
+- [Switchyard extraction evaluation](switchyard-extraction-evaluation.md)

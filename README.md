@@ -143,6 +143,9 @@ Neither gives market qualification or an independent provider spend attestation.
 [Switchyard capture imports](docs/reference/switchyard-captures.md) retain checked
 caller reports in their own service ledger, including failures and unknown
 completion. Import does not admit news or relabel captures as local-model evidence.
+[Switchyard capture evaluation](docs/reference/switchyard-extraction-evaluation.md)
+compares all supplied finished captures and separately reports unknown completion,
+without model calls or qualification credit.
 [Explicit Switchyard approval](docs/reference/reviewed-switchyard-admission.md)
 binds reviewed captures to research through separate provenance and atomic receipts.
 

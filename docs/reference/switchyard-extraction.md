@@ -88,8 +88,8 @@ The live result proves this connection can complete a checked synthetic
 extraction. It does not independently attest the provider's token ceiling,
 billing or all hidden network attempts. No real-news cohort, service admission,
 trading action or profitability qualification was performed. Reviewed admission is available through the distinct
-[Switchyard approval path](reviewed-switchyard-admission.md); offline evaluation
-of this provider's captures remains separate work.
+[Switchyard approval path](reviewed-switchyard-admission.md); [offline evaluation](switchyard-extraction-evaluation.md) compares retained
+captures with supplied annotations, including failures and unknown completion.
 
 ## Retained evidence and inspection
 
@@ -115,7 +115,8 @@ and cohort evaluation reject Switchyard receipt schemas.
 [Switchyard capture import](switchyard-captures.md) retains validated copies
 in a distinct caller-reported service ledger.
 [Reviewed admission](reviewed-switchyard-admission.md) uses explicit hashes
-and separate Switchyard provenance. Provider capture evaluation remains separate;
+and separate Switchyard provenance. [Offline cohort evaluation](switchyard-extraction-evaluation.md) preserves
+finished failures and unknown outcomes separately;
 do not relabel these receipts as Ollama evidence. Both execution attestation
 and qualification credit remain false in inspection. No extraction result is
 profitability evidence or permission to trade.
