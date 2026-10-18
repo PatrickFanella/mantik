@@ -162,7 +162,92 @@ dependent issues from the synthetic rehearsal or annotation-agreement counts.
 The owner selected `gpt-6.1-sol` after retiring the local GPU. The separate
 [Switchyard adapter](../reference/switchyard-extraction.md) now supports retained
 requests and offline inspection for `openai/gpt-6.1-sol`; it does not relabel old
-Ollama captures. This implementation is fixture-tested only. Deployed provider
-access, billing path, generation-limit forwarding, actual extraction quality,
-provider-capture evaluation and reviewed admission remain unproven. The proposed
-historical real-source cohort has not run and its annotations remain drafts.
+Ollama captures. The checkpoint below supersedes the initial fixture-only
+assessment. The proposed historical real-source cohort has not run and its
+annotations remain drafts.
+
+## Switchyard extraction checkpoint through PR 115, 2026-10-18
+
+The selected route has a complete bounded path from a client extraction request
+to retained capture inspection, explicit research admission and offline comparison
+with supplied annotations. This is usable for a controlled research diagnostic.
+It is not qualified for unattended real-news interpretation or trading.
+
+[PR 113](https://git.subcult.tv/subculture-collective/mantik/pulls/113),
+[PR 114](https://git.subcult.tv/subculture-collective/mantik/pulls/114) and
+[PR 115](https://git.subcult.tv/subculture-collective/mantik/pulls/115) are merged.
+PR 115 merged as `86042a45cd8eee78cdf7c6456be80fbdc182d728` after fresh exact-head
+CI, review, mergeability and protection checks. Its merged-main push check was
+pending when this audit began; PR-head success is a separate proof state.
+No existing Mantik pilot was upgraded to schemas 25 or 26.
+
+| Boundary | Implementation and retained evidence | Remaining limit |
+| --- | --- | --- |
+| Provider request | The pinned Switchyard/OpenCode release passed fake-provider success/failure bounds; one managed-OpenAI-OAuth synthetic extraction completed on October 16 with one client attempt, one broker request and one extraction session. | This is historical setup proof for one synthetic article. It does not establish current provider availability, general news quality, billing charges or cancellation of upstream work after a client timeout. |
+| Capture retention | Schema 25 independently replays imported Switchyard receipts, retains failed/unknown outcomes and exposes immutable receiver-bound history. Restart, isolated restore and corrupt-clone rejection passed. | Imports attest received consistent bytes, not provider execution or source truth. Service-owned generation dispatch/recovery is absent. |
+| Explicit admission | Schema 26 atomically retains approval, news provenance and affected case changes; exact retries preserve receipts and closed cases. Source corrections/retractions use the existing causal and predecessor rules. | Caller approval is not independent reviewer identity or semantic validation. Only an eligible checked finished capture can be admitted; failed and unknown captures remain ineligible. |
+| Cohort evaluation | Offline replay compares every supplied finished capture with supplied annotations, exposes unknown completion separately and rejects duplicate snapshots. Repeated prepared receipts remain dependent evidence. Existing local evaluator output remains byte-identical. | No reviewed real-source benchmark or actual-extractor real-news cohort has run. Agreement with supplied labels does not establish factual accuracy, source independence or representative performance. |
+
+### Code and test trace
+
+The [request/inspection contract](../reference/switchyard-extraction.md) maps to
+`internal/extraction/switchyard.go` and `internal/cli/switchyard_extraction_test.go`.
+The [capture ledger](../reference/switchyard-captures.md) maps to
+`internal/storage/switchyard_captures.go` and its tests. The
+[approval contract](../reference/reviewed-switchyard-admission.md) maps to
+`internal/extraction/switchyard_admission.go`,
+`internal/storage/switchyard_capture_admissions.go` and their tests, including
+transactional rollback and retained-link validation. The
+[evaluation contract](../reference/switchyard-extraction-evaluation.md) maps to
+`internal/extraction/switchyard_evaluation.go` and
+`internal/cli/switchyard_evaluation.go` and their tests. Provider schemas remain
+separate even where count/comparison code is shared.
+
+### Retained runtime evidence
+
+These finite rehearsals reuse previously captured synthetic/fake-provider bytes.
+None made a new model request. Private directories below are under
+`~/.local/state/mantik/`; original sources, secrets and generated evidence stay
+outside Git. Earlier failures remain retained and are not erased by later passes.
+
+| Receipt directory and exercised commit | Observed scope |
+| --- | --- |
+| `switchyard-capture-rehearsal-1792287935336846833`, `969daba54d9461e36442dfb6ac9792edaba916e2` | 40 commands; three retained captures (finished synthetic success, HTTP failure, prepared-only unknown); schema 24→25, exact retries, restart, isolated backup restore and corrupt-clone refusal. Zero admissions or economic effects. |
+| `switchyard-admission-rehearsal-1792341750582725340`, `8cb1bcd42888ac233bfada3b0c79137799cddd9a` | 86 commands; schema 25→26; one explicit synthetic research admission; older recorded approval preserved; downstream recorded review startup; closed-case retry, restart and full restore; resealed approval/broken news-link refusal; older binary refusal and separate schema-25 backup rollback. Zero economic effects. |
+| `switchyard-evaluation-rehearsal-1792342354655127284`, `5f261d988a8c5bf3b82661b0839a884216711f37` | 12 commands; three snapshots, two finished and one unknown, with two distinct prepared receipts. Deterministic replay, path independence, annotation/hash sensitivity, unchanged inputs and duplicate/provider/privacy/flag rejection passed. The prior and current local evaluators produced identical bytes on the retained six-case local manifest. |
+
+The evaluator rehearsal deliberately compares the retained synthetic model claim
+with canned agent-supplied expectations. It reports zero exact finished cases,
+one unexpected claim, two missing claims and one unexpected abstention; the
+unknown expected claim is separate. Those disagreements remain visible. This is
+a test of report behavior, not an accuracy benchmark or a new model experiment.
+The report hash is
+`3d1a860ec61d5e16ee5057c7309eb32ca05b6248a26bf763fa0a7dd14733f2ed`.
+
+Applicable implementation checks passed before each PR: verification and race
+checks for all three; disposable PostgreSQL contracts and container builds for
+the schema changes. The evaluator changed no database or container behavior.
+The retained restores are isolated same-host recovery evidence, not off-host
+recovery or deployment proof. An older rehearsal does not verify later source
+merely because the newer source includes it.
+
+Fresh Docker inspection at this audit found the three original pilot applications
+and Switchyard API/OpenCode running with their recorded PIDs and immutable images.
+The curtailed observer's actual unit was inactive with MainPID 0 and result
+success. It was not restarted. No new observation window or 24-hour proof exists.
+
+### Remaining acceptance and next diagnostic
+
+Issue 12 was read back open during this audit. Its source/claim and revision
+criteria now have the bounded implementation and synthetic evidence above.
+Automatic event equivalence, syndication detection and source-independence
+assessment remain absent; declared event keys alone do not satisfy that broader
+criterion. No dependent issue is closed by this checkpoint.
+
+Before a real-news diagnostic, review the existing three-excerpt proposal's
+source/access references, sampling and expected claims independently of generated
+output, then confirm finite request bounds for the selected OpenAI route. The
+obsolete local-GPU proposal does not authorize a new OpenAI cohort. Preserve
+failures, unknown completion and label disagreements in the resulting report.
+A provider diagnostic, research admission, strategy qualification, prospective
+paper profitability and live-money authorization remain separate steps.
