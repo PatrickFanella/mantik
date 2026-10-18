@@ -363,3 +363,10 @@ The receiver independently replays caller-reported Switchyard receipts, retains
 immutable imports and exposes full readback plus bounded complete history.
 These records grant no execution attestation, research admission or qualification;
 local-model and recorded-fixture ledgers remain separate.
+
+Schema 26 adds reviewed Switchyard capture approval with distinct
+`switchyard_extraction` provenance. Exact capture/result hashes and explicit
+approval bind one immutable capture to the news record and case transaction.
+Ordinary submission, recorded-fixture approval and local-model approval cannot
+fabricate these links. Research admission grants no execution attestation or
+qualification and does not act on operations.

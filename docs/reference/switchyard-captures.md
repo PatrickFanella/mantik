@@ -54,7 +54,9 @@ A receiver permits at most 32 captures, including failures and unknown outcomes.
 Exact retries remain available at capacity. The import/read API has no pruning, completion,
 retry, model execution, news admission or operations action. The recorded-fixture
 and local-model admission paths cannot read these captures.
-Reviewed Switchyard admission and evaluation remain separate development units.
+[Explicit Switchyard approval](reviewed-switchyard-admission.md) uses a separate
+command and transaction after reviewing retained evidence. Offline evaluation
+remains a separate development unit.
 
 ## HTTP and evidence contracts
 
@@ -87,10 +89,12 @@ capture read. Targeted reads and import responses receive full replay validation
 
 ## Persistence and recovery
 
-Schema 25 adds only `mantik_switchyard_extraction_captures`. Migration checksums
+Schema 25 adds `mantik_switchyard_extraction_captures`; schema 26 adds a separate
+approval ledger and Switchyard news provenance. Migration checksums
 and receiver identity remain guarded. Existing recorded attempts, local-model
 captures and approvals, research and operations are not rewritten. A schema-24
-binary refuses schema 25; rollback requires the previous binary plus a verified
+binary refuses schema 25, and a schema-25 binary refuses schema 26. Rollback
+requires the previous binary plus a verified
 pre-upgrade backup on separate resources. Do not downgrade the schema ledger or
 delete imported captures to make an older binary start.
 

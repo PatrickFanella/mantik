@@ -212,7 +212,7 @@ func TestPostgresContractsLocalCaptureUpgrade(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.pool.Exec(ctx, "DROP TABLE mantik_switchyard_extraction_captures; DROP TABLE mantik_local_capture_admissions; DROP TABLE mantik_local_extraction_captures; DELETE FROM mantik_schema WHERE version>=23"); e != nil {
+	if _, e = s.pool.Exec(ctx, "DROP TABLE mantik_switchyard_capture_admissions; DROP TABLE mantik_switchyard_extraction_captures; DROP TABLE mantik_local_capture_admissions; DROP TABLE mantik_local_extraction_captures; DELETE FROM mantik_schema WHERE version>=23"); e != nil {
 		t.Fatal(e)
 	}
 	config := s.pool.Config().ConnString()

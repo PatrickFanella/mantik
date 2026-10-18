@@ -143,6 +143,8 @@ Neither gives market qualification or an independent provider spend attestation.
 [Switchyard capture imports](docs/reference/switchyard-captures.md) retain checked
 caller reports in their own service ledger, including failures and unknown
 completion. Import does not admit news or relabel captures as local-model evidence.
+[Explicit Switchyard approval](docs/reference/reviewed-switchyard-admission.md)
+binds reviewed captures to research through separate provenance and atomic receipts.
 
 [Local capture evaluation](docs/reference/local-extraction-evaluation.md) compares
 a complete retained cohort with supplied annotations, preserving failed results

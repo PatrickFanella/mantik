@@ -49,3 +49,5 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Research worker protocol and native adapter](research-workers.md)
 
 - [Retained Switchyard captures](switchyard-captures.md)
+
+- [Reviewed Switchyard capture admission](reviewed-switchyard-admission.md)

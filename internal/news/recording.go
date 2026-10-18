@@ -57,26 +57,27 @@ type Claim struct {
 }
 
 type Recording struct {
-	Schema           string                     `json:"schema"`
-	SourceID         string                     `json:"source_id"`
-	ArticleID        string                     `json:"article_id"`
-	Revision         int                        `json:"revision"`
-	Kind             string                     `json:"kind"`
-	Supersedes       *RevisionRef               `json:"supersedes,omitempty"`
-	Publisher        string                     `json:"publisher"`
-	URL              string                     `json:"url"`
-	PublishedAt      time.Time                  `json:"published_at"`
-	AvailableAt      time.Time                  `json:"available_at"`
-	ReceivedAt       time.Time                  `json:"received_at"`
-	EvidenceClass    string                     `json:"evidence_class"`
-	AccessRef        string                     `json:"access_ref"`
-	RawRef           string                     `json:"raw_ref"`
-	Original         string                     `json:"original"`
-	OriginalSHA256   string                     `json:"original_sha256"`
-	ExtractionMethod string                     `json:"extraction_method"`
-	Claims           []Claim                    `json:"claims"`
-	Extraction       *ExtractionProvenance      `json:"extraction,omitempty"`
-	LocalExtraction  *LocalExtractionProvenance `json:"local_extraction,omitempty"`
+	Schema               string                          `json:"schema"`
+	SourceID             string                          `json:"source_id"`
+	ArticleID            string                          `json:"article_id"`
+	Revision             int                             `json:"revision"`
+	Kind                 string                          `json:"kind"`
+	Supersedes           *RevisionRef                    `json:"supersedes,omitempty"`
+	Publisher            string                          `json:"publisher"`
+	URL                  string                          `json:"url"`
+	PublishedAt          time.Time                       `json:"published_at"`
+	AvailableAt          time.Time                       `json:"available_at"`
+	ReceivedAt           time.Time                       `json:"received_at"`
+	EvidenceClass        string                          `json:"evidence_class"`
+	AccessRef            string                          `json:"access_ref"`
+	RawRef               string                          `json:"raw_ref"`
+	Original             string                          `json:"original"`
+	OriginalSHA256       string                          `json:"original_sha256"`
+	ExtractionMethod     string                          `json:"extraction_method"`
+	Claims               []Claim                         `json:"claims"`
+	Extraction           *ExtractionProvenance           `json:"extraction,omitempty"`
+	LocalExtraction      *LocalExtractionProvenance      `json:"local_extraction,omitempty"`
+	SwitchyardExtraction *SwitchyardExtractionProvenance `json:"switchyard_extraction,omitempty"`
 }
 
 type BoundClaim struct {
@@ -96,17 +97,18 @@ type BoundClaim struct {
 }
 
 type Result struct {
-	Schema           string                     `json:"schema"`
-	RecordingSHA256  string                     `json:"recording_sha256"`
-	Publisher        string                     `json:"publisher"`
-	URL              string                     `json:"url"`
-	AccessRef        string                     `json:"access_ref"`
-	ExtractionMethod string                     `json:"extraction_method"`
-	Kind             string                     `json:"kind"`
-	Supersedes       *RevisionRef               `json:"supersedes,omitempty"`
-	Claims           []BoundClaim               `json:"claims"`
-	Extraction       *ExtractionProvenance      `json:"extraction,omitempty"`
-	LocalExtraction  *LocalExtractionProvenance `json:"local_extraction,omitempty"`
+	Schema               string                          `json:"schema"`
+	RecordingSHA256      string                          `json:"recording_sha256"`
+	Publisher            string                          `json:"publisher"`
+	URL                  string                          `json:"url"`
+	AccessRef            string                          `json:"access_ref"`
+	ExtractionMethod     string                          `json:"extraction_method"`
+	Kind                 string                          `json:"kind"`
+	Supersedes           *RevisionRef                    `json:"supersedes,omitempty"`
+	Claims               []BoundClaim                    `json:"claims"`
+	Extraction           *ExtractionProvenance           `json:"extraction,omitempty"`
+	LocalExtraction      *LocalExtractionProvenance      `json:"local_extraction,omitempty"`
+	SwitchyardExtraction *SwitchyardExtractionProvenance `json:"switchyard_extraction,omitempty"`
 }
 
 func SHA256(body string) string { return fmt.Sprintf("%x", sha256.Sum256([]byte(body))) }
@@ -116,9 +118,10 @@ func text(s string, max int) bool {
 func validTime(t time.Time) bool { return !t.IsZero() && t.UTC().Year() > 0 && t.UTC().Year() <= 9999 }
 
 func (r Recording) Validate() error {
-	recorded := r.ExtractionMethod == ReviewedExtractionMethod && r.LocalExtraction == nil && r.Extraction != nil && r.Extraction.valid(r)
-	local := r.ExtractionMethod == ReviewedLocalExtractionMethod && r.Extraction == nil && r.LocalExtraction != nil && r.LocalExtraction.valid(r)
-	if !OperatorRecording(r) && !recorded && !local {
+	recorded := r.ExtractionMethod == ReviewedExtractionMethod && r.LocalExtraction == nil && r.SwitchyardExtraction == nil && r.Extraction != nil && r.Extraction.valid(r)
+	local := r.ExtractionMethod == ReviewedLocalExtractionMethod && r.Extraction == nil && r.SwitchyardExtraction == nil && r.LocalExtraction != nil && r.LocalExtraction.valid(r)
+	switchyard := r.ExtractionMethod == ReviewedSwitchyardExtractionMethod && r.Extraction == nil && r.LocalExtraction == nil && r.SwitchyardExtraction != nil && r.SwitchyardExtraction.valid(r)
+	if !OperatorRecording(r) && !recorded && !local && !switchyard {
 		return errors.New("unsupported news extraction method")
 	}
 	if err := r.validateSource(); err != nil {
@@ -219,7 +222,7 @@ func Normalize(r Recording) (Result, error) {
 		return Result{}, err
 	}
 	r = copy
-	out := Result{Schema: ResultSchema, RecordingSHA256: SHA256(string(raw)), Publisher: r.Publisher, URL: r.URL, AccessRef: r.AccessRef, ExtractionMethod: r.ExtractionMethod, Kind: r.Kind, Supersedes: r.Supersedes, Claims: []BoundClaim{}, Extraction: r.Extraction, LocalExtraction: r.LocalExtraction}
+	out := Result{Schema: ResultSchema, RecordingSHA256: SHA256(string(raw)), Publisher: r.Publisher, URL: r.URL, AccessRef: r.AccessRef, ExtractionMethod: r.ExtractionMethod, Kind: r.Kind, Supersedes: r.Supersedes, Claims: []BoundClaim{}, Extraction: r.Extraction, LocalExtraction: r.LocalExtraction, SwitchyardExtraction: r.SwitchyardExtraction}
 	for _, c := range r.Claims {
 		identity, _ := json.Marshal([]any{r.SourceID, r.ArticleID, r.Revision, c.ID, r.EvidenceClass})
 		out.Claims = append(out.Claims, BoundClaim{Claim: c, RecordingSHA256: out.RecordingSHA256, Key: "news-" + SHA256(string(identity)), SourceID: r.SourceID, ArticleID: r.ArticleID, Revision: r.Revision, PublishedAt: r.PublishedAt, AvailableAt: r.AvailableAt, ReceivedAt: r.ReceivedAt, EvidenceClass: r.EvidenceClass, RawRef: r.RawRef, OriginalSHA256: r.OriginalSHA256, Independence: "not_assessed"})

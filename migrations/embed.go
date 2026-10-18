@@ -88,3 +88,6 @@ var LocalCaptureAdmissions string
 
 //go:embed 0025_switchyard_extraction_captures.sql
 var SwitchyardExtractionCaptures string
+
+//go:embed 0026_switchyard_capture_admissions.sql
+var SwitchyardCaptureAdmissions string

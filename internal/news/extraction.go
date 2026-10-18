@@ -46,5 +46,5 @@ func (p ExtractionProvenance) valid(r Recording) bool {
 // distinct from reviewed extraction admission. No caller-supplied provenance
 // can turn an ordinary recording submission into a verified extraction link.
 func OperatorRecording(r Recording) bool {
-	return r.ExtractionMethod == "operator_recorded_v1" && r.Extraction == nil && r.LocalExtraction == nil
+	return r.ExtractionMethod == "operator_recorded_v1" && r.Extraction == nil && r.LocalExtraction == nil && r.SwitchyardExtraction == nil
 }

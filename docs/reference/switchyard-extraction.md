@@ -87,8 +87,9 @@ also passed. Private receipts and rollback evidence are retained under
 The live result proves this connection can complete a checked synthetic
 extraction. It does not independently attest the provider's token ceiling,
 billing or all hidden network attempts. No real-news cohort, service admission,
-trading action or profitability qualification was performed. Reviewed admission
-and evaluation of this provider's distinct receipt schema remain separate work.
+trading action or profitability qualification was performed. Reviewed admission is available through the distinct
+[Switchyard approval path](reviewed-switchyard-admission.md); offline evaluation
+of this provider's captures remains separate work.
 
 ## Retained evidence and inspection
 
@@ -110,9 +111,11 @@ not provider execution, effective reasoning/token settings or source truth.
 
 Existing local receipts retain their schemas and serialized configuration when
 the new optional reasoning field is absent. Local inspection, import, admission
-and cohort evaluation reject Switchyard receipt schemas. [Switchyard capture import](switchyard-captures.md) retains validated copies
-in a distinct caller-reported service ledger. Provider capture evaluation and
-reviewed admission need their own explicit compatibility work;
+and cohort evaluation reject Switchyard receipt schemas.
+[Switchyard capture import](switchyard-captures.md) retains validated copies
+in a distinct caller-reported service ledger.
+[Reviewed admission](reviewed-switchyard-admission.md) uses explicit hashes
+and separate Switchyard provenance. Provider capture evaluation remains separate;
 do not relabel these receipts as Ollama evidence. Both execution attestation
 and qualification credit remain false in inspection. No extraction result is
 profitability evidence or permission to trade.
