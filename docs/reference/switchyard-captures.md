@@ -55,8 +55,8 @@ Exact retries remain available at capacity. The import/read API has no pruning, 
 retry, model execution, news admission or operations action. The recorded-fixture
 and local-model admission paths cannot read these captures.
 [Explicit Switchyard approval](reviewed-switchyard-admission.md) uses a separate
-command and transaction after reviewing retained evidence. Offline evaluation
-remains a separate development unit.
+command and transaction after reviewing retained evidence. [Offline evaluation](switchyard-extraction-evaluation.md) compares a complete
+supplied cohort with annotations while preserving failures and unknown completion.
 
 ## HTTP and evidence contracts
 

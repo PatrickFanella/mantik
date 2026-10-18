@@ -55,11 +55,17 @@ type LocalEvaluation struct {
 // Prepared-only completion remains unknown, never a fabricated abstention.
 // Full receipts and every input stay in the report; no model or API is called.
 func EvaluateLocal(ctx context.Context, input LocalCorpus) (LocalEvaluation, error) {
+	return evaluateCapturedCorpus(ctx, input, LocalCorpusSchema, LocalEvaluationSchema, "local", InspectLocal)
+}
+
+// evaluateCapturedCorpus shares comparison and counting only. Each entry point
+// supplies its schema fence and provider-specific receipt replay.
+func evaluateCapturedCorpus(ctx context.Context, input LocalCorpus, corpusSchema, evaluationSchema, label string, inspect func(context.Context, LocalReceipt, *LocalReceipt) (LocalInspection, error)) (LocalEvaluation, error) {
 	if err := ctx.Err(); err != nil {
 		return LocalEvaluation{}, err
 	}
 	raw, err := json.Marshal(input)
-	if err != nil || len(raw) > MaxLocalEvaluationBytes || input.Schema != LocalCorpusSchema || len(input.Cases) < 1 || len(input.Cases) > MaxEvaluationCases {
+	if err != nil || len(raw) > MaxLocalEvaluationBytes || input.Schema != corpusSchema || len(input.Cases) < 1 || len(input.Cases) > MaxEvaluationCases {
 		return LocalEvaluation{}, ErrInvalid
 	}
 	corpus := copyJSON(input)
@@ -78,9 +84,9 @@ func EvaluateLocal(ctx context.Context, input LocalCorpus) (LocalEvaluation, err
 				return LocalEvaluation{}, ErrInvalid
 			}
 		}
-		report, e := InspectLocal(ctx, item.Prepared, item.Finished)
+		report, e := inspect(ctx, item.Prepared, item.Finished)
 		if e != nil {
-			return LocalEvaluation{}, fmt.Errorf("local evaluation case %d: %w", i+1, e)
+			return LocalEvaluation{}, fmt.Errorf("%s evaluation case %d: %w", label, i+1, e)
 		}
 		snapshot := item.Prepared.SHA256 + ":" + report.FinishedSHA256
 		if snapshots[snapshot] {
@@ -106,7 +112,7 @@ func EvaluateLocal(ctx context.Context, input LocalCorpus) (LocalEvaluation, err
 		}
 		gold[i] = expected
 	}
-	r := LocalEvaluation{Schema: LocalEvaluationSchema, CorpusSHA256: hash(corpus), ContractSHA256: hash(Definition()), Cases: []LocalCaseScore{}, Counts: LocalEvaluationCounts{Dispositions: map[string]int{}}, Authority: "supplied_annotation_agreement_only"}
+	r := LocalEvaluation{Schema: evaluationSchema, CorpusSHA256: hash(corpus), ContractSHA256: hash(Definition()), Cases: []LocalCaseScore{}, Counts: LocalEvaluationCounts{Dispositions: map[string]int{}}, Authority: "supplied_annotation_agreement_only"}
 	prepared := map[string]bool{}
 	for i, item := range corpus.Cases {
 		if err := ctx.Err(); err != nil {
