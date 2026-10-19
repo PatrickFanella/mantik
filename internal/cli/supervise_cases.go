@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,36 @@ type caseCatalogFetch func(context.Context) (domain.CaseCatalog, error)
 type caseDetailFetch func(context.Context, string) (domain.CaseInspection, error)
 
 const caseSupervisionHelp = "Commands (then Enter): n next | p previous | r refresh catalogue | d CASE_ID current details on this page | q quit"
+
+var supervisionCaseID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
+
+func validateSupervisionCaseCatalog(c domain.CaseCatalog) error {
+	if c.Mode != "paper_fixture" || !supervisionCaseID.MatchString(c.Fixture.ID) || len(c.Routing) > 260 {
+		return errors.New("invalid case catalogue mode, fixture identity or capacity")
+	}
+	previous := ""
+	for _, r := range c.Routing {
+		if !supervisionCaseID.MatchString(r.ID) || r.ID == c.Fixture.ID || r.ID <= previous {
+			return errors.New("case catalogue identities must be valid, unique and sorted")
+		}
+		previous = r.ID
+	}
+	return nil
+}
+
+func validateSupervisionCaseDetail(d domain.CaseInspection, id string, fixture bool) error {
+	if d.Mode != "paper_fixture" {
+		return errors.New("invalid case detail mode")
+	}
+	if fixture {
+		if d.Kind != "fixture_execution" || d.Fixture == nil || d.Fixture.ID != id || d.Strategy == nil || d.Strategy.ID != d.Fixture.StrategyVersionID || d.Strategy.ID == "" || d.Routing != nil {
+			return errors.New("case detail does not match the selected fixture case and strategy")
+		}
+	} else if d.Kind != "routing" || d.Routing == nil || d.Routing.ID != id || d.Fixture != nil || d.Strategy != nil {
+		return errors.New("case detail does not match the selected routing case")
+	}
+	return nil
+}
 
 func superviseCases(ctx context.Context, in io.ReadCloser, out io.Writer, limit int, fetch caseCatalogFetch, inspect caseDetailFetch) error {
 	scanner, cleanup := supervisionInput(ctx, in)
@@ -31,8 +62,8 @@ func superviseCases(ctx context.Context, in io.ReadCloser, out io.Writer, limit 
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if err == nil && len(fresh.Routing) > 260 {
-				err = errors.New("case catalogue exceeds capacity")
+			if err == nil {
+				err = validateSupervisionCaseCatalog(fresh)
 			}
 			if err != nil {
 				stale = true
@@ -99,6 +130,9 @@ func superviseCases(ctx context.Context, in io.ReadCloser, out io.Writer, limit 
 			detail, err := inspect(ctx, fields[1])
 			if ctx.Err() != nil {
 				return ctx.Err()
+			}
+			if err == nil {
+				err = validateSupervisionCaseDetail(detail, fields[1], fields[1] == catalog.Fixture.ID)
 			}
 			if err != nil {
 				stale = true
