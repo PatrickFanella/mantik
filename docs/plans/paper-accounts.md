@@ -22,9 +22,12 @@ satisfy account allocation.
    They are not operational account balances. The separate
    [fixture capital contract](../reference/fixture-capital.md) now reserves and
    reconciles from finalized fixture actions and effect lookups, with funded
-   position/cash conservation. It has no service writer or import path. Next bind
-   it atomically to action submission/acknowledgment and verify restart, restore,
-   crashes and rollback before activation. Qualified admission and realistic
+   position/cash conservation. An explicit queued-memory binding now commits
+   reservations and capital with worker action transitions under one lock,
+   including limit rejection, lease replacement and rollback tests. No public
+   binding or import path exists. Next add durable binding/checkpoint validation
+   in PostgreSQL and verify restart, restore, crashes and rollback before service
+   activation. Qualified admission and realistic
    execution remain separate gates; rehearsal assertions cannot supply authority.
 3. Add allocator-owned proposal comparison and reservation, with strategy and
    account limits, exposure/concentration/correlation checks, existing-order

@@ -12,6 +12,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/fixturecapital"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/newscase"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
@@ -41,6 +42,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	fixtureCapital         *fixturecapital.Book
 	paperLedgers           map[string]paperledger.Rehearsal
 	paperAccounts          map[string]paperaccount.Account
 	switchyardAdmissions   map[string]extraction.SwitchyardAdmission

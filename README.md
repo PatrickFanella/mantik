@@ -100,6 +100,10 @@ imported into service accounts. The separate
 [durable rehearsal commands](docs/reference/paper-ledger-rehearsals.md) retain
 explicit account-bound synthetic assertions with head and retry guards; they
 leave funding, operational balances and execution unchanged.
+The [fixture capital worker bridge](docs/reference/fixture-capital.md) now
+enforces an explicit account binding in queued-memory tests, reserving before
+submission and settling with action acknowledgment. Durable PostgreSQL binding
+and public activation remain unfinished.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.

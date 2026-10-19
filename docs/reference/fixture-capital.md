@@ -3,8 +3,10 @@
 `internal/fixturecapital` defines an internal capital reducer for the existing
 synthetic action worker. It consumes finalized `paper-action-v1` intents and
 fixture effect lookups, not rehearsal commands, model output or an imported
-capital snapshot. It is not wired into service transactions yet, and no current
-service balance, position, route, worker or database schema changes.
+capital snapshot. An explicit queued-memory binding now connects it to the
+worker's transaction path. PostgreSQL activation, durable checkpoints and public
+API/CLI binding remain unfinished. Existing services and database schemas retain
+their previous behavior.
 
 ## Authority and transitions
 
@@ -47,9 +49,10 @@ result is validated against a detached pre-ack action/case using the existing
 
 An effect reader is an ownership boundary, not self-authenticating evidence.
 Timeouts, missing provider responses and caller-supplied absence assertions cannot
-implement it for a real venue. The future storage bridge must supply the existing
-fixture effect lookup inside its transaction; the reducer performs no networking
-or independent database authentication.
+implement it for a real venue. The queued-memory bridge supplies the existing
+fixture effect lookup under its aggregate lock. A future PostgreSQL binding must
+retain that transaction boundary; the reducer performs no networking or
+independent database authentication.
 
 ## Conservation and limits
 
@@ -72,17 +75,57 @@ zero-cost synthetic outcomes cannot establish profitability, realistic paper
 execution or qualified strategy admission. Historical/prospective and live
 admission must use their own evidence gates.
 
-## Verification and activation boundary
+## Queued-memory worker binding
+
+`Memory.BindFixtureCapital` requires the receiver ID, account ID, exact account
+digest and `bind_synthetic_fixture_capital_v1` scope. It accepts only a pristine
+queued synthetic DEMO fixture: no observations, actions, effects or entry/exit
+may already exist. The account is immutable. An exact binding retry reads the
+current capital; it cannot reset it. Switching accounts conflicts. Synchronous
+memory ingestion cannot bind, because it bypasses the action worker.
+
+Binding does not read or consume synthetic ledger rehearsal commands. It creates
+a new private book from the account's opening funding. Each subsequent action
+transaction checks that the account and receiver still match the binding.
+
+- `BeginAction` reserves capital and records the write-ahead submission intent
+  together. Insufficient cash or ceiling retains a terminal `rejected` action
+  with code `fixture_capital_limit` and an audit event, without writing an effect.
+- `SubmitAction` requires an existing live commitment before writing an effect.
+  Submission retains the reservation and leaves the case unacknowledged.
+- `ReconcileAction` calculates capital from the pre-ack action and locked effect
+  lookup, then commits capital, action, case and audit changes together. A failed
+  update discards all of these calculated changes; an effect committed earlier
+  remains available for recovery.
+- Proven-absent valid work retains its reservation for retry. If authority
+  subsequently expires or changes, either reconciliation or the next begin
+  releases that reservation while terminating the action.
+- Replacement lease generations reuse the same commitment. An unknown action
+  without a commitment fails rather than acquiring capital retroactively.
+  Terminal acknowledgment retries check the retained effect and outcome.
+
+`Memory.FixtureCapital` returns a detached envelope with `worker_bound: true`,
+`durable: false` and `qualification_credit: false`. Its nested capital snapshot
+retains the reducer's `synthetic_fixture_capital_contract_only` authority and
+`service_integrated: false`; it is not a declaration of a deployed, persistent
+service balance. No HTTP or CLI command exposes this in-memory opt-in. Restarting
+the process loses the in-memory account, actions and capital together.
+
+## Verification and durable activation boundary
 
 Tests drive actual queued fixture actions through claim, write-ahead submission,
 independently retained adapter effect and acknowledgment. They cover entry/exit
 conservation, zero-free-cash protective exit, uncertainty and partial holds,
 definitive absence, rejected effects, late known effects, duplicate reserve and
 settlement, lease fencing, missing evaluations, changed authority and invented
-fills. Book calculations leave source state unchanged.
+fills. Book calculations leave source state unchanged. Worker integration tests
+also exercise the actual action cycle, background worker and holding-deadline
+timer with an explicit binding, plus transaction rollback after begin,
+submission and acknowledgment. They preserve funding and rehearsal records.
 
-The next unit must atomically bind an account, reserve before write-ahead
-submission, and commit capital changes with action acknowledgment under the same
-aggregate lock/transaction. It needs restart/restore, submission/ack crash and
-rollback proofs before enabling a service path. Existing accounts, rehearsals and
-pilots stay unchanged. Rehearsal records must never become capital authority.
+The next unit must add a durable binding and checkpoint validation against the
+owning action/effect ledger, then use the same worker transaction path in
+PostgreSQL. It needs restart, restore, submission/ack crash, migration and rollback
+proofs before enabling a public service path. In-memory recovery tests do not
+prove process restart or backup restore. Existing accounts, rehearsals and pilots
+stay unchanged. Rehearsal records must never become capital authority.
