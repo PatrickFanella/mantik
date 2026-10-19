@@ -114,6 +114,11 @@ recorded fixture coverage does not close the integrated M4 exit gate.
 
 Allocator-owned capital, realistic execution assumptions, and evidence-based strategy admission and retirement.
 
+The [paper account foundation](reference/paper-accounts.md) retains finite
+operator-declared capital and immutable opening funding. It does not implement
+reservations, portfolio positions or competing proposal allocation. See the
+[ordered implementation units](plans/paper-accounts.md).
+
 **Exit gate:** Competing candidates pass through account-scoped allocation and deterministic gates; paper outcomes include costs and execution limitations; no research workflow bypasses safety.
 
 - [#19: Implement account-scoped portfolio allocation for competing proposals](https://git.subcult.tv/subculture-collective/mantik/issues/19). Depends on #3, #9, #16.

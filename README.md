@@ -89,7 +89,11 @@ recovery history without deriving readiness or loading the audit ledger.
 `supervise --view exceptions` adds bounded navigation and retained recovery
 details with explicit stale/retry behavior. The [library readback](docs/reference/library.md) exposes the service's compiled
 synthetic method pins, safety declarations and required checks. `supervise --view library` adds validated catalogue navigation and method
-details. Portfolio and service-owned research-attempt views remain planned.
+details. `supervise --view news` adds separate research cases, retained review
+history and explicit attempt artifact reads. Portfolio projections remain planned.
+[Paper account configuration](docs/reference/paper-accounts.md) now retains finite
+operator-declared opening capital and a ceiling, without allocating proposals or
+linking existing fixture positions.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.

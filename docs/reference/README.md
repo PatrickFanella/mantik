@@ -56,3 +56,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Reported-revenue diagnostic profile](revenue-diagnostic-profile.md) — optional
   fixed-code extraction task, versioned evidence and source-support review rules.
+
+- [Paper account configuration](paper-accounts.md) — finite declared capital and
+  immutable opening funding; allocation remains unavailable.

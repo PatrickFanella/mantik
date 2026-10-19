@@ -34,6 +34,9 @@
   publication, normalized-history checks, and server-side coverage inspection.
 - [Feed readiness policy](reference/feed-readiness.md): opt-in receiver binding,
   required registrations, validated evidence, and scoped failure behavior.
+- [Paper account configuration](reference/paper-accounts.md) and the
+  [allocation implementation plan](plans/paper-accounts.md): immutable declared
+  paper funding, with reservations and portfolio projections still planned.
 - [Open Pilot](open-pilot.md) and [labels](labels.md): bounded task preparation.
 
 Code and runnable evidence take precedence over documentation. Keep observed
