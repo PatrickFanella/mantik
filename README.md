@@ -68,6 +68,7 @@ export MANTIK_API_TOKEN=mantik-local-development
 ./bin/mantik supervise --limit 10
 ./bin/mantik supervise --view cases --limit 10
 ./bin/mantik supervise --view news --limit 10
+./bin/mantik supervise --view portfolio --limit 10
 ./bin/mantik supervise --view exceptions --limit 10
 ./bin/mantik supervise --view library --limit 10
 ./bin/mantik cases
@@ -90,7 +91,10 @@ recovery history without deriving readiness or loading the audit ledger.
 details with explicit stale/retry behavior. The [library readback](docs/reference/library.md) exposes the service's compiled
 synthetic method pins, safety declarations and required checks. `supervise --view library` adds validated catalogue navigation and method
 details. `supervise --view news` adds separate research cases, retained review
-history and explicit attempt artifact reads. Portfolio projections remain planned.
+history and explicit attempt artifact reads. `supervise --view portfolio` adds
+[validated fixture capital supervision](docs/reference/portfolio.md), with cash,
+position-at-cost, local commitment pages and explicit unbound/stale states.
+Competing-proposal allocation remains planned.
 [Paper account configuration](docs/reference/paper-accounts.md) now retains finite
 operator-declared opening capital and a ceiling, without allocating proposals or
 linking existing fixture positions. `paper-ledger-audit` adds an

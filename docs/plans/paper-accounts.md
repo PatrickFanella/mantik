@@ -1,10 +1,10 @@
 # Paper account foundation
 
 Issue #19 owns allocation; issue #22 needs a portfolio readback backed by that
-state. The account foundation now retains immutable paper funding/configuration,
-while execution still uses one synthetic fixture case. Portfolio projections and
-allocation are not implemented; a terminal wrapper around the fixture case cannot
-satisfy account allocation.
+state. The account foundation retains immutable funding/configuration and an
+explicit binding with cash/position projections for one synthetic fixture case.
+Interactive portfolio supervision now reads that validated state. Allocation
+across competing proposals remains incomplete.
 
 ## Ordered delivery
 
@@ -41,9 +41,11 @@ satisfy account allocation.
 4. Bind qualified strategy admission and finalized decisions to reservations,
    preserving existing action delivery and independent safety checks. Realistic
    paper execution and qualification are separate gates (#20 and #21).
-5. Expose current portfolio projections in terminal supervision once those
-   projections exist. Do not relabel account configuration or fixture outcomes
-   as portfolio performance.
+5. Expose current portfolio projections in terminal supervision. The
+   [fixture portfolio view](../reference/portfolio.md) now reads the explicit
+   binding's cash, reservations, position at cost and realized fixture PnL, with
+   bounded commitment details and stale/owner guards. Broader portfolio
+   projections depend on competing-proposal allocation and qualified admission.
 
 ## First-unit contract and checks
 

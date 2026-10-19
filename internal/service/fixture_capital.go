@@ -12,9 +12,13 @@ import (
 	"time"
 )
 
+const FixtureCapitalUnboundCode = "fixture_capital_unbound"
+
 func fixtureCapitalError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, storage.ErrFixtureCapitalUnbound), errors.Is(err, paperaccount.ErrNotFound):
+	case errors.Is(err, storage.ErrFixtureCapitalUnbound):
+		write(w, 404, map[string]string{"error": "fixture capital is unbound", "code": FixtureCapitalUnboundCode})
+	case errors.Is(err, paperaccount.ErrNotFound):
 		write(w, 404, map[string]string{"error": "fixture capital binding or paper account not found"})
 	case errors.Is(err, storage.ErrFixtureCapitalBinding):
 		write(w, 422, map[string]string{"error": err.Error()})
