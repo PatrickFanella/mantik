@@ -48,8 +48,8 @@ current evidence version, generation, state and ordered accepted record keys.
 It does not return original articles. `news-record` selects one retained source
 and returns its normalized claims and original admission receipt. Full original
 text requires `--original`; excerpts remain present in normalized claims. These
-news cases have their own catalogue and are not yet displayed in the existing
-fixture/routing `cases` or interactive supervisor views.
+news cases have their own catalogue, separate from fixture/routing `cases`.
+The interactive `supervise --view news` view below reads that catalogue.
 
 ## Policy and time
 
@@ -117,3 +117,53 @@ records are not rewritten. Startup binaries capped at schema 10 reject schema
 than running an older binary on the upgraded database. No existing pilot is
 upgraded by this development change. Isolated upgrade/restart and transaction
 rollback checks are distinct from deployment or off-host recovery qualification.
+
+
+## Interactive news supervision
+
+```sh
+./bin/mantik supervise --view news --api-url http://127.0.0.1:40880 --limit 10
+```
+
+This read-only Unix terminal view uses the same bearer token and existing news
+GET endpoints. It loads one bounded catalogue (at most 128 cases and 128 distinct
+record references) and pages it locally; `n`/`p` do not fetch source bodies.
+The page shows receiver identity, status, evidence class, declared event key,
+evidence version, generation, source-record count and unassessed independence.
+An empty catalogue displays zero items.
+
+Commands require Enter:
+
+- `n` / `p`: move between case pages, clearing the selected case.
+- `r`: reread the catalogue and reset to its first page with no selection.
+- `d CASE_ID`: select a case on the displayed page and show its retained snapshot,
+  including ordered record references. This does not claim a new service read.
+- `e RECORD_KEY`: fetch normalized claims and excerpts for a record referenced by
+  the selected case. It does not request the full original article.
+- `o RECORD_KEY`: explicitly request and display the full retained original for
+  that referenced record. Original text can be sensitive; keep terminal output
+  and recordings private.
+- `q`, EOF or interruption: leave the view without changing the service.
+
+A case must be selected again after page navigation or refresh. Unknown/off-page
+case IDs, unrelated record keys, path-like input and mutation commands produce
+no source request. No submit, close, review, model, URL fetch or admission command
+is available in this view. Private diagnostic capture files are not imported.
+
+Catalogue shape/capacity, receiver, case identities, versions, reference order and
+independence markers are checked before navigation. Targeted reads verify record
+identity, recording/result receipt pins, displayed-case linkage and source
+identity. An explicitly requested original also has its digest and claim spans
+checked. These checks are not independent source truth or model-execution
+attestation; excerpt-only reads cannot fully replay original normalization.
+
+A request failure or invalid readback marks the catalogue stale. Displayed rows
+remain labeled stale, and navigation/source reads stop until `r` succeeds. A
+fresh source read is separate from the displayed catalogue: a correction may
+have changed the case since the last refresh. Refresh to see its new evidence
+version or reopened state. No old version is silently treated as current.
+
+The client retains no growing history, polls no background loop, and closes its
+owned stdin handle on cancellation. Reconnecting starts with a new catalogue
+read. The service continues when the terminal exits. Existing machine-readable
+`news-cases` and `news-record` commands and API/storage contracts are unchanged.
