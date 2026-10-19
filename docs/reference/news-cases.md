@@ -138,6 +138,11 @@ Commands require Enter:
 - `r`: reread the catalogue and reset to its first page with no selection.
 - `d CASE_ID`: select a case on the displayed page and show its retained snapshot,
   including ordered record references. This does not claim a new service read.
+- `h`: read all retained review-attempt summaries for the selected case, including
+  pending, completed, expired and superseded attempts, outcomes, structured checks,
+  evidence currency and review applicability. This uses the existing targeted
+  review-history GET endpoint, with a 1 MiB response limit; it fetches no raw
+  model artifacts or source bodies and does not start or complete a review.
 - `e RECORD_KEY`: fetch normalized claims and excerpts for a record referenced by
   the selected case. It does not request the full original article.
 - `o RECORD_KEY`: explicitly request and display the full retained original for
@@ -147,7 +152,7 @@ Commands require Enter:
 
 A case must be selected again after page navigation or refresh. Unknown/off-page
 case IDs, unrelated record keys, path-like input and mutation commands produce
-no source request. No submit, close, review, model, URL fetch or admission command
+no history or source request. No submit, close, review write, model, URL fetch or admission command
 is available in this view. Private diagnostic capture files are not imported.
 
 Catalogue shape/capacity, receiver, case identities, versions, reference order and
@@ -157,8 +162,15 @@ identity. An explicitly requested original also has its digest and claim spans
 checked. These checks are not independent source truth or model-execution
 attestation; excerpt-only reads cannot fully replay original normalization.
 
+History readbacks must pass the existing history validator and match the
+displayed receiver and complete selected-case snapshot. A newer evidence version,
+closure or reopened generation requires a catalogue refresh and case selection
+before history can be displayed. Applicability describes that history readback;
+it is not continuously monitored and grants no execution or qualification
+authority. A valid empty history is displayed explicitly with zero attempts.
+
 A request failure or invalid readback marks the catalogue stale. Displayed rows
-remain labeled stale, and navigation/source reads stop until `r` succeeds. A
+remain labeled stale, and navigation/history/source reads stop until `r` succeeds. A
 fresh source read is separate from the displayed catalogue: a correction may
 have changed the case since the last refresh. Refresh to see its new evidence
 version or reopened state. No old version is silently treated as current.
