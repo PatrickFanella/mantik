@@ -84,6 +84,9 @@ attestation and qualification credit are false. The invented fixture ends with
 reservation. These numbers verify accounting behavior only.
 
 This unit supplies the transition model and offline audit path for #19.
-Durable service ledger writes, allocator-owned account selection, strategy
-admission, security positions, concentration/correlation limits, realistic paper
-execution and terminal portfolio supervision remain separate work.
+The separate [durable rehearsal commands](paper-ledger-rehearsals.md) retain
+explicit pinned synthetic assertions. They do not import this recording or spend
+account balances. Operational ledger writes bound to authoritative effects,
+allocator-owned account selection, strategy admission, security positions,
+concentration/correlation limits, realistic paper execution and terminal portfolio
+supervision remain separate work.

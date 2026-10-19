@@ -62,3 +62,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Synthetic paper ledger replay](paper-ledger.md) — bounded offline reservation,
   partial debit, release and unresolved-hold accounting; no service mutations.
+
+- [Durable synthetic ledger rehearsals](paper-ledger-rehearsals.md) — account-bound
+  assertions, guarded appends and replay-validated readbacks; no spending authority.

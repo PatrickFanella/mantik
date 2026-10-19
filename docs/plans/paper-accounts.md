@@ -17,9 +17,11 @@ satisfy account allocation.
    The [synthetic offline replay](../reference/paper-ledger.md) now verifies the
    bounded transition model: conservation, partial debits, releases, unknown holds,
    explicit resolution and exact retries. It has no service mutation/import path.
-   Next add a durable ledger writer and readbacks, binding settlement/resolution
-   to retained authoritative evidence; verify concurrency, restart and restore
-   before any admission path uses the account. Security positions remain separate
+   A [durable rehearsal writer and readback](../reference/paper-ledger-rehearsals.md)
+   now retain pinned synthetic commands separately from funding and execution.
+   They are not operational account balances. Next bind operational reservations
+   and settlement/resolution to qualified admission and authoritative retained
+   evidence; verify concurrency, restart and restore before using that authority. Security positions remain separate
    from the replay's cumulative settled-debit projection.
 3. Add allocator-owned proposal comparison and reservation, with strategy and
    account limits, exposure/concentration/correlation checks, existing-order

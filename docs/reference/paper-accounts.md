@@ -34,8 +34,8 @@ The only currency is USD, represented in integer cents. Opening cash must be
 between 1 and 1,000,000,000,000 cents. The committed-capital ceiling must be
 positive and no greater than opening cash. These are implementation limits, not
 funding recommendations. The retained policy is `cash_only_no_leverage_v1`.
-There is no top-up, transfer, withdrawal, position, order, reservation or effect
-API. The capital ceiling is retained configuration; an allocator does not yet
+There is no operational top-up, transfer, withdrawal, position, order, reservation
+or effect API. The separate synthetic rehearsal API does not spend this capital. The capital ceiling is retained configuration; an allocator does not yet
 apply it to proposals.
 
 ## API and persistence
@@ -73,7 +73,8 @@ not upgraded by building or merging this change.
 No account is created automatically. No existing demo case, cash balance, action,
 effect or research proposal is assigned to an account. No Augr data, Alpaca account,
 provider credentials or external financial state is read. The [offline synthetic ledger audit](paper-ledger.md) now exercises reservation
-and debit conservation without mutating these accounts. Durable service ledgers,
+and debit conservation without mutating these accounts. Separate [durable ledger rehearsals](paper-ledger-rehearsals.md) retain pinned
+synthetic assertions without changing these funding records. Operational ledgers,
 positions, competing proposal comparison and qualified admission remain
 future units of #19–#21. A terminal portfolio view depends on those projections;
 account configuration alone does not satisfy #22 or demonstrate profitability.
