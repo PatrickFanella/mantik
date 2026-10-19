@@ -107,13 +107,14 @@ type Event struct {
 }
 
 type State struct {
-	Strategy       StrategyVersion   `json:"strategy"`
-	Case           DecisionCase      `json:"case"`
-	LastOccurredAt time.Time         `json:"last_occurred_at"`
-	Routing        *RoutingState     `json:"routing"`
-	Operations     *OperationalState `json:"operations"`
-	Actions        *ActionState      `json:"actions"`
-	LastQuote      *Observation      `json:"last_quote,omitempty"`
+	FixtureCapitalBinding *FixtureCapitalBinding `json:"fixture_capital_binding,omitempty"`
+	Strategy              StrategyVersion        `json:"strategy"`
+	Case                  DecisionCase           `json:"case"`
+	LastOccurredAt        time.Time              `json:"last_occurred_at"`
+	Routing               *RoutingState          `json:"routing"`
+	Operations            *OperationalState      `json:"operations"`
+	Actions               *ActionState           `json:"actions"`
+	LastQuote             *Observation           `json:"last_quote,omitempty"`
 }
 
 type Snapshot struct {

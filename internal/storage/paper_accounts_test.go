@@ -142,7 +142,7 @@ func TestPostgresContractsPaperAccountUpgradeAndRestart(t *testing.T) {
 	s := timerPostgres(t, "paperaccountupgrade")
 	before, _ := s.Snapshot(ctx)
 	receiver, _ := s.ResearchSnapshot(ctx)
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_paper_ledger_rehearsals; DROP TABLE mantik_paper_accounts; DELETE FROM mantik_schema WHERE version>=27"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_fixture_capital; DROP TABLE mantik_paper_ledger_rehearsals; DROP TABLE mantik_paper_accounts; DELETE FROM mantik_schema WHERE version>=27"); err != nil {
 		t.Fatal(err)
 	}
 	config := s.pool.Config().ConnString()

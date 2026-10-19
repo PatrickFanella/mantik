@@ -39,19 +39,9 @@ func (m *Memory) actionMutation(ctx context.Context, update actionUpdate) (any, 
 	defer m.mu.Unlock()
 	next := clone(m.state)
 	effects := clone(m.effects)
-	var capital *fixturecapital.Book
-	if m.fixtureCapital != nil {
-		v, err := m.fixtureCapital.Snapshot()
-		if err != nil {
-			return nil, err
-		}
-		a, ok := m.paperAccounts[v.AccountID]
-		if !m.queued || !ok || a.Config.ID != v.AccountID || a.Validate() != nil || a.ReceiverID != m.receiverID || a.SHA256 != v.AccountSHA256 {
-			return nil, fixturecapital.ErrConflict
-		}
-		// Book transitions return immutable copies; never JSON-clone a book.
-		b := *m.fixtureCapital
-		capital = &b
+	capital, err := m.fixtureCapitalLocked()
+	if err != nil {
+		return nil, err
 	}
 	tx := actionTx{state: &next, read: func(id string) (*domain.ActionEffect, error) {
 		e, ok := effects[id]
@@ -60,9 +50,19 @@ func (m *Memory) actionMutation(ctx context.Context, update actionUpdate) (any, 
 		}
 		return &e, nil
 	}, save: func(e domain.ActionEffect) error { effects[e.Intent.IdempotencyKey] = e; return nil }, capital: capital}
+	if capital != nil {
+		if err := capital.CheckSource(next, tx.read); err != nil {
+			return nil, err
+		}
+	}
 	value, events, err := update(tx)
 	if err != nil {
 		return nil, err
+	}
+	if capital != nil {
+		if err := capital.CheckSource(next, tx.read); err != nil {
+			return nil, err
+		}
 	}
 	m.state, m.effects = next, effects
 	m.fixtureCapital = capital
@@ -106,9 +106,25 @@ func (p *Postgres) actionMutation(ctx context.Context, update actionUpdate) (any
 		_, err = tx.Exec(ctx, "INSERT INTO mantik_fixture_effects VALUES($1,$2)", e.Intent.IdempotencyKey, raw)
 		return err
 	}}
+	adapter.capital, err = readFixtureCapital(ctx, tx, state)
+	if err != nil {
+		return nil, err
+	}
 	value, events, err := update(adapter)
 	if err != nil {
 		return nil, err
+	}
+	if adapter.capital != nil {
+		if err := adapter.capital.CheckSource(state, adapter.read); err != nil {
+			return nil, err
+		}
+		checkpoint, err := adapter.capital.Checkpoint()
+		if err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, "UPDATE mantik_fixture_capital SET payload=$1 WHERE id='demo'", checkpoint); err != nil {
+			return nil, err
+		}
 	}
 	for _, e := range events {
 		raw, err := json.Marshal(e)

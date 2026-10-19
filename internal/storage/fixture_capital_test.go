@@ -267,7 +267,11 @@ func TestFundedMemoryPartialAndUnknown(t *testing.T) {
 	if _, err := m.ReconcileAction(context.Background(), c, later); err == nil {
 		t.Fatal("disappeared partial effect accepted")
 	}
-	if !reflect.DeepEqual(before, capitalRead(t, m)) {
+	if _, err := m.FixtureCapital(context.Background()); err == nil {
+		t.Fatal("readback concealed missing known effect")
+	}
+	unchanged, _ := m.fixtureCapital.Snapshot()
+	if !reflect.DeepEqual(before.Capital, unchanged) {
 		t.Fatal("missing effect released held cash")
 	}
 }

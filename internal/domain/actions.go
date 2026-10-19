@@ -2,6 +2,15 @@ package domain
 
 import "time"
 
+// FixtureCapitalBinding pins the optional synthetic account owner. Its private
+// replay checkpoint is stored separately from this public aggregate reference.
+type FixtureCapitalBinding struct {
+	ReceiverID    string `json:"receiver_id"`
+	AccountID     string `json:"account_id"`
+	AccountSHA256 string `json:"account_sha256"`
+	ScopeCode     string `json:"scope_code"`
+}
+
 // ActionIntent is immutable finalized authority plus its original price evidence.
 type ActionIntent struct {
 	Version        string      `json:"version"`

@@ -97,3 +97,6 @@ var PaperAccounts string
 
 //go:embed 0028_paper_ledger_rehearsals.sql
 var PaperLedgerRehearsals string
+
+//go:embed 0029_fixture_capital.sql
+var FixtureCapital string

@@ -4,15 +4,16 @@
 synthetic action worker. It consumes finalized `paper-action-v1` intents and
 fixture effect lookups, not rehearsal commands, model output or an imported
 capital snapshot. An explicit queued-memory binding now connects it to the
-worker's transaction path. PostgreSQL activation, durable checkpoints and public
-API/CLI binding remain unfinished. Existing services and database schemas retain
-their previous behavior.
+worker's transaction path. PostgreSQL schema 29 adds a durable equivalent with
+checkpoint replay and source validation. Public API/CLI binding remains
+unfinished; existing pilots have not been upgraded or bound.
 
 ## Authority and transitions
 
 `New` accepts a validated immutable paper account. A book has private fields;
-`Snapshot` returns a detached accounting readback, with no constructor that can
-turn that JSON back into spending authority. The first commitment pins the
+`Snapshot` returns a detached accounting readback that cannot restore spending
+authority. Internal checkpoint replay requires the owning action/effect ledger.
+The first commitment pins the
 fixture case and strategy version. This unit supports the existing registered
 synthetic DEMO methods and one unresolved intent at a time, not competing strategy
 allocation or general portfolio exposure.
@@ -50,8 +51,8 @@ result is validated against a detached pre-ack action/case using the existing
 An effect reader is an ownership boundary, not self-authenticating evidence.
 Timeouts, missing provider responses and caller-supplied absence assertions cannot
 implement it for a real venue. The queued-memory bridge supplies the existing
-fixture effect lookup under its aggregate lock. A future PostgreSQL binding must
-retain that transaction boundary; the reducer performs no networking or
+fixture effect lookup under its aggregate lock. PostgreSQL uses the same
+transition path inside its aggregate transaction; the reducer performs no networking or
 independent database authentication.
 
 ## Conservation and limits
@@ -111,7 +112,47 @@ retains the reducer's `synthetic_fixture_capital_contract_only` authority and
 service balance. No HTTP or CLI command exposes this in-memory opt-in. Restarting
 the process loses the in-memory account, actions and capital together.
 
-## Verification and durable activation boundary
+## Durable store binding and restore
+
+`Postgres.BindFixtureCapital` applies the same explicit, pristine binding
+contract. Schema 29 adds `mantik_fixture_capital`, which references the account
+and bootstrap aggregate. The aggregate retains an immutable receiver/account
+pin. A database trigger prevents a writer from changing or discarding that pin;
+startup also refuses unsupported newer schemas. No existing actions or positions
+are assigned an account during migration.
+
+The book records only transitions that change its capital snapshot: reserve,
+hold, release, completed entry and completed exit. It retains each transition's
+minimal pre-ack action/case/strategy, claim, clock, observed effect and result
+digest. Unchanged polling and exact retries do not grow the history. At most
+1,024 transitions and 4 MiB of serialized checkpoint material are accepted;
+PostgreSQL also limits the stored JSON representation to 4 MiB. Capacity failures
+abort the transaction. There is no compaction or unbounded fallback.
+
+Every bound action transaction reads the checkpoint under the aggregate lock,
+replays it from immutable opening funding, and compares the rebuilt result and
+history digests. It then checks the owning store's current immutable intents,
+effects, acknowledgment outcomes and case entry/exit. A completed effect that is
+retained but unacknowledged may exist alongside reserved capital; it is credited
+only by acknowledgment. Accepted/partial effects remain unresolved. A missing
+checkpoint, changed intent, mismatched acknowledgment, missing known effect or
+corrupt history fails both capital reads and action mutations.
+
+Capital readback uses a single repeatable-read transaction for the account,
+aggregate, checkpoint and effects. Queued memory follows the same replay/source
+checks. Historic claim metadata in a checkpoint verifies the recorded transition;
+it does not grant a current worker lease. Delivery still needs a fresh fenced
+claim, and operations still independently rechecks current applicability.
+
+The PostgreSQL envelope reports `worker_bound: true` and `durable: true`. The
+nested snapshot retains its reducer authority and `service_integrated: false`;
+the envelope describes storage integration, while neither flag qualifies a
+strategy or declares a deployed pilot. Checkpoint bytes are internal storage
+material, not an API import contract. A checksum is a consistency check, not
+external execution attestation. Rehearsals and readback snapshots cannot restore
+spending authority.
+
+## Verification and public activation boundary
 
 Tests drive actual queued fixture actions through claim, write-ahead submission,
 independently retained adapter effect and acknowledgment. They cover entry/exit
@@ -123,9 +164,22 @@ also exercise the actual action cycle, background worker and holding-deadline
 timer with an explicit binding, plus transaction rollback after begin,
 submission and acknowledgment. They preserve funding and rehearsal records.
 
-The next unit must add a durable binding and checkpoint validation against the
-owning action/effect ledger, then use the same worker transaction path in
-PostgreSQL. It needs restart, restore, submission/ack crash, migration and rollback
-proofs before enabling a public service path. In-memory recovery tests do not
-prove process restart or backup restore. Existing accounts, rehearsals and pilots
-stay unchanged. Rehearsal records must never become capital authority.
+Storage tests cover migration without automatic activation, duplicate concurrent
+binding, full entry/exit, partial status changes, late effect recovery, failed
+acknowledgment rollback, corrupt checkpoints, missing checkpoints and refusal of
+an older writer that discards the binding. Run `make verify`, `make test-race`
+and `make test-integration`; integration uses disposable PostgreSQL containers.
+
+An isolated native rehearsal also exercised real process kills before/after
+effect submission, recovery in new processes, dump/restore at both boundaries,
+expired absent-work release without an invented fill, one acknowledgment per
+retained effect, full entry/exit, corrupt-checkpoint refusal, older-binary refusal
+and rollback to the matching schema-28 binary/database. Its advanced synthetic
+clock gives no elapsed-soak or market-performance credit. Raw receipts, dumps,
+binaries and process records stay outside Git.
+
+Public activation still needs a bounded operator command/readback and validation
+of that command on an isolated stack. The internal storage rehearsal does not
+validate an activation command that has not been implemented. Existing pilots
+stay unchanged. Rollback must use the pre-upgrade database with its matching
+binary, not delete the checkpoint or pin.

@@ -200,7 +200,7 @@ func TestPostgresContractsExtractionUpgrade(t *testing.T) {
 	if e := s.pool.QueryRow(ctx, "SELECT payload::text FROM mantik_news_cases WHERE singleton").Scan(&before); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.pool.Exec(ctx, "DROP TABLE mantik_paper_ledger_rehearsals; DROP TABLE mantik_paper_accounts; DROP TABLE mantik_switchyard_capture_admissions; DROP TABLE mantik_switchyard_extraction_captures; DROP TABLE mantik_local_capture_admissions; DROP TABLE mantik_local_extraction_captures; DROP TABLE mantik_news_extraction_admissions; DROP TABLE mantik_news_extractions; DELETE FROM mantik_schema WHERE version>=21"); e != nil {
+	if _, e := s.pool.Exec(ctx, "DROP TABLE mantik_fixture_capital; DROP TABLE mantik_paper_ledger_rehearsals; DROP TABLE mantik_paper_accounts; DROP TABLE mantik_switchyard_capture_admissions; DROP TABLE mantik_switchyard_extraction_captures; DROP TABLE mantik_local_capture_admissions; DROP TABLE mantik_local_extraction_captures; DROP TABLE mantik_news_extraction_admissions; DROP TABLE mantik_news_extractions; DELETE FROM mantik_schema WHERE version>=21"); e != nil {
 		t.Fatal(e)
 	}
 	config := s.pool.Config().ConnString()
