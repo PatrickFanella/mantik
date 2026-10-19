@@ -71,3 +71,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Interactive fixture portfolio supervision](portfolio.md) — cash, reservations,
   position cost and bounded commitment navigation, with unbound/stale handling.
+
+- [Terminal supervision acceptance](../research/terminal-supervision-acceptance.md)
+  — requirement audit, recorded journeys and the read-only fixture scope.

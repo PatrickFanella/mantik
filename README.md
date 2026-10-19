@@ -2,8 +2,10 @@
 
 Mantik is a terminal-first foundation for autonomous paper-trading research.
 It separates research, structured decision-making, and operations. Humans
-supervise the service through a CLI; a TUI and conversational direction are
-planned interfaces.
+supervise the service through a CLI and read-only interactive terminal views.
+Conversational direction remains planned. The
+[terminal acceptance audit](docs/research/terminal-supervision-acceptance.md)
+records the delivered inspection scope and its verification limits.
 
 The bootstrap implements one deterministic synthetic workflow. It accepts
 fixture quotes for `DEMO`, evaluates an entry, finalizes a decision with safety
