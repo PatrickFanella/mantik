@@ -175,3 +175,9 @@ recorded attempts and persistent Switchyard imports accept only the existing
 exact-time inputs/receipts. No database upgrade or operational rule change is
 part of this diagnostic format. Do not convert a diagnostic into an admissible
 record by inventing an exact publication timestamp.
+
+
+The [October 19 real-news diagnostic](../research/openai-diagnostic-20261019.md)
+completed three authorized requests with this format and retained all strict
+annotation disagreements. It supplies narrow runtime evidence, not a broader
+model-accuracy or profitability result.

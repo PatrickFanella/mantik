@@ -36,3 +36,6 @@ source inspection do not establish reproduction or performance.
   extraction interfaces, retained rehearsals and remaining real-news limits.
 - [Recorded research contract audit](research-contract-acceptance.md) — review,
   hypothesis and worker coverage, retained evidence and open dependencies.
+
+- [First OpenAI real-news diagnostic](openai-diagnostic-20261019.md) — three
+  bounded requests, retained source-bound outputs, strict disagreements and limits.
