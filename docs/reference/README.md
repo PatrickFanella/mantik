@@ -65,3 +65,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Durable synthetic ledger rehearsals](paper-ledger-rehearsals.md) — account-bound
   assertions, guarded appends and replay-validated readbacks; no spending authority.
+
+- [Fixture capital contract](fixture-capital.md) — finalized-action and effect-bound
+  accounting reducer; service transaction integration is still pending.

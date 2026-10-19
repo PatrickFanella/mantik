@@ -19,10 +19,13 @@ satisfy account allocation.
    explicit resolution and exact retries. It has no service mutation/import path.
    A [durable rehearsal writer and readback](../reference/paper-ledger-rehearsals.md)
    now retain pinned synthetic commands separately from funding and execution.
-   They are not operational account balances. Next bind operational reservations
-   and settlement/resolution to qualified admission and authoritative retained
-   evidence; verify concurrency, restart and restore before using that authority. Security positions remain separate
-   from the replay's cumulative settled-debit projection.
+   They are not operational account balances. The separate
+   [fixture capital contract](../reference/fixture-capital.md) now reserves and
+   reconciles from finalized fixture actions and effect lookups, with funded
+   position/cash conservation. It has no service writer or import path. Next bind
+   it atomically to action submission/acknowledgment and verify restart, restore,
+   crashes and rollback before activation. Qualified admission and realistic
+   execution remain separate gates; rehearsal assertions cannot supply authority.
 3. Add allocator-owned proposal comparison and reservation, with strategy and
    account limits, exposure/concentration/correlation checks, existing-order
    commitments and retained defer/reject reasons and reconsideration triggers.
