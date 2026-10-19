@@ -16,11 +16,12 @@ import (
 )
 
 type harness struct {
-	store *storage.Memory
-	book  fixturecapital.Book
-	now   time.Time
-	claim domain.ActionClaim
-	state domain.State
+	account paperaccount.Account
+	store   *storage.Memory
+	book    fixturecapital.Book
+	now     time.Time
+	claim   domain.ActionClaim
+	state   domain.State
 }
 
 func setup(t *testing.T, cash, limit int64) *harness {
@@ -43,7 +44,7 @@ func setup(t *testing.T, cash, limit int64) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &harness{store: s, book: b, now: q.ReceivedAt, claim: claims[0], state: snap.State}
+	return &harness{store: s, book: b, account: a, now: q.ReceivedAt, claim: claims[0], state: snap.State}
 }
 func snapshot(t *testing.T, b fixturecapital.Book) fixturecapital.Snapshot {
 	t.Helper()

@@ -186,7 +186,7 @@ func TestPostgresContractsPaperLedgerUpgradeRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _ := s.PaperAccounts(ctx)
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_paper_ledger_rehearsals; DELETE FROM mantik_schema WHERE version=28"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_fixture_capital; DROP TABLE mantik_paper_ledger_rehearsals; DELETE FROM mantik_schema WHERE version>=28"); err != nil {
 		t.Fatal(err)
 	}
 	config := s.pool.Config().ConnString()

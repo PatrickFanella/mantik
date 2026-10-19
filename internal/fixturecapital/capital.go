@@ -22,6 +22,7 @@ import (
 var ErrInvalid = errors.New("invalid synthetic fixture capital contract")
 var ErrConflict = errors.New("fixture capital authority or reconciliation conflict")
 var ErrLimit = errors.New("fixture capital limit exceeded")
+var ErrCapacity = errors.New("fixture capital checkpoint capacity exceeded")
 
 const MaxCommitments = 256
 
@@ -44,9 +45,10 @@ type Position struct {
 	Entry             domain.ExecutionOutcome `json:"entry"`
 }
 
-// Book has no JSON constructor or writable exported fields. Snapshots are
-// detached readbacks, not capital commands or restorable spending authority.
+// Book has private fields. Restore must replay a store checkpoint against its
+// owning action/effect ledger; detached snapshots cannot restore authority.
 type Book struct {
+	transitions []transition
 	caseID      string
 	strategyID  string
 	account     paperaccount.Account
@@ -99,6 +101,7 @@ func New(a paperaccount.Account) (Book, error) {
 }
 func (b Book) copy() Book {
 	n := b
+	n.transitions = slices.Clone(b.transitions)
 	n.commitments = make(map[string]commitment, len(b.commitments))
 	for id, c := range b.commitments {
 		n.commitments[id] = detach(c)
@@ -223,7 +226,7 @@ func (b Book) Reserve(s domain.State, c domain.ActionClaim, now time.Time) (Book
 	if !n.valid() {
 		return Book{}, ErrInvalid
 	}
-	return n, nil
+	return b.finish(n, "reserve", s, c, now, nil)
 }
 
 // Contains checks an existing commitment without creating one. Changed content
@@ -375,5 +378,5 @@ func (b Book) Reconcile(s domain.State, c domain.ActionClaim, now time.Time, rea
 	if !n.valid() {
 		return Book{}, ErrInvalid
 	}
-	return n, nil
+	return b.finish(n, "reconcile", s, c, now, e)
 }

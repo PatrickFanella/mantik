@@ -46,7 +46,7 @@ func TestPostgresContractsReviewInventoryUpgrade(t *testing.T) {
 	if err = s.pool.QueryRow(ctx, "SELECT jsonb_agg(payload ORDER BY id)::text FROM mantik_news_reviews").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_paper_ledger_rehearsals; DROP TABLE mantik_paper_accounts; DROP TABLE mantik_switchyard_capture_admissions; DROP TABLE mantik_switchyard_extraction_captures; DROP TABLE mantik_local_capture_admissions; DROP TABLE mantik_local_extraction_captures; DROP TABLE mantik_news_extraction_admissions; DROP TABLE mantik_news_extractions; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_inventory; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_profile; DELETE FROM mantik_schema WHERE version>=20"); err != nil {
+	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_fixture_capital; DROP TABLE mantik_paper_ledger_rehearsals; DROP TABLE mantik_paper_accounts; DROP TABLE mantik_switchyard_capture_admissions; DROP TABLE mantik_switchyard_extraction_captures; DROP TABLE mantik_local_capture_admissions; DROP TABLE mantik_local_extraction_captures; DROP TABLE mantik_news_extraction_admissions; DROP TABLE mantik_news_extractions; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_inventory; ALTER TABLE mantik_news_reviews DROP CONSTRAINT mantik_review_profile; DELETE FROM mantik_schema WHERE version>=20"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.pool.Exec(ctx, migrations.ReviewProfiles); err != nil {
