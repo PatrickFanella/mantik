@@ -14,6 +14,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
+	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
 
@@ -52,7 +53,8 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 		inspect := func(ctx context.Context, key string, original bool) (jsonNewsInspection, error) {
 			return fetchNewsRecord(ctx, *base, key, original)
 		}
-		return superviseNews(ctx, in, out, *limit, fetch, inspect)
+		history := func(ctx context.Context, id string) (review.History, error) { return fetchNewsHistory(ctx, *base, id) }
+		return superviseNews(ctx, in, out, *limit, fetch, inspect, history)
 	}
 	if *view == "library" {
 		fetch := func(ctx context.Context) (experiment.Catalog, error) {

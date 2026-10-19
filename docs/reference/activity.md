@@ -135,4 +135,6 @@ Portfolio screens and mutations through shared operations remain separate units.
 continues to return the existing full snapshot; it is not a paginated substitute.
 
 [News research navigation](news-cases.md#interactive-news-supervision) is available
-with `supervise --view news`, separately from fixture/routing cases.
+with `supervise --view news`, separately from fixture/routing cases. After selecting
+a case, `h` reads its complete retained review history and applicability without
+starting a review or fetching source bodies.

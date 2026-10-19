@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -13,16 +14,19 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/newscase"
+	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
 
 type newsCatalogFetch func(context.Context) (storage.NewsCatalog, error)
+type newsHistoryFetch func(context.Context, string) (review.History, error)
+
 type newsRecordFetch func(context.Context, string, bool) (jsonNewsInspection, error)
 
 var newsRecordKey = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var newsEventKey = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
-const newsSupervisionHelp = "Commands (then Enter): n next | p previous | r refresh | d CASE_ID displayed case | e RECORD_KEY excerpts | o RECORD_KEY original (select case first) | q quit"
+const newsSupervisionHelp = "Commands (then Enter): n next | p previous | r refresh | d CASE_ID displayed case | h selected case review history | e RECORD_KEY excerpts | o RECORD_KEY original (select case first) | q quit"
 
 func fetchNewsCatalog(ctx context.Context, base string) (storage.NewsCatalog, error) {
 	var c storage.NewsCatalog
@@ -40,6 +44,22 @@ func fetchNewsRecord(ctx context.Context, base, key string, original bool) (json
 	}
 	err := requestWithQuery(ctx, base, "/v1/news-recordings/"+key, nil, &v, query, 4<<20)
 	return v, err
+}
+
+func fetchNewsHistory(ctx context.Context, base, id string) (review.History, error) {
+	var h review.History
+	if !review.HistoryCaseID.MatchString(id) {
+		return h, review.ErrInvalid
+	}
+	err := requestWithQuery(ctx, base, "/v1/news-cases/"+id+"/reviews", nil, &h, nil, 1<<20)
+	return h, err
+}
+
+func validateNewsHistory(h review.History, receiver string, c newscase.Case) error {
+	if h.ReceiverID != receiver || !reflect.DeepEqual(h.Case, c) || h.Validate() != nil {
+		return review.ErrInvalid
+	}
+	return nil
 }
 
 func validateNewsCatalog(c storage.NewsCatalog) error {
@@ -112,7 +132,7 @@ func newsCaseOnPage(c storage.NewsCatalog, offset, limit int, id string) (newsca
 
 // News supervision owns only its input and readbacks. It never changes cases,
 // starts reviews or imports diagnostic files, and fetches no source by URL.
-func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit int, fetch newsCatalogFetch, inspect newsRecordFetch) error {
+func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit int, fetch newsCatalogFetch, inspect newsRecordFetch, history newsHistoryFetch) error {
 	scanner, cleanup := supervisionInput(ctx, in)
 	defer cleanup()
 	if limit < 1 || limit > 100 {
@@ -174,7 +194,7 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 			continue
 		}
 		if stale {
-			if _, err := fmt.Fprintln(out, "STALE: news navigation and source reads are unavailable until refresh succeeds."); err != nil {
+			if _, err := fmt.Fprintln(out, "STALE: news navigation, review history and source reads are unavailable until refresh succeeds."); err != nil {
 				return err
 			}
 			continue
@@ -205,6 +225,34 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 				return err
 			}
 			if err := emit(out, v); err != nil {
+				return err
+			}
+		case len(fields) == 1 && fields[0] == "h":
+			c, ok := newsCaseOnPage(catalog, offset, limit, selected)
+			if !ok {
+				if _, err := fmt.Fprintln(out, "Select a case on this page before reading review history; no request sent."); err != nil {
+					return err
+				}
+				continue
+			}
+			h, err := history(ctx, c.ID)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if err == nil {
+				err = validateNewsHistory(h, catalog.ReceiverID, c)
+			}
+			if err != nil {
+				stale, selected = true, ""
+				if _, err := fmt.Fprintln(out, "STALE: review history readback failed, was invalid, or no longer matches the displayed case; refresh before continuing."); err != nil {
+					return err
+				}
+				continue
+			}
+			if _, err := fmt.Fprintln(out, "CURRENT REVIEW HISTORY (separate readback; all retained attempts; applicability at read time only; research only, no execution or qualification authority)"); err != nil {
+				return err
+			}
+			if err := emit(out, h); err != nil {
 				return err
 			}
 		case len(fields) == 2 && (fields[0] == "e" || fields[0] == "o"):
