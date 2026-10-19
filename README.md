@@ -93,7 +93,10 @@ details. `supervise --view news` adds separate research cases, retained review
 history and explicit attempt artifact reads. Portfolio projections remain planned.
 [Paper account configuration](docs/reference/paper-accounts.md) now retains finite
 operator-declared opening capital and a ceiling, without allocating proposals or
-linking existing fixture positions.
+linking existing fixture positions. `paper-ledger-audit` adds an
+[offline synthetic ledger replay](docs/reference/paper-ledger.md) for reservation,
+partial debit, release and unresolved-hold conservation; its results cannot be
+imported into service accounts.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.

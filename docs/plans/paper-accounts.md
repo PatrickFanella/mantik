@@ -1,9 +1,10 @@
 # Paper account foundation
 
 Issue #19 owns allocation; issue #22 needs a portfolio readback backed by that
-state. As of October 19, 2026, the service exposes one synthetic executable case
-and no account/portfolio API. A terminal wrapper around that case cannot satisfy
-account allocation.
+state. The account foundation now retains immutable paper funding/configuration,
+while execution still uses one synthetic fixture case. Portfolio projections and
+allocation are not implemented; a terminal wrapper around the fixture case cannot
+satisfy account allocation.
 
 ## Ordered delivery
 
@@ -13,8 +14,13 @@ account allocation.
    preserve exact retries, and expose bounded API/CLI readbacks. This unit does
    not create positions, spend capital, accept proposals or activate strategies.
 2. Add an append-only reservation/settlement ledger and cash/position projections.
-   Verify cash conservation, release/partial/unknown effects, competing requests,
-   idempotency and restart/restore before any admission path uses the account.
+   The [synthetic offline replay](../reference/paper-ledger.md) now verifies the
+   bounded transition model: conservation, partial debits, releases, unknown holds,
+   explicit resolution and exact retries. It has no service mutation/import path.
+   Next add a durable ledger writer and readbacks, binding settlement/resolution
+   to retained authoritative evidence; verify concurrency, restart and restore
+   before any admission path uses the account. Security positions remain separate
+   from the replay's cumulative settled-debit projection.
 3. Add allocator-owned proposal comparison and reservation, with strategy and
    account limits, exposure/concentration/correlation checks, existing-order
    commitments and retained defer/reject reasons and reconsideration triggers.
