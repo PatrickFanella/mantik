@@ -53,3 +53,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Reviewed Switchyard capture admission](reviewed-switchyard-admission.md)
 
 - [Switchyard extraction evaluation](switchyard-extraction-evaluation.md)
+
+- [Reported-revenue diagnostic profile](revenue-diagnostic-profile.md) — optional
+  fixed-code extraction task, versioned evidence and source-support review rules.

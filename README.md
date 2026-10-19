@@ -342,3 +342,9 @@ Historical sources with date-only or unknown publication can use the separate
 for private extraction and offline evaluation. Exact observation and receipt
 times remain required. Diagnostic captures cannot be imported or admitted as
 service news; existing exact-time inputs and operational rules are unchanged.
+
+
+The optional [reported-revenue diagnostic profile](docs/reference/revenue-diagnostic-profile.md)
+uses a fixed revenue claim code and explicit assertion/evidence instructions.
+It remains separate from the general extractor and supports private fixture
+checks and offline replay. Actual model requests require their own finite budget.

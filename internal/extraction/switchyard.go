@@ -19,8 +19,8 @@ const SwitchyardModel = "openai/gpt-6.1-sol"
 type SwitchyardConfig LocalConfig
 
 func (c SwitchyardConfig) Validate() error {
-	if c.Model != SwitchyardModel || c.ReasoningEffort != "low" {
-		return errors.New("Switchyard extraction requires openai/gpt-6.1-sol and low reasoning")
+	if c.Model != SwitchyardModel || c.ReasoningEffort != "low" || c.Profile != "" && c.Profile != RevenueProfile || c.Profile == RevenueProfile && c.MaxTokens != 1024 {
+		return errors.New("Switchyard extraction requires openai/gpt-6.1-sol, low reasoning and a supported profile; revenue requires 1024 tokens")
 	}
 	return validateCaptureEndpoint(LocalConfig(c))
 }
@@ -44,7 +44,7 @@ func captureRequestBytes(article news.Article, config LocalConfig, schema string
 		ResponseFormat  struct {
 			Type string `json:"type"`
 		} `json:"response_format"`
-	}{Model: config.Model, Messages: []localMessage{{Role: "system", Content: localInstructions}, {Role: "user", Content: string(source)}}, MaxTokens: config.MaxTokens, ReasoningEffort: config.ReasoningEffort}
+	}{Model: config.Model, Messages: []localMessage{{Role: "system", Content: captureInstructions(schema)}, {Role: "user", Content: string(source)}}, MaxTokens: config.MaxTokens, ReasoningEffort: config.ReasoningEffort}
 	request.ResponseFormat.Type = "json_object"
 	raw, _ := json.Marshal(request)
 	return raw
@@ -63,6 +63,12 @@ func RunSwitchyard(ctx context.Context, article news.Article, key string, config
 	if article.Schema == news.DiagnosticArticleSchema {
 		schema, authority = SwitchyardDiagnosticSchema, "switchyard_diagnostic_claim_candidates_only"
 	}
+	if config.Profile == RevenueProfile {
+		if article.Schema != news.DiagnosticArticleSchema {
+			return SwitchyardReceipt{}, errors.New("revenue profile requires a diagnostic source article")
+		}
+		schema, authority = RevenueSchema, "switchyard_revenue_diagnostic_candidates_only"
+	}
 	r, err := runCaptured(ctx, article, key, LocalConfig(config), token, func(r LocalReceipt) error { return retain(SwitchyardReceipt(r)) }, schema, authority)
 	return SwitchyardReceipt(r), err
 }
@@ -78,6 +84,12 @@ func InspectSwitchyard(ctx context.Context, prepared SwitchyardReceipt, finished
 	schema, inspectionSchema, authority := SwitchyardSchema, SwitchyardInspectionSchema, "switchyard_model_claim_candidates_only"
 	if prepared.Schema == SwitchyardDiagnosticSchema {
 		schema, inspectionSchema, authority = SwitchyardDiagnosticSchema, SwitchyardDiagnosticInspectionSchema, "switchyard_diagnostic_claim_candidates_only"
+	}
+	if prepared.Schema == RevenueSchema {
+		schema, inspectionSchema, authority = RevenueSchema, RevenueInspectionSchema, "switchyard_revenue_diagnostic_candidates_only"
+	}
+	if (schema == RevenueSchema) != (prepared.Config.Profile == RevenueProfile) {
+		return SwitchyardInspection{}, ErrLocalVersion
 	}
 	r, err := inspectCaptured(ctx, LocalReceipt(prepared), f, schema, inspectionSchema, authority, SwitchyardConfig(prepared.Config).Validate)
 	if err == nil {

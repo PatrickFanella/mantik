@@ -109,7 +109,7 @@ func evaluateCapturedCorpus(ctx context.Context, input LocalCorpus, corpusSchema
 		if e != nil {
 			return LocalEvaluation{}, ErrInvalid
 		}
-		expected, e := evaluateExpected(ctx, article, item.Prepared.EventKey, item.Expected)
+		expected, e := evaluateExpectedContract(ctx, article, item.Prepared.EventKey, item.Expected, captureContract(article, item.Prepared.Schema))
 		if e != nil {
 			return LocalEvaluation{}, e
 		}

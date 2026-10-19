@@ -57,8 +57,10 @@ func runNewsExtractCaptured(ctx context.Context, args []string, out, errOut io.W
 	key := fs.String("event-key", "", "operator-declared event key")
 	tokens := fs.Int("max-tokens", 1024, "requested generation limit, 64–4096; gateway enforcement not attested")
 	var reasoning *string
+	var profile *string
 	if switchyard {
 		reasoning = fs.String("reasoning-effort", "low", "requested reasoning effort; low only")
+		profile = fs.String("profile", "", "optional reported-revenue-v1 diagnostic task profile")
 	}
 	dir := fs.String("output-dir", "", "new absolute private receipt directory; never reused")
 	if err := fs.Parse(args); err != nil {
@@ -74,6 +76,7 @@ func runNewsExtractCaptured(ctx context.Context, args []string, out, errOut io.W
 	validate := config.Validate
 	if switchyard {
 		config.ReasoningEffort = *reasoning
+		config.Profile = *profile
 		validate = extraction.SwitchyardConfig(config).Validate
 	}
 	if fs.NArg() != 0 || *article == "" || *key == "" || !filepath.IsAbs(*dir) || filepath.Clean(*dir) != *dir || validate() != nil {
@@ -86,6 +89,9 @@ func runNewsExtractCaptured(ctx context.Context, args []string, out, errOut io.W
 	a, err := news.ReadArticle(bytes.NewReader(raw))
 	if err != nil {
 		return err
+	}
+	if switchyard && config.Profile == extraction.RevenueProfile && a.Schema != news.DiagnosticArticleSchema {
+		return errors.New("revenue profile requires a diagnostic source article")
 	}
 	// Exclusive creation prevents overwriting prior attempts or silently retrying
 	// one whose response was lost. The directory remains evidence on any error.
