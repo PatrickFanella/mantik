@@ -8,6 +8,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/actions"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/fixturecapital"
+	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -75,6 +76,9 @@ func readFixtureCapital(ctx context.Context, tx pgx.Tx, s domain.State) (*fixtur
 	return &b, nil
 }
 func (p *Postgres) BindFixtureCapital(ctx context.Context, c FixtureCapitalBinding) (FixtureCapitalReadback, error) {
+	if err := ValidateFixtureCapitalBinding(c); err != nil {
+		return FixtureCapitalReadback{}, err
+	}
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return FixtureCapitalReadback{}, err
@@ -99,6 +103,9 @@ func (p *Postgres) BindFixtureCapital(ctx context.Context, c FixtureCapitalBindi
 		return FixtureCapitalReadback{}, fixturecapital.ErrInvalid
 	}
 	if err = tx.QueryRow(ctx, "SELECT payload FROM mantik_paper_accounts WHERE id=$1", c.AccountID).Scan(&raw); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return FixtureCapitalReadback{}, paperaccount.ErrNotFound
+		}
 		return FixtureCapitalReadback{}, err
 	}
 	a, err := decodePaperAccount(raw, c.AccountID, receiver)
@@ -106,7 +113,7 @@ func (p *Postgres) BindFixtureCapital(ctx context.Context, c FixtureCapitalBindi
 		return FixtureCapitalReadback{}, err
 	}
 	if a.SHA256 != c.AccountSHA256 {
-		return FixtureCapitalReadback{}, fixturecapital.ErrInvalid
+		return FixtureCapitalReadback{}, fixturecapital.ErrConflict
 	}
 	b, err := readFixtureCapital(ctx, tx, s)
 	if err != nil {
@@ -120,7 +127,7 @@ func (p *Postgres) BindFixtureCapital(ctx context.Context, c FixtureCapitalBindi
 		if err != nil {
 			return FixtureCapitalReadback{}, err
 		}
-		return FixtureCapitalReadback{Capital: v, WorkerBound: true, Durable: true}, tx.Commit(ctx)
+		return capitalReadback(v, true), tx.Commit(ctx)
 	}
 	var dirty bool
 	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM mantik_observations) OR EXISTS(SELECT 1 FROM mantik_fixture_effects)").Scan(&dirty); err != nil {
@@ -152,7 +159,7 @@ func (p *Postgres) BindFixtureCapital(ctx context.Context, c FixtureCapitalBindi
 		return FixtureCapitalReadback{}, err
 	}
 	v, err := book.Snapshot()
-	return FixtureCapitalReadback{Capital: v, WorkerBound: true, Durable: true}, err
+	return capitalReadback(v, true), err
 }
 
 func (p *Postgres) FixtureCapital(ctx context.Context) (FixtureCapitalReadback, error) {
@@ -174,13 +181,13 @@ func (p *Postgres) FixtureCapital(ctx context.Context) (FixtureCapitalReadback, 
 		return FixtureCapitalReadback{}, err
 	}
 	if b == nil {
-		return FixtureCapitalReadback{}, fixturecapital.ErrInvalid
+		return FixtureCapitalReadback{}, ErrFixtureCapitalUnbound
 	}
 	v, err := b.Snapshot()
 	if err != nil {
 		return FixtureCapitalReadback{}, err
 	}
-	return FixtureCapitalReadback{Capital: v, WorkerBound: true, Durable: true}, tx.Commit(ctx)
+	return capitalReadback(v, true), tx.Commit(ctx)
 }
 
 var _ FixtureCapitalStore = (*Memory)(nil)
