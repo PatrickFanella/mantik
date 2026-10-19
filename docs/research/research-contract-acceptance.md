@@ -107,7 +107,10 @@ The PR 97 head `0e058175512aebd99ab6003781d1fb7d0b6e5bde` passed hosted CI and
 was merged through the normal protection checks. This audit does not treat a
 PR-head pass as merged-main CI, deployment or provider qualification.
 
-## Dependency state and next implementation
+## Historical dependency checkpoint, 2026-10-15
+
+This section records the dependency state at the original audit. The
+2026-10-19 refresh below supersedes its open-issue and next-step statements.
 
 Issues 3, 5, 6 and 9 were closed at this audit. Issue 12 remains open for the
 extraction work described in the [recorded-news audit](news-acceptance.md).
@@ -139,3 +142,74 @@ bounded credential-free worker, including failed compilation and retry evidence.
 Existing fixed-method launchers do not establish that capability. Portfolio
 allocation and realistic economics remain issues 19–21. None of these results
 establish prospective paper profitability or authorize Alpaca orders.
+
+## Current contract and dependency refresh, 2026-10-19
+
+At source `69303bc35d64b180109fbbf0288a288203ad5f7d`, Gitea reports #3, #6,
+#9 and #12 closed. The earlier dependency preventing #15's closure is therefore
+resolved. The supported contracts mapped above remain implemented: three
+versioned recorded-review profiles; typed source/method/hypothesis inspection;
+application-owned mandatory checks and abstention; sealed declarations; exact
+structured reuse; and complete bounded application attempt/lineage readbacks.
+This refresh supports closing #15 and #16 for those contracts. Their closure
+does not assert automatic research dispatch, general semantic hypothesis
+revision, model usefulness or strategy admission.
+
+The fresh native rehearsal
+`research-contract-refresh-1792453722397604469` built the CLI from that source,
+started a new owned PostgreSQL 17 container and application process, and retained
+ten reviews across all three profiles. Its private result and CLI readbacks
+verify:
+
+- A targeted source inspection followed by a checked evidence request. An
+  unselected marker in the retained original never appeared in the result.
+- Malformed model fields remained in the retained artifact chain and produced
+  abstention. An unknown `submit_order` tool was rejected; a proposal referencing
+  an uninspected claim failed evidence binding. A tool-only stream finalized as
+  incomplete abstention. No tool obtained execution or qualification authority.
+- A method-bound hypothesis was published with a predeclared native recipe,
+  then executed through a retained native attempt. Reuse inspected the sealed
+  declaration and produced a second publication of the same question. Changed
+  horizon publication was rejected rather than silently modifying it.
+- Pending and completed attempts survived a real application restart exactly.
+  A later source receipt superseded a pending review, and a real wall-clock
+  deadline produced expired retention. All ten review readbacks, complete case
+  history and hypothesis research history reproduced exactly after dump/restore
+  into a separate database and process.
+
+The restored dump SHA-256 is
+`9dfbb164c92dd8d247b5981f75ab36cf2dc7fef381f3f94351e496b29257eaa3`.
+The tested binary SHA-256 is
+`ea8ee717ac6a2167352abb0ce904ffafb8170e32db0d59c6a2860215c25ff5f3`.
+The run recorded zero provider requests and zero fixture economic effects.
+Actual original pilot/Switchyard PID/image handles were unchanged; the owned
+application was stopped and its disposable database container removed, with a
+cleanup receipt retained outside Git.
+
+The first refresh attempt,
+`research-contract-refresh-1792453705993833946`, supplied an empty artifact
+array to the public completion command. The command correctly rejected it as
+an invalid recorded-review command before interpretation. The private harness
+was corrected to provide one targeted tool artifact without a final proposal;
+the fresh run above exercised incomplete interpretation successfully. The
+failed attempt, classification and cleanup receipt remain retained. No
+application fix was needed and that attempt is not counted as a pass.
+
+Current-source `make verify`, `make test-race` and `make test-integration`
+passed; integration used new disposable containers. The fresh PostgreSQL
+rehearsal supplements the earlier source-pinned upgrade and failure evidence;
+it does not reclassify that older evidence as a current-source run. Unit and
+storage regressions retain coverage of failed attempts, sibling/parent trial
+lineage, contradictory/null/refutation conditions, corrupt history rejection
+and complete bounded history without a winning-plan selector. Relevant tests
+include `TestHistoryRetainsEveryAttemptAndNoWinner`,
+`TestQuestionHistoryPreservesAllPlansAndAttempts`,
+`TestConditionGapsAndPredictionMatch`, and the investigation checks listed above.
+
+Issue #17 still needs its own dependency/launcher acceptance reconciliation
+before closure; the native research rehearsal does not establish credential-free
+external process isolation. Issue #18's generated-candidate worker is still
+absent. Account allocation (#19), realistic paper economics (#20), automatic
+qualification (#21) and the integrated M4 exit gate remain incomplete. New
+provider/model requests require their own concrete scope; the earlier approved
+extractor diagnostic budgets remain exhausted.

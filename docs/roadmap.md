@@ -102,8 +102,10 @@ Tool-driven investigation, hypothesis lifecycles, isolated research workers, and
 
 The [recorded research contract audit](research/research-contract-acceptance.md)
 maps delivered review, hypothesis and worker contracts to issues #15–#17.
-Their dependency chain still includes #12's unfinished article extraction;
-recorded fixture coverage does not close the integrated M4 exit gate.
+Its 2026-10-19 refresh verifies the recorded decision/hypothesis contracts after
+#12's closure. External worker acceptance still needs reconciliation, and the
+generated-candidate worker remains absent. Recorded fixture coverage does not
+close the integrated M4 exit gate.
 
 - [#15: Define decision workflow and LLM tool contracts](https://git.subcult.tv/subculture-collective/mantik/issues/15). Depends on #3, #12, #9.
 - [#16: Add hypothesis lifecycle and autonomous research-attempt history](https://git.subcult.tv/subculture-collective/mantik/issues/16). Depends on #6, #15.
