@@ -54,7 +54,8 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 			return fetchNewsRecord(ctx, *base, key, original)
 		}
 		history := func(ctx context.Context, id string) (review.History, error) { return fetchNewsHistory(ctx, *base, id) }
-		return superviseNews(ctx, in, out, *limit, fetch, inspect, history)
+		attempt := func(ctx context.Context, id string) (review.View, error) { return fetchNewsAttempt(ctx, *base, id) }
+		return superviseNews(ctx, in, out, *limit, fetch, inspect, history, attempt)
 	}
 	if *view == "library" {
 		fetch := func(ctx context.Context) (experiment.Catalog, error) {

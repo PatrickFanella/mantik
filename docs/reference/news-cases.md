@@ -143,6 +143,11 @@ Commands require Enter:
   evidence currency and review applicability. This uses the existing targeted
   review-history GET endpoint, with a 1 MiB response limit; it fetches no raw
   model artifacts or source bodies and does not start or complete a review.
+- `a ATTEMPT_ID`: after `h`, explicitly read a referenced attempt from that
+  history through the existing review GET endpoint (4 MiB response limit).
+  This displays its pinned evidence, structured result and recorded model
+  artifacts. These can contain sensitive source/model text; keep terminal output
+  private. Reading `h` alone never fetches these artifacts.
 - `e RECORD_KEY`: fetch normalized claims and excerpts for a record referenced by
   the selected case. It does not request the full original article.
 - `o RECORD_KEY`: explicitly request and display the full retained original for
@@ -150,7 +155,9 @@ Commands require Enter:
   and recordings private.
 - `q`, EOF or interruption: leave the view without changing the service.
 
-A case must be selected again after page navigation or refresh. Unknown/off-page
+Page navigation, case selection, refresh and stale reads clear the displayed
+review-history references. A case must be selected again after page navigation
+or refresh. Unknown/off-page
 case IDs, unrelated record keys, path-like input and mutation commands produce
 no history or source request. No submit, close, review write, model, URL fetch or admission command
 is available in this view. Private diagnostic capture files are not imported.
@@ -168,6 +175,14 @@ closure or reopened generation requires a catalogue refresh and case selection
 before history can be displayed. Applicability describes that history readback;
 it is not continuously monitored and grants no execution or qualification
 authority. A valid empty history is displayed explicitly with zero attempts.
+
+Attempt reads rebuild the existing history-summary contract from the returned
+retained attempt and require an exact match to its displayed summary, including
+its complete-attempt digest and applicability flags. An attempt completing after
+`h`, changed applicability, invalid artifacts or a failed read requires `r`,
+case selection and a new `h`. No raw model output is treated as an instruction.
+A historical attempt can remain inapplicable while the case changes again;
+attempt reads do not independently reread or attest the current case catalogue.
 
 A request failure or invalid readback marks the catalogue stale. Displayed rows
 remain labeled stale, and navigation/history/source reads stop until `r` succeeds. A

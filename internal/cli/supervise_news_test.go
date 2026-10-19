@@ -59,7 +59,7 @@ func TestNewsSupervisionHTTPJourneyIsReadOnlyAndTargeted(t *testing.T) {
 	key := a.RecordKeys[0]
 	commands := "d " + b.ID + "\ne " + key + "\nd " + a.ID + "\ne " + key + "\no " + key + "\nn\ne " + key + "\np\nr\no " + key + "\nclose " + a.ID + "\nq\n"
 	var out bytes.Buffer
-	if err := superviseNews(context.Background(), io.NopCloser(strings.NewReader(commands)), &out, 1, fetch, inspect, nil); err != nil {
+	if err := superviseNews(context.Background(), io.NopCloser(strings.NewReader(commands)), &out, 1, fetch, inspect, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"/v1/news-cases", "/v1/news-recordings/" + key, "/v1/news-recordings/" + key + "?original=true", "/v1/news-cases"}
@@ -100,7 +100,7 @@ func TestNewsSupervisionFailureBlocksStaleReads(t *testing.T) {
 	}
 	commands := "d " + c.ID + "\ne " + c.LastRecordKey + "\nn\no " + c.LastRecordKey + "\nr\nd " + c.ID + "\nr\nd " + c.ID + "\nq\n"
 	var out bytes.Buffer
-	if err := superviseNews(context.Background(), io.NopCloser(strings.NewReader(commands)), &out, 1, fetch, inspect, nil); err != nil {
+	if err := superviseNews(context.Background(), io.NopCloser(strings.NewReader(commands)), &out, 1, fetch, inspect, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if loads != 3 || records != 1 {
@@ -131,7 +131,7 @@ func TestNewsCatalogValidationRefusesCorruptOrOversizedState(t *testing.T) {
 			err := superviseNews(context.Background(), io.NopCloser(strings.NewReader("n\nd anything\ne anything\nq\n")), &out, 1, func(context.Context) (storage.NewsCatalog, error) { return c, nil }, func(context.Context, string, bool) (jsonNewsInspection, error) {
 				reads++
 				return jsonNewsInspection{}, nil
-			}, nil)
+			}, nil, nil)
 			if err != nil || reads != 0 || strings.Contains(out.String(), "READBACK OK") {
 				t.Fatal("invalid catalogue allowed navigation", err)
 			}
@@ -170,7 +170,7 @@ func TestNewsSupervisionEmptyEOFAndCancellation(t *testing.T) {
 	backend := storage.NewMemory()
 	catalog, _ := backend.NewsCases(context.Background())
 	var out bytes.Buffer
-	if err := superviseNews(context.Background(), io.NopCloser(strings.NewReader("n\np\nd missing\ne missing\n")), &out, 10, func(context.Context) (storage.NewsCatalog, error) { return catalog, nil }, nil, nil); err != nil {
+	if err := superviseNews(context.Background(), io.NopCloser(strings.NewReader("n\np\nd missing\ne missing\n")), &out, 10, func(context.Context) (storage.NewsCatalog, error) { return catalog, nil }, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "ITEMS 0..0 OF 0") {
@@ -183,7 +183,7 @@ func TestNewsSupervisionEmptyEOFAndCancellation(t *testing.T) {
 	ready := make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
-		done <- superviseNews(ctx, in, io.Discard, 10, func(context.Context) (storage.NewsCatalog, error) { close(ready); return catalog, nil }, nil, nil)
+		done <- superviseNews(ctx, in, io.Discard, 10, func(context.Context) (storage.NewsCatalog, error) { close(ready); return catalog, nil }, nil, nil, nil)
 	}()
 	<-ready
 	cancel()

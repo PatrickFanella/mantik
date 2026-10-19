@@ -137,4 +137,6 @@ continues to return the existing full snapshot; it is not a paginated substitute
 [News research navigation](news-cases.md#interactive-news-supervision) is available
 with `supervise --view news`, separately from fixture/routing cases. After selecting
 a case, `h` reads its complete retained review history and applicability without
-starting a review or fetching source bodies.
+starting a review or fetching source bodies. Use `a ATTEMPT_ID` afterward to
+read one referenced attempt’s pinned evidence, result and recorded artifacts;
+changed readbacks require refresh.

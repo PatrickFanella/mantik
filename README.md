@@ -354,5 +354,7 @@ checks and offline replay. Actual model requests require their own finite budget
 `supervise --view news` adds read-only [news research navigation](docs/reference/news-cases.md#interactive-news-supervision),
 with case evidence references, retained review history and explicit excerpt/original reads.
 Select a case with `d CASE_ID`, then use `h` to read all review attempts and their
-applicability; changed case snapshots require refresh. It makes no
+applicability; changed case snapshots require refresh. Use `a ATTEMPT_ID` after
+`h` to explicitly inspect an attempt’s pinned evidence, result and recorded
+artifacts, checked against its displayed history summary. It makes no
 model requests and does not submit, close, approve or import research evidence.

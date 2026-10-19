@@ -19,14 +19,14 @@ import (
 )
 
 type newsCatalogFetch func(context.Context) (storage.NewsCatalog, error)
+type newsAttemptFetch func(context.Context, string) (review.View, error)
 type newsHistoryFetch func(context.Context, string) (review.History, error)
-
 type newsRecordFetch func(context.Context, string, bool) (jsonNewsInspection, error)
 
 var newsRecordKey = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var newsEventKey = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
-const newsSupervisionHelp = "Commands (then Enter): n next | p previous | r refresh | d CASE_ID displayed case | h selected case review history | e RECORD_KEY excerpts | o RECORD_KEY original (select case first) | q quit"
+const newsSupervisionHelp = "Commands (then Enter): n next | p previous | r refresh | d CASE_ID displayed case | h selected case review history | a ATTEMPT_ID artifacts (read h first) | e RECORD_KEY excerpts | o RECORD_KEY original (select case first) | q quit"
 
 func fetchNewsCatalog(ctx context.Context, base string) (storage.NewsCatalog, error) {
 	var c storage.NewsCatalog
@@ -57,6 +57,29 @@ func fetchNewsHistory(ctx context.Context, base, id string) (review.History, err
 
 func validateNewsHistory(h review.History, receiver string, c newscase.Case) error {
 	if h.ReceiverID != receiver || !reflect.DeepEqual(h.Case, c) || h.Validate() != nil {
+		return review.ErrInvalid
+	}
+	return nil
+}
+
+func fetchNewsAttempt(ctx context.Context, base, id string) (review.View, error) {
+	var v review.View
+	if !review.ID.MatchString(id) {
+		return v, review.ErrInvalid
+	}
+	err := requestWithQuery(ctx, base, "/v1/news-reviews/"+id, nil, &v, nil, 4<<20)
+	return v, err
+}
+
+func validateNewsAttempt(v review.View, h review.History, id string) error {
+	index := slices.IndexFunc(h.Attempts, func(s review.Summary) bool { return s.ID == id })
+	if index < 0 || v.Attempt.ID != id {
+		return review.ErrInvalid
+	}
+	// Rebuild the existing summary contract instead of introducing a second
+	// definition of valid recorded artifacts or applicability.
+	rebuilt, err := review.MakeHistory(h.ReceiverID, h.Case, []review.Attempt{v.Attempt})
+	if err != nil || !reflect.DeepEqual(rebuilt.Attempts[0], h.Attempts[index]) || v.EvidenceCurrent != rebuilt.Attempts[0].EvidenceCurrent || v.ReviewApplicable != rebuilt.Attempts[0].ReviewApplicable {
 		return review.ErrInvalid
 	}
 	return nil
@@ -132,7 +155,7 @@ func newsCaseOnPage(c storage.NewsCatalog, offset, limit int, id string) (newsca
 
 // News supervision owns only its input and readbacks. It never changes cases,
 // starts reviews or imports diagnostic files, and fetches no source by URL.
-func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit int, fetch newsCatalogFetch, inspect newsRecordFetch, history newsHistoryFetch) error {
+func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit int, fetch newsCatalogFetch, inspect newsRecordFetch, history newsHistoryFetch, attempt newsAttemptFetch) error {
 	scanner, cleanup := supervisionInput(ctx, in)
 	defer cleanup()
 	if limit < 1 || limit > 100 {
@@ -142,6 +165,7 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 	offset := 0
 	read, stale, have := true, true, false
 	selected := ""
+	var selectedHistory *review.History
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -155,6 +179,7 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 				err = validateNewsCatalog(fresh)
 			}
 			selected = ""
+			selectedHistory = nil
 			if err != nil {
 				stale = true
 				if _, err = fmt.Fprintln(out, "STALE: news catalogue readback failed or was invalid; use r to refresh or q to quit."); err != nil {
@@ -204,6 +229,7 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 			if offset+limit < len(catalog.Cases) {
 				offset += limit
 				selected = ""
+				selectedHistory = nil
 			} else {
 				if _, err := fmt.Fprintln(out, "End of retained news catalogue; r refreshes current state."); err != nil {
 					return err
@@ -212,6 +238,7 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 		case len(fields) == 1 && fields[0] == "p":
 			offset = max(0, offset-limit)
 			selected = ""
+			selectedHistory = nil
 		case len(fields) == 2 && fields[0] == "d":
 			v, ok := newsCaseOnPage(catalog, offset, limit, fields[1])
 			if !ok {
@@ -221,6 +248,7 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 				continue
 			}
 			selected = v.ID
+			selectedHistory = nil
 			if _, err := fmt.Fprintln(out, "DISPLAYED NEWS CASE (catalogue snapshot; r refreshes evidence version and state)"); err != nil {
 				return err
 			}
@@ -235,6 +263,7 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 				}
 				continue
 			}
+			selectedHistory = nil
 			h, err := history(ctx, c.ID)
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -244,6 +273,7 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 			}
 			if err != nil {
 				stale, selected = true, ""
+				selectedHistory = nil
 				if _, err := fmt.Fprintln(out, "STALE: review history readback failed, was invalid, or no longer matches the displayed case; refresh before continuing."); err != nil {
 					return err
 				}
@@ -252,7 +282,36 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 			if _, err := fmt.Fprintln(out, "CURRENT REVIEW HISTORY (separate readback; all retained attempts; applicability at read time only; research only, no execution or qualification authority)"); err != nil {
 				return err
 			}
+			selectedHistory = &h
 			if err := emit(out, h); err != nil {
+				return err
+			}
+		case len(fields) == 2 && fields[0] == "a":
+			id := fields[1]
+			if selectedHistory == nil || !review.ID.MatchString(id) || !slices.ContainsFunc(selectedHistory.Attempts, func(s review.Summary) bool { return s.ID == id }) {
+				if _, err := fmt.Fprintln(out, "Read h for the selected case, then choose an attempt ID from that history; no request sent."); err != nil {
+					return err
+				}
+				continue
+			}
+			v, err := attempt(ctx, id)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if err == nil {
+				err = validateNewsAttempt(v, *selectedHistory, id)
+			}
+			if err != nil {
+				stale, selected, selectedHistory = true, "", nil
+				if _, err := fmt.Fprintln(out, "STALE: review attempt readback failed or no longer matches its history; refresh and read h before continuing."); err != nil {
+					return err
+				}
+				continue
+			}
+			if _, err := fmt.Fprintln(out, "EXPLICIT REVIEW ATTEMPT ARTIFACTS (retained bytes match displayed history; applicability is a separate readback, not continuous; research only)"); err != nil {
+				return err
+			}
+			if err := emit(out, v); err != nil {
 				return err
 			}
 		case len(fields) == 2 && (fields[0] == "e" || fields[0] == "o"):
@@ -275,6 +334,7 @@ func superviseNews(ctx context.Context, in io.ReadCloser, out io.Writer, limit i
 			if err != nil {
 				stale = true
 				selected = ""
+				selectedHistory = nil
 				if _, err := fmt.Fprintln(out, "STALE: news record request failed or did not match its reference; refresh before continuing."); err != nil {
 					return err
 				}
