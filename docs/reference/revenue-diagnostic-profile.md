@@ -107,9 +107,12 @@ representative accuracy measurement. The review receipt remains private beside
 the diagnostic evidence.
 
 This profile specifies future behavior; it does not retrofit those three outputs
-or establish an improvement. Implementation uses fixtures only. A real run of
-this new profile needs a new finite request budget: the previous three-request
-budget is exhausted. Define and review future expected labels and evidence rules
+or establish an improvement. Implementation first passed fixture checks. A later, separately authorized
+[six-case diagnostic](../research/revenue-diagnostic-20261019.md) completed three
+revenue extractions and three expected abstentions with this pinned profile.
+Its positive claims still differ in wording under exact comparison. Both the
+earlier three-request and the later six-request budgets are exhausted; another
+actual run needs a new finite request budget. Define and review future expected labels and evidence rules
 before generation, preserve a held-out/abstention sample, retain every attempt,
 and keep source support, exact agreement, provider provenance, strategy
 qualification and profitability as separate claims.
