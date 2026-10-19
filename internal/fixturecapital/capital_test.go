@@ -107,6 +107,9 @@ func TestCapitalUsesActualFixtureActionsAndEffects(t *testing.T) {
 		t.Fatal("capital calculation mutated source action/case")
 	}
 	funded := snapshot(t, h.book)
+	if err := funded.Validate(h.account); err != nil {
+		t.Fatal(err)
+	}
 	if funded.PositionCostCents != 100000 || funded.ReservedCashCents != 0 || funded.AvailableCashCents != 0 || funded.Position == nil || funded.ServiceIntegrated || funded.QualificationCredit {
 		t.Fatal(funded)
 	}
@@ -136,6 +139,9 @@ func TestCapitalUsesActualFixtureActionsAndEffects(t *testing.T) {
 	}
 	h.book = b
 	closed := snapshot(t, h.book)
+	if err := closed.Validate(h.account); err != nil {
+		t.Fatal(err)
+	}
 	if closed.AvailableCashCents != 94000 || closed.RealizedPnLCents != -6000 || closed.Position != nil || closed.PositionCostCents != 0 {
 		t.Fatal(closed)
 	}

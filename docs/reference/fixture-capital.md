@@ -5,16 +5,16 @@ synthetic action worker. It consumes finalized `paper-action-v1` intents and
 fixture effect lookups, not rehearsal commands, model output or an imported
 capital snapshot. An explicit queued-memory binding now connects it to the
 worker's transaction path. PostgreSQL schema 29 adds a durable equivalent with
-checkpoint replay and source validation. Public API/CLI binding remains
-unfinished; existing pilots have not been upgraded or bound.
+checkpoint replay and source validation. Explicit API/CLI binding and validated
+readback expose this synthetic account state. Existing pilots have not been
+upgraded or bound.
 
 ## Authority and transitions
 
 `New` accepts a validated immutable paper account. A book has private fields;
 `Snapshot` returns a detached accounting readback that cannot restore spending
 authority. Internal checkpoint replay requires the owning action/effect ledger.
-The first commitment pins the
-fixture case and strategy version. This unit supports the existing registered
+The first commitment pins the fixture case and strategy version. This unit supports the existing registered
 synthetic DEMO methods and one unresolved intent at a time, not competing strategy
 allocation or general portfolio exposure.
 
@@ -52,8 +52,8 @@ An effect reader is an ownership boundary, not self-authenticating evidence.
 Timeouts, missing provider responses and caller-supplied absence assertions cannot
 implement it for a real venue. The queued-memory bridge supplies the existing
 fixture effect lookup under its aggregate lock. PostgreSQL uses the same
-transition path inside its aggregate transaction; the reducer performs no networking or
-independent database authentication.
+transition path inside its aggregate transaction; the reducer performs no
+networking or independent database authentication.
 
 ## Conservation and limits
 
@@ -109,8 +109,9 @@ transaction checks that the account and receiver still match the binding.
 `durable: false` and `qualification_credit: false`. Its nested capital snapshot
 retains the reducer's `synthetic_fixture_capital_contract_only` authority and
 `service_integrated: false`; it is not a declaration of a deployed, persistent
-service balance. No HTTP or CLI command exposes this in-memory opt-in. Restarting
-the process loses the in-memory account, actions and capital together.
+service balance. The native `serve` command uses PostgreSQL; contract tests also
+exercise the handler with queued memory. Restarting the in-memory process loses
+its account, actions and capital together.
 
 ## Durable store binding and restore
 
@@ -152,6 +153,60 @@ material, not an API import contract. A checksum is a consistency check, not
 external execution attestation. Rehearsals and readback snapshots cannot restore
 spending authority.
 
+## Explicit public binding and readback
+
+Both endpoints require the existing bearer token and accept no query parameters:
+
+- `GET /v1/fixture-capital` reads the current binding's compact capital state.
+  It returns 404 while unbound and 503 if retained capital cannot be validated.
+- `POST /v1/fixture-capital/binding` accepts only `receiver_id`, `account_id`,
+  `account_sha256` and `scope_code`. The scope must be
+  `bind_synthetic_fixture_capital_v1`. Bodies are limited to 16 KiB; duplicate
+  fields, unknown fields, trailing JSON and malformed shapes return 400.
+  Missing/invalid command pins return 422, changed receiver/account authority or
+  an active fixture conflicts with 409, and an unknown account returns 404.
+  Storage inconsistency is not accepted as a new binding.
+
+Successful binding and exact retries return 200 with the current readback. An
+exact retry after a trade returns the current balance; it cannot restore the
+opening balance. Bind before the first fixture observation/action on a fresh
+isolated service. Even an expired or closed prior action prevents first binding.
+No historical position or rehearsal balance is adopted. There is no reset,
+detach, account switch, top-up or checkpoint import command.
+
+The CLI requires all four binding pins, with no defaults or automatic lookup:
+
+```sh
+./bin/mantik fixture-capital-bind \
+  --api-url "$MANTIK_API_URL" \
+  --receiver-id "$RECEIVER_ID" \
+  --account pilot-paper \
+  --account-sha256 "$ACCOUNT_SHA256" \
+  --scope-code bind_synthetic_fixture_capital_v1
+
+./bin/mantik fixture-capital --api-url "$MANTIK_API_URL"
+```
+
+Read the receiver ID from `paper-accounts` and the exact funding digest from
+`paper-account --id pilot-paper` on that same service. Supply them explicitly to
+the binding command. The token remains in `MANTIK_API_TOKEN` as with other CLI
+requests.
+
+The envelope schema is `mantik-fixture-capital-readback-v1`, with authority
+`service_retained_synthetic_fixture_capital_only`, `worker_bound: true`, the
+store's durability flag and `qualification_credit: false`. Its nested capital
+snapshot retains the reducer's separate authority/flags. The readback includes
+cash, reserved cash, position at entry cost, realized fixture PnL and at most 256
+compact commitments. It does not include private checkpoint transitions or a
+mark-to-market valuation.
+
+The CLI bounds the response to 256 KiB, then reads the immutable account receipt
+on the same origin. It verifies account/digest pins, amounts, conservation,
+position/commitment consistency, sorted identities, digest and authority flags
+before emitting JSON. This validates a display, not imported spending authority.
+Opening funding remains an immutable declaration; its original allocation flag
+does not change when this separate fixture binding becomes active.
+
 ## Verification and public activation boundary
 
 Tests drive actual queued fixture actions through claim, write-ahead submission,
@@ -178,8 +233,10 @@ and rollback to the matching schema-28 binary/database. Its advanced synthetic
 clock gives no elapsed-soak or market-performance credit. Raw receipts, dumps,
 binaries and process records stay outside Git.
 
-Public activation still needs a bounded operator command/readback and validation
-of that command on an isolated stack. The internal storage rehearsal does not
-validate an activation command that has not been implemented. Existing pilots
-stay unchanged. Rollback must use the pre-upgrade database with its matching
-binary, not delete the checkpoint or pin.
+Public-path verification uses a fresh isolated PostgreSQL service, explicit CLI
+pins, the real action worker and its controlled pre/post-submit crash gates.
+Include expired absent-work release, known-effect acknowledgment, dump/restore,
+exact binding retries after settlement, active-case rejection, malformed inputs
+and corrupt-capital refusal. These checks do not upgrade existing pilots or
+qualify general strategy allocation. Rollback must use the pre-upgrade database
+with its matching binary, not delete the checkpoint or pin.

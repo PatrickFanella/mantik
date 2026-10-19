@@ -26,10 +26,12 @@ satisfy account allocation.
    now commit reservations and capital with worker action transitions under one
    aggregate lock. PostgreSQL schema 29 retains a bounded transition checkpoint
    that must replay and agree with the actual action/effect ledger and case.
-   No public binding or import path exists. Isolated native rehearsal has checked
+   Explicit API/CLI binding and validated readback now expose this synthetic
+   account state without an import, reset or detach path. Isolated native
+   rehearsal has checked
    real pre/post-effect process kills, dump/restore and matching-binary/database
-   rollback. Next expose a bounded operator command/readback and rehearse that
-   public path on fresh resources before activation.
+   rollback. Rehearse the public binding/readback and real worker recovery on
+   fresh resources before using it beyond isolated qualification.
    Qualified admission and realistic
    execution remain separate gates; rehearsal assertions cannot supply authority.
 3. Add allocator-owned proposal comparison and reservation, with strategy and

@@ -103,8 +103,11 @@ leave funding, operational balances and execution unchanged.
 The [fixture capital worker bridge](docs/reference/fixture-capital.md) now
 enforces an explicit account binding in queued-memory and PostgreSQL stores,
 reserving before submission and settling with action acknowledgment. The durable
-store replays a bounded checkpoint against its own action/effect ledger. Public
-API/CLI activation remains unfinished.
+store replays a bounded checkpoint against its own action/effect ledger.
+`fixture-capital-bind` explicitly binds a pristine fixture to pinned funding;
+`fixture-capital` validates and displays its cash, reservations and position.
+These commands operate only the synthetic fixture, with no automatic binding of
+existing cases or qualified strategy allocation.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.
