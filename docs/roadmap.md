@@ -131,6 +131,11 @@ A TUI, conversational application tools, and evidence-linked explanations and at
 
 **Exit gate:** The operator can inspect and direct the running service from the terminal, trace a decision to its evidence, and recover an exception; narrative is produced only after finalization.
 
+The [terminal supervision acceptance audit](research/terminal-supervision-acceptance.md)
+records read-only inspection across the six implemented terminal views. That
+issue-level delivery does not complete conversational direction, performance
+attribution or the full M6 exit gate.
+
 - [#22: Build the terminal supervision interface](https://git.subcult.tv/subculture-collective/mantik/issues/22). Depends on #10, #7.
 - [#23: Add conversational supervision and post-decision explanations](https://git.subcult.tv/subculture-collective/mantik/issues/23). Depends on #15, #22, #16.
 - [#24: Expose decision and portfolio performance attribution](https://git.subcult.tv/subculture-collective/mantik/issues/24). Depends on #21, #22.
