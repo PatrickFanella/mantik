@@ -335,3 +335,10 @@ qualification credit.
 `trial-research-history` and `hypothesis-research-history` join all retained
 native assessments with external declarations and attempt reports in a
 [consistent history view](docs/reference/trial-assessments.md#combined-native-and-external-history).
+
+
+Historical sources with date-only or unknown publication can use the separate
+[Switchyard diagnostic input](docs/reference/switchyard-extraction.md#historical-diagnostic-publication-precision)
+for private extraction and offline evaluation. Exact observation and receipt
+times remain required. Diagnostic captures cannot be imported or admitted as
+service news; existing exact-time inputs and operational rules are unchanged.

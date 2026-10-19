@@ -10,6 +10,8 @@ import (
 
 const SwitchyardSchema = "mantik-switchyard-news-extraction-v1"
 const SwitchyardInspectionSchema = "mantik-switchyard-extraction-inspection-v1"
+const SwitchyardDiagnosticSchema = "mantik-switchyard-news-diagnostic-v1"
+const SwitchyardDiagnosticInspectionSchema = "mantik-switchyard-diagnostic-inspection-v1"
 const SwitchyardModel = "openai/gpt-6.1-sol"
 
 // SwitchyardConfig pins the selected provider route. The gateway owns provider
@@ -57,7 +59,11 @@ func RunSwitchyard(ctx context.Context, article news.Article, key string, config
 	if retain == nil {
 		return SwitchyardReceipt{}, errors.New("Switchyard extraction requires a receipt sink")
 	}
-	r, err := runCaptured(ctx, article, key, LocalConfig(config), token, func(r LocalReceipt) error { return retain(SwitchyardReceipt(r)) }, SwitchyardSchema, "switchyard_model_claim_candidates_only")
+	schema, authority := SwitchyardSchema, "switchyard_model_claim_candidates_only"
+	if article.Schema == news.DiagnosticArticleSchema {
+		schema, authority = SwitchyardDiagnosticSchema, "switchyard_diagnostic_claim_candidates_only"
+	}
+	r, err := runCaptured(ctx, article, key, LocalConfig(config), token, func(r LocalReceipt) error { return retain(SwitchyardReceipt(r)) }, schema, authority)
 	return SwitchyardReceipt(r), err
 }
 
@@ -69,7 +75,11 @@ func InspectSwitchyard(ctx context.Context, prepared SwitchyardReceipt, finished
 		copy := LocalReceipt(*finished)
 		f = &copy
 	}
-	r, err := inspectCaptured(ctx, LocalReceipt(prepared), f, SwitchyardSchema, SwitchyardInspectionSchema, "switchyard_model_claim_candidates_only", SwitchyardConfig(prepared.Config).Validate)
+	schema, inspectionSchema, authority := SwitchyardSchema, SwitchyardInspectionSchema, "switchyard_model_claim_candidates_only"
+	if prepared.Schema == SwitchyardDiagnosticSchema {
+		schema, inspectionSchema, authority = SwitchyardDiagnosticSchema, SwitchyardDiagnosticInspectionSchema, "switchyard_diagnostic_claim_candidates_only"
+	}
+	r, err := inspectCaptured(ctx, LocalReceipt(prepared), f, schema, inspectionSchema, authority, SwitchyardConfig(prepared.Config).Validate)
 	if err == nil {
 		r.Authority = "retained_switchyard_bytes_consistency_only"
 		r.SHA256 = ""

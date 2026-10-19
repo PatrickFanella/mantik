@@ -58,6 +58,9 @@ func runSwitchyardCaptures(ctx context.Context, command string, args []string, o
 		if err != nil {
 			return err
 		}
+		if prepared.Schema != extraction.SwitchyardSchema {
+			return errors.New("diagnostic captures are offline-only and cannot be imported")
+		}
 		if _, err = extraction.InspectSwitchyard(ctx, prepared, finished); err != nil {
 			return err
 		}

@@ -41,6 +41,17 @@ func Definition() Contract {
 		MaxClaims:      16, MaxArtifactBytes: MaxArtifactBytes, TimeoutSeconds: 30, Authority: Authority}
 }
 
+// definitionFor preserves the existing contract hash for exact-time articles.
+func definitionFor(a news.Article) Contract {
+	c := Definition()
+	if a.Schema == news.DiagnosticArticleSchema {
+		c.Schema = "mantik-news-diagnostic-extraction-contract-v1"
+		c.ArticleSchema = news.DiagnosticArticleSchema
+		c.Authority = "diagnostic_claim_candidates_only"
+	}
+	return c
+}
+
 // Claim intentionally has no event key, source identity, times or authority.
 // Source metadata and the operator-selected event key come from the caller's
 // pinned article/context, never from an extractor artifact.
@@ -121,11 +132,11 @@ func Run(ctx context.Context, article news.Article, key string, model Model) (Re
 	if err != nil || !eventKey.MatchString(key) || model == nil {
 		return Result{}, errors.New("extraction requires a valid article, operator event key and model")
 	}
-	contract := Definition()
+	contract := definitionFor(a)
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(contract.TimeoutSeconds)*time.Second)
 	defer cancel()
 	result := Result{Schema: Schema, Article: a, ArticleSHA256: hash(a), ContractSHA256: hash(contract),
-		EventKey: key, Claims: []news.Claim{}, Checks: []Check{}, Authority: Authority}
+		EventKey: key, Claims: []news.Claim{}, Checks: []Check{}, Authority: contract.Authority}
 	statuses := map[string]string{"source_binding": "passed", "authority_boundary": "passed"}
 	finish := func(outcome, reason, failedCheck string) (Result, error) {
 		result.Outcome, result.ReasonCode = outcome, reason

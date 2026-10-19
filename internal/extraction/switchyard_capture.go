@@ -35,6 +35,9 @@ func RetainSwitchyard(ctx context.Context, receiver, id string, p SwitchyardRece
 	if err := ctx.Err(); err != nil {
 		return SwitchyardCapture{}, err
 	}
+	if p.Schema != SwitchyardSchema || f != nil && f.Schema != SwitchyardSchema {
+		return SwitchyardCapture{}, ErrLocalVersion
+	}
 	if !receiverID.MatchString(receiver) || !ID.MatchString(id) || !validAt(at) {
 		return SwitchyardCapture{}, ErrInvalid
 	}

@@ -231,10 +231,10 @@ func runCaptured(ctx context.Context, article news.Article, key string, config L
 	r := LocalReceipt{Schema: schema, Config: config, PromptVersion: LocalPromptVersion,
 		StartedAt: time.Now().UTC(), EventKey: key, Authority: authority}
 	a, err := article.Canonical()
-	if err != nil || !eventKey.MatchString(key) {
+	if err != nil || !eventKey.MatchString(key) || schema == LocalSchema && a.Schema != news.ArticleSchema {
 		return LocalReceipt{}, ErrInvalid
 	}
-	r.ArticleSHA256, r.ContractSHA256 = hash(a), hash(Definition())
+	r.ArticleSHA256, r.ContractSHA256 = hash(a), hash(definitionFor(a))
 	t := &http.Transport{Proxy: nil, DisableKeepAlives: true, DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext}
 	defer t.CloseIdleConnections()
 	client := &http.Client{Transport: t, Timeout: 30 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}

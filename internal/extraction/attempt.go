@@ -51,7 +51,7 @@ func Start(receiver, id string, article news.Article, key string, at time.Time) 
 	at = at.UTC()
 	contract := Definition()
 	deadline := at.Add(time.Duration(contract.TimeoutSeconds) * time.Second)
-	if err != nil || !receiverID.MatchString(receiver) || !ID.MatchString(id) || !eventKey.MatchString(key) || !validAt(at) || !validAt(deadline) {
+	if err != nil || a.Schema != news.ArticleSchema || !receiverID.MatchString(receiver) || !ID.MatchString(id) || !eventKey.MatchString(key) || !validAt(at) || !validAt(deadline) {
 		return Attempt{}, ErrInvalid
 	}
 	if at.Before(a.ReceivedAt) {

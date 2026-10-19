@@ -85,11 +85,11 @@ func inspectCaptured(ctx context.Context, prepared LocalReceipt, finished *Local
 		return LocalInspection{}, ErrLocalEvidence
 	}
 	article, err := news.ReadArticle(bytes.NewReader([]byte(request.Messages[1].Content)))
-	if err != nil || !bytes.Equal(raw, captureRequestBytes(article, prepared.Config, schema)) {
+	if err != nil || (article.Schema == news.DiagnosticArticleSchema) != (schema == SwitchyardDiagnosticSchema) || !bytes.Equal(raw, captureRequestBytes(article, prepared.Config, schema)) {
 		return LocalInspection{}, ErrLocalEvidence
 	}
 	expected := LocalReceipt{Schema: schema, Config: prepared.Config, PromptVersion: LocalPromptVersion,
-		ArticleSHA256: hash(article), ContractSHA256: hash(Definition()), EventKey: prepared.EventKey,
+		ArticleSHA256: hash(article), ContractSHA256: hash(definitionFor(article)), EventKey: prepared.EventKey,
 		StartedAt: prepared.StartedAt, Status: "prepared", Disposition: "not_sent", Request: prepared.Request,
 		Authority: authority}
 	if !reflect.DeepEqual(sealLocal(expected), prepared) {

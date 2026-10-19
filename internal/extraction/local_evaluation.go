@@ -93,6 +93,9 @@ func evaluateCapturedCorpus(ctx context.Context, input LocalCorpus, corpusSchema
 			return LocalEvaluation{}, ErrInvalid
 		}
 		snapshots[snapshot] = true
+		if i > 0 && report.ContractSHA256 != inspections[0].ContractSHA256 {
+			return LocalEvaluation{}, ErrInvalid
+		}
 		inspections[i] = report
 		requestBytes, e := inspectBytes(item.Prepared.Request, maxLocalRequestBytes)
 		if e != nil {
@@ -112,7 +115,7 @@ func evaluateCapturedCorpus(ctx context.Context, input LocalCorpus, corpusSchema
 		}
 		gold[i] = expected
 	}
-	r := LocalEvaluation{Schema: evaluationSchema, CorpusSHA256: hash(corpus), ContractSHA256: hash(Definition()), Cases: []LocalCaseScore{}, Counts: LocalEvaluationCounts{Dispositions: map[string]int{}}, Authority: "supplied_annotation_agreement_only"}
+	r := LocalEvaluation{Schema: evaluationSchema, CorpusSHA256: hash(corpus), ContractSHA256: inspections[0].ContractSHA256, Cases: []LocalCaseScore{}, Counts: LocalEvaluationCounts{Dispositions: map[string]int{}}, Authority: "supplied_annotation_agreement_only"}
 	prepared := map[string]bool{}
 	for i, item := range corpus.Cases {
 		if err := ctx.Err(); err != nil {
