@@ -59,3 +59,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Paper account configuration](paper-accounts.md) — finite declared capital and
   immutable opening funding; allocation remains unavailable.
+
+- [Synthetic paper ledger replay](paper-ledger.md) — bounded offline reservation,
+  partial debit, release and unresolved-hold accounting; no service mutations.

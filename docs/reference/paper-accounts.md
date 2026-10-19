@@ -72,7 +72,8 @@ not upgraded by building or merging this change.
 
 No account is created automatically. No existing demo case, cash balance, action,
 effect or research proposal is assigned to an account. No Augr data, Alpaca account,
-provider credentials or external financial state is read. Reservation/settlement
-ledgers, positions, competing proposal comparison and qualified admission remain
+provider credentials or external financial state is read. The [offline synthetic ledger audit](paper-ledger.md) now exercises reservation
+and debit conservation without mutating these accounts. Durable service ledgers,
+positions, competing proposal comparison and qualified admission remain
 future units of #19–#21. A terminal portfolio view depends on those projections;
 account configuration alone does not satisfy #22 or demonstrate profitability.
