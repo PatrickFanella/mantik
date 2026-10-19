@@ -73,7 +73,7 @@ func inspectCaptured(ctx context.Context, prepared LocalReceipt, finished *Local
 	if prepared.Schema != schema || finished != nil && finished.Schema != schema {
 		return LocalInspection{}, ErrLocalVersion
 	}
-	if validate() != nil || prepared.PromptVersion != LocalPromptVersion || !validAt(prepared.StartedAt) || !eventKey.MatchString(prepared.EventKey) || !prepared.Request.Complete {
+	if validate() != nil || prepared.PromptVersion != capturePromptVersion(schema) || !validAt(prepared.StartedAt) || !eventKey.MatchString(prepared.EventKey) || !prepared.Request.Complete {
 		return LocalInspection{}, ErrLocalEvidence
 	}
 	raw, err := inspectBytes(prepared.Request, maxLocalRequestBytes)
@@ -85,11 +85,11 @@ func inspectCaptured(ctx context.Context, prepared LocalReceipt, finished *Local
 		return LocalInspection{}, ErrLocalEvidence
 	}
 	article, err := news.ReadArticle(bytes.NewReader([]byte(request.Messages[1].Content)))
-	if err != nil || (article.Schema == news.DiagnosticArticleSchema) != (schema == SwitchyardDiagnosticSchema) || !bytes.Equal(raw, captureRequestBytes(article, prepared.Config, schema)) {
+	if err != nil || (article.Schema == news.DiagnosticArticleSchema) != diagnosticCaptureSchema(schema) || !bytes.Equal(raw, captureRequestBytes(article, prepared.Config, schema)) {
 		return LocalInspection{}, ErrLocalEvidence
 	}
-	expected := LocalReceipt{Schema: schema, Config: prepared.Config, PromptVersion: LocalPromptVersion,
-		ArticleSHA256: hash(article), ContractSHA256: hash(definitionFor(article)), EventKey: prepared.EventKey,
+	expected := LocalReceipt{Schema: schema, Config: prepared.Config, PromptVersion: capturePromptVersion(schema),
+		ArticleSHA256: hash(article), ContractSHA256: hash(captureContract(article, schema)), EventKey: prepared.EventKey,
 		StartedAt: prepared.StartedAt, Status: "prepared", Disposition: "not_sent", Request: prepared.Request,
 		Authority: authority}
 	if !reflect.DeepEqual(sealLocal(expected), prepared) {
@@ -129,7 +129,7 @@ func inspectCaptured(ctx context.Context, prepared LocalReceipt, finished *Local
 		if f.Result.ReasonCode == "extractor_timeout" {
 			replayErr = context.DeadlineExceeded
 		}
-		result, err := Run(ctx, article, prepared.EventKey, localReplay{raw: candidate, err: replayErr})
+		result, err := runWithContract(ctx, article, prepared.EventKey, localReplay{raw: candidate, err: replayErr}, captureContract(article, schema))
 		if err != nil {
 			return LocalInspection{}, err
 		}

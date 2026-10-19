@@ -28,6 +28,7 @@ const MaxLocalHTTPBytes = 512 << 10
 var localModelName = regexp.MustCompile(`^ollama/[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$`)
 
 type LocalConfig struct {
+	Profile         string `json:"profile,omitempty"`
 	Endpoint        string `json:"endpoint"`
 	Model           string `json:"model"`
 	MaxTokens       int    `json:"max_tokens"`
@@ -35,7 +36,7 @@ type LocalConfig struct {
 }
 
 func (c LocalConfig) Validate() error {
-	if c.ReasoningEffort != "" || !localModelName.MatchString(c.Model) || strings.Contains(strings.ToLower(c.Model), "cloud") {
+	if c.Profile != "" || c.ReasoningEffort != "" || !localModelName.MatchString(c.Model) || strings.Contains(strings.ToLower(c.Model), "cloud") {
 		return errors.New("local extraction requires an explicit non-cloud ollama model")
 	}
 	return validateCaptureEndpoint(c)
@@ -210,6 +211,13 @@ func interpretLocalResponse(r *LocalReceipt, article news.Article, body []byte) 
 		r.Disposition = "quote_anchoring_rejected"
 		return nil, errors.New("local quote anchoring rejected")
 	}
+	if r.Schema == RevenueSchema {
+		var response Response
+		if json.Unmarshal(derived, &response) != nil || validateRevenueResponse(response) != nil {
+			r.Disposition = "profile_policy_rejected"
+			return nil, errors.New("revenue profile policy rejected")
+		}
+	}
 	r.Disposition = "response_complete"
 	return derived, nil
 }
@@ -228,19 +236,19 @@ func runCaptured(ctx context.Context, article news.Article, key string, config L
 	if retain == nil || len(token) > 512 || strings.ContainsFunc(token, unicode.IsControl) {
 		return LocalReceipt{}, errors.New("local extraction requires a receipt sink and bounded optional token")
 	}
-	r := LocalReceipt{Schema: schema, Config: config, PromptVersion: LocalPromptVersion,
+	r := LocalReceipt{Schema: schema, Config: config, PromptVersion: capturePromptVersion(schema),
 		StartedAt: time.Now().UTC(), EventKey: key, Authority: authority}
 	a, err := article.Canonical()
 	if err != nil || !eventKey.MatchString(key) || schema == LocalSchema && a.Schema != news.ArticleSchema {
 		return LocalReceipt{}, ErrInvalid
 	}
-	r.ArticleSHA256, r.ContractSHA256 = hash(a), hash(definitionFor(a))
+	r.ArticleSHA256, r.ContractSHA256 = hash(a), hash(captureContract(a, schema))
 	t := &http.Transport{Proxy: nil, DisableKeepAlives: true, DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext}
 	defer t.CloseIdleConnections()
 	client := &http.Client{Transport: t, Timeout: 30 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	var retainErr error
 	m := &localExtractor{receipt: &r, client: client, token: token, retain: func(v LocalReceipt) error { retainErr = retain(v); return retainErr }}
-	result, err := Run(ctx, a, key, m)
+	result, err := runWithContract(ctx, a, key, m, captureContract(a, schema))
 	if retainErr != nil {
 		return r, errors.New("cannot retain prepared local extraction; no request sent")
 	}

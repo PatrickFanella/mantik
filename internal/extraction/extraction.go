@@ -125,6 +125,10 @@ func copyJSON[T any](v T) T {
 // must honor ctx and bound transport reads; no detached goroutine claims to kill
 // an uncooperative provider. The CLI supplies a local recorded artifact only.
 func Run(ctx context.Context, article news.Article, key string, model Model) (Result, error) {
+	return runWithContract(ctx, article, key, model, definitionFor(article))
+}
+
+func runWithContract(ctx context.Context, article news.Article, key string, model Model, contract Contract) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -132,7 +136,6 @@ func Run(ctx context.Context, article news.Article, key string, model Model) (Re
 	if err != nil || !eventKey.MatchString(key) || model == nil {
 		return Result{}, errors.New("extraction requires a valid article, operator event key and model")
 	}
-	contract := definitionFor(a)
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(contract.TimeoutSeconds)*time.Second)
 	defer cancel()
 	result := Result{Schema: Schema, Article: a, ArticleSHA256: hash(a), ContractSHA256: hash(contract),
@@ -181,12 +184,21 @@ func Run(ctx context.Context, article news.Article, key string, model Model) (Re
 			return finish("abstain", "malformed_extractor_artifact", "model_schema")
 		}
 		statuses["model_schema"] = "passed"
+		if contract.Schema == RevenueContractSchema {
+			statuses["profile_policy"] = "passed"
+		}
 		return finish("abstain", response.ReasonCode, "")
 	}
 	if response.Outcome != "extracted" || response.ReasonCode != "claims_extracted" {
 		return finish("abstain", "malformed_extractor_artifact", "model_schema")
 	}
 	statuses["model_schema"] = "passed"
+	if contract.Schema == RevenueContractSchema {
+		if validateRevenueResponse(response) != nil {
+			return finish("abstain", "invalid_profile_claims", "profile_policy")
+		}
+		statuses["profile_policy"] = "passed"
+	}
 	claims := []news.Claim{}
 	for _, c := range response.Claims {
 		claims = append(claims, news.Claim{ID: c.ID, EventKey: key, Code: c.Code,

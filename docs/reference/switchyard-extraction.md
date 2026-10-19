@@ -181,3 +181,9 @@ The [October 19 real-news diagnostic](../research/openai-diagnostic-20261019.md)
 completed three authorized requests with this format and retained all strict
 annotation disagreements. It supplies narrow runtime evidence, not a broader
 model-accuracy or profitability result.
+
+
+For a separate one-report revenue task, the optional
+[reported-revenue diagnostic profile](revenue-diagnostic-profile.md) pins a fixed
+claim code, a new prompt/contract and structural profile checks. It is fixture-
+tested only and grants no additional request budget or service admission.

@@ -129,11 +129,15 @@ func Evaluate(ctx context.Context, input Corpus) (Evaluation, error) {
 // evaluateExpected accepts structurally valid annotations, not application
 // failures masquerading as expected abstentions. It never attests their truth.
 func evaluateExpected(ctx context.Context, a news.Article, key string, annotation Response) (Result, error) {
+	return evaluateExpectedContract(ctx, a, key, annotation, definitionFor(a))
+}
+
+func evaluateExpectedContract(ctx context.Context, a news.Article, key string, annotation Response, contract Contract) (Result, error) {
 	raw, err := json.Marshal(annotation)
 	if err != nil {
 		return Result{}, ErrInvalid
 	}
-	g, err := Run(ctx, a, key, evaluationArtifact(raw))
+	g, err := runWithContract(ctx, a, key, evaluationArtifact(raw), contract)
 	if err != nil {
 		return Result{}, err
 	}
