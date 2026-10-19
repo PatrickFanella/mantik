@@ -67,6 +67,7 @@ export MANTIK_API_TOKEN=mantik-local-development
 ./bin/mantik activity --limit 10 --format json
 ./bin/mantik supervise --limit 10
 ./bin/mantik supervise --view cases --limit 10
+./bin/mantik supervise --view news --limit 10
 ./bin/mantik supervise --view exceptions --limit 10
 ./bin/mantik supervise --view library --limit 10
 ./bin/mantik cases
@@ -348,3 +349,8 @@ The optional [reported-revenue diagnostic profile](docs/reference/revenue-diagno
 uses a fixed revenue claim code and explicit assertion/evidence instructions.
 It remains separate from the general extractor and supports private fixture
 checks and offline replay. Actual model requests require their own finite budget.
+
+
+`supervise --view news` adds read-only [news research navigation](docs/reference/news-cases.md#interactive-news-supervision),
+with case evidence references and explicit excerpt/original reads. It makes no
+model requests and does not submit, close, approve or import research evidence.
