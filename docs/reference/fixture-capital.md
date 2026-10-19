@@ -158,7 +158,9 @@ spending authority.
 Both endpoints require the existing bearer token and accept no query parameters:
 
 - `GET /v1/fixture-capital` reads the current binding's compact capital state.
-  It returns 404 while unbound and 503 if retained capital cannot be validated.
+  It returns 404 with `code: fixture_capital_unbound` while unbound and 503 if
+  retained capital cannot be validated. A missing/older endpoint's generic 404
+  does not establish that the service has no binding.
 - `POST /v1/fixture-capital/binding` accepts only `receiver_id`, `account_id`,
   `account_sha256` and `scope_code`. The scope must be
   `bind_synthetic_fixture_capital_v1`. Bodies are limited to 16 KiB; duplicate
@@ -206,6 +208,10 @@ position/commitment consistency, sorted identities, digest and authority flags
 before emitting JSON. This validates a display, not imported spending authority.
 Opening funding remains an immutable declaration; its original allocation flag
 does not change when this separate fixture binding becomes active.
+
+`supervise --view portfolio` uses the same bounded capital/funding validation for
+an interactive read-only view. See [portfolio supervision](portfolio.md) for
+local paging, explicit refresh, owner pins and stale/disconnect behavior.
 
 ## Verification and public activation boundary
 

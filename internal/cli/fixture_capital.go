@@ -45,18 +45,25 @@ func runFixtureCapital(ctx context.Context, command string, args []string, out, 
 	if err := requestWithQuery(ctx, *base, path, body, &v, nil, 256<<10); err != nil {
 		return err
 	}
-	if v.Schema != storage.FixtureCapitalReadbackSchema || v.Authority != storage.FixtureCapitalReadbackAuthority || !v.WorkerBound || v.QualificationCredit || !paperaccount.ID.MatchString(v.Capital.AccountID) {
-		return fixturecapital.ErrInvalid
-	}
 	if command == "fixture-capital-bind" && (v.Capital.ReceiverID != c.ReceiverID || v.Capital.AccountID != c.AccountID || v.Capital.AccountSHA256 != c.AccountSHA256) {
 		return fixturecapital.ErrConflict
 	}
-	var a paperaccount.Account
-	if err := requestWithQuery(ctx, *base, "/v1/paper-accounts/"+v.Capital.AccountID, nil, &a, nil, 16<<10); err != nil {
-		return err
-	}
-	if err := v.Validate(a); err != nil {
+	if _, err := validateCapitalReadback(ctx, *base, v); err != nil {
 		return err
 	}
 	return emit(out, v)
+}
+
+func validateCapitalReadback(ctx context.Context, base string, v storage.FixtureCapitalReadback) (paperaccount.Account, error) {
+	if v.Schema != storage.FixtureCapitalReadbackSchema || v.Authority != storage.FixtureCapitalReadbackAuthority || !v.WorkerBound || v.QualificationCredit || !paperaccount.ID.MatchString(v.Capital.AccountID) {
+		return paperaccount.Account{}, fixturecapital.ErrInvalid
+	}
+	var a paperaccount.Account
+	if err := requestWithQuery(ctx, base, "/v1/paper-accounts/"+v.Capital.AccountID, nil, &a, nil, 16<<10); err != nil {
+		return a, err
+	}
+	if err := v.Validate(a); err != nil {
+		return a, err
+	}
+	return a, nil
 }

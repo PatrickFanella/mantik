@@ -67,4 +67,7 @@ Keep exploratory notes in `docs/research/` until they become stable references.
   assertions, guarded appends and replay-validated readbacks; no spending authority.
 
 - [Fixture capital contract](fixture-capital.md) — finalized-action and effect-bound
-  accounting reducer; service transaction integration is still pending.
+  accounting, durable replay, explicit account binding and validated readback.
+
+- [Interactive fixture portfolio supervision](portfolio.md) — cash, reservations,
+  position cost and bounded commitment navigation, with unbound/stale handling.

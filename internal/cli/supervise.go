@@ -25,7 +25,7 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	fs.SetOutput(errOut)
 	base := fs.String("api-url", defaultURL, "service HTTP origin")
 	limit := fs.Int("limit", 10, "items per page, 1..100")
-	view := fs.String("view", "activity", "activity, cases, news, exceptions or library")
+	view := fs.String("view", "activity", "activity, cases, news, portfolio, exceptions or library")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -36,7 +36,7 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" {
 		return errors.New("api-url must be an HTTP origin without credentials or a path")
 	}
-	if fs.NArg() != 0 || (*view != "activity" && *view != "cases" && *view != "news" && *view != "exceptions" && *view != "library") {
+	if fs.NArg() != 0 || (*view != "activity" && *view != "cases" && *view != "news" && *view != "exceptions" && *view != "library" && *view != "portfolio") {
 		return errors.New("unexpected supervision arguments")
 	}
 	if err := (storage.ActivityQuery{Limit: *limit}).Validate(); err != nil {
@@ -47,6 +47,9 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 	in, err := os.Open("/dev/stdin")
 	if err != nil {
 		return errors.New("supervise requires a readable Unix stdin")
+	}
+	if *view == "portfolio" {
+		return supervisePortfolio(ctx, in, out, *limit, func(ctx context.Context) (portfolioReadback, error) { return fetchPortfolio(ctx, *base) })
 	}
 	if *view == "news" {
 		fetch := func(ctx context.Context) (storage.NewsCatalog, error) { return fetchNewsCatalog(ctx, *base) }
