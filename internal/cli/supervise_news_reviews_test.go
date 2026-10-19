@@ -44,23 +44,28 @@ func TestNewsSupervisionReviewHistoryHTTP(t *testing.T) {
 	}))
 	defer server.Close()
 	var out bytes.Buffer
-	commands := "h\nd " + catalog.Cases[1].ID + "\nh\nd " + c.ID + "\nh\nh extra\nn\nh\np\nh\nr\nh\nq\n"
+	commands := "a completed-review\nh\nd " + catalog.Cases[1].ID + "\nh\nd " + c.ID + "\na completed-review\nh\na pending-review\na completed-review\na ../escape\na unknown-attempt\nh extra\nn\nh\np\nh\nr\nh\nq\n"
 	err := superviseNews(ctx, io.NopCloser(strings.NewReader(commands)), &out, 1,
 		func(ctx context.Context) (storage.NewsCatalog, error) { return fetchNewsCatalog(ctx, server.URL) }, nil,
 		func(ctx context.Context, id string) (review.History, error) {
 			return fetchNewsHistory(ctx, server.URL, id)
+		}, func(ctx context.Context, id string) (review.View, error) {
+			return fetchNewsAttempt(ctx, server.URL, id)
 		})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"/v1/news-cases", "/v1/news-cases/" + c.ID + "/reviews", "/v1/news-cases"}
+	want := []string{"/v1/news-cases", "/v1/news-cases/" + c.ID + "/reviews", "/v1/news-reviews/pending-review", "/v1/news-reviews/completed-review", "/v1/news-cases"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Fatal(paths)
 	}
-	for _, text := range []string{"CURRENT REVIEW HISTORY", `"pending-review"`, `"completed-review"`, `"review_applicable": true`, `"review_applicable": false`, `"outcome": "abstain"`, `"qualification_credit": false`} {
+	for _, text := range []string{"CURRENT REVIEW HISTORY", "EXPLICIT REVIEW ATTEMPT ARTIFACTS", `"pending-review"`, `"completed-review"`, `"review_applicable": true`, `"review_applicable": false`, `"outcome": "abstain"`, `"qualification_credit": false`} {
 		if !strings.Contains(out.String(), text) {
 			t.Fatal("missing", text)
 		}
+	}
+	if strings.Count(out.String(), "EXPLICIT REVIEW ATTEMPT ARTIFACTS") != 2 {
+		t.Fatal("unexpected artifact reads", out.String())
 	}
 	after, _ := backend.ReviewHistory(ctx, c.ID)
 	if !reflect.DeepEqual(before, after) {
@@ -95,7 +100,7 @@ func TestNewsSupervisionReviewCaseChangedRequiresRefresh(t *testing.T) {
 				}
 			}
 			return backend.ReviewHistory(ctx, id)
-		})
+		}, nil)
 	if err != nil || loads != 2 || histories != 2 {
 		t.Fatal(err, loads, histories)
 	}
@@ -127,7 +132,7 @@ func TestNewsSupervisionRefusesInvalidHistory(t *testing.T) {
 			var out bytes.Buffer
 			err := superviseNews(context.Background(), io.NopCloser(strings.NewReader("d "+c.ID+"\nh\nh\nn\nq\n")), &out, 1,
 				func(context.Context) (storage.NewsCatalog, error) { return catalog, nil }, nil,
-				func(context.Context, string) (review.History, error) { reads++; return bad, nil })
+				func(context.Context, string) (review.History, error) { reads++; return bad, nil }, nil)
 			if err != nil || reads != 1 || strings.Contains(out.String(), "CURRENT REVIEW HISTORY") || !strings.Contains(out.String(), "STALE: review history") {
 				t.Fatal(err, reads, out.String())
 			}
