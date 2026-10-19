@@ -130,3 +130,11 @@ local compatibility endpoint and retains its request/response before returning
 checked candidates. It is a separate command; this recorded command stays
 offline. The local adapter does not activate service dispatch or establish
 model accuracy.
+
+
+Historical sources without an exact publication instant have a separate
+[Switchyard diagnostic format](switchyard-extraction.md#historical-diagnostic-publication-precision).
+It retains date-only/unknown publication explicitly for private extraction and
+offline evaluation. It cannot start retained recorded attempts or enter service
+news admission. The exact-time article and recording formats above retain their
+existing causality requirements and encodings.

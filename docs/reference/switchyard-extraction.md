@@ -120,3 +120,58 @@ finished failures and unknown outcomes separately;
 do not relabel these receipts as Ollama evidence. Both execution attestation
 and qualification credit remain false in inspection. No extraction result is
 profitability evidence or permission to trade.
+
+
+## Historical diagnostic publication precision
+
+`news-extract-switchyard` also accepts the source-only schema
+`mantik-news-diagnostic-article-v1` for historical initial articles with
+`evidence_class: recorded_market_unqualified`. It uses the same command and
+provider limits. This input is for private extraction/inspection/evaluation;
+service import and research admission reject it.
+
+Keep the existing article identity, source bytes/hash, access reference and
+exact observation/receipt timestamps. Replace the exact `published_at` field
+with one of these explicit objects:
+
+```json
+{"publication":{"precision":"date_only","date":"2025-05-01"}}
+```
+
+```json
+{"publication":{"precision":"unknown"}}
+```
+
+Omit `published_at` entirely, including null or a year-one sentinel. Date-only
+requires a valid `YYYY-MM-DD` calendar date; unknown forbids a date. The
+`available_at` field records the actual observation instant for this diagnostic,
+not an inferred historical first-availability instant. `received_at` records
+receipt and must be at or after that observation. Retain how these instants
+were observed in the private source evidence. A date-only publication is checked
+against the earliest possible instant in UTC+14 solely to reject impossible
+future dates; the application never assigns that instant to publication.
+No publication instant, source timezone or historical trading eligibility is
+inferred. Diagnostics cannot represent corrections/retractions or prospective
+or synthetic evidence classes.
+
+Diagnostic receipts use `mantik-switchyard-news-diagnostic-v1`, with
+`switchyard_diagnostic_claim_candidates_only` authority. Offline inspection uses
+`mantik-switchyard-diagnostic-inspection-v1`. The source/contract hashes bind the
+publication precision; the diagnostic extraction contract is
+`mantik-news-diagnostic-extraction-contract-v1`, with
+`diagnostic_claim_candidates_only` authority. Quote anchoring and source/claim
+checks still apply. Retain failures and unknown completion as usual.
+
+`news-switchyard-inspect` and `news-switchyard-evaluate` replay these receipts
+without network access. An evaluation cohort must use one extraction contract;
+mixing diagnostic and exact-time captures fails without a partial report.
+Separate reports preserve their distinct contract hashes. Supplied annotations
+still provide no source-truth or qualification authority.
+
+Existing `mantik-news-article-v1` inputs continue to require exact publication,
+availability and receipt instants, omit the new `publication` field, and retain
+their existing wire bytes and hashes. Local-model generation, service-owned
+recorded attempts and persistent Switchyard imports accept only the existing
+exact-time inputs/receipts. No database upgrade or operational rule change is
+part of this diagnostic format. Do not convert a diagnostic into an admissible
+record by inventing an exact publication timestamp.

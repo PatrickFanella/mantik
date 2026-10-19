@@ -133,6 +133,16 @@ func (r Recording) Validate() error {
 // Source validation is also used before any claims have been extracted. Keep
 // source metadata independent of model artifacts and the operator-recorded API.
 func (r Recording) validateSource() error {
+	if err := r.validateSourceMetadata(); err != nil {
+		return err
+	}
+	if !validTime(r.PublishedAt) || !validTime(r.AvailableAt) || !validTime(r.ReceivedAt) || r.AvailableAt.Before(r.PublishedAt) || r.ReceivedAt.Before(r.AvailableAt) {
+		return errors.New("news requires causal publication, availability and receipt times")
+	}
+	return nil
+}
+
+func (r Recording) validateSourceMetadata() error {
 	if r.Schema != RecordingSchema || !key.MatchString(r.SourceID) || !key.MatchString(r.ArticleID) || r.Revision < 1 || r.Revision > 1000000 || !text(r.Publisher, 256) || !text(r.AccessRef, 256) || !text(r.RawRef, 256) {
 		return errors.New("incomplete news source identity or recording contract")
 	}
@@ -142,9 +152,6 @@ func (r Recording) validateSource() error {
 	u, err := url.Parse(r.URL)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Fragment != "" || len(r.URL) > 2048 || !text(r.URL, 2048) {
 		return errors.New("news source URL must be bounded HTTPS without credentials or fragment")
-	}
-	if !validTime(r.PublishedAt) || !validTime(r.AvailableAt) || !validTime(r.ReceivedAt) || r.AvailableAt.Before(r.PublishedAt) || r.ReceivedAt.Before(r.AvailableAt) {
-		return errors.New("news requires causal publication, availability and receipt times")
 	}
 	if len(r.Original) == 0 || len(r.Original) > 128<<10 || !utf8.ValidString(r.Original) || !digest.MatchString(r.OriginalSHA256) || SHA256(r.Original) != r.OriginalSHA256 {
 		return errors.New("news source bytes are missing, oversized, invalid UTF-8 or do not match the digest")

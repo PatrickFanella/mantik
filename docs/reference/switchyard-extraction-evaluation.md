@@ -131,5 +131,10 @@ Authority is `supplied_annotation_agreement_only`; `execution_attested` and
 origin, when a request occurred, source truth, semantic relevance, annotation
 correctness or profitability. Evaluation does not replace the separate explicit
 approval required by [Switchyard capture admission](reviewed-switchyard-admission.md).
+Diagnostic publication-precision captures are also supported; see the
+[diagnostic source contract](switchyard-extraction.md#historical-diagnostic-publication-precision).
+Each cohort must have one extraction contract hash. Diagnostic and exact-time
+captures must be evaluated in separate reports, and diagnostic captures cannot
+be imported or admitted as service news.
 A reviewed real-news corpus and bounded actual-extractor cohort remain required
 before making claims about performance on real news.
