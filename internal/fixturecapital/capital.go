@@ -1,7 +1,7 @@
 // Package fixturecapital defines the internal capital contract for the existing
 // synthetic action worker. Storage must supply its locked action/effect view and
-// atomically persist capital and action changes before activating this contract.
-// There is no rehearsal, provider, model, JSON import or service mutation API.
+// atomically commit capital and action changes before activating this contract.
+// There is no rehearsal, provider, model, JSON import or network mutation API.
 package fixturecapital
 
 import (
@@ -188,7 +188,7 @@ func (b Book) Reserve(s domain.State, c domain.ActionClaim, now time.Time) (Book
 		return Book{}, ErrConflict
 	}
 	if old, ok := b.commitments[a.Intent.ID]; ok {
-		if !actions.Equal(old.Intent, a.Intent) {
+		if !actions.Equal(old.Intent, a.Intent) || (old.Status != "reserved" && old.Status != "held") {
 			return Book{}, ErrConflict
 		}
 		return b.copy(), nil
@@ -226,6 +226,37 @@ func (b Book) Reserve(s domain.State, c domain.ActionClaim, now time.Time) (Book
 	return n, nil
 }
 
+// Contains checks an existing commitment without creating one. Changed content
+// under the same action identity is a conflict, including on terminal retries.
+func (b Book) Contains(i domain.ActionIntent) (bool, error) {
+	if !b.valid() {
+		return false, ErrInvalid
+	}
+	old, ok := b.commitments[i.ID]
+	if ok && !actions.Equal(old.Intent, i) {
+		return false, ErrConflict
+	}
+	return ok, nil
+}
+
+// CheckSubmission requires a live funded commitment before the independent
+// fixture effect transaction. It never recreates a missing reservation.
+func (b Book) CheckSubmission(s domain.State, c domain.ActionClaim, now time.Time) error {
+	a, err := current(s, c, now)
+	if err != nil {
+		return err
+	}
+	ok, err := b.Contains(a.Intent)
+	if err != nil {
+		return err
+	}
+	old := b.commitments[a.Intent.ID]
+	if !ok || a.Status != "unknown" || (old.Status != "reserved" && old.Status != "held") || now.Before(b.account.CreatedAt) {
+		return ErrConflict
+	}
+	return nil
+}
+
 // Reconcile consumes the owning store's effect lookup. A known matching result
 // is checked by the existing action settlement contract before changing money.
 // Missing effects release capital only when definitive local absence and current
@@ -251,6 +282,9 @@ func (b Book) Reconcile(s domain.State, c domain.ActionClaim, now time.Time, rea
 			return Book{}, ErrConflict
 		}
 		if e == nil || old.Effect == nil || !actions.Equal(*old.Effect, *e) {
+			return Book{}, ErrConflict
+		}
+		if a.Status == "completed" && !actions.Equal(a.Outcome, old.Effect.Outcome) {
 			return Book{}, ErrConflict
 		}
 		return b.copy(), nil

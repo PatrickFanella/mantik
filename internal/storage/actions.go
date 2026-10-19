@@ -9,6 +9,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/actions"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/fixturecapital"
 	"git.subcult.tv/subculture-collective/mantik/internal/workflow"
 	"github.com/jackc/pgx/v5"
 )
@@ -23,9 +24,10 @@ type ActionStore interface {
 }
 
 type actionTx struct {
-	state *domain.State
-	read  func(string) (*domain.ActionEffect, error)
-	save  func(domain.ActionEffect) error
+	state   *domain.State
+	capital *fixturecapital.Book
+	read    func(string) (*domain.ActionEffect, error)
+	save    func(domain.ActionEffect) error
 }
 type actionUpdate func(actionTx) (any, []domain.Event, error)
 
@@ -37,18 +39,33 @@ func (m *Memory) actionMutation(ctx context.Context, update actionUpdate) (any, 
 	defer m.mu.Unlock()
 	next := clone(m.state)
 	effects := clone(m.effects)
+	var capital *fixturecapital.Book
+	if m.fixtureCapital != nil {
+		v, err := m.fixtureCapital.Snapshot()
+		if err != nil {
+			return nil, err
+		}
+		a, ok := m.paperAccounts[v.AccountID]
+		if !m.queued || !ok || a.Config.ID != v.AccountID || a.Validate() != nil || a.ReceiverID != m.receiverID || a.SHA256 != v.AccountSHA256 {
+			return nil, fixturecapital.ErrConflict
+		}
+		// Book transitions return immutable copies; never JSON-clone a book.
+		b := *m.fixtureCapital
+		capital = &b
+	}
 	tx := actionTx{state: &next, read: func(id string) (*domain.ActionEffect, error) {
 		e, ok := effects[id]
 		if !ok {
 			return nil, nil
 		}
 		return &e, nil
-	}, save: func(e domain.ActionEffect) error { effects[e.Intent.IdempotencyKey] = e; return nil }}
+	}, save: func(e domain.ActionEffect) error { effects[e.Intent.IdempotencyKey] = e; return nil }, capital: capital}
 	value, events, err := update(tx)
 	if err != nil {
 		return nil, err
 	}
 	m.state, m.effects = next, effects
+	m.fixtureCapital = capital
 	m.events = append(m.events, events...)
 	return value, nil
 }
@@ -132,12 +149,18 @@ func reconcileAction(tx actionTx, c domain.ActionClaim, now time.Time) (any, []d
 	if err != nil {
 		return nil, nil, err
 	}
-	if actions.Terminal(a.Status) {
+	if actions.Terminal(a.Status) && tx.capital == nil {
 		return a, nil, nil
 	}
 	effect, err := tx.read(a.Intent.IdempotencyKey)
 	if err != nil {
 		return nil, nil, err
+	}
+	if err := reconcileCapital(tx, c, a, now, effect); err != nil {
+		return nil, nil, err
+	}
+	if actions.Terminal(a.Status) {
+		return a, nil, nil
 	}
 	if effect != nil {
 		events, err := actions.Settle(tx.state, c, *effect, now)
@@ -168,6 +191,9 @@ func beginAction(tx actionTx, c domain.ActionClaim, now time.Time) (any, []domai
 		return nil, nil, err
 	}
 	if actions.Terminal(a.Status) {
+		if tx.capital != nil {
+			return reconcileAction(tx, c, now)
+		}
 		return a, nil, nil
 	}
 	if a.Status != "pending" {
@@ -181,7 +207,20 @@ func beginAction(tx actionTx, c domain.ActionClaim, now time.Time) (any, []domai
 		return nil, nil, errors.New("existing effect requires reconciliation")
 	}
 	if _, status, err := actions.Evaluate(*tx.state, a, now); err != nil {
+		if err := reconcileCapital(tx, c, a, now, nil); err != nil {
+			return nil, nil, err
+		}
 		return actionFailure(tx, c, a, status, "current_authority_unavailable", now)
+	}
+	if tx.capital != nil {
+		b, err := tx.capital.Reserve(*tx.state, c, now)
+		if errors.Is(err, fixturecapital.ErrLimit) {
+			return actionFailure(tx, c, a, "rejected", "fixture_capital_limit", now)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		*tx.capital = b
 	}
 	a.Status, a.Code, a.UpdatedAt = "unknown", "submission_unacknowledged", now.UTC()
 	a.Attempts++
@@ -197,6 +236,11 @@ func submitAction(tx actionTx, c domain.ActionClaim, now time.Time) (any, []doma
 	}
 	if actions.Terminal(a.Status) || a.Status != "unknown" {
 		return nil, nil, errors.New("action has no write-ahead submission intent")
+	}
+	if tx.capital != nil {
+		if err := tx.capital.CheckSubmission(*tx.state, c, now); err != nil {
+			return nil, nil, err
+		}
 	}
 	effect, err := tx.read(a.Intent.IdempotencyKey)
 	if err != nil {
