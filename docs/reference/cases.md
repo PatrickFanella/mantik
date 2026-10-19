@@ -115,6 +115,14 @@ first page; it does not silently carry an old page offset into a changed
 catalogue. Successful reads are labeled as on-demand readbacks, not continuous
 health checks. A response exceeding the 260 routed-case capacity is rejected.
 
+The viewer validates the catalogue's fixture mode and valid, unique case
+identities, including sorted routing identities. Detail responses must match
+the selected identity and case kind. Fixture details must include their
+configured strategy with the case's strategy version identity. A mismatched
+or malformed response follows the stale-state path and is not displayed as
+current detail. Status and latest references may still change between reads;
+the catalogue does not pin a case revision.
+
 The case and activity views share bounded command input and owned stdin
 cancellation. Neither changes terminal mode, automatically polls the service,
 submits a mutation, or stops workers on exit. See the [activity viewer](activity.md)
@@ -123,5 +131,6 @@ for Unix stdin, command-length and cancellation behavior.
 This supplies case navigation for issue #22. [Exception navigation](exceptions.md)
 uses the bounded retained-exception API.
 The existing operations endpoint still internally loads the full status/event
-history; the supervisor does not use it. Library/portfolio screens, full match-history
-inspection and finalized-decision attribution remain separate units.
+history; the supervisor does not use it. [Library](library.md) and
+[portfolio](portfolio.md) supervision have separate readback contracts. Full
+match-history inspection and finalized-decision attribution remain separate units.
