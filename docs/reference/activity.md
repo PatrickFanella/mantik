@@ -119,6 +119,12 @@ An initial connection failure leaves no successful page but still accepts
 retry, begin-again and quit commands. The error message does not echo arbitrary
 remote response text or authentication details.
 
+Before displaying a page, the viewer checks its fixture mode, requested page
+limit, fixed upper boundary, ordered event sequences and continuation cursor.
+Sequences may have gaps. A malformed response follows the same stale-state
+path as a failed request: it cannot replace the last successful page, supply
+event details or advance the pending cursor. Retry repeats the same request.
+
 The viewer owns a separate `/dev/stdin` handle. Cancellation closes that handle
 to unblock input; quitting does not close the calling process's original stdin
 handle or send a service mutation. Ctrl-C exits with cancellation. Command input

@@ -107,6 +107,28 @@ func runSupervise(ctx context.Context, args []string, out, errOut io.Writer) err
 
 const supervisionHelp = "Commands (then Enter): n next | r retry current request | b begin fresh history | u appended history (at end) | d SEQUENCE details on this page | q quit"
 
+// Validate the response before using its cursor or exposing event details.
+// Audit sequences may have gaps, but must advance within the requested window.
+func validateActivityPage(page domain.ActivityPage, q storage.ActivityQuery) error {
+	if err := q.Validate(); err != nil {
+		return err
+	}
+	if page.Mode != "paper_fixture" || page.Through < q.After || len(page.Items) > q.Limit || q.Through != nil && page.Through != *q.Through {
+		return errors.New("activity readback does not match the requested window")
+	}
+	previous := q.After
+	for _, item := range page.Items {
+		if item.Sequence <= previous || item.Sequence > page.Through {
+			return errors.New("activity readback sequences are outside the requested order or window")
+		}
+		previous = item.Sequence
+	}
+	if page.NextAfter != previous || page.HasMore && (len(page.Items) != q.Limit || previous >= page.Through) {
+		return errors.New("activity readback cursor cannot advance safely")
+	}
+	return nil
+}
+
 // superviseActivity owns in. Only one page and its pending request are retained.
 func superviseActivity(ctx context.Context, in io.ReadCloser, out io.Writer, limit int, fetch activityFetch) error {
 	scanner, cleanup := supervisionInput(ctx, in)
@@ -122,6 +144,9 @@ func superviseActivity(ctx context.Context, in io.ReadCloser, out io.Writer, lim
 			fresh, err := fetch(ctx, query)
 			if ctx.Err() != nil {
 				return ctx.Err()
+			}
+			if err == nil {
+				err = validateActivityPage(fresh, query)
 			}
 			if err != nil {
 				stale = true
