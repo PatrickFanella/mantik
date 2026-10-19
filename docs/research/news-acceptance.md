@@ -251,3 +251,16 @@ obsolete local-GPU proposal does not authorize a new OpenAI cohort. Preserve
 failures, unknown completion and label disagreements in the resulting report.
 A provider diagnostic, research admission, strategy qualification, prospective
 paper profitability and live-money authorization remain separate steps.
+
+
+## First actual OpenAI diagnostic, 2026-10-19
+
+The [three-excerpt diagnostic](openai-diagnostic-20261019.md) supersedes the earlier
+statement that no real-source cohort had run. After PR 117 introduced explicit
+diagnostic publication precision, three authorized requests returned checked
+source-bound claims with no retries or failures. Strict supplied-annotation
+comparison retained zero exact cases because claim codes, wording or quote spans
+differed. No annotations or comparison rules were changed to erase disagreement.
+This small convenience sample has no independent label review or qualification
+credit. The prior implementation/recovery evidence and open Issue 12 limits
+remain unchanged; the diagnostic creates no service admission or trading result.
