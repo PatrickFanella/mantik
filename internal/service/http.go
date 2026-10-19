@@ -37,6 +37,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	})
 	libraryRoutes(mux)
 	paperAccountRoutes(mux, store, clock)
+	paperLedgerRoutes(mux, store, clock)
 	newsRoutes(mux, store, clock)
 	reviewRoutes(mux, store, clock)
 	extractionRoutes(mux, store, clock)

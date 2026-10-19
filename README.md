@@ -96,7 +96,10 @@ operator-declared opening capital and a ceiling, without allocating proposals or
 linking existing fixture positions. `paper-ledger-audit` adds an
 [offline synthetic ledger replay](docs/reference/paper-ledger.md) for reservation,
 partial debit, release and unresolved-hold conservation; its results cannot be
-imported into service accounts.
+imported into service accounts. The separate
+[durable rehearsal commands](docs/reference/paper-ledger-rehearsals.md) retain
+explicit account-bound synthetic assertions with head and retry guards; they
+leave funding, operational balances and execution unchanged.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.

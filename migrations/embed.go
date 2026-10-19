@@ -94,3 +94,6 @@ var SwitchyardCaptureAdmissions string
 
 //go:embed 0027_paper_accounts.sql
 var PaperAccounts string
+
+//go:embed 0028_paper_ledger_rehearsals.sql
+var PaperLedgerRehearsals string
