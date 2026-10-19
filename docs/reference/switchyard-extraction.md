@@ -185,5 +185,7 @@ model-accuracy or profitability result.
 
 For a separate one-report revenue task, the optional
 [reported-revenue diagnostic profile](revenue-diagnostic-profile.md) pins a fixed
-claim code, a new prompt/contract and structural profile checks. It is fixture-
-tested only and grants no additional request budget or service admission.
+claim code, a new prompt/contract and structural profile checks. Its separately
+authorized [six-case diagnostic](../research/revenue-diagnostic-20261019.md)
+retains narrow extraction/abstention evidence and strict wording disagreements.
+It grants no additional request budget or service admission.

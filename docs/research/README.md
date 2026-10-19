@@ -39,3 +39,6 @@ source inspection do not establish reproduction or performance.
 
 - [First OpenAI real-news diagnostic](openai-diagnostic-20261019.md) — three
   bounded requests, retained source-bound outputs, strict disagreements and limits.
+
+- [Six-case reported-revenue diagnostic](revenue-diagnostic-20261019.md) — three
+  revenue extractions, three abstentions and preserved exact wording differences.

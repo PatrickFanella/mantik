@@ -264,3 +264,16 @@ differed. No annotations or comparison rules were changed to erase disagreement.
 This small convenience sample has no independent label review or qualification
 credit. The prior implementation/recovery evidence and open Issue 12 limits
 remain unchanged; the diagnostic creates no service admission or trading result.
+
+
+## Revenue profile extraction and abstention diagnostic, 2026-10-19
+
+After the owner accepted a six-case proposal and new finite budget, the
+[reported-revenue diagnostic](revenue-diagnostic-20261019.md) completed three
+later-release revenue extractions and three expected non-revenue abstentions.
+All positive codes, assessments, entities, symbols and evidence match the draft
+expectations; only assertion wording differs. Strict comparison remains three
+exact cases out of six, all abstentions. No annotation/matching rule was changed,
+no diagnostic record was admitted, and no qualification credit was granted.
+This replaces the profile's fixture-only evidence state with this narrow actual
+runtime observation, while preserving the broader acceptance limits above.
