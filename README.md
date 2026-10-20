@@ -427,5 +427,7 @@ against the service's own intent/dataset snapshot and preserve full captures and
 exact artifact bytes.
 `candidate-worker-outcome-report` submits a pinned capture;
 `candidate-worker-outcome` inspects the retained receipt or exports capture and
-exact stdout/stderr bytes through authenticated HTTP. Pending-work summaries and
-cross-owner execution fencing remain unfinished.
+exact stdout/stderr bytes through authenticated HTTP. `candidate-worker-outcomes`
+returns one coherent intent/report snapshot and the request IDs without retained
+reports, without inferring host state. Cross-owner execution fencing remains
+unfinished.

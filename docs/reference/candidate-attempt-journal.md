@@ -171,5 +171,7 @@ assertions and does not grant host verification or qualification credit.
 
 The separate [authenticated outcome commands](candidate-worker-outcomes.md)
 submit and inspect an exported capture against the service's own retained intent.
-Issue #18 remains open for coherent pending-work summaries, cross-owner execution
+The service history pairs all retained intents and reported outcomes in one
+snapshot; unreported requests do not imply a live or absent worker.
+Issue #18 remains open for cross-owner execution
 fencing, generated-source provenance and the final acceptance audit.

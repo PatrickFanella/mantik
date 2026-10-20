@@ -16,6 +16,21 @@ func candidateOutcomeRoutes(mux *http.ServeMux, store storage.Store, clock Clock
 	if !ok {
 		return
 	}
+
+	mux.HandleFunc("GET /v1/candidate-worker-outcomes", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "" {
+			candidateIntentError(w, candidateattempt.ErrInvalid)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		h, err := backend.CandidateWorkerOutcomeHistory(ctx)
+		if err != nil {
+			candidateOutcomeError(w, err)
+			return
+		}
+		write(w, 200, h)
+	})
 	mux.HandleFunc("POST /v1/candidate-worker-outcomes", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.RawQuery != "" {
 			candidateIntentError(w, candidateattempt.ErrInvalid)

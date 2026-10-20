@@ -185,6 +185,10 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 	}
 	intent, intentHistory := candidateIntentHTTP(t, server.URL, first, second, raw)
 	outcome, capture := candidateOutcomeHTTP(t, s, intent)
+	var outcomeHistory candidateevidence.History
+	if err := json.Unmarshal(run("candidate-worker-outcomes"), &outcomeHistory); err != nil || outcomeHistory.Validate() != nil {
+		t.Fatal(err)
+	}
 	if reopen != nil {
 		server.Close()
 		s = reopen()
@@ -217,6 +221,11 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 		var restoredCapture candidateevidence.Capture
 		if err := json.Unmarshal(run(append(append([]string{}, flags...), "--artifact", "capture")...), &restoredCapture); err != nil || !reflect.DeepEqual(capture, restoredCapture) {
 			t.Fatal("restart changed capture", err)
+		}
+
+		var restoredOutcomeHistory candidateevidence.History
+		if err := json.Unmarshal(run("candidate-worker-outcomes"), &restoredOutcomeHistory); err != nil || !reflect.DeepEqual(outcomeHistory, restoredOutcomeHistory) {
+			t.Fatal("restart changed coherent outcome history", err)
 		}
 		var restoredHistory candidateattempt.History
 		if err := json.Unmarshal(run("candidate-worker-intents"), &restoredHistory); err != nil || !reflect.DeepEqual(intentHistory, restoredHistory) {

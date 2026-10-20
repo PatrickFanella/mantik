@@ -160,7 +160,8 @@ access and coherent history. Receiver-bound local execution journals now retain
 the full exported intent and require its exact pins before launch or reconciliation.
 [Outcome backends](candidate-worker-outcomes.md) now retain complete caller-reported
 captures against the service's own intent and dataset bindings. Authenticated
-submission and pinned outcome/capture/output inspection are available. Coherent
-pending-work summaries, cross-owner execution fencing, generated-source
+submission and pinned outcome/capture/output inspection are available, alongside
+one coherent history of intents, reports and unreported request IDs. Cross-owner
+execution fencing, generated-source
 provenance and the final #18 acceptance audit remain unfinished. A registration grants no activation,
 profitability, independent execution or qualification proof.
