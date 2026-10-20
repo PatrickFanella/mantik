@@ -341,3 +341,10 @@ They preserve every bounded request and exact retries under one receiver lock or
 transaction, with full-prefix publication/dataset validation and migration checks.
 Schema 33 adds declaration/input tables only; provider calls, output admission,
 generated registration links and authenticated intent access remain unfinished.
+
+Authenticated generation-intent HTTP/CLI access now admits bounded strict JSON,
+checks expected receiver/publication/plan pins, and exports coherent validated
+intent/plan/prompt/exact-dataset evidence. Shared Memory/PostgreSQL transport
+contracts include reopened-database readback. This retains declarations only;
+generation outcomes, generated registration lineage and a provider adapter remain
+unfinished under #18.

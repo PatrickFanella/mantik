@@ -440,5 +440,7 @@ checks. `candidate-generation-plan`, `candidate-generation-record` and
 hash pins and exact artifact export. These commands make no provider request and
 do not attest model authorship. [Generation intent backends](docs/reference/candidate-generation-intents.md) now
 retain publication-bound plans and exact datasets before output admission.
-Authenticated access, retained generation outcomes/registration links and a provider
+Authenticated `candidate-generation-intent-start`, `candidate-generation-intent`
+and `candidate-generation-intents` commands now submit and inspect these declarations.
+Retained generation outcomes/registration links and a provider
 adapter remain unfinished.
