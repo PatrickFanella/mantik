@@ -158,6 +158,8 @@ readbacks before output.
 registration/job bindings before execution, with authenticated intent API/CLI
 access and coherent history. Receiver-bound local execution journals now retain
 the full exported intent and require its exact pins before launch or reconciliation.
-Service outcome retention, cross-owner execution fencing, generated-source
+[Outcome backends](candidate-worker-outcomes.md) now retain complete caller-reported
+captures against the service's own intent and dataset bindings. Authenticated
+outcome access, cross-owner execution fencing, generated-source
 provenance and the final #18 acceptance audit remain unfinished. A registration grants no activation,
 profitability, independent execution or qualification proof.

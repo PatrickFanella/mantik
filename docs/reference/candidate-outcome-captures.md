@@ -108,6 +108,8 @@ using `VerifyIntent`, then check the job against its own retained registration a
 dataset. Trusting the receipt embedded by the caller is insufficient.
 
 Keep captures private: they contain source, output and local host paths. This
-contract exposes no service admission or outcome persistence route. Service-side
-retention, owner fencing, generated-source provenance and the final #18 acceptance
-audit remain separate work. Existing pilot services are unchanged.
+contract exposes no service admission route. The
+[outcome backends](candidate-worker-outcomes.md) now retain validated reports and
+full capture bytes against their own intent/registration/dataset snapshots.
+Authenticated outcome access, owner fencing, generated-source provenance and the
+final #18 acceptance audit remain separate work. Existing pilot services are unchanged.

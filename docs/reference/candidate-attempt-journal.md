@@ -169,5 +169,5 @@ It validates the whole journal and reads existing files without querying Docker
 or reconciling pending requests. The portable capture preserves historical
 assertions and does not grant host verification or qualification credit.
 
-Issue #18 remains open for service outcome retention, cross-owner execution
+Issue #18 remains open for authenticated outcome access, cross-owner execution
 fencing, generated-source provenance and the final acceptance audit.

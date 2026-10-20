@@ -422,4 +422,7 @@ registration pins and validated job export. `candidate-worker-run` and
 journal and its original owned handle. `candidate-worker-capture` exports
 [portable caller-reported outcome evidence](docs/reference/candidate-outcome-captures.md),
 and `candidate-capture-inspect` validates it or exports exact output bytes.
-Service outcome retention and cross-owner execution fencing remain unfinished.
+[Outcome backends](docs/reference/candidate-worker-outcomes.md) now retain reports
+against the service's own intent/dataset snapshot and preserve full captures and
+exact artifact bytes.
+Authenticated outcome access and cross-owner execution fencing remain unfinished.

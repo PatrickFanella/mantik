@@ -332,7 +332,7 @@ func TestPostgresContractsCandidateRegistryUpgrade(t *testing.T) {
 	_, _, pub, _ := candidateFixture(t, s)
 	before, _ := s.Snapshot(ctx)
 	config := s.pool.Config().ConnString()
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_candidate_worker_intents; DROP TABLE mantik_candidate_datasets; DROP TABLE mantik_candidate_registrations; DELETE FROM mantik_schema WHERE version>=30"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_candidate_worker_outcomes; DROP TABLE mantik_candidate_worker_intents; DROP TABLE mantik_candidate_datasets; DROP TABLE mantik_candidate_registrations; DELETE FROM mantik_schema WHERE version>=30"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

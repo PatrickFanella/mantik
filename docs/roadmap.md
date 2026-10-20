@@ -311,6 +311,8 @@ coherent receiver/history snapshot and validate job export before output.
 Receiver-bound local journals now retain the full exported service intent before
 launch and require the same receipt for reconciliation. Portable
 [outcome captures](reference/candidate-outcome-captures.md) preserve full bound
-receipts and exact failed/incomplete output without execution credit. Service outcome retention,
-cross-owner execution fencing and generated-source provenance remain unfinished;
+receipts and exact failed/incomplete output without execution credit.
+[Outcome backends](reference/candidate-worker-outcomes.md) now retain immutable
+reports/capture bytes with complete-prefix validation and exact retries.
+Authenticated outcome access, cross-owner execution fencing and generated-source provenance remain unfinished;
 this does not close #18.
