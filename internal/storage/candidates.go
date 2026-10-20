@@ -17,6 +17,8 @@ import (
 // CandidateStore retains declarations and their exact datasets without starting
 // workers. Read methods validate the entire receiver-owned prefix and artifacts.
 type CandidateStore interface {
+	CandidateRegistry(context.Context) (candidatelineage.Registry, error)
+	CandidateEvidence(context.Context, string) (candidatelineage.Artifact, error)
 	RegisterCandidate(context.Context, candidatelineage.Command, []byte, func() time.Time) (candidatelineage.Registration, error)
 	CandidateRegistrations(context.Context) ([]candidatelineage.Registration, error)
 	CandidateRegistration(context.Context, string) (candidatelineage.Registration, error)
@@ -138,20 +140,37 @@ func (m *Memory) CandidateRegistration(ctx context.Context, id string) (candidat
 	return selectCandidate(all, id)
 }
 
-func (m *Memory) CandidateDataset(ctx context.Context, id string) ([]byte, error) {
+func (m *Memory) CandidateRegistry(ctx context.Context) (candidatelineage.Registry, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return candidatelineage.Registry{}, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	all, err := m.candidateSnapshot()
 	if err != nil {
-		return nil, err
+		return candidatelineage.Registry{}, err
 	}
-	if _, err = selectCandidate(all, id); err != nil {
-		return nil, err
+	return candidatelineage.RegistryFor(m.receiverID, all)
+}
+func (m *Memory) CandidateEvidence(ctx context.Context, id string) (candidatelineage.Artifact, error) {
+	if err := ctx.Err(); err != nil {
+		return candidatelineage.Artifact{}, err
 	}
-	return slices.Clone(m.candidateDatasets[id]), nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	all, err := m.candidateSnapshot()
+	if err != nil {
+		return candidatelineage.Artifact{}, err
+	}
+	r, err := selectCandidate(all, id)
+	if err != nil {
+		return candidatelineage.Artifact{}, err
+	}
+	return candidatelineage.Artifact{Schema: candidatelineage.ArtifactSchema, Registration: clone(r), Dataset: slices.Clone(m.candidateDatasets[id])}, nil
+}
+func (m *Memory) CandidateDataset(ctx context.Context, id string) ([]byte, error) {
+	a, err := m.CandidateEvidence(ctx, id)
+	return a.Dataset, err
 }
 
 // loadCandidates streams at most 33 rows and checks each dataset before moving
@@ -268,41 +287,50 @@ func (p *Postgres) RegisterCandidate(ctx context.Context, c candidatelineage.Com
 	return r, tx.Commit(ctx)
 }
 
-func (p *Postgres) candidateSnapshot(ctx context.Context, wanted string) ([]candidatelineage.Registration, []byte, error) {
+func (p *Postgres) candidateSnapshot(ctx context.Context, wanted string) (string, []candidatelineage.Registration, []byte, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return nil, nil, err
+		return "", nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	_, all, raw, err := loadCandidates(ctx, tx, wanted)
+	receiverID, all, raw, err := loadCandidates(ctx, tx, wanted)
 	if err != nil {
-		return nil, nil, err
+		return "", nil, nil, err
 	}
-	return all, raw, tx.Commit(ctx)
+	return receiverID, all, raw, tx.Commit(ctx)
 }
-
+func (p *Postgres) CandidateRegistry(ctx context.Context) (candidatelineage.Registry, error) {
+	receiverID, all, _, err := p.candidateSnapshot(ctx, "")
+	if err != nil {
+		return candidatelineage.Registry{}, err
+	}
+	return candidatelineage.RegistryFor(receiverID, all)
+}
 func (p *Postgres) CandidateRegistrations(ctx context.Context) ([]candidatelineage.Registration, error) {
-	all, _, err := p.candidateSnapshot(ctx, "")
+	_, all, _, err := p.candidateSnapshot(ctx, "")
 	return all, err
 }
-
 func (p *Postgres) CandidateRegistration(ctx context.Context, id string) (candidatelineage.Registration, error) {
-	all, _, err := p.candidateSnapshot(ctx, "")
+	_, all, _, err := p.candidateSnapshot(ctx, "")
 	if err != nil {
 		return candidatelineage.Registration{}, err
 	}
 	return selectCandidate(all, id)
 }
-
-func (p *Postgres) CandidateDataset(ctx context.Context, id string) ([]byte, error) {
-	all, raw, err := p.candidateSnapshot(ctx, id)
+func (p *Postgres) CandidateEvidence(ctx context.Context, id string) (candidatelineage.Artifact, error) {
+	_, all, raw, err := p.candidateSnapshot(ctx, id)
 	if err != nil {
-		return nil, err
+		return candidatelineage.Artifact{}, err
 	}
-	if _, err = selectCandidate(all, id); err != nil {
-		return nil, err
+	r, err := selectCandidate(all, id)
+	if err != nil {
+		return candidatelineage.Artifact{}, err
 	}
-	return raw, nil
+	return candidatelineage.Artifact{Schema: candidatelineage.ArtifactSchema, Registration: r, Dataset: raw}, nil
+}
+func (p *Postgres) CandidateDataset(ctx context.Context, id string) ([]byte, error) {
+	a, err := p.CandidateEvidence(ctx, id)
+	return a.Dataset, err
 }
 
 var _ CandidateStore = (*Memory)(nil)

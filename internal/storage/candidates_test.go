@@ -68,6 +68,10 @@ func candidateContracts(t *testing.T, s candidateBackend) {
 		t.Fatal("empty registry", empty, err)
 	}
 	before, _ := s.Snapshot(ctx)
+	registry, err := s.CandidateRegistry(ctx)
+	if err != nil || registry.Validate() != nil || registry.ReceiverID != c.ReceiverID || len(registry.Registrations) != 0 {
+		t.Fatal("empty registry envelope", err)
+	}
 	newsBefore, _ := s.NewsCases(ctx)
 	publicationBefore, _ := s.Hypothesis(ctx, pub.Sealed.ID)
 	// Concurrent identical requests retain one row and one exact artifact.
@@ -159,6 +163,10 @@ func candidateContracts(t *testing.T, s candidateBackend) {
 		t.Fatal("raw input changed", err)
 	}
 	input[0] = '!'
+	evidence, err := s.CandidateEvidence(ctx, "root")
+	if err != nil || evidence.Validate() != nil || evidence.Registration.SHA256 != first.SHA256 || !bytes.Equal(evidence.Dataset, raw) {
+		t.Fatal("atomic artifact envelope invalid", err)
+	}
 	first.Candidate.Hypothesis.Declaration.Methods[0].ID = "caller-mutated"
 	if actual, err := s.CandidateRegistration(ctx, "root"); err != nil || actual.Validate() != nil {
 		t.Fatal("caller changed stored declaration", err)
@@ -238,6 +246,12 @@ func candidateCorruption(t *testing.T, s candidateBackend) {
 			defer restore()
 			if _, err := s.CandidateRegistrations(ctx); err == nil {
 				t.Fatal("corrupt history accepted")
+			}
+			if _, err := s.CandidateRegistry(ctx); err == nil {
+				t.Fatal("registry envelope hid damaged root")
+			}
+			if _, err := s.CandidateEvidence(ctx, "unrelated"); err == nil {
+				t.Fatal("artifact envelope hid damaged root")
 			}
 			if _, err := s.CandidateRegistration(ctx, "unrelated"); err == nil {
 				t.Fatal("selection hid damaged root")
