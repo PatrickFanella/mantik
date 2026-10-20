@@ -146,3 +146,7 @@ starts generation, a worker, or a trading action.
 Shared Memory/PostgreSQL HTTP and CLI checks cover authentication, strict JSON,
 changed owner/publication/plan/data bindings, exact retries, complete history,
 forged responses, byte-preserving exports and full readback after database reopen.
+
+The [generation output contracts](candidate-generation-outcomes.md) define full
+recording/report bindings and exact retry/history rules for the next persistence
+slice. They do not yet add output admission to the routes above.
