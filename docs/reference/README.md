@@ -93,3 +93,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Candidate properties over retained samples](candidate-properties.md): sealed
   relation requirements and every eligible pair, with explicit missing coverage.
+
+- [Cutoff-visible candidate replay inputs](candidate-replay.md): complete parent
+  exposures, availability ordering and verified derived artifacts.
