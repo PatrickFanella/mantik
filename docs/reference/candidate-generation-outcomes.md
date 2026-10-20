@@ -2,8 +2,9 @@
 
 `internal/candidategeneration` defines portable reports and receipts for output
 associated with an exact [generation intent](candidate-generation-intents.md).
-This slice contains pure value contracts only. It adds no persistence, HTTP or CLI
-admission, provider adapter, model call, compiler or process launcher.
+The pure contracts are now backed by `storage.CandidateGenerationOutcomeStore`
+for Memory and PostgreSQL. There is no output HTTP/CLI admission, provider
+adapter, model call, compiler or process launcher in this storage slice.
 
 ## Report and receipt
 
@@ -61,12 +62,58 @@ Before using these constructors or acknowledging any retry, a future backend mus
 validate every retained full recording and each authoritative publication/exact
 dataset in the same owner snapshot. A selected valid row cannot hide corruption
 elsewhere. A portable artifact alone has neither those authoritative publication
-bytes nor a database snapshot. Storage must retain paired metadata/recording rows
+bytes nor a database snapshot. Storage must retain metadata and complete recordings
 atomically, preserve failed reports, and compare full records before exact retry.
 
 Pure tests cover source/failed-output preservation, original CRLF source bytes,
 strict readers, forged metadata, detached results, temporal/identity conflicts,
 sparse complements, all 64 intents, and retries that must not read the clock.
-Durable Memory/PostgreSQL retention, authenticated output access, explicit
-candidate-registration lineage, a provider adapter and the final #18 acceptance
-audit remain unfinished. No output receipt activates a strategy or implies profit.
+Authenticated output access, explicit candidate-registration lineage, a provider
+adapter and the final #18 acceptance audit remain unfinished. No output receipt activates a strategy or implies profit.
+
+## Atomic storage and complete-prefix validation
+
+| Store method | Result |
+| --- | --- |
+| `ReportCandidateGeneration` | Retain one exact caller recording and derived outcome for an own retained intent, or return the original retry receipt. |
+| `CandidateGenerationOutcomeHistory` | One complete intent/report snapshot and exact unreported complement. |
+| `CandidateGenerationOutcome` | A selected outcome after complete-prefix validation. |
+| `CandidateGenerationOutcomeEvidence` | A selected full intent/outcome/recording artifact from that snapshot. |
+
+Before every report, retry or read, the backend validates every retained generation
+intent and its authoritative publication/exact dataset, then every complete
+recording and derived outcome. It rechecks raw dataset bindings, full plan and
+intent bindings, exact output and candidate identities, flags and times. Missing
+or damaged unrelated evidence prevents selected reads and retries. Returned
+nested plans and output bytes are detached from storage.
+
+Memory serializes access with its receiver mutex and retains serialized complete
+recordings alongside metadata. PostgreSQL schema 34 adds
+`mantik_candidate_generation_outcomes`: one row contains the derived JSONB
+receipt and complete recording JSON as BYTEA. The intent FK and unique bounded
+ordinal pin each report to one own intent. A single insert commits metadata and
+recording together; an insert failure acknowledges neither. Exact retries compare
+the full recording-derived receipt without consulting a new clock. There is no
+replace, delete, pruning, provider launch or registration method.
+
+PostgreSQL writers lock the receiver row before reading authoritative dependencies;
+readers use one repeatable-read transaction. At most 65 metadata rows are loaded
+to enforce the 64-intent bound. Recordings and datasets are checked one at a time;
+only a selected full recording survives validation for artifact export. Metadata
+is capped at 8 KiB and stored recording JSON at 4 MiB; application validation
+applies the tighter `MaxRecordingBytes` and exact nested bounds. No raw recording
+is omitted from backend validation when constructing a compact history.
+
+Schema-33 migration creates an empty output table, preserves existing generation
+intents/publications/raw datasets/candidate registry/operations, and reports
+existing intents as unreported. Old binaries refuse the newer schema. Version and
+checksum guards remain enforced. Existing pilot services/databases are not
+upgraded by implementing or testing schema 34.
+
+Shared Memory/disposable PostgreSQL contracts exercise concurrent exact reports,
+source/empty/binary output preservation, sparse/out-of-order admission, all 64
+intents, clock-free retry at capacity, changed ownership/plan/output/time refusal,
+failed insert with unchanged history, full reopened-database readback, unrelated
+recording/metadata/dataset/publication corruption, migration preservation and
+checksum refusal. This proves retained caller evidence behavior; it does not
+prove model generation, authorship, qualification or profitability.

@@ -448,5 +448,5 @@ adapter remain unfinished.
 [Generation output contracts](docs/reference/candidate-generation-outcomes.md)
 now bind full caller-recorded output to an exact generation intent, preserve
 rejections and define coherent report history and clock-free retry rules. They
-are pure contracts; durable output admission and generated-registration lineage
-remain unfinished. No provider execution or model authorship is asserted.
+now have atomic Memory/PostgreSQL retention with complete-prefix validation.
+Authenticated output access and generated-registration lineage remain unfinished. No provider execution or model authorship is asserted.
