@@ -58,7 +58,7 @@ consulting a new clock, including with all 64 intents reported. A changed output
 recording, capture time, plan or intent under the same request conflicts. The
 function does not mutate the supplied history or retain output by itself.
 
-Before using these constructors or acknowledging any retry, a future backend must
+Before using these constructors or acknowledging any retry, the backend must
 validate every retained full recording and each authoritative publication/exact
 dataset in the same owner snapshot. A selected valid row cannot hide corruption
 elsewhere. A portable artifact alone has neither those authoritative publication

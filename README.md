@@ -442,8 +442,8 @@ do not attest model authorship. [Generation intent backends](docs/reference/cand
 retain publication-bound plans and exact datasets before output admission.
 Authenticated `candidate-generation-intent-start`, `candidate-generation-intent`
 and `candidate-generation-intents` commands now submit and inspect these declarations.
-Retained generation outcomes/registration links and a provider
-adapter remain unfinished.
+Authenticated generation-output access, generated-registration links and a
+provider adapter remain unfinished.
 
 [Generation output contracts](docs/reference/candidate-generation-outcomes.md)
 now bind full caller-recorded output to an exact generation intent, preserve
