@@ -348,3 +348,10 @@ intent/plan/prompt/exact-dataset evidence. Shared Memory/PostgreSQL transport
 contracts include reopened-database readback. This retains declarations only;
 generation outcomes, generated registration lineage and a provider adapter remain
 unfinished under #18.
+
+[Generation outcome contracts](reference/candidate-generation-outcomes.md) now
+define intent-bound full recordings, compact derived receipts, complete ordered
+history/unreported complements and exact retry rules. Pure checks preserve failed
+output and reject changed bindings or inconsistent capture/retention times.
+Durable owner-snapshot validation and atomic report retention are the next slice;
+there is no provider call or new admission route in these contracts.
