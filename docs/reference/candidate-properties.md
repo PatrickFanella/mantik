@@ -102,5 +102,5 @@ These finite comparisons add sample relation checks to the existing example and
 failure checks. They do not establish universal properties, fresh-process
 repeatability, chronological/point-in-time replay, independent gold labels,
 complete candidate search history, realistic trading behavior or profitability.
-Issue #18 remains open for its remaining generated-source, replay and
-service-owned lineage criteria.
+The [candidate acceptance audit](../research/candidate-evaluation-acceptance.md)
+records the separate generated-source, replay and service-owned lineage evidence.

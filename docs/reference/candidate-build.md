@@ -22,7 +22,8 @@ The application-owned harness is exactly `package candidate` followed by
 `var _ func(int64) bool = Entry`, each ending with a newline. The parser checks
 source shape; the compiler checks signature and types. This first interface
 supports synthetic `DEMO` research. The Boolean is not a finalized decision or
-permission to trade. Return values and safety behavior are not tested yet.
+permission to trade. This compile-only profile does not test return values or safety behavior; the
+separate [behavioral profile](candidate-behavior.md) checks retained examples.
 
 Build the dedicated Linux/amd64 image with a unique local tag:
 

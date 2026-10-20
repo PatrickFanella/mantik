@@ -23,6 +23,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/candidategeneration"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidatelineage"
 	"git.subcult.tv/subculture-collective/mantik/internal/dataset"
+	"git.subcult.tv/subculture-collective/mantik/internal/generatedcandidate"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/investigation"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
@@ -187,6 +188,10 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 	generation, generationHistory := generationIntentHTTP(t, server.URL, pub, raw)
 	generationOutcomes, generationArtifacts := generationOutcomeHTTP(t, server.URL, generationHistory, raw)
 	generationHistory = generationOutcomes.IntentHistory
+	generatedHistory, generatedArtifacts := generatedCandidateHTTP(t, server.URL, generationArtifacts)
+	if err := json.Unmarshal(run("candidate-registrations"), &all); err != nil || len(all.Registrations) != 4 {
+		t.Fatal("generated legacy registry", err)
+	}
 	intent, intentHistory := candidateIntentHTTP(t, server.URL, first, second, raw)
 	outcome, capture := candidateOutcomeHTTP(t, s, intent)
 	var outcomeHistory candidateevidence.History
@@ -206,6 +211,19 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 		var restored candidatelineage.Registry
 		if err := json.Unmarshal(run("candidate-registrations"), &restored); err != nil || !reflect.DeepEqual(all, restored) {
 			t.Fatal("HTTP restart changed registry", err)
+		}
+		var restoredGenerated generatedcandidate.Registry
+		if err := json.Unmarshal(run("generated-candidates"), &restoredGenerated); err != nil || !reflect.DeepEqual(generatedHistory, restoredGenerated) {
+			t.Fatal("restart generated discovery", err)
+		}
+		for _, a := range generatedArtifacts {
+			var restored generatedcandidate.Artifact
+			if err := json.Unmarshal(run(append(generatedInspectFlags(a), "--artifact", "artifact")...), &restored); err != nil || !reflect.DeepEqual(restored, a) {
+				t.Fatal("restart full generated artifact", err)
+			}
+			if !bytes.Equal(run(append(generatedInspectFlags(a), "--artifact", "source")...), []byte(a.Registration.Candidate.Source.Text)) {
+				t.Fatal("restart exact generated source")
+			}
 		}
 		var restoredGenerationOutcomes candidategeneration.OutcomeHistory
 		if err := json.Unmarshal(run("candidate-generation-outcomes"), &restoredGenerationOutcomes); err != nil || !reflect.DeepEqual(generationOutcomes, restoredGenerationOutcomes) {

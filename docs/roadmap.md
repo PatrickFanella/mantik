@@ -113,7 +113,10 @@ M4 exit gate.
 [Candidate fixture test plans](reference/candidate-fixture-tests.md) now bind
 explicit expected signals to every retained input and compare caller-reported
 outputs without executing source. Dedicated behavioral workers now execute those
-plans; service-owned candidate attempt lineage remains unfinished in #18.
+plans. The [candidate acceptance audit](research/candidate-evaluation-acceptance.md)
+now covers service-owned generation/registration/worker lineage and fresh isolated
+compile, behavior, property and replay evidence for #18. This remains unqualified
+synthetic evaluation, with no automatic provider generation or strategy promotion.
 
 - [#15: Define decision workflow and LLM tool contracts](https://git.subcult.tv/subculture-collective/mantik/issues/15). Depends on #3, #12, #9.
 - [#16: Add hypothesis lifecycle and autonomous research-attempt history](https://git.subcult.tv/subculture-collective/mantik/issues/16). Depends on #6, #15.
@@ -206,6 +209,16 @@ its declared controls, reconciles every economic effect, and has retained
 recovery and operator-halt evidence. Paper profitability is an admission input;
 it does not establish that live trading will be profitable. No live account is
 connected and no real-money orders are authorized by recording this direction.
+
+## Completion path to the next soak
+
+The operator selected completion of all remaining development/release issues
+before starting the next soak on 2026-10-20. The
+[paper-soak delivery plan](plans/paper-soak.md) maps #18, #19–#21, #13–#14 and
+#23–#26 to explicit exit evidence; #27 is the natural soak and its report.
+The plan retains every issue's acceptance criteria and native dependencies.
+It also requires an assembled autonomous input-to-ledger rehearsal rather than
+inferring readiness from separate component checks or idle worker uptime.
 
 ## First implementation sequence
 
@@ -313,7 +326,8 @@ source-pinned registration links and full-prefix retry rules while preserving
 legacy registration hashes. It refuses rejected output and retrofitting an old
 unlinked registration. Schema 35 now atomically retains the generated link, legacy
 registration and exact dataset in Memory/PostgreSQL; ordinary registration reads
-and retries also validate retained links. Authenticated bridge access remains next.
+and retries also validate retained links. Authenticated bridge commands now expose
+new registration and verified full-artifact/source/output inspection.
 Receiver-bound local journals now retain the full exported service intent before
 launch and require the same receipt for reconciliation. Portable
 [outcome captures](reference/candidate-outcome-captures.md) preserve full bound
@@ -376,4 +390,5 @@ Report clients compare the complete pinned service intent before POST and rederi
 the returned receipt. Selected exports validate one full coherent artifact and
 preserve failed-output/source bytes. Shared Memory/PostgreSQL contracts include
 full database reopen readback. Generated-registration retention now builds on
-these owner-validated artifacts; authenticated bridge access remains next.
+these owner-validated artifacts. Its authenticated commands validate the complete
+provenance chain and expected registration/link identities before export.
