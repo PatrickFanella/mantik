@@ -306,5 +306,6 @@ entire history on reads. Authenticated API/CLI access now verifies receiver and
 registration pins and exports exact dataset bytes, with disposable PostgreSQL HTTP
 restart checks. [Candidate worker intent backends](reference/candidate-worker-intents.md)
 now retain pre-execution registration/job pins with exact retries, bounded complete
-history and restart/corruption checks. Intent API/CLI access, worker linkage and
-outcomes remain unfinished; this does not close #18.
+history and restart/corruption checks. Authenticated intent commands now expose a
+coherent receiver/history snapshot and validate job export before output. Worker
+linkage and outcomes remain unfinished; this does not close #18.

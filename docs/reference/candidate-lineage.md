@@ -155,7 +155,8 @@ request/response JSON, unsupported query/launch paths and refusal of forged
 readbacks before output.
 
 [Candidate worker intent backends](candidate-worker-intents.md) now retain exact
-registration/job bindings before execution. Intent API/CLI access, worker
-ownership/reconciliation linkage, outcomes, generated-source provenance and the
+registration/job bindings before execution, with authenticated intent API/CLI
+access and coherent history. Worker ownership/reconciliation linkage, outcomes,
+generated-source provenance and the
 final #18 acceptance audit remain unfinished. A registration grants no activation,
 profitability, independent execution or qualification proof.

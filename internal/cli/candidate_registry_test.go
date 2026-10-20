@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/candidate"
+	"git.subcult.tv/subculture-collective/mantik/internal/candidateattempt"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidatelineage"
 	"git.subcult.tv/subculture-collective/mantik/internal/dataset"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
@@ -181,6 +182,7 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 	if err := json.Unmarshal(run("candidate-registrations"), &all); err != nil || all.Validate() != nil || len(all.Registrations) != 2 || all.Registrations[1].ID != "child" {
 		t.Fatal(all, err)
 	}
+	intent, intentHistory := candidateIntentHTTP(t, server.URL, first, second, raw)
 	if reopen != nil {
 		server.Close()
 		s = reopen()
@@ -194,6 +196,14 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 		var restored candidatelineage.Registry
 		if err := json.Unmarshal(run("candidate-registrations"), &restored); err != nil || !reflect.DeepEqual(all, restored) {
 			t.Fatal("HTTP restart changed registry", err)
+		}
+		var restoredIntent candidateattempt.Intent
+		if err := json.Unmarshal(run("candidate-worker-intent", "--id", intent.Command.RequestID, "--intent-sha256", intent.SHA256), &restoredIntent); err != nil || !reflect.DeepEqual(intent, restoredIntent) {
+			t.Fatal("HTTP restart changed intent", err)
+		}
+		var restoredHistory candidateattempt.History
+		if err := json.Unmarshal(run("candidate-worker-intents"), &restoredHistory); err != nil || !reflect.DeepEqual(intentHistory, restoredHistory) {
+			t.Fatal("HTTP restart changed coherent intent history", err)
 		}
 	}
 	call := func(method, path, body string, auth bool, want int) {

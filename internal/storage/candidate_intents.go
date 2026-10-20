@@ -14,6 +14,7 @@ import (
 )
 
 type CandidateWorkerIntentStore interface {
+	CandidateWorkerIntentHistory(context.Context) (candidateattempt.History, error)
 	StartCandidateWorker(context.Context, candidateattempt.Command, func() time.Time) (candidateattempt.Intent, error)
 	CandidateWorkerIntent(context.Context, string) (candidateattempt.Intent, error)
 	CandidateWorkerIntents(context.Context) ([]candidateattempt.Intent, error)
@@ -112,14 +113,26 @@ func (m *Memory) StartCandidateWorker(ctx context.Context, c candidateattempt.Co
 	return clone(i), nil
 }
 
-func (m *Memory) CandidateWorkerIntents(ctx context.Context) ([]candidateattempt.Intent, error) {
+func (m *Memory) CandidateWorkerIntentHistory(ctx context.Context) (candidateattempt.History, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return candidateattempt.History{}, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	all, _, err := m.candidateIntentSnapshot()
-	return clone(all), err
+	all, regs, err := m.candidateIntentSnapshot()
+	if err != nil {
+		return candidateattempt.History{}, err
+	}
+	registered := make([]candidatelineage.Registration, 0, len(regs))
+	for _, r := range regs {
+		registered = append(registered, r)
+	}
+	slices.SortFunc(registered, func(a, b candidatelineage.Registration) int { return a.Sequence - b.Sequence })
+	return candidateattempt.HistoryFor(m.receiverID, registered, all)
+}
+func (m *Memory) CandidateWorkerIntents(ctx context.Context) ([]candidateattempt.Intent, error) {
+	h, err := m.CandidateWorkerIntentHistory(ctx)
+	return h.Intents, err
 }
 
 func selectCandidateIntent(all []candidateattempt.Intent, id string) (candidateattempt.Intent, error) {
@@ -223,21 +236,29 @@ func (p *Postgres) StartCandidateWorker(ctx context.Context, c candidateattempt.
 	return i, tx.Commit(ctx)
 }
 
-func (p *Postgres) CandidateWorkerIntents(ctx context.Context) ([]candidateattempt.Intent, error) {
+func (p *Postgres) CandidateWorkerIntentHistory(ctx context.Context) (candidateattempt.History, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return nil, err
+		return candidateattempt.History{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
 	receiverID, registered, _, err := loadCandidates(ctx, tx, "")
 	if err != nil {
-		return nil, err
+		return candidateattempt.History{}, err
 	}
 	all, err := loadCandidateIntents(ctx, tx, receiverID, candidateRegistrationMap(registered))
 	if err != nil {
-		return nil, err
+		return candidateattempt.History{}, err
 	}
-	return all, tx.Commit(ctx)
+	h, err := candidateattempt.HistoryFor(receiverID, registered, all)
+	if err != nil {
+		return candidateattempt.History{}, err
+	}
+	return h, tx.Commit(ctx)
+}
+func (p *Postgres) CandidateWorkerIntents(ctx context.Context) ([]candidateattempt.Intent, error) {
+	h, err := p.CandidateWorkerIntentHistory(ctx)
+	return h.Intents, err
 }
 
 func (p *Postgres) CandidateWorkerIntent(ctx context.Context, id string) (candidateattempt.Intent, error) {
