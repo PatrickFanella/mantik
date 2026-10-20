@@ -117,3 +117,8 @@ artifact format establishes independently assessed gold labels, unseen data,
 complete candidate search history, general property/failure coverage, realistic
 fills, financial safety, forecasting skill, strategy admission or profitability.
 Issue #18 remains open for its remaining lineage and testing requirements.
+
+Use the [local candidate attempt journal](candidate-attempt-journal.md) to retain
+intent before launch and keep request-ID retries and every local outcome in one
+bounded history. The lower-level commands remain available for explicit owned
+attempts without that journal.

@@ -278,3 +278,9 @@ example checks with retained mismatch/failure/timeout evidence. It does not clos
 #18: general property checks and authoritative candidate/search lineage remain
 unfinished, and no result grants activation or qualification. See
 [the behavioral worker contract](reference/candidate-behavior.md).
+
+A bounded local candidate attempt journal now retains pre-launch intent and
+every request/outcome, with request-ID retries that reconcile the original handle.
+This improves local failure/retry evidence; it does not establish service-owned
+candidate search completeness or close #18. See
+[the local journal contract](reference/candidate-attempt-journal.md).

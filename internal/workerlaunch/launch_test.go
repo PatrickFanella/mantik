@@ -30,6 +30,7 @@ type fakeDocker struct {
 	foreign       bool
 	waitHook      func()
 	profile       *execution
+	output        []byte
 }
 
 func (f *fakeDocker) command(ctx context.Context, args ...string) ([]byte, []byte, error) {
@@ -125,6 +126,9 @@ func (f *fakeDocker) command(ctx context.Context, args ...string) ([]byte, []byt
 		return nil, nil, nil
 	case "logs":
 		if f.profile != nil {
+			if f.output != nil {
+				return f.output, nil, nil
+			}
 			return []byte("{}"), nil, nil
 		}
 		if f.s.State.ExitCode == 137 {
