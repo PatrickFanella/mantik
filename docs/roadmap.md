@@ -106,13 +106,14 @@ Its 2026-10-19 refresh verifies the recorded decision/hypothesis contracts after
 #12's closure. The external-worker refresh verifies the fixed protocol gate;
 [candidate source declarations](reference/candidate-source.md) and
 [isolated compile checks](reference/candidate-build.md) start #18. Candidate
-behavioral execution and replay remain unfinished. Recorded fixture coverage does not
-close the integrated M4 exit gate.
+behavioral execution and synthetic cutoff replay are now available, with the
+limits described below. Recorded fixture coverage does not close the integrated
+M4 exit gate.
 
 [Candidate fixture test plans](reference/candidate-fixture-tests.md) now bind
 explicit expected signals to every retained input and compare caller-reported
-outputs without executing source. Behavioral workers and service-owned candidate
-attempt lineage remain unfinished parts of #18.
+outputs without executing source. Dedicated behavioral workers now execute those
+plans; service-owned candidate attempt lineage remains unfinished in #18.
 
 - [#15: Define decision workflow and LLM tool contracts](https://git.subcult.tv/subculture-collective/mantik/issues/15). Depends on #3, #12, #9.
 - [#16: Add hypothesis lifecycle and autonomous research-attempt history](https://git.subcult.tv/subculture-collective/mantik/issues/16). Depends on #6, #15.
@@ -275,8 +276,9 @@ than rewriting it into a pass.
 Candidate behavioral workers now compile, link and execute sealed synthetic
 fixture plans in a dedicated owned container profile. This adds actual bounded
 example checks with retained mismatch/failure/timeout evidence. It does not close
-#18: general property checks and authoritative candidate/search lineage remain
-unfinished, and no result grants activation or qualification. See
+#18: authoritative candidate/search lineage remains unfinished, and finite sample
+properties do not establish universal behavior. No result grants activation or
+qualification. See
 [the behavioral worker contract](reference/candidate-behavior.md).
 
 A bounded local candidate attempt journal now retains pre-launch intent and
@@ -295,3 +297,8 @@ Candidate replay projections now retain every parent exposure and derive
 availability-ordered worker inputs at explicit cutoffs, including no-input frames.
 This is synthetic input replay; generated-source/service lineage and a final #18
 acceptance audit remain. See [the replay contract](reference/candidate-replay.md).
+
+The pure [candidate lineage contract](reference/candidate-lineage.md) now binds
+candidate packages to authoritative publication inputs and earlier parent pins,
+with complete-prefix validation and bounded request retries. This prepares the
+service registry; storage, artifact retention and API/CLI wiring remain unfinished.
