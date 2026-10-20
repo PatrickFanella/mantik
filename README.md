@@ -413,6 +413,10 @@ publication-bound registrations, parent pins and bounded retry rules. Memory and
 PostgreSQL backends retain the complete lineage and exact dataset bytes.
 `candidate-register`, `candidate-registrations`, `candidate-registration` and
 `candidate-dataset` expose authenticated registration and verified readback.
+The [recorded generation bridge](docs/reference/generated-candidate-lineage.md)
+now defines explicit source-pinned registration links, atomic-retention rules and
+refusal to adopt an existing unlinked registration. These are pure contracts;
+durable bridge retention and authenticated access remain unfinished.
 The [candidate worker intent backend](docs/reference/candidate-worker-intents.md)
 now binds pre-execution requests to exact registrations and behavior jobs.
 `candidate-worker-intent-start`, `candidate-worker-intents` and
