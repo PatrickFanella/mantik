@@ -1,5 +1,16 @@
 # Candidate outcome captures
 
+`internal/candidateevidence` owns the portable intent/outcome/capture values and
+pure validators. `internal/workerreceipt` owns the shared acquisition, receipt,
+pre-start snapshot and profile checks. Neither package imports the launcher,
+replay or storage. Storage can consume this evidence without importing Docker
+ownership or creating a replay dependency cycle.
+
+The launcher's existing exported types and reader remain compatibility aliases
+and a wrapper. Local journal/filesystem reads and Docker commands stay in
+`internal/workerlaunch`. This package separation changes no JSON schema, field
+order, content hash, resource profile, CLI command or persistence version.
+
 `candidate-worker-capture` exports a retained receiver-bound local outcome as
 `mantik-candidate-outcome-capture-v1`. It reads the existing journal and artifacts;
 it does not inspect Docker, reconcile a pending request, launch or stop a worker,

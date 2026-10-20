@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
+	"git.subcult.tv/subculture-collective/mantik/internal/workerreceipt"
 )
 
 const ownerLabel = "tv.subcult.mantik.worker.launch"
@@ -22,61 +23,14 @@ const jobLabel = "tv.subcult.mantik.worker.job"
 
 var containerID = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var launchID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
-var ErrConflict = errors.New("worker launch identity, artifact or ownership conflict")
+var ErrConflict = workerreceipt.ErrConflict
 var ErrBusy = errors.New("worker launcher holds the attempt lock")
 var ErrRunning = errors.New("owned worker is running before its deadline; inspect again or explicitly cancel")
 
-type Acquisition struct {
-	Schema        string    `json:"schema"`
-	ID            string    `json:"id"`
-	Root          string    `json:"root"`
-	JobSHA256     string    `json:"job_sha256"`
-	ImageSHA256   string    `json:"image_sha256"`
-	ContainerName string    `json:"container_name"`
-	CreatedAt     time.Time `json:"created_at"`
-	Deadline      time.Time `json:"deadline"`
-	SHA256        string    `json:"sha256"`
-}
-type preStart struct {
-	AcquisitionSHA256 string
-	Snapshot          snapshot
-	SHA256            string
-}
-type Receipt struct {
-	Schema              string    `json:"schema"`
-	AcquisitionSHA256   string    `json:"acquisition_sha256"`
-	ContainerID         string    `json:"container_id,omitempty"`
-	ImageSHA256         string    `json:"image_sha256"`
-	Status              string    `json:"status"`
-	ReasonCode          string    `json:"reason_code"`
-	ExitCode            int       `json:"exit_code"`
-	FinishedAt          time.Time `json:"finished_at,omitzero"`
-	CollectedAt         time.Time `json:"collected_at"`
-	ProfileVerified     bool      `json:"profile_verified"`
-	HostDeadlineMet     bool      `json:"host_deadline_met"`
-	OutputComplete      bool      `json:"output_complete"`
-	StdoutSHA256        string    `json:"stdout_sha256"`
-	StdoutBytes         int       `json:"stdout_bytes"`
-	StderrSHA256        string    `json:"stderr_sha256"`
-	StderrBytes         int       `json:"stderr_bytes"`
-	WorkerResultSHA256  string    `json:"worker_result_sha256,omitempty"`
-	WorkerStatus        string    `json:"worker_status,omitempty"`
-	Authority           string    `json:"authority"`
-	QualificationCredit bool      `json:"qualification_credit"`
-	SHA256              string    `json:"sha256"`
-}
+type Acquisition = workerreceipt.Acquisition
+type Receipt = workerreceipt.Receipt
+type preStart = workerreceipt.PreStart
 
-func (a Acquisition) validate(root string, j workerplan.Job, approved string) error {
-	return a.validateExecution(root, nativeExecution(j), approved)
-}
-func (a Acquisition) validateExecution(root string, p execution, approved string) error {
-	expected := a.SHA256
-	a.SHA256 = ""
-	if a.Schema != p.acquisitionSchema || a.Root != root || !launchID.MatchString(a.ID) || a.ContainerName != "mantik-worker-"+strings.ToLower(a.ID) || a.JobSHA256 != p.sha || a.ImageSHA256 != approved || approved != p.image || a.CreatedAt.IsZero() || a.CreatedAt.Year() < 1 || a.CreatedAt.Year() > 9999 || !a.Deadline.Equal(a.CreatedAt.Add(time.Duration(p.resources.WallSeconds)*time.Second)) || expected != workerplan.Hash(a) {
-		return ErrConflict
-	}
-	return nil
-}
 func load(root, approved string) (Acquisition, workerplan.Job, error) {
 	raw, err := readFile(root, "job.json", workerplan.MaxJobBytes)
 	if err != nil {
@@ -91,7 +45,7 @@ func load(root, approved string) (Acquisition, workerplan.Job, error) {
 		return Acquisition{}, j, err
 	}
 	var a Acquisition
-	if json.Unmarshal(raw, &a) != nil || a.validate(root, j, approved) != nil {
+	if json.Unmarshal(raw, &a) != nil || a.Validate(root, receiptProfile(nativeExecution(j)), approved) != nil {
 		return a, j, ErrConflict
 	}
 	return a, j, nil

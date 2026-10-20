@@ -6,6 +6,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/externalplan"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
+	"git.subcult.tv/subculture-collective/mantik/internal/workerreceipt"
 )
 
 // execution is private, constructed only from a validated supported declaration.
@@ -73,4 +74,8 @@ func externalExecution(j externalplan.Job) execution {
 			}
 			return o, nil
 		}}
+}
+
+func receiptProfile(p execution) workerreceipt.Profile {
+	return workerreceipt.Profile{JobSHA256: p.sha, ImageSHA256: p.image, AcquisitionSchema: p.acquisitionSchema, Resources: p.resources, Entrypoint: p.entrypoint, Args: p.args, Env: p.env, BehaviorTmp: p.behaviorTmp}
 }
