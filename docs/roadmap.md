@@ -308,6 +308,10 @@ restart checks. [Candidate worker intent backends](reference/candidate-worker-in
 now retain pre-execution registration/job pins with exact retries, bounded complete
 history and restart/corruption checks. Authenticated intent commands now expose a
 coherent receiver/history snapshot and validate job export before output.
+The [recorded generation bridge](reference/generated-candidate-lineage.md) defines
+source-pinned registration links and full-prefix retry rules while preserving
+legacy registration hashes. It refuses rejected output and retrofitting an old
+unlinked registration. This pure contract does not yet retain linked registrations.
 Receiver-bound local journals now retain the full exported service intent before
 launch and require the same receipt for reconciliation. Portable
 [outcome captures](reference/candidate-outcome-captures.md) preserve full bound
