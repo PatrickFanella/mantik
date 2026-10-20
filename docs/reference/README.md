@@ -77,3 +77,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Candidate source declarations](candidate-source.md) — immutable offline source,
   hypothesis/dataset/toolchain pins; no compilation or execution.
+
+- [Candidate compile checks](candidate-build.md) — a fixed interface, isolated
+  compiler, bounded failure results and owned local attempt reconciliation.

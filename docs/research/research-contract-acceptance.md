@@ -247,10 +247,12 @@ and process-isolation evidence, not a sandbox security certification or financia
 qualification. The source for this rehearsal precedes the candidate declaration
 CLI; it does not establish candidate execution.
 
-The [candidate source declaration](../reference/candidate-source.md) now starts
+The [candidate source declaration](../reference/candidate-source.md) starts
 #18 by retaining immutable source/hypothesis/dataset/toolchain provenance.
-Isolated compilation, conformance/property checks, candidate replay/failure
-cases and candidate attempt/retry retention remain unfinished. Existing fixed
-worker commands do not execute candidate source. #18, general allocation (#19),
+The separate [candidate build protocol](../reference/candidate-build.md) now adds
+isolated compile/interface checks and retained local physical attempts.
+Behavioral/property checks, candidate replay/failure cases and service-owned
+candidate search lineage remain unfinished. Existing native/Python workers do
+not execute candidate source. #18, general allocation (#19),
 realistic economics (#20), qualification (#21) and the integrated M4 gate remain
 incomplete.

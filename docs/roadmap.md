@@ -104,8 +104,9 @@ The [recorded research contract audit](research/research-contract-acceptance.md)
 maps delivered review, hypothesis and worker contracts to issues #15–#17.
 Its 2026-10-19 refresh verifies the recorded decision/hypothesis contracts after
 #12's closure. The external-worker refresh verifies the fixed protocol gate;
-[candidate source declarations](reference/candidate-source.md) start #18, while
-the generated-candidate execution worker remains absent. Recorded fixture coverage does not
+[candidate source declarations](reference/candidate-source.md) and
+[isolated compile checks](reference/candidate-build.md) start #18. Candidate
+behavioral execution and replay remain unfinished. Recorded fixture coverage does not
 close the integrated M4 exit gate.
 
 - [#15: Define decision workflow and LLM tool contracts](https://git.subcult.tv/subculture-collective/mantik/issues/15). Depends on #3, #12, #9.
