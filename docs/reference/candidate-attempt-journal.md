@@ -163,5 +163,11 @@ fenced by this protocol. Preserve one designated owner rather than moving or
 recreating it; cross-owner execution fencing needs a service-owned contract.
 No service outcome upload, strategy activation or qualification is performed.
 
+`candidate-worker-capture` can export a collected bound outcome with its exact
+artifacts as [portable caller-reported evidence](candidate-outcome-captures.md).
+It validates the whole journal and reads existing files without querying Docker
+or reconciling pending requests. The portable capture preserves historical
+assertions and does not grant host verification or qualification credit.
+
 Issue #18 remains open for service outcome retention, cross-owner execution
 fencing, generated-source provenance and the final acceptance audit.

@@ -137,6 +137,9 @@ can now consume an exported full intent with explicit receiver, request and hash
 pins, retain it before launch, and reconcile its original owned handle. The service
 intent remains a pre-execution declaration. Its flags do not change when local
 execution occurs. No outcome is uploaded to the service by these commands.
+The [portable outcome capture](candidate-outcome-captures.md) now preserves a
+collected local outcome and exact artifacts with explicit caller-reported
+authority; service admission must compare it with the service's own retained intent.
 
 Service outcome retention, cross-owner execution fencing, generated-source
 provenance and the final #18 audit remain unfinished. The original pilot services
