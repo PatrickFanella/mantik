@@ -100,3 +100,6 @@ var PaperLedgerRehearsals string
 
 //go:embed 0029_fixture_capital.sql
 var FixtureCapital string
+
+//go:embed 0030_candidate_registrations.sql
+var CandidateRegistrations string

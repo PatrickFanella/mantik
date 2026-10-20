@@ -12,8 +12,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/dataset"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
-	"git.subcult.tv/subculture-collective/mantik/internal/replay"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
@@ -72,7 +72,7 @@ func New(source []byte, h hypothesis.Declaration, rawDataset []byte, toolchainIm
 	if err != nil {
 		return Package{}, ErrInvalid
 	}
-	var data replay.Dataset
+	var data dataset.Dataset
 	if workerplan.ReadDatasetShape(rawDataset, &data) != nil || data.Validate() != nil || sealed.Declaration.EvidenceClass != data.EvidenceClass || sealed.Declaration.Instrument != "DEMO" {
 		return Package{}, ErrInvalid
 	}
@@ -116,7 +116,7 @@ func (p Package) VerifyDataset(raw []byte) error {
 	if p.Validate() != nil || len(raw) != p.Dataset.Bytes || workerplan.Digest(raw) != p.Dataset.SHA256 {
 		return ErrInvalid
 	}
-	var data replay.Dataset
+	var data dataset.Dataset
 	if workerplan.ReadDatasetShape(raw, &data) != nil || data.Validate() != nil || data.SHA256 != p.Dataset.CanonicalSHA256 || data.EvidenceClass != p.Hypothesis.Declaration.EvidenceClass {
 		return ErrInvalid
 	}

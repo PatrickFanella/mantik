@@ -11,7 +11,6 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/library"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
-	"git.subcult.tv/subculture-collective/mantik/internal/workflow"
 )
 
 type Pins struct {
@@ -94,7 +93,7 @@ func Run(ctx context.Context, d Dataset, pins Pins, cutoffs []time.Time) (Result
 	clock = Clock{}
 	records := slices.Clone(d.Records)
 	slices.SortFunc(records, func(a, b Record) int {
-		if order := a.visibleAt().Compare(b.visibleAt()); order != 0 {
+		if order := a.VisibleAt().Compare(b.VisibleAt()); order != 0 {
 			return order
 		}
 		if a.Key < b.Key {
@@ -123,12 +122,12 @@ func Run(ctx context.Context, d Dataset, pins Pins, cutoffs []time.Time) (Result
 		// A known gap at this clock tick must block all actions at the same tick,
 		// regardless of arbitrary source-key ordering.
 		end := cursor
-		for end < len(records) && !records[end].visibleAt().After(clock.Now()) {
+		for end < len(records) && !records[end].VisibleAt().After(clock.Now()) {
 			end++
 		}
 		for cursor < end {
 			groupEnd := cursor + 1
-			for groupEnd < end && records[groupEnd].visibleAt().Equal(records[cursor].visibleAt()) {
+			for groupEnd < end && records[groupEnd].VisibleAt().Equal(records[cursor].VisibleAt()) {
 				groupEnd++
 			}
 			for i := cursor; i < groupEnd; i++ {
@@ -164,7 +163,7 @@ func Run(ctx context.Context, d Dataset, pins Pins, cutoffs []time.Time) (Result
 					}
 				}
 				seen[id] = true
-				evidence = append(evidence, Exposure{r.Key, r.Revision, r.SHA256, r.visibleAt().UTC(), disposition})
+				evidence = append(evidence, Exposure{r.Key, r.Revision, r.SHA256, r.VisibleAt().UTC(), disposition})
 			}
 		}
 		snapshot, err := store.Snapshot(ctx)
@@ -183,18 +182,4 @@ func Run(ctx context.Context, d Dataset, pins Pins, cutoffs []time.Time) (Result
 		result.Frames = append(result.Frames, frame)
 	}
 	return result, nil
-}
-
-// FixtureDataset builds the same four synthetic observations as the demo. It is
-// an exportable dataset fixture, never historical or prospective qualification.
-func FixtureDataset() (Dataset, error) {
-	d := Dataset{Schema: DatasetSchema, ID: "demo-quotes", Version: "v1", EvidenceClass: "synthetic_unqualified"}
-	for _, o := range workflow.Fixtures() {
-		raw, err := json.Marshal(o)
-		if err != nil {
-			return Dataset{}, err
-		}
-		d.Records = append(d.Records, Record{Key: o.ID, Revision: 1, OccurredAt: o.OccurredAt, AvailableAt: o.ReceivedAt, ReceivedAt: o.ReceivedAt, Original: string(raw), SHA256: Digest(string(raw)), Instrument: Mapping{"DEMO", "DEMO", "fixture-map-v1"}, Access: Access{"mantik:synthetic-demo-v1", "GPL-3.0-only", "mantik-fixture"}, Quality: "usable"})
-	}
-	return Seal(d)
 }
