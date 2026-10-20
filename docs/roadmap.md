@@ -319,3 +319,17 @@ implemented. Coherent history now retains every intent/report and the exact
 unreported-request complement from one validated backend snapshot. Cross-owner
 execution fencing and generated-source provenance remain unfinished;
 this does not close #18.
+
+
+A prospective rehearsal on merged source `e882d455` issued five real service
+intents and ran four isolated native workers: two completed, one mismatched and
+one retained partial panic output. Four reports and one unreported intent survived
+service restart and an isolated PostgreSQL restore with exact capture preservation
+and zero economic effects. Earlier driver setup failures were retained. This is
+bounded synthetic runtime evidence, not deployment, provider proof or qualification.
+
+[Recorded generation](reference/recorded-candidate-generation.md) now preserves
+an offline request, exact recorded output and candidate/rejection links without
+model calls. This supplies a portable generation evidence contract; durable
+service generation lineage, a provider adapter and the final #18 acceptance audit
+remain unfinished. Cross-owner execution fencing is a separate ownership concern.

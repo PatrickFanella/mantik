@@ -431,3 +431,12 @@ exact stdout/stderr bytes through authenticated HTTP. `candidate-worker-outcomes
 returns one coherent intent/report snapshot and the request IDs without retained
 reports, without inferring host state. Cross-owner execution fencing remains
 unfinished.
+
+
+[Recorded candidate generation](docs/reference/recorded-candidate-generation.md)
+now seals an offline request and preserves exact recorded output before worker
+checks. `candidate-generation-plan`, `candidate-generation-record` and
+`candidate-generation-inspect` retain candidate or rejection evidence with explicit
+hash pins and exact artifact export. These commands make no provider request and
+do not attest model authorship. Durable service generation lineage and a provider
+adapter remain unfinished.

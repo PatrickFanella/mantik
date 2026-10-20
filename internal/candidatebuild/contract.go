@@ -15,7 +15,7 @@ import (
 
 const JobSchema = "mantik-candidate-build-job-v1"
 const ResultSchema = "mantik-candidate-build-result-v1"
-const Interface = "go-entry-price-bool-v1"
+const Interface = candidate.Interface
 const Harness = "package candidate\nvar _ func(int64) bool = Entry\n"
 const MaxJobBytes = candidate.MaxPackageBytes + 8192
 const MaxResultBytes = 512 << 10
