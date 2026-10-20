@@ -415,4 +415,7 @@ PostgreSQL backends retain the complete lineage and exact dataset bytes.
 `candidate-dataset` expose authenticated registration and verified readback.
 The [candidate worker intent backend](docs/reference/candidate-worker-intents.md)
 now binds pre-execution requests to exact registrations and behavior jobs.
-Intent API/CLI access, worker reconciliation linkage and outcomes remain unfinished.
+`candidate-worker-intent-start`, `candidate-worker-intents` and
+`candidate-worker-intent` retain and inspect those declarations, with coherent
+registration pins and validated job export. Worker reconciliation linkage and
+outcomes remain unfinished.

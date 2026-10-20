@@ -51,6 +51,10 @@ func candidateIntentContracts(t *testing.T, s candidateIntentBackend) {
 	now := func() time.Time { return at }
 	before, _ := s.Snapshot(ctx)
 	registryBefore, _ := s.CandidateRegistry(ctx)
+	emptyHistory, err := s.CandidateWorkerIntentHistory(ctx)
+	if err != nil || emptyHistory.Validate() != nil || emptyHistory.ReceiverID != c.ReceiverID || len(emptyHistory.Intents) != 0 || len(emptyHistory.Registrations) != 0 {
+		t.Fatal("empty intent history envelope", err)
+	}
 	empty, err := s.CandidateWorkerIntents(ctx)
 	if err != nil || empty == nil || len(empty) != 0 {
 		t.Fatal(empty, err)
