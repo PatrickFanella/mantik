@@ -141,6 +141,8 @@ The [portable outcome capture](candidate-outcome-captures.md) now preserves a
 collected local outcome and exact artifacts with explicit caller-reported
 authority; service admission must compare it with the service's own retained intent.
 
-Service outcome retention, cross-owner execution fencing, generated-source
+[Outcome backends](candidate-worker-outcomes.md) now retain caller-reported
+captures against their own intent and exact dataset bindings. Authenticated
+outcome access, cross-owner execution fencing, generated-source
 provenance and the final #18 audit remain unfinished. The original pilot services
 have not been upgraded by adding or testing these contracts.

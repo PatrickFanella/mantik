@@ -106,3 +106,6 @@ var CandidateRegistrations string
 
 //go:embed 0031_candidate_worker_intents.sql
 var CandidateWorkerIntents string
+
+//go:embed 0032_candidate_worker_outcomes.sql
+var CandidateWorkerOutcomes string
