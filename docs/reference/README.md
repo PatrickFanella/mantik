@@ -90,3 +90,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Local candidate attempt journal](candidate-attempt-journal.md): durable intent,
   request-ID recovery and complete bounded local attempt history.
+
+- [Candidate properties over retained samples](candidate-properties.md): sealed
+  relation requirements and every eligible pair, with explicit missing coverage.
