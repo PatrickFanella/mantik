@@ -1,6 +1,7 @@
 package candidateevidence
 
 import (
+	"io"
 	"reflect"
 	"regexp"
 	"time"
@@ -106,4 +107,53 @@ func (r OutcomeRecord) VerifyCapture(expected candidateattempt.Intent, c Capture
 		return ErrConflict
 	}
 	return nil
+}
+
+// MaxReportBytes includes the capture plus its explicit receiver/request pins.
+const MaxReportBytes = MaxBytes + 1024
+const MaxArtifactBytes = MaxBytes + MaxOutcomeBytes + 1024
+const ArtifactSchema = "mantik-candidate-worker-outcome-artifact-v1"
+
+// Artifact is one retained outcome and capture from the same storage snapshot.
+// It does not describe pending intents or the current state of a worker host.
+type Artifact struct {
+	Schema  string        `json:"schema"`
+	Outcome OutcomeRecord `json:"outcome"`
+	Capture Capture       `json:"capture"`
+	SHA256  string        `json:"sha256"`
+}
+
+func NewArtifact(r OutcomeRecord, c Capture) (Artifact, error) {
+	a := Artifact{Schema: ArtifactSchema, Outcome: r, Capture: c}
+	a.SHA256 = workerplan.Hash(a)
+	return a, a.Validate()
+}
+func (a Artifact) Validate() error {
+	if a.Schema != ArtifactSchema || a.Capture.Validate() != nil || a.Outcome.VerifyCapture(*a.Capture.Attempt.Intent.ServiceIntent, a.Capture) != nil {
+		return ErrConflict
+	}
+	sha := a.SHA256
+	a.SHA256 = ""
+	if sha != workerplan.Hash(a) {
+		return ErrConflict
+	}
+	return nil
+}
+func ReadReport(input io.Reader) (Report, error) {
+	raw, err := io.ReadAll(io.LimitReader(input, MaxReportBytes+1))
+	var r Report
+	if err != nil || workerplan.ReadBoundedShape(raw, &r, MaxReportBytes) != nil || r.Validate() != nil {
+		return Report{}, ErrConflict
+	}
+	return r, nil
+}
+
+// ReadArtifact applies strict JSON and complete evidence validation before use.
+func ReadArtifact(input io.Reader) (Artifact, error) {
+	raw, err := io.ReadAll(io.LimitReader(input, MaxArtifactBytes+1))
+	var a Artifact
+	if err != nil || workerplan.ReadBoundedShape(raw, &a, MaxArtifactBytes) != nil || a.Validate() != nil {
+		return Artifact{}, ErrConflict
+	}
+	return a, nil
 }

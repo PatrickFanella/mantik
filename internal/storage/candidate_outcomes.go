@@ -15,6 +15,7 @@ import (
 )
 
 type CandidateWorkerOutcomeStore interface {
+	CandidateWorkerOutcomeEvidence(context.Context, string) (candidateevidence.Artifact, error)
 	ReportCandidateWorkerOutcome(context.Context, candidateevidence.Report, func() time.Time) (candidateevidence.OutcomeRecord, error)
 	CandidateWorkerOutcome(context.Context, string) (candidateevidence.OutcomeRecord, error)
 	CandidateWorkerOutcomes(context.Context) ([]candidateevidence.OutcomeRecord, error)
@@ -292,3 +293,27 @@ func (p *Postgres) CandidateWorkerOutcomeCapture(ctx context.Context, id string)
 
 var _ CandidateWorkerOutcomeStore = (*Memory)(nil)
 var _ CandidateWorkerOutcomeStore = (*Postgres)(nil)
+
+func (p *Memory) CandidateWorkerOutcomeEvidence(ctx context.Context, id string) (candidateevidence.Artifact, error) {
+	all, c, err := p.candidateOutcomeRead(ctx, id)
+	if err != nil {
+		return candidateevidence.Artifact{}, err
+	}
+	r, err := selectCandidateOutcome(all, id)
+	if err != nil {
+		return candidateevidence.Artifact{}, err
+	}
+	return candidateevidence.NewArtifact(r, c)
+}
+
+func (p *Postgres) CandidateWorkerOutcomeEvidence(ctx context.Context, id string) (candidateevidence.Artifact, error) {
+	all, c, err := p.candidateOutcomeRead(ctx, id)
+	if err != nil {
+		return candidateevidence.Artifact{}, err
+	}
+	r, err := selectCandidateOutcome(all, id)
+	if err != nil {
+		return candidateevidence.Artifact{}, err
+	}
+	return candidateevidence.NewArtifact(r, c)
+}

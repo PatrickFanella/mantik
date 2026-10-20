@@ -42,10 +42,17 @@ func cliCaptureFixture(t *testing.T) workerlaunch.CandidateCapture {
 	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	s := candidateattempt.Intent{Schema: candidateattempt.Schema, Command: candidateattempt.Command{ReceiverID: "receiver-abcdefghijklmnop", RequestID: "one", RegistrationID: "root", RegistrationSHA256: strings.Repeat("b", 64), Job: j}, Sequence: 1, CreatedAt: at, Status: "intent_retained", Authority: "candidate_worker_intent_only"}
 	s.SHA256 = workerplan.Hash(s)
-	i := workerlaunch.CandidateIntent{Schema: "mantik-registered-candidate-attempt-intent-v1", JournalID: "candidate-journal-ABCDEFGHIJKLMNOP", RequestID: "one", Sequence: 1, Job: j, ServiceIntent: &s, CreatedAt: at.Add(time.Second), Authority: "local_candidate_attempt_intent_only"}
+	return cliCaptureForIntent(t, s)
+}
+
+// Construct a synthetic caller report from this intent; no worker was executed.
+func cliCaptureForIntent(t *testing.T, s candidateattempt.Intent) workerlaunch.CandidateCapture {
+	t.Helper()
+	at, j, image := s.CreatedAt, s.Command.Job, s.Command.Job.Plan.Candidate.Toolchain.ImageSHA256
+	i := workerlaunch.CandidateIntent{Schema: "mantik-registered-candidate-attempt-intent-v1", JournalID: "candidate-journal-ABCDEFGHIJKLMNOP", RequestID: s.Command.RequestID, Sequence: 1, Job: j, ServiceIntent: &s, CreatedAt: at.Add(time.Second), Authority: "local_candidate_attempt_intent_only"}
 	i.SHA256 = workerplan.Hash(i)
 	root := filepath.Join(t.TempDir(), "unavailable-journal")
-	a := workerlaunch.Acquisition{Schema: "mantik-candidate-behavior-acquisition-v1", ID: "captured-owner", Root: filepath.Join(root, "attempt-one"), JobSHA256: j.SHA256, ImageSHA256: image, ContainerName: "mantik-worker-captured-owner", CreatedAt: at.Add(2 * time.Second), Deadline: at.Add(32 * time.Second)}
+	a := workerlaunch.Acquisition{Schema: "mantik-candidate-behavior-acquisition-v1", ID: "captured-owner", Root: filepath.Join(root, "attempt-"+s.Command.RequestID), JobSHA256: j.SHA256, ImageSHA256: image, ContainerName: "mantik-worker-captured-owner", CreatedAt: at.Add(2 * time.Second), Deadline: at.Add(32 * time.Second)}
 	a.SHA256 = workerplan.Hash(a)
 	stdout, stderr := []byte{0xff, 0, 0xfe}, []byte{'e', 0, 0xff, '\n'}
 	r := workerlaunch.Receipt{Schema: "mantik-candidate-behavior-host-receipt-v1", AcquisitionSHA256: a.SHA256, ContainerID: strings.Repeat("c", 64), ImageSHA256: image, Status: "incomplete", ReasonCode: "missing_pre_start_receipt", ExitCode: 1, FinishedAt: at.Add(3 * time.Second), CollectedAt: at.Add(4 * time.Second), HostDeadlineMet: true, OutputComplete: true, StdoutSHA256: workerplan.Digest(stdout), StdoutBytes: len(stdout), StderrSHA256: workerplan.Digest(stderr), StderrBytes: len(stderr), Authority: "synthetic_candidate_behavior_host_receipt_only"}

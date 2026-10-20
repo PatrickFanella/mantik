@@ -4,7 +4,8 @@
 outcome for each [service intent](candidate-worker-intents.md). Memory and
 PostgreSQL backends preserve the complete [portable capture](candidate-outcome-captures.md),
 including failed or incomplete output, alongside a small structured receipt.
-This backend contract does not yet expose HTTP or CLI admission commands.
+Authenticated HTTP and CLI commands submit and inspect these reports without
+launching or inspecting a worker host.
 
 ## Admission and identity
 
@@ -45,6 +46,7 @@ check activates a strategy or implies profitability.
 | `CandidateWorkerOutcomes` | Every structured receipt in original intent order. |
 | `CandidateWorkerOutcome` | One receipt after complete history validation. |
 | `CandidateWorkerOutcomeCapture` | One complete capture after complete history validation. |
+| `CandidateWorkerOutcomeEvidence` | One receipt and capture from the same validated snapshot. |
 
 Outcomes may arrive out of intent order. Gaps mean that those intents have no
 retained outcome; they are not invented failures, successes or assertions of
@@ -96,7 +98,73 @@ binary output, clock refusal, restart, insertion rollback, complete-history
 corruption refusal and migration preservation/checksum refusal. These are backend
 contract checks, separate from actual worker execution or qualification.
 
-This is part of #18. Authenticated outcome HTTP/CLI access, cross-owner execution
+This is part of #18. Coherent pending-work summaries, cross-owner execution
 fencing, generated-source provenance and the final acceptance audit remain
 unfinished. Existing pilot databases and services have not been upgraded by
 implementing or testing this contract.
+
+## Authenticated transport and CLI
+
+The bearer-authenticated endpoints are:
+
+| Method and path | Result |
+| --- | --- |
+| `POST /v1/candidate-worker-outcomes` | Submit a `candidateevidence.Report` and return its retained receipt. |
+| `GET /v1/candidate-worker-outcomes/{id}` | Inspect the selected receipt. |
+| `GET /v1/candidate-worker-outcomes/{id}/capture` | Return the receipt and full capture in one artifact envelope. |
+
+The capture endpoint uses `mantik-candidate-worker-outcome-artifact-v1`:
+`schema`, `outcome`, `capture`, and its own `sha256` (compact Go JSON, own hash
+empty). The outcome must reconstruct exactly from the capture at its retained
+server time. Memory obtains both under one mutex; PostgreSQL obtains both from
+one repeatable-read snapshot. No separate intent/history requests are combined
+to assert a coherent pending-work view. There is no HTTP outcome list yet.
+
+POST bodies are bounded to `candidateevidence.MaxReportBytes` (the maximum
+capture plus 1,024 bytes of report pins). Unknown, duplicate, mis-cased, trailing,
+null and invalid nested data are rejected before admission. Query parameters
+are refused. Storage operations use a five-second request context. Invalid
+reports return 422, identity/evidence conflicts 409, and missing retained intents
+or outcomes 404. Authentication is required for all three paths. There is no
+launch, cancellation, replacement or deletion endpoint.
+
+With `MANTIK_API_TOKEN` supplied privately, submit an exported capture:
+
+```sh
+mantik candidate-worker-outcome-report \
+  --api-url http://127.0.0.1:PORT \
+  --receiver-id RECEIVER --id REQUEST \
+  --intent-sha256 INTENT_SHA --capture-sha256 CAPTURE_SHA \
+  --capture capture.json
+```
+
+The CLI validates the capture and all explicit pins before sending a request.
+It then reconstructs the returned receipt against that exact capture before
+printing it. A successful command means the caller report was retained; even
+an incomplete or failed report can be validly retained.
+
+Inspect the selected outcome, or export its capture or exact output bytes:
+
+```sh
+mantik candidate-worker-outcome \
+  --api-url http://127.0.0.1:PORT \
+  --receiver-id RECEIVER --id REQUEST \
+  --intent-sha256 INTENT_SHA --capture-sha256 CAPTURE_SHA \
+  --outcome-sha256 OUTCOME_SHA \
+  --artifact outcome
+```
+
+`--artifact` accepts `outcome` (default), `capture`, `stdout`, or `stderr`.
+The latter two write exact bytes without an added newline, including invalid
+UTF-8 and partial binary output. Capture/artifact exports validate the complete
+bound envelope before writing anything. Every read requires expected receiver,
+request, intent, capture and retained-outcome identities. These commands accept
+an HTTP origin without credentials, path, query or fragment, and no positional
+arguments. CLI JSON responses use strict bounded readers.
+
+Shared Memory/disposable PostgreSQL HTTP/CLI checks cover exact retry and
+receipt preservation, changed reported-owner conflict, strict request parsing,
+authentication, query refusal, exact binary output, and full capture/receipt
+readback after reopening PostgreSQL. Client checks reject changed local pins
+before HTTP and inconsistent or ambiguous responses before output. These checks
+remain separate from native worker execution, deployment and qualification.

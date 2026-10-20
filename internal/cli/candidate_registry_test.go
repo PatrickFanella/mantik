@@ -19,6 +19,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/candidate"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateattempt"
+	"git.subcult.tv/subculture-collective/mantik/internal/candidateevidence"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidatelineage"
 	"git.subcult.tv/subculture-collective/mantik/internal/dataset"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
@@ -183,6 +184,7 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 		t.Fatal(all, err)
 	}
 	intent, intentHistory := candidateIntentHTTP(t, server.URL, first, second, raw)
+	outcome, capture := candidateOutcomeHTTP(t, s, intent)
 	if reopen != nil {
 		server.Close()
 		s = reopen()
@@ -200,6 +202,21 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 		var restoredIntent candidateattempt.Intent
 		if err := json.Unmarshal(run("candidate-worker-intent", "--id", intent.Command.RequestID, "--intent-sha256", intent.SHA256), &restoredIntent); err != nil || !reflect.DeepEqual(intent, restoredIntent) {
 			t.Fatal("HTTP restart changed intent", err)
+		}
+
+		var restoredOutcome candidateevidence.OutcomeRecord
+		flags := []string{"candidate-worker-outcome", "--id", intent.Command.RequestID, "--intent-sha256", intent.SHA256, "--capture-sha256", capture.SHA256, "--outcome-sha256", outcome.SHA256}
+		if err := json.Unmarshal(run(flags...), &restoredOutcome); err != nil || !reflect.DeepEqual(outcome, restoredOutcome) {
+			t.Fatal("restart changed outcome", err)
+		}
+		for artifact, want := range map[string][]byte{"stdout": capture.Stdout, "stderr": capture.Stderr} {
+			if !bytes.Equal(run(append(append([]string{}, flags...), "--artifact", artifact)...), want) {
+				t.Fatal("restart changed exact outcome bytes", artifact)
+			}
+		}
+		var restoredCapture candidateevidence.Capture
+		if err := json.Unmarshal(run(append(append([]string{}, flags...), "--artifact", "capture")...), &restoredCapture); err != nil || !reflect.DeepEqual(capture, restoredCapture) {
+			t.Fatal("restart changed capture", err)
 		}
 		var restoredHistory candidateattempt.History
 		if err := json.Unmarshal(run("candidate-worker-intents"), &restoredHistory); err != nil || !reflect.DeepEqual(intentHistory, restoredHistory) {

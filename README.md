@@ -425,4 +425,7 @@ and `candidate-capture-inspect` validates it or exports exact output bytes.
 [Outcome backends](docs/reference/candidate-worker-outcomes.md) now retain reports
 against the service's own intent/dataset snapshot and preserve full captures and
 exact artifact bytes.
-Authenticated outcome access and cross-owner execution fencing remain unfinished.
+`candidate-worker-outcome-report` submits a pinned capture;
+`candidate-worker-outcome` inspects the retained receipt or exports capture and
+exact stdout/stderr bytes through authenticated HTTP. Pending-work summaries and
+cross-owner execution fencing remain unfinished.
