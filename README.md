@@ -442,11 +442,13 @@ do not attest model authorship. [Generation intent backends](docs/reference/cand
 retain publication-bound plans and exact datasets before output admission.
 Authenticated `candidate-generation-intent-start`, `candidate-generation-intent`
 and `candidate-generation-intents` commands now submit and inspect these declarations.
-Authenticated generation-output access, generated-registration links and a
-provider adapter remain unfinished.
+Generated-registration links and a provider adapter remain unfinished.
 
 [Generation output contracts](docs/reference/candidate-generation-outcomes.md)
 now bind full caller-recorded output to an exact generation intent, preserve
 rejections and define coherent report history and clock-free retry rules. They
 now have atomic Memory/PostgreSQL retention with complete-prefix validation.
-Authenticated output access and generated-registration lineage remain unfinished. No provider execution or model authorship is asserted.
+`candidate-generation-outcome-report`, `candidate-generation-outcome` and
+`candidate-generation-outcomes` now admit and inspect pinned full recordings and
+exact output/source bytes. Generated-registration lineage remains unfinished.
+No provider execution or model authorship is asserted.

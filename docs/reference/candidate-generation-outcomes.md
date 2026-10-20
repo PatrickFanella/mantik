@@ -3,8 +3,8 @@
 `internal/candidategeneration` defines portable reports and receipts for output
 associated with an exact [generation intent](candidate-generation-intents.md).
 The pure contracts are now backed by `storage.CandidateGenerationOutcomeStore`
-for Memory and PostgreSQL. There is no output HTTP/CLI admission, provider
-adapter, model call, compiler or process launcher in this storage slice.
+for Memory and PostgreSQL. Authenticated HTTP/CLI commands admit and inspect recorded output. They add no
+provider adapter, model call, compiler or process launcher.
 
 ## Report and receipt
 
@@ -68,8 +68,8 @@ atomically, preserve failed reports, and compare full records before exact retry
 Pure tests cover source/failed-output preservation, original CRLF source bytes,
 strict readers, forged metadata, detached results, temporal/identity conflicts,
 sparse complements, all 64 intents, and retries that must not read the clock.
-Authenticated output access, explicit candidate-registration lineage, a provider
-adapter and the final #18 acceptance audit remain unfinished. No output receipt activates a strategy or implies profit.
+Explicit candidate-registration lineage, a provider adapter and the final #18
+acceptance audit remain unfinished. No output receipt activates a strategy or implies profit.
 
 ## Atomic storage and complete-prefix validation
 
@@ -117,3 +117,58 @@ failed insert with unchanged history, full reopened-database readback, unrelated
 recording/metadata/dataset/publication corruption, migration preservation and
 checksum refusal. This proves retained caller evidence behavior; it does not
 prove model generation, authorship, qualification or profitability.
+
+## Authenticated output access
+
+All routes require the service bearer token and reject query parameters,
+including malformed queries. POST accepts strict bounded report JSON. Unknown,
+mis-cased or duplicate fields, invalid base64, oversized bodies and trailing
+documents are rejected. Invalid input returns 422, conflicting owner/binding or
+capacity 409, and missing own intent/report 404. Store operations have a five
+second context deadline.
+
+| Route | Result |
+| --- | --- |
+| `POST /v1/candidate-generation-outcomes` | Retain an exact report or return its original retry receipt. |
+| `GET /v1/candidate-generation-outcomes` | Complete coherent intent/report history and unreported complement. |
+| `GET /v1/candidate-generation-outcomes/{id}` | Selected compact receipt after full-prefix validation. |
+| `GET /v1/candidate-generation-outcomes/{id}/recording` | Full intent/outcome/recording artifact from one validated snapshot. |
+
+With `MANTIK_API_TOKEN` already supplied privately:
+
+```sh
+mantik candidate-generation-outcome-report --api-url http://127.0.0.1:41890 \
+  --receiver-id "$RECEIVER" --id generation-1 \
+  --intent-sha256 "$INTENT_SHA" --plan-sha256 "$PLAN_SHA" \
+  --recording recording.json --recording-sha256 "$RECORDING_SHA"
+
+mantik candidate-generation-outcomes --api-url http://127.0.0.1:41890 \
+  --receiver-id "$RECEIVER"
+
+mantik candidate-generation-outcome --api-url http://127.0.0.1:41890 \
+  --receiver-id "$RECEIVER" --id generation-1 \
+  --intent-sha256 "$INTENT_SHA" --plan-sha256 "$PLAN_SHA" \
+  --recording-sha256 "$RECORDING_SHA" --outcome-sha256 "$OUTCOME_SHA" \
+  --artifact output
+```
+
+The report command validates the bounded local recording and its expected hashes
+before contacting the service. It then fetches and validates the exact pinned
+service intent and compares the full recording plan and claimed capture time
+before POST. It rederives every returned outcome field from that intent and local
+recording before emitting the receipt. This read followed by admission does not
+start generation; the backend repeats authoritative validation at admission.
+
+The selected command requires all receiver/request/intent/plan/recording/outcome
+pins and supports `outcome` (default), `recording`, `output`, `candidate` and
+`source`. It always validates the complete coherent artifact before output.
+`output` preserves raw failed or source-bearing bytes without a newline;
+`source` preserves exact original Go text including CRLF. Candidate/source exports
+for rejected recordings fail without writing output. History has no filters and
+validates the entire envelope and expected receiver before output.
+
+Shared Memory/PostgreSQL HTTP and CLI contracts cover success and rejected output,
+exact retries, strict JSON/auth/query checks, wrong pins, byte-preserving exports,
+forged receipts/artifacts/histories and full reopened-database readback. Bad local
+recording pins cause no service request; an unexpected intent causes no POST.
+These commands do not register candidates, call a provider or activate a strategy.

@@ -185,6 +185,8 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 		t.Fatal(all, err)
 	}
 	generation, generationHistory := generationIntentHTTP(t, server.URL, pub, raw)
+	generationOutcomes, generationArtifacts := generationOutcomeHTTP(t, server.URL, generationHistory, raw)
+	generationHistory = generationOutcomes.IntentHistory
 	intent, intentHistory := candidateIntentHTTP(t, server.URL, first, second, raw)
 	outcome, capture := candidateOutcomeHTTP(t, s, intent)
 	var outcomeHistory candidateevidence.History
@@ -204,6 +206,20 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 		var restored candidatelineage.Registry
 		if err := json.Unmarshal(run("candidate-registrations"), &restored); err != nil || !reflect.DeepEqual(all, restored) {
 			t.Fatal("HTTP restart changed registry", err)
+		}
+		var restoredGenerationOutcomes candidategeneration.OutcomeHistory
+		if err := json.Unmarshal(run("candidate-generation-outcomes"), &restoredGenerationOutcomes); err != nil || !reflect.DeepEqual(generationOutcomes, restoredGenerationOutcomes) {
+			t.Fatal("restart changed full generation outcomes", err)
+		}
+		for _, a := range generationArtifacts {
+			flags := []string{"candidate-generation-outcome", "--id", a.Outcome.RequestID, "--intent-sha256", a.Intent.SHA256, "--plan-sha256", a.Intent.Command.Plan.SHA256, "--recording-sha256", a.Recording.SHA256, "--outcome-sha256", a.Outcome.SHA256}
+			var restoredRecording candidategeneration.Recording
+			if err := json.Unmarshal(run(append(append([]string{}, flags...), "--artifact", "recording")...), &restoredRecording); err != nil || !reflect.DeepEqual(a.Recording, restoredRecording) {
+				t.Fatal("restart changed full generation recording", err)
+			}
+			if !bytes.Equal(run(append(append([]string{}, flags...), "--artifact", "output")...), a.Recording.Output) {
+				t.Fatal("restart changed exact failed/source generation output")
+			}
 		}
 		var restoredGeneration candidategeneration.Intent
 		generationFlags := []string{"candidate-generation-intent", "--id", generation.Command.RequestID, "--intent-sha256", generation.SHA256, "--plan-sha256", generation.Command.Plan.SHA256}
