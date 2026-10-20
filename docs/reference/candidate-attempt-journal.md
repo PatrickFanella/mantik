@@ -169,5 +169,7 @@ It validates the whole journal and reads existing files without querying Docker
 or reconciling pending requests. The portable capture preserves historical
 assertions and does not grant host verification or qualification credit.
 
-Issue #18 remains open for authenticated outcome access, cross-owner execution
+The separate [authenticated outcome commands](candidate-worker-outcomes.md)
+submit and inspect an exported capture against the service's own retained intent.
+Issue #18 remains open for coherent pending-work summaries, cross-owner execution
 fencing, generated-source provenance and the final acceptance audit.

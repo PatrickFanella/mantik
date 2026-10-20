@@ -314,5 +314,7 @@ launch and require the same receipt for reconciliation. Portable
 receipts and exact failed/incomplete output without execution credit.
 [Outcome backends](reference/candidate-worker-outcomes.md) now retain immutable
 reports/capture bytes with complete-prefix validation and exact retries.
-Authenticated outcome access, cross-owner execution fencing and generated-source provenance remain unfinished;
+Authenticated outcome submission and pinned receipt/capture/output access are
+implemented. Coherent pending-work summaries, cross-owner execution fencing and
+generated-source provenance remain unfinished;
 this does not close #18.

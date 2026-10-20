@@ -91,6 +91,15 @@ func candidateOutcomeContracts(t *testing.T, s candidateOutcomeBackend) {
 	if retry, err := s.ReportCandidateWorkerOutcome(ctx, r1, func() time.Time { panic("retry consulted clock") }); err != nil || retry != record {
 		t.Fatal("retry changed original retention", err)
 	}
+	artifact, err := s.CandidateWorkerOutcomeEvidence(ctx, r1.RequestID)
+	if err != nil || artifact.Validate() != nil || !reflect.DeepEqual(artifact.Capture, r1.Capture) || artifact.Outcome != record {
+		t.Fatal("single snapshot artifact changed", err)
+	}
+	artifact.Capture.Stdout[0] ^= 1
+	fresh, err := s.CandidateWorkerOutcomeEvidence(ctx, r1.RequestID)
+	if err != nil || fresh.Validate() != nil {
+		t.Fatal("artifact aliased storage", err)
+	}
 	read, err := s.CandidateWorkerOutcomeCapture(ctx, r1.RequestID)
 	if err != nil || !reflect.DeepEqual(read, r1.Capture) {
 		t.Fatal("capture bytes changed", err)
@@ -292,6 +301,9 @@ func candidateOutcomeCorruption(t *testing.T, s candidateOutcomeBackend) {
 			}
 			write(badRecord, badCapture, badIntent)
 			defer write(original, report.Capture, i)
+			if _, err := s.CandidateWorkerOutcomeEvidence(ctx, other.RequestID); err == nil {
+				t.Fatal("coherent artifact hid unrelated corruption")
+			}
 			if _, err := s.CandidateWorkerOutcomes(ctx); err == nil {
 				t.Fatal("corrupt full history accepted")
 			}

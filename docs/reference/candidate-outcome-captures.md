@@ -108,8 +108,9 @@ using `VerifyIntent`, then check the job against its own retained registration a
 dataset. Trusting the receipt embedded by the caller is insufficient.
 
 Keep captures private: they contain source, output and local host paths. This
-contract exposes no service admission route. The
+portable contract itself performs no service admission. The
 [outcome backends](candidate-worker-outcomes.md) now retain validated reports and
 full capture bytes against their own intent/registration/dataset snapshots.
-Authenticated outcome access, owner fencing, generated-source provenance and the
-final #18 acceptance audit remain separate work. Existing pilot services are unchanged.
+Authenticated outcome submission and pinned capture/output inspection are
+available. Coherent pending-work summaries, owner fencing, generated-source
+provenance and the final #18 acceptance audit remain separate work. Existing pilot services are unchanged.
