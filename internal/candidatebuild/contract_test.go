@@ -10,14 +10,14 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/candidate"
+	"git.subcult.tv/subculture-collective/mantik/internal/dataset"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
-	"git.subcult.tv/subculture-collective/mantik/internal/replay"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
 func fixture(t *testing.T, source string) Job {
 	t.Helper()
-	d, _ := replay.FixtureDataset()
+	d, _ := dataset.FixtureDataset()
 	raw, _ := json.Marshal(d)
 	p, err := candidate.New([]byte(source), hypothesis.Fixture(), raw, "sha256:"+strings.Repeat("a", 64))
 	if err != nil {

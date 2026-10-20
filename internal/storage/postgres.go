@@ -58,10 +58,10 @@ func (p *Postgres) migrate(ctx context.Context) error {
 	if err = tx.QueryRow(ctx, "SELECT count(*),coalesce(max(version),0),coalesce(min(version),0) FROM mantik_schema").Scan(&count, &maximum, &minimum); err != nil {
 		return err
 	}
-	if maximum > 30 || count != maximum || count > 0 && minimum != 1 {
+	if maximum > 31 || count != maximum || count > 0 && minimum != 1 {
 		return errors.New("unsupported or incomplete schema version")
 	}
-	for index, sql := range []string{migrations.Bootstrap, migrations.TriggerRouting, migrations.IndependentTimers, migrations.DurableActions, migrations.OperationalReadiness, migrations.AttributedRouting, migrations.ResearchReceiver, migrations.FeedCollectors, migrations.CollectorAdmissions, migrations.FeedEvidence, migrations.NewsCases, migrations.NewsReviews, migrations.HypothesisPublications, migrations.HypothesisTrials, migrations.TrialAttemptIntents, migrations.NativeTrialRuns, migrations.ExternalTrialJobs, migrations.ExternalTrialAttempts, migrations.ReviewProfiles, migrations.ReviewHypothesisInventories, migrations.NewsExtractions, migrations.ReviewedExtractionAdmissions, migrations.LocalExtractionCaptures, migrations.LocalCaptureAdmissions, migrations.SwitchyardExtractionCaptures, migrations.SwitchyardCaptureAdmissions, migrations.PaperAccounts, migrations.PaperLedgerRehearsals, migrations.FixtureCapital, migrations.CandidateRegistrations} {
+	for index, sql := range []string{migrations.Bootstrap, migrations.TriggerRouting, migrations.IndependentTimers, migrations.DurableActions, migrations.OperationalReadiness, migrations.AttributedRouting, migrations.ResearchReceiver, migrations.FeedCollectors, migrations.CollectorAdmissions, migrations.FeedEvidence, migrations.NewsCases, migrations.NewsReviews, migrations.HypothesisPublications, migrations.HypothesisTrials, migrations.TrialAttemptIntents, migrations.NativeTrialRuns, migrations.ExternalTrialJobs, migrations.ExternalTrialAttempts, migrations.ReviewProfiles, migrations.ReviewHypothesisInventories, migrations.NewsExtractions, migrations.ReviewedExtractionAdmissions, migrations.LocalExtractionCaptures, migrations.LocalCaptureAdmissions, migrations.SwitchyardExtractionCaptures, migrations.SwitchyardCaptureAdmissions, migrations.PaperAccounts, migrations.PaperLedgerRehearsals, migrations.FixtureCapital, migrations.CandidateRegistrations, migrations.CandidateWorkerIntents} {
 		version := index + 1
 		digest := fmt.Sprintf("%x", sha256.Sum256([]byte(sql)))
 		var existing string

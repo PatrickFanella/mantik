@@ -8,13 +8,13 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/candidate"
+	"git.subcult.tv/subculture-collective/mantik/internal/dataset"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
-	"git.subcult.tv/subculture-collective/mantik/internal/replay"
 )
 
 func fixture(t *testing.T) (Plan, []byte, Recording) {
 	t.Helper()
-	data, _ := replay.FixtureDataset()
+	data, _ := dataset.FixtureDataset()
 	raw, _ := json.Marshal(data)
 	p, err := candidate.New([]byte("package candidate\nfunc Entry(int64)bool{panic(\"must not execute\")}"), hypothesis.Fixture(), raw, "sha256:"+strings.Repeat("a", 64))
 	if err != nil {
@@ -139,7 +139,7 @@ func TestDatasetCannotFilterBadOrDuplicateCases(t *testing.T) {
 	p, raw, _ := fixture(t)
 	for _, kind := range []string{"too many", "duplicate", "quarantined"} {
 		t.Run(kind, func(t *testing.T) {
-			var d replay.Dataset
+			var d dataset.Dataset
 			_ = json.Unmarshal(raw, &d)
 			switch kind {
 			case "too many":
@@ -152,7 +152,7 @@ func TestDatasetCannotFilterBadOrDuplicateCases(t *testing.T) {
 				d.Records[0].Quality = "quarantined"
 				d.Records[0].Reason = "fixture_gap"
 			}
-			d, err := replay.Seal(d)
+			d, err := dataset.Seal(d)
 			if err != nil {
 				t.Fatal(err)
 			}
