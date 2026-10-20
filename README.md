@@ -12,6 +12,9 @@ exact source with hypothesis, dataset and toolchain pins. The separate
 [candidate build protocol](docs/reference/candidate-build.md) now checks a fixed
 Go interface in a credential-free container. Behavioral replay remains
 unfinished; neither declarations nor compile passes grant admission.
+The [fixture test-plan comparator](docs/reference/candidate-fixture-tests.md)
+pins explicit expectations and retains mismatches, missing outputs and failed
+recordings without claiming that candidate behavior was executed.
 
 The bootstrap implements one deterministic synthetic workflow. It accepts
 fixture quotes for `DEMO`, evaluates an entry, finalizes a decision with safety
