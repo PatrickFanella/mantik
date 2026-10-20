@@ -11,6 +11,7 @@ import (
 // execution is private, constructed only from a validated supported declaration.
 // Jobs cannot supply commands, environment values, mounts or result validators.
 type execution struct {
+	behaviorTmp                                 bool
 	raw                                         []byte
 	sha, image                                  string
 	resources                                   workerplan.Resources

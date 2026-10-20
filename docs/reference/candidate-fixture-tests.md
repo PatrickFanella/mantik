@@ -100,5 +100,7 @@ authority is `caller_reported_fixture_annotation_comparison_only`. Execution
 verification and qualification credit remain false. Equal annotations do not
 prove source correctness, Go execution, forecasting accuracy, realistic fills,
 safety, strategy admission or profitability. #18 remains incomplete pending
-bounded behavioral execution, property/failure checks and authoritative
-candidate/attempt lineage.
+the remaining property/failure checks and authoritative candidate/attempt
+lineage. [Behavioral workers](candidate-behavior.md) can now execute the fixed
+synthetic examples under a separate job and host receipt; these offline
+recordings retain their caller-reported authority.

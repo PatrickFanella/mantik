@@ -391,3 +391,7 @@ applicability; changed case snapshots require refresh. Use `a ATTEMPT_ID` after
 `h` to explicitly inspect an attempt’s pinned evidence, result and recorded
 artifacts, checked against its displayed history summary. It makes no
 model requests and does not submit, close, approve or import research evidence.
+
+[Candidate behavioral workers](docs/reference/candidate-behavior.md) now run the
+sealed synthetic examples in an owned, bounded container, retaining mismatches,
+partial failures and timeouts without qualification or activation credit.

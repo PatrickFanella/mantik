@@ -84,3 +84,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Candidate fixture plans and recorded comparisons](candidate-fixture-tests.md)
   — explicit expectations for every pinned input and complete failure-aware
   comparison; no source execution or execution attestation.
+
+- [Synthetic candidate behavioral workers](candidate-behavior.md): pinned fixture
+  execution, bounded failures and owned host receipts.

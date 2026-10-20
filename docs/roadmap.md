@@ -271,3 +271,10 @@ of strategies merely to demonstrate activity.
 Keep the roadmap current when accepted scope changes. Update issue dependencies
 and milestone gates together, retaining failed or incomplete evidence rather
 than rewriting it into a pass.
+
+Candidate behavioral workers now compile, link and execute sealed synthetic
+fixture plans in a dedicated owned container profile. This adds actual bounded
+example checks with retained mismatch/failure/timeout evidence. It does not close
+#18: general property checks and authoritative candidate/search lineage remain
+unfinished, and no result grants activation or qualification. See
+[the behavioral worker contract](reference/candidate-behavior.md).

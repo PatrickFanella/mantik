@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/candidatebuild"
+	"git.subcult.tv/subculture-collective/mantik/internal/candidateexec"
 	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
 	"git.subcult.tv/subculture-collective/mantik/internal/externalplan"
 	"git.subcult.tv/subculture-collective/mantik/internal/replay"
@@ -46,7 +47,11 @@ func (f *fakeDocker) command(ctx context.Context, args ...string) ([]byte, []byt
 		a, j, err := load(root, f.j.ImageSHA256)
 		p := nativeExecution(j)
 		if f.profile != nil {
-			if f.profile.acquisitionSchema == "mantik-candidate-build-acquisition-v1" {
+			if f.profile.acquisitionSchema == "mantik-candidate-behavior-acquisition-v1" {
+				var job candidateexec.Job
+				a, job, err = loadCandidateBehavior(root, f.profile.image)
+				p = behaviorExecution(job)
+			} else if f.profile.acquisitionSchema == "mantik-candidate-build-acquisition-v1" {
 				var candidateJob candidatebuild.Job
 				a, candidateJob, err = loadCandidateBuild(root, f.profile.image)
 				p = candidateExecution(candidateJob)
@@ -65,6 +70,9 @@ func (f *fakeDocker) command(ctx context.Context, args ...string) ([]byte, []byt
 		f.s.Config.Entrypoint = p.entrypoint
 		f.s.Config.Cmd = p.args
 		f.s.Config.Labels = map[string]string{ownerLabel: a.ID, jobLabel: p.sha}
+		if p.behaviorTmp {
+			f.s.HostConfig.Tmpfs = map[string]string{"/tmp": "rw,exec,nosuid,nodev,size=67108864,mode=1777"}
+		}
 		f.s.HostConfig.ReadonlyRootfs = true
 		f.s.HostConfig.NetworkMode = "none"
 		f.s.HostConfig.CapDrop = []string{"ALL"}
@@ -238,6 +246,9 @@ func TestProfileRejectsAuthorityAndResourceChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, change := range []func(*snapshot){
+		func(s *snapshot) {
+			s.HostConfig.Tmpfs = map[string]string{"/tmp": "rw,exec,nosuid,nodev,size=67108864,mode=1777"}
+		},
 		func(s *snapshot) { s.HostConfig.NetworkMode = "host" }, func(s *snapshot) { s.Config.Env = append(s.Config.Env, "DATABASE_URL=forbidden") },
 		func(s *snapshot) { s.Mounts[0].RW = true }, func(s *snapshot) { s.HostConfig.Memory++ }, func(s *snapshot) { s.Config.Entrypoint = []string{"sh"} },
 		func(s *snapshot) { s.HostConfig.Privileged = true }, func(s *snapshot) { s.HostConfig.LogConfig.Config["compress"] = "true" },
