@@ -333,3 +333,11 @@ an offline request, exact recorded output and candidate/rejection links without
 model calls. This supplies a portable generation evidence contract; durable
 service generation lineage, a provider adapter and the final #18 acceptance audit
 remain unfinished. Cross-owner execution fencing is a separate ownership concern.
+
+
+[Generation intent backends](reference/candidate-generation-intents.md) now retain
+publication-bound plans and exact datasets before generation output admission.
+They preserve every bounded request and exact retries under one receiver lock or
+transaction, with full-prefix publication/dataset validation and migration checks.
+Schema 33 adds declaration/input tables only; provider calls, output admission,
+generated registration links and authenticated intent access remain unfinished.

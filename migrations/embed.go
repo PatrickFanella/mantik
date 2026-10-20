@@ -109,3 +109,6 @@ var CandidateWorkerIntents string
 
 //go:embed 0032_candidate_worker_outcomes.sql
 var CandidateWorkerOutcomes string
+
+//go:embed 0033_candidate_generation_intents.sql
+var CandidateGenerationIntents string

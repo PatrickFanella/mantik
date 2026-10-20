@@ -105,8 +105,10 @@ An exported candidate is exactly the existing `mantik-candidate-source-v1` packa
 for that source/hypothesis/dataset/toolchain. Its schema and identity rules are
 unchanged, and it can enter the existing finite worker checks. Exporting the
 candidate alone does not automatically attach the generation recording to a
-service registration. Authenticated durable generation lineage and a provider
-adapter remain separate work.
+service registration. [Service-owned intent backends](candidate-generation-intents.md)
+now retain authoritative publication/plan/dataset bindings before generation.
+Authenticated intent access, outcome/registration links and a provider adapter
+remain separate work.
 
 Authority is `recorded_candidate_generation_plan_only` for the plan and
 `caller_recorded_candidate_generation_only` for the recording. Provider-called,
