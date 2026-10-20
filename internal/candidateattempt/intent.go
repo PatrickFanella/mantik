@@ -153,3 +153,14 @@ func Read(input io.Reader) (Command, error) {
 	}
 	return c, nil
 }
+
+// ReadIntent validates an exported service receipt without contacting its owner.
+// Callers must also compare independently inspected receiver/request/hash pins.
+func ReadIntent(input io.Reader) (Intent, error) {
+	raw, err := io.ReadAll(io.LimitReader(input, MaxBytes+1))
+	var i Intent
+	if err != nil || workerplan.ReadBoundedShape(raw, &i, MaxBytes) != nil || i.Validate() != nil {
+		return Intent{}, ErrInvalid
+	}
+	return i, nil
+}

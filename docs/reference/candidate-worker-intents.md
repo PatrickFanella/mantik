@@ -132,6 +132,12 @@ fresh handler, and compares the complete pinned intent/history responses. Tests
 also cover authentication, unsupported query/launch/cancellation paths, forged
 readbacks and refusal before output.
 
-Worker ownership/reconciliation linkage, retained outcomes, generated-source
+The [receiver-bound local journal](candidate-attempt-journal.md#receiver-bound-execution)
+can now consume an exported full intent with explicit receiver, request and hash
+pins, retain it before launch, and reconcile its original owned handle. The service
+intent remains a pre-execution declaration. Its flags do not change when local
+execution occurs. No outcome is uploaded to the service by these commands.
+
+Service outcome retention, cross-owner execution fencing, generated-source
 provenance and the final #18 audit remain unfinished. The original pilot services
-have not been upgraded by adding or testing these endpoints.
+have not been upgraded by adding or testing these contracts.

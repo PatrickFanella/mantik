@@ -15,37 +15,49 @@ import (
 	"syscall"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/candidateattempt"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateexec"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
 const CandidateJournalSchema = "mantik-candidate-attempt-journal-v1"
+const RegisteredCandidateJournalSchema = "mantik-registered-candidate-attempt-journal-v1"
 const MaxCandidateAttempts = 64
-const maxIntentBytes = candidateexec.MaxJobBytes + 8192
+const maxIntentBytes = candidateexec.MaxJobBytes + candidateattempt.MaxBytes + 8192
 
 var ErrCapacity = errors.New("candidate attempt journal capacity reached; preserve all evidence before a separately reviewed continuation")
 var ErrUnresolved = errors.New("candidate attempt execution or collection is unresolved; inspect its original handle without relaunching")
 var journalIdentity = regexp.MustCompile(`^candidate-journal-[A-Z2-7]{16,64}$`)
 
 type candidateManifest struct {
-	Schema string `json:"schema"`
-	ID     string `json:"id"`
+	Schema     string `json:"schema"`
+	ID         string `json:"id"`
+	ReceiverID string `json:"receiver_id,omitempty"`
 }
 type CandidateIntent struct {
-	Schema              string            `json:"schema"`
-	JournalID           string            `json:"journal_id"`
-	RequestID           string            `json:"request_id"`
-	Sequence            int               `json:"sequence"`
-	Job                 candidateexec.Job `json:"job"`
-	CreatedAt           time.Time         `json:"created_at"`
-	Authority           string            `json:"authority"`
-	ExecutionStarted    bool              `json:"execution_started"`
-	QualificationCredit bool              `json:"qualification_credit"`
-	SHA256              string            `json:"sha256"`
+	Schema              string                   `json:"schema"`
+	JournalID           string                   `json:"journal_id"`
+	RequestID           string                   `json:"request_id"`
+	Sequence            int                      `json:"sequence"`
+	Job                 candidateexec.Job        `json:"job"`
+	ServiceIntent       *candidateattempt.Intent `json:"service_intent,omitempty"`
+	CreatedAt           time.Time                `json:"created_at"`
+	Authority           string                   `json:"authority"`
+	ExecutionStarted    bool                     `json:"execution_started"`
+	QualificationCredit bool                     `json:"qualification_credit"`
+	SHA256              string                   `json:"sha256"`
 }
 
 func (i CandidateIntent) validate() error {
-	if i.Schema != "mantik-candidate-attempt-intent-v1" || !journalIdentity.MatchString(i.JournalID) || !launchID.MatchString(i.RequestID) || i.Sequence < 1 || i.Sequence > MaxCandidateAttempts || i.Job.Validate() != nil || i.CreatedAt.IsZero() || i.CreatedAt.Year() < 1 || i.CreatedAt.Year() > 9999 || i.Authority != "local_candidate_attempt_intent_only" || i.ExecutionStarted || i.QualificationCredit {
+	schema := "mantik-candidate-attempt-intent-v1"
+	if i.ServiceIntent != nil {
+		schema = "mantik-registered-candidate-attempt-intent-v1"
+		s := i.ServiceIntent
+		if s.Validate() != nil || s.Command.RequestID != i.RequestID || !reflect.DeepEqual(s.Command.Job, i.Job) || i.CreatedAt.Before(s.CreatedAt) {
+			return ErrConflict
+		}
+	}
+	if i.Schema != schema || !journalIdentity.MatchString(i.JournalID) || !launchID.MatchString(i.RequestID) || i.Sequence < 1 || i.Sequence > MaxCandidateAttempts || i.Job.Validate() != nil || i.CreatedAt.IsZero() || i.CreatedAt.Year() < 1 || i.CreatedAt.Year() > 9999 || i.Authority != "local_candidate_attempt_intent_only" || i.ExecutionStarted || i.QualificationCredit {
 		return ErrConflict
 	}
 	expected := i.SHA256
@@ -73,6 +85,7 @@ type CandidateAttempt struct {
 type CandidateHistory struct {
 	Schema                string             `json:"schema"`
 	JournalID             string             `json:"journal_id"`
+	ReceiverID            string             `json:"receiver_id,omitempty"`
 	Attempts              []CandidateAttempt `json:"attempts"`
 	PendingArtifacts      []string           `json:"pending_artifacts"`
 	Pending               int                `json:"pending"`
@@ -116,6 +129,15 @@ func journalDecode(root, name string, limit int, v any) error {
 
 // openCandidateJournal holds only the short metadata lock, not a worker wait.
 func openCandidateJournal(ctx context.Context, root string, create bool) (string, func(), error) {
+	return openCandidateJournalFor(ctx, root, create, "")
+}
+func validCandidateManifest(m candidateManifest) bool {
+	return journalIdentity.MatchString(m.ID) && (m.Schema == CandidateJournalSchema && m.ReceiverID == "" || m.Schema == RegisteredCandidateJournalSchema && journalReceiver.MatchString(m.ReceiverID))
+}
+
+var journalReceiver = regexp.MustCompile(`^receiver-[a-zA-Z0-9_-]{16,64}$`)
+
+func openCandidateJournalFor(ctx context.Context, root string, create bool, receiver string) (string, func(), error) {
 	if !filepath.IsAbs(root) {
 		return "", nil, ErrConflict
 	}
@@ -156,14 +178,20 @@ func openCandidateJournal(ctx context.Context, root string, create bool) (string
 		if len(names) != 1 || names[0] != ".lock" {
 			return fail(ErrConflict)
 		}
-		m = candidateManifest{CandidateJournalSchema, "candidate-journal-" + rand.Text()}
+		m = candidateManifest{Schema: CandidateJournalSchema, ID: "candidate-journal-" + rand.Text()}
+		if receiver != "" {
+			m.Schema, m.ReceiverID = RegisteredCandidateJournalSchema, receiver
+		}
+		if !validCandidateManifest(m) {
+			return fail(ErrConflict)
+		}
 		if err = writeJSON(canonical, "journal.json", m); err != nil {
 			return fail(err)
 		}
 	} else if err != nil {
 		return fail(err)
 	}
-	if m.Schema != CandidateJournalSchema || !journalIdentity.MatchString(m.ID) {
+	if !validCandidateManifest(m) || create && m.ReceiverID != receiver {
 		return fail(ErrConflict)
 	}
 	return canonical, unlock, nil
@@ -238,10 +266,10 @@ func candidateHistoryLocked(root string) (CandidateHistory, error) {
 	if err := journalDecode(root, "journal.json", 4096, &m); err != nil {
 		return CandidateHistory{}, err
 	}
-	if m.Schema != CandidateJournalSchema || !journalIdentity.MatchString(m.ID) {
+	if !validCandidateManifest(m) {
 		return CandidateHistory{}, ErrConflict
 	}
-	h := CandidateHistory{Schema: CandidateJournalSchema, JournalID: m.ID, Attempts: []CandidateAttempt{}, PendingArtifacts: []string{}, RecordedStatuses: map[string]int{}, Authority: "local_candidate_attempt_history_only"}
+	h := CandidateHistory{Schema: m.Schema, JournalID: m.ID, ReceiverID: m.ReceiverID, Attempts: []CandidateAttempt{}, PendingArtifacts: []string{}, RecordedStatuses: map[string]int{}, Authority: "local_candidate_attempt_history_only"}
 	names, err := journalNames(root)
 	if err != nil {
 		return h, err
@@ -260,6 +288,9 @@ func candidateHistoryLocked(root string) (CandidateHistory, error) {
 		case strings.HasPrefix(name, "intent-") && strings.HasSuffix(name, ".json"):
 			var i CandidateIntent
 			if journalDecode(root, name, maxIntentBytes, &i) != nil || i.validate() != nil || i.JournalID != m.ID || name != "intent-"+i.RequestID+".json" {
+				return h, ErrConflict
+			}
+			if i.ServiceIntent == nil && m.ReceiverID != "" || i.ServiceIntent != nil && i.ServiceIntent.Command.ReceiverID != m.ReceiverID {
 				return h, ErrConflict
 			}
 			intents[i.RequestID] = i
@@ -328,13 +359,23 @@ func CandidateBehaviorHistory(ctx context.Context, root string) (CandidateHistor
 	return candidateHistoryLocked(root)
 }
 func reserveCandidate(ctx context.Context, root, id string, j candidateexec.Job, data []byte, approved string) (string, CandidateAttempt, bool, error) {
+	return reserveRegisteredCandidate(ctx, root, id, j, data, approved, nil)
+}
+func reserveRegisteredCandidate(ctx context.Context, root, id string, j candidateexec.Job, data []byte, approved string, service *candidateattempt.Intent) (string, CandidateAttempt, bool, error) {
 	if ctx.Err() != nil {
 		return "", CandidateAttempt{}, false, ctx.Err()
 	}
 	if !launchID.MatchString(id) || j.Validate() != nil || j.Plan.VerifyDataset(data) != nil || approved != j.Plan.Candidate.Toolchain.ImageSHA256 {
 		return "", CandidateAttempt{}, false, ErrConflict
 	}
-	root, unlock, err := openCandidateJournal(ctx, root, true)
+	receiver := ""
+	if service != nil {
+		if service.Validate() != nil || service.Command.RequestID != id || !reflect.DeepEqual(service.Command.Job, j) {
+			return "", CandidateAttempt{}, false, ErrConflict
+		}
+		receiver = service.Command.ReceiverID
+	}
+	root, unlock, err := openCandidateJournalFor(ctx, root, true, receiver)
 	if err != nil {
 		return "", CandidateAttempt{}, false, err
 	}
@@ -345,7 +386,7 @@ func reserveCandidate(ctx context.Context, root, id string, j candidateexec.Job,
 	}
 	for _, a := range history.Attempts {
 		if a.Intent.RequestID == id {
-			if a.Intent.Job.SHA256 != j.SHA256 {
+			if a.Intent.Job.SHA256 != j.SHA256 || !reflect.DeepEqual(a.Intent.ServiceIntent, service) {
 				return "", CandidateAttempt{}, false, ErrConflict
 			}
 			return root, a, false, syncDir(root)
@@ -358,6 +399,9 @@ func reserveCandidate(ctx context.Context, root, id string, j candidateexec.Job,
 		return "", CandidateAttempt{}, false, ErrCapacity
 	}
 	i := CandidateIntent{Schema: "mantik-candidate-attempt-intent-v1", JournalID: history.JournalID, RequestID: id, Sequence: len(history.Attempts) + 1, Job: j, CreatedAt: time.Now().UTC(), Authority: "local_candidate_attempt_intent_only"}
+	if service != nil {
+		i.Schema, i.ServiceIntent = "mantik-registered-candidate-attempt-intent-v1", service
+	}
 	i.SHA256 = workerplan.Hash(i)
 	if i.validate() != nil {
 		return "", CandidateAttempt{}, false, ErrConflict
@@ -413,7 +457,16 @@ func RunCandidateBehavior(ctx context.Context, root, id string, j candidateexec.
 	return runCandidateBehavior(ctx, root, id, j, data, approved, nil)
 }
 func runCandidateBehavior(ctx context.Context, root, id string, j candidateexec.Job, data []byte, approved string, d driver) (CandidateAttempt, error) {
-	root, a, fresh, err := reserveCandidate(ctx, root, id, j, data, approved)
+	return runRegisteredCandidateBehavior(ctx, root, id, j, data, approved, nil, d)
+}
+
+// RunRegisteredCandidateBehavior binds an exact service receipt before launching.
+// The local journal is the owner namespace; this is not a service execution lease.
+func RunRegisteredCandidateBehavior(ctx context.Context, root string, service candidateattempt.Intent, data []byte, approved string) (CandidateAttempt, error) {
+	return runRegisteredCandidateBehavior(ctx, root, service.Command.RequestID, service.Command.Job, data, approved, &service, nil)
+}
+func runRegisteredCandidateBehavior(ctx context.Context, root, id string, j candidateexec.Job, data []byte, approved string, service *candidateattempt.Intent, d driver) (CandidateAttempt, error) {
+	root, a, fresh, err := reserveRegisteredCandidate(ctx, root, id, j, data, approved, service)
 	if err != nil {
 		return a, err
 	}
@@ -435,6 +488,13 @@ func ReconcileCandidateRequest(ctx context.Context, root, id, approved string, c
 	return reconcileCandidateRequest(ctx, root, id, approved, cancel, nil)
 }
 func reconcileCandidateRequest(ctx context.Context, root, id, approved string, cancel bool, d driver) (CandidateAttempt, error) {
+	return reconcileRegisteredCandidateRequest(ctx, root, id, approved, cancel, nil, d)
+}
+
+func ReconcileRegisteredCandidateRequest(ctx context.Context, root string, service candidateattempt.Intent, approved string, cancel bool) (CandidateAttempt, error) {
+	return reconcileRegisteredCandidateRequest(ctx, root, service.Command.RequestID, approved, cancel, &service, nil)
+}
+func reconcileRegisteredCandidateRequest(ctx context.Context, root, id, approved string, cancel bool, service *candidateattempt.Intent, d driver) (CandidateAttempt, error) {
 	if !launchID.MatchString(id) {
 		return CandidateAttempt{}, ErrConflict
 	}
@@ -449,8 +509,8 @@ func reconcileCandidateRequest(ctx context.Context, root, id, approved string, c
 	}
 	for _, a := range history.Attempts {
 		if a.Intent.RequestID == id {
-			if approved != a.Intent.Job.Plan.Candidate.Toolchain.ImageSHA256 {
-				return a, ErrConflict
+			if approved != a.Intent.Job.Plan.Candidate.Toolchain.ImageSHA256 || !reflect.DeepEqual(a.Intent.ServiceIntent, service) {
+				return CandidateAttempt{}, ErrConflict
 			}
 			r, err := reconcileCandidateBehavior(ctx, attemptPath(canonical, id), approved, cancel, d)
 			if err != nil {

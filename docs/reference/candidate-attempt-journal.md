@@ -103,5 +103,65 @@ supported recovery or rebinding operation. This format is not tamper-proof
 against its filesystem owner, and its sequence checks cannot prove that an owner
 has not removed a complete suffix or run candidates elsewhere.
 
-Issue #18 remains open: broader property/failure checks, generated-source
-provenance and service-owned candidate/search lineage require separate work.
+## Receiver-bound execution
+
+`candidate-worker-run` and `candidate-worker-reconcile` connect an exported
+[service intent](candidate-worker-intents.md) to this local ownership protocol.
+Use a new private journal for one receiver and preserve that exact root for every
+retry. The commands read local files and do not contact a service or provider.
+
+```sh
+# First export the full intent with candidate-worker-intent, using independently
+# inspected receiver, request and intent SHA pins, into service-intent.json.
+./bin/mantik candidate-worker-run \
+  --journal /absolute/private/receiver-candidate-attempts \
+  --intent service-intent.json --intent-sha256 "$intent_sha" \
+  --receiver-id "$receiver_id" --request-id threshold-001 \
+  --dataset dataset.json --approved-image-sha256 "$image" > attempt.json
+
+./bin/mantik candidate-worker-reconcile \
+  --journal /absolute/private/receiver-candidate-attempts \
+  --intent service-intent.json --intent-sha256 "$intent_sha" \
+  --receiver-id "$receiver_id" --request-id threshold-001 \
+  --approved-image-sha256 "$image" > recovered-attempt.json
+# Add --cancel only for an explicit stop of this request's original owned handle.
+```
+
+The full exported receipt is parsed with strict bounded JSON. Its hash, receiver,
+request and approved image must match the operator's expected pins. Run also
+checks the job and exact dataset before reservation. Local request IDs retain the
+1..80 character bound; longer service request IDs cannot run through this owner.
+
+The new manifest/history schema is
+`mantik-registered-candidate-attempt-journal-v1`. Its receiver is fixed when the
+journal is created, including if creation is interrupted before its first intent.
+It cannot be rebound to another receiver or mixed with an unbound journal.
+Existing unbound journals retain their original schema and hashes and remain
+readable; this change does not migrate, adopt or rebind their requests.
+
+Each `mantik-registered-candidate-attempt-intent-v1` retains the complete exported
+service intent in `service_intent`, alongside the full job, local owner, sequence,
+request, creation time and hash. The embedded service request/job must match the
+local request/job exactly, its receiver must match the manifest, and local intent
+creation cannot predate service intent creation. The local hash includes the full
+service receipt. History validates these links for every row before returning any
+selected reconciliation result. A changed registration pin, service sequence or
+timestamp conflicts even when the logical job is unchanged. Legacy unbound run
+and reconcile commands cannot adopt a bound request.
+
+The existing local outcome schema binds the local intent hash, so retained host
+receipts and their exact artifacts are now linked back to this exported service
+intent. Interrupted launch/collection remains pending; exact retries inspect only
+the original handle. A pre-acquisition gap is unresolved and does not authorize
+another launch. History remains a historical capture with current host state and
+qualification credit false.
+
+This binding establishes identity within the chosen local owner. An exported
+receipt is not a service execution lease or independent registration attestation.
+Using the same exported receipt under another journal or host is not globally
+fenced by this protocol. Preserve one designated owner rather than moving or
+recreating it; cross-owner execution fencing needs a service-owned contract.
+No service outcome upload, strategy activation or qualification is performed.
+
+Issue #18 remains open for service outcome retention, cross-owner execution
+fencing, generated-source provenance and the final acceptance audit.
