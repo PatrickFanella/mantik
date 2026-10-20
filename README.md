@@ -399,3 +399,7 @@ partial failures and timeouts without qualification or activation credit.
 The [local candidate attempt journal](docs/reference/candidate-attempt-journal.md)
 retains intent before worker launch and every local request, including pending
 and failed attempts. Reusing a request ID reconciles its original handle.
+
+[Candidate sample properties](docs/reference/candidate-properties.md) separately
+check declared repeated-price and monotonic signal relations over retained worker
+outputs, preserving violations, missing pairs and inapplicable requirements.

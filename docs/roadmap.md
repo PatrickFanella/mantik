@@ -284,3 +284,9 @@ every request/outcome, with request-ID retries that reconcile the original handl
 This improves local failure/retry evidence; it does not establish service-owned
 candidate search completeness or close #18. See
 [the local journal contract](reference/candidate-attempt-journal.md).
+
+Finite candidate sample property reports now check every eligible pair for
+explicit repeated-price/monotonic requirements, separately from example annotation
+agreement. Missing or inapplicable coverage cannot pass. This does not establish
+universal properties, point-in-time replay or close #18. See
+[the property contract](reference/candidate-properties.md).

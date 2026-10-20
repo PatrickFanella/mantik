@@ -122,3 +122,7 @@ Use the [local candidate attempt journal](candidate-attempt-journal.md) to retai
 intent before launch and keep request-ID retries and every local outcome in one
 bounded history. The lower-level commands remain available for explicit owned
 attempts without that journal.
+
+[Sample property checks](candidate-properties.md) can separately assess declared
+relations over every eligible pair of retained outputs. They do not replace the
+worker's example comparison or establish properties beyond those samples.
