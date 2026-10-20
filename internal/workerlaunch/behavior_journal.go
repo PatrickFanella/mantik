@@ -1,7 +1,6 @@
 package workerlaunch
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -198,14 +197,6 @@ func openCandidateJournalFor(ctx context.Context, root string, create bool, rece
 }
 
 func retainedCandidateOutcome(root string, i CandidateIntent, o CandidateOutcome) error {
-	if i.validate() != nil || o.Schema != "mantik-candidate-attempt-outcome-v1" || o.IntentSHA256 != i.SHA256 || o.CapturedAt.Before(i.CreatedAt) || o.CapturedAt.Before(o.Receipt.CollectedAt) || o.CapturedAt.Year() < 1 || o.CapturedAt.Year() > 9999 || o.Authority != "local_candidate_host_receipt_capture_only" || o.CurrentHostStateKnown || o.QualificationCredit {
-		return ErrConflict
-	}
-	expected := o.SHA256
-	o.SHA256 = ""
-	if expected != workerplan.Hash(o) {
-		return ErrConflict
-	}
 	path := attemptPath(root, i.RequestID)
 	canonical, err := directory(path, false)
 	if err != nil || canonical != path {
@@ -219,48 +210,17 @@ func retainedCandidateOutcome(root string, i CandidateIntent, o CandidateOutcome
 	if journalDecode(path, "receipt.json", 16384, &stored) != nil || !reflect.DeepEqual(stored, o.Receipt) {
 		return ErrConflict
 	}
-	r := o.Receipt
-	sha := r.SHA256
-	r.SHA256 = ""
-	if sha != workerplan.Hash(r) || r.Schema != "mantik-candidate-behavior-host-receipt-v1" || r.Authority != "synthetic_candidate_behavior_host_receipt_only" || r.QualificationCredit || r.AcquisitionSHA256 != a.SHA256 || r.ImageSHA256 != a.ImageSHA256 || !containerID.MatchString(r.ContainerID) {
-		return ErrConflict
-	}
-	switch r.Status {
-	case "completed", "mismatch", "failed", "incomplete", "cancelled", "timed_out", "wait_interrupted":
-	default:
-		return ErrConflict
-	}
-	if r.StdoutBytes < 0 || r.StdoutBytes > workerplan.MaxResultBytes || r.StderrBytes < 0 || r.StderrBytes > 64<<10 {
-		return ErrConflict
-	}
-	for _, artifact := range []struct {
-		name, sha string
-		n         int
-	}{{"stdout.json", r.StdoutSHA256, r.StdoutBytes}, {"stderr.txt", r.StderrSHA256, r.StderrBytes}} {
-		raw, err := readFile(path, artifact.name, int64(artifact.n))
-		if err != nil || len(raw) != artifact.n || workerplan.Digest(raw) != artifact.sha {
-			return ErrConflict
-		}
-	}
-	raw, err := readFile(path, "stdout.json", int64(r.StdoutBytes))
+	stdout, err := readFile(path, "stdout.json", workerplan.MaxResultBytes)
 	if err != nil {
 		return err
 	}
-	result, resultErr := candidateexec.ReadResult(bytes.NewReader(raw), j)
-	if resultErr == nil {
-		if r.WorkerResultSHA256 != result.SHA256 || r.WorkerStatus != result.Status {
-			return ErrConflict
-		}
-	} else if r.WorkerResultSHA256 != "" || r.WorkerStatus != "" {
-		return ErrConflict
+	stderr, err := readFile(path, "stderr.txt", 64<<10)
+	if err != nil {
+		return err
 	}
-	if r.Status == "completed" || r.Status == "mismatch" || r.Status == "failed" {
-		if resultErr != nil || result.Status != r.Status || result.ReasonCode != r.ReasonCode || !r.OutputComplete || !r.ProfileVerified || !r.HostDeadlineMet || r.ExitCode != 1 && r.Status != "completed" || r.Status == "completed" && r.ExitCode != 0 {
-			return ErrConflict
-		}
-	}
-	return nil
+	return validateCandidateOutcomeEvidence(i, o, a, stdout, stderr)
 }
+
 func candidateHistoryLocked(root string) (CandidateHistory, error) {
 	var m candidateManifest
 	if err := journalDecode(root, "journal.json", 4096, &m); err != nil {

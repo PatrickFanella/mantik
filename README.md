@@ -419,5 +419,7 @@ now binds pre-execution requests to exact registrations and behavior jobs.
 `candidate-worker-intent` retain and inspect those declarations, with coherent
 registration pins and validated job export. `candidate-worker-run` and
 `candidate-worker-reconcile` bind an exported intent to a receiver-bound local
-journal and its original owned handle. Service outcome retention and cross-owner
-execution fencing remain unfinished.
+journal and its original owned handle. `candidate-worker-capture` exports
+[portable caller-reported outcome evidence](docs/reference/candidate-outcome-captures.md),
+and `candidate-capture-inspect` validates it or exports exact output bytes.
+Service outcome retention and cross-owner execution fencing remain unfinished.

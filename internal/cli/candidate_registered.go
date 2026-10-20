@@ -25,7 +25,7 @@ func runRegisteredCandidate(ctx context.Context, command string, args []string, 
 	var cancel bool
 	if command == "candidate-worker-run" {
 		fs.StringVar(&dataset, "dataset", "", "exact original synthetic dataset")
-	} else {
+	} else if command == "candidate-worker-reconcile" {
 		fs.BoolVar(&cancel, "cancel", false, "stop only this journal request's original owned handle")
 	}
 	if err := fs.Parse(args); err != nil {
@@ -47,6 +47,13 @@ func runRegisteredCandidate(ctx context.Context, command string, args []string, 
 	i, err := candidateattempt.ReadIntent(bytes.NewReader(raw))
 	if err != nil || i.SHA256 != *sha || i.Command.ReceiverID != *receiver || i.Command.RequestID != *id || i.Command.Job.Plan.Candidate.Toolchain.ImageSHA256 != *approved {
 		return workerlaunch.ErrConflict
+	}
+	if command == "candidate-worker-capture" {
+		c, err := workerlaunch.CaptureRegisteredCandidate(ctx, *root, i)
+		if err != nil {
+			return err
+		}
+		return emit(out, c)
 	}
 	var a workerlaunch.CandidateAttempt
 	if command == "candidate-worker-run" {
