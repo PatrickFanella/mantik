@@ -94,6 +94,6 @@ for synthetic candidate checks. The parent artifact is fully available to the
 caller preparing the plan, and source/hypothesis creation may already have seen
 future data. This does not prove unseen/out-of-sample research, prevent embedded
 foreknowledge, simulate realistic fills, replay service economics, qualify a
-strategy or establish profitability. Issue #18 remains open for generated-source
-provenance and service-owned candidate/search lineage and its final acceptance
-audit. No provider, service, account or order is contacted by these commands.
+strategy or establish profitability. The [candidate acceptance audit](../research/candidate-evaluation-acceptance.md)
+records the separate generated-source and service-owned lineage evidence. No
+provider, service, account or order is contacted by these projection commands.

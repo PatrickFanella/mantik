@@ -4,7 +4,8 @@
 [generation outcome](candidate-generation-outcomes.md) to a new
 [candidate registration](candidate-lineage.md). Memory/PostgreSQL backends retain
 that explicit link atomically with the registration and exact dataset. This adds
-no HTTP/CLI admission, provider call, compiler, worker launch or strategy activation.
+no provider call, compiler, worker launch or strategy activation. Authenticated
+HTTP/CLI commands expose the retained registration and evidence.
 Legacy candidate registration JSON, schema and hashes are unchanged.
 
 ## Explicit source selection
@@ -75,8 +76,9 @@ ordinary registration route first and attach a link afterwards.
 Pure tests cover legacy wire/hash identity, exact original source, parent chains,
 all 32 slots, clock-free retry at capacity, mixed manual/linked discovery,
 retrofit refusal, rejected output, changed bindings and times, strict readers,
-self-hashed forgeries and detached values. Authenticated bridge access, provider adapter and final #18 acceptance audit
-remain unfinished.
+self-hashed forgeries and detached values. The [#18 acceptance audit](../research/candidate-evaluation-acceptance.md) maps
+these checks to written criteria and separate native evidence. Provider requests
+and model authorship are not established by recorded fixture evidence.
 
 ## Durable retention (schema 35)
 
@@ -114,3 +116,42 @@ version and checksum guards refuse incompatible or changed migration histories.
 Older binaries refuse schema 35; rollback requires restoring a compatible private
 backup into separate resources, not dropping retained links in place. This source
 change does not deploy or migrate an existing pilot database.
+
+## Authenticated registration and inspection
+
+All routes require the existing bearer token, reject query parameters and use a
+bounded backend context. `POST /v1/generated-candidates` accepts only a strict
+`Command` (at most 4096 bytes); it returns the full coherent `Artifact`.
+`GET /v1/generated-candidates` returns the complete `Registry`, including manual
+registrations and the exact unlinked complement. `GET /v1/generated-candidates/{id}`
+returns one full `Artifact`; an existing manual registration without a generation
+link returns 404. Missing references return 404, invalid input 422, and changed
+bindings, receiver conflicts or capacity conflicts 409. There is no launch route.
+
+```sh
+./bin/mantik generated-candidate-register --api-url "$api" \
+  --receiver-id "$receiver" --id "$registration_id" \
+  --generation-id "$generation_id" --intent-sha256 "$intent_sha" \
+  --outcome-sha256 "$outcome_sha" --recording-sha256 "$recording_sha" \
+  --plan-sha256 "$plan_sha" --candidate-sha256 "$candidate_sha" \
+  > generated-registration.json
+./bin/mantik generated-candidates --api-url "$api" --receiver-id "$receiver"
+./bin/mantik generated-candidate --api-url "$api" --receiver-id "$receiver" \
+  --id "$registration_id" --link-sha256 "$link_sha" \
+  --registration-sha256 "$registration_sha" --artifact source > candidate.go
+```
+
+Registration optionally accepts `--parent` and returns the full artifact. It has
+no substitute source or dataset input: the backend selects its own retained bytes.
+The client validates the complete response and requires the exact submitted command.
+An exact retry returns the original link, registration and generation evidence.
+
+Inspection requires both link and registration identities. The link binds the
+full command's generation/intent/outcome/recording/plan/candidate pins; the client
+rederives the complete artifact before emitting any selected value. Supported
+`--artifact` values are `link` (default), `artifact`, `registration`, `generation`,
+`recording`, `candidate`, `source` and `output`. Source and recorded output export
+exact bytes without an added newline. These reads do not attest model authorship
+or execute the source. Use the existing pinned `candidate-dataset` command for
+exact retained dataset bytes. The ordinary registration wire and commands remain
+compatible.

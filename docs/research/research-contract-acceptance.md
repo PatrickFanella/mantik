@@ -247,12 +247,12 @@ and process-isolation evidence, not a sandbox security certification or financia
 qualification. The source for this rehearsal precedes the candidate declaration
 CLI; it does not establish candidate execution.
 
-The [candidate source declaration](../reference/candidate-source.md) starts
-#18 by retaining immutable source/hypothesis/dataset/toolchain provenance.
-The separate [candidate build protocol](../reference/candidate-build.md) now adds
-isolated compile/interface checks and retained local physical attempts.
-Behavioral/property checks, candidate replay/failure cases and service-owned
-candidate search lineage remain unfinished. Existing native/Python workers do
-not execute candidate source. #18, general allocation (#19),
-realistic economics (#20), qualification (#21) and the integrated M4 gate remain
-incomplete.
+The separate [generated-candidate acceptance audit](candidate-evaluation-acceptance.md)
+now maps issue #18 to immutable source/generation/registration/attempt lineage,
+fixed isolated Go compile/behavior workers, finite sample properties, cutoff replay
+and retained failure/restart/restore evidence. Existing native/Python fixture
+workers remain separate profiles; generated source runs only in its explicit
+bounded candidate profile. This issue-level fixture evidence does not complete
+general allocation (#19), realistic economics (#20), admission (#21) or the
+integrated M4 gate. The [paper-soak plan](../plans/paper-soak.md) records the
+remaining full-application exit requirements.
