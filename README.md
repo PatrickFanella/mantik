@@ -438,5 +438,7 @@ now seals an offline request and preserves exact recorded output before worker
 checks. `candidate-generation-plan`, `candidate-generation-record` and
 `candidate-generation-inspect` retain candidate or rejection evidence with explicit
 hash pins and exact artifact export. These commands make no provider request and
-do not attest model authorship. Durable service generation lineage and a provider
+do not attest model authorship. [Generation intent backends](docs/reference/candidate-generation-intents.md) now
+retain publication-bound plans and exact datasets before output admission.
+Authenticated access, retained generation outcomes/registration links and a provider
 adapter remain unfinished.
