@@ -103,3 +103,6 @@ var FixtureCapital string
 
 //go:embed 0030_candidate_registrations.sql
 var CandidateRegistrations string
+
+//go:embed 0031_candidate_worker_intents.sql
+var CandidateWorkerIntents string

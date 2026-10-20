@@ -11,7 +11,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/candidate"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidatebuild"
-	"git.subcult.tv/subculture-collective/mantik/internal/replay"
+	"git.subcult.tv/subculture-collective/mantik/internal/dataset"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
@@ -43,7 +43,7 @@ func datasetCases(p candidate.Package, raw []byte) ([]Case, error) {
 	if p.VerifyDataset(raw) != nil {
 		return nil, ErrInvalid
 	}
-	var data replay.Dataset
+	var data dataset.Dataset
 	if workerplan.ReadDatasetShape(raw, &data) != nil || len(data.Records) < 1 || len(data.Records) > MaxCases {
 		return nil, ErrInvalid
 	}

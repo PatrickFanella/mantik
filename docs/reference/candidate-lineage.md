@@ -154,6 +154,8 @@ the same pinned receipts and artifacts. Memory tests cover authentication, stric
 request/response JSON, unsupported query/launch paths and refusal of forged
 readbacks before output.
 
-Registry-linked worker attempts, generated-source provenance and the final #18
-acceptance audit remain unfinished. A registration grants no activation,
+[Candidate worker intent backends](candidate-worker-intents.md) now retain exact
+registration/job bindings before execution. Intent API/CLI access, worker
+ownership/reconciliation linkage, outcomes, generated-source provenance and the
+final #18 acceptance audit remain unfinished. A registration grants no activation,
 profitability, independent execution or qualification proof.

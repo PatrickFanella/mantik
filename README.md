@@ -413,4 +413,6 @@ publication-bound registrations, parent pins and bounded retry rules. Memory and
 PostgreSQL backends retain the complete lineage and exact dataset bytes.
 `candidate-register`, `candidate-registrations`, `candidate-registration` and
 `candidate-dataset` expose authenticated registration and verified readback.
-Registry-linked worker attempts remain unfinished.
+The [candidate worker intent backend](docs/reference/candidate-worker-intents.md)
+now binds pre-execution requests to exact registrations and behavior jobs.
+Intent API/CLI access, worker reconciliation linkage and outcomes remain unfinished.
