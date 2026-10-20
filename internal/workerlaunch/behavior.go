@@ -6,15 +6,17 @@ import (
 	"encoding/json"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/candidate"
+	"git.subcult.tv/subculture-collective/mantik/internal/candidateevidence"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateexec"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
 func behaviorExecution(j candidateexec.Job) execution {
 	raw, _ := json.Marshal(j)
+	profile := candidateevidence.BehaviorProfile(j)
 	return execution{raw: raw, sha: j.SHA256, image: j.Plan.Candidate.Toolchain.ImageSHA256, resources: j.Resources, behaviorTmp: true,
 		acquisitionSchema: "mantik-candidate-behavior-acquisition-v1", receiptSchema: "mantik-candidate-behavior-host-receipt-v1", authority: "synthetic_candidate_behavior_host_receipt_only",
-		entrypoint: []string{"/app/mantik"}, args: []string{"candidate-behavior-execute", "--job", "/worker/job.json", "--job-sha256", j.SHA256}, env: []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+		entrypoint: profile.Entrypoint, args: profile.Args, env: profile.Env,
 		outcome: func(raw []byte) (outcome, error) {
 			r, err := candidateexec.ReadResult(bytes.NewReader(raw), j)
 			if err != nil {
@@ -96,7 +98,7 @@ func loadCandidateBehavior(root, approved string) (Acquisition, candidateexec.Jo
 	}
 	var a Acquisition
 	p := behaviorExecution(j)
-	if json.Unmarshal(raw, &a) != nil || a.validateExecution(root, p, approved) != nil {
+	if json.Unmarshal(raw, &a) != nil || a.Validate(root, receiptProfile(p), approved) != nil {
 		return Acquisition{}, j, ErrConflict
 	}
 	return a, j, nil

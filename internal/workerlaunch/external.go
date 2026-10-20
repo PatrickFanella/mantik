@@ -46,7 +46,7 @@ func loadExternal(root, approved string) (Acquisition, externalplan.Job, error) 
 		return Acquisition{}, j, err
 	}
 	var a Acquisition
-	if json.Unmarshal(raw, &a) != nil || a.validateExecution(root, externalExecution(j), approved) != nil {
+	if json.Unmarshal(raw, &a) != nil || a.Validate(root, receiptProfile(externalExecution(j)), approved) != nil {
 		return a, j, ErrConflict
 	}
 	return a, j, nil

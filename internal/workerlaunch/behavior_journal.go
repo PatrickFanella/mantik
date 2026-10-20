@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateattempt"
+	"git.subcult.tv/subculture-collective/mantik/internal/candidateevidence"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateexec"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
@@ -22,7 +23,7 @@ import (
 const CandidateJournalSchema = "mantik-candidate-attempt-journal-v1"
 const RegisteredCandidateJournalSchema = "mantik-registered-candidate-attempt-journal-v1"
 const MaxCandidateAttempts = 64
-const maxIntentBytes = candidateexec.MaxJobBytes + candidateattempt.MaxBytes + 8192
+const maxIntentBytes = candidateevidence.MaxIntentBytes
 
 var ErrCapacity = errors.New("candidate attempt journal capacity reached; preserve all evidence before a separately reviewed continuation")
 var ErrUnresolved = errors.New("candidate attempt execution or collection is unresolved; inspect its original handle without relaunching")
@@ -33,54 +34,10 @@ type candidateManifest struct {
 	ID         string `json:"id"`
 	ReceiverID string `json:"receiver_id,omitempty"`
 }
-type CandidateIntent struct {
-	Schema              string                   `json:"schema"`
-	JournalID           string                   `json:"journal_id"`
-	RequestID           string                   `json:"request_id"`
-	Sequence            int                      `json:"sequence"`
-	Job                 candidateexec.Job        `json:"job"`
-	ServiceIntent       *candidateattempt.Intent `json:"service_intent,omitempty"`
-	CreatedAt           time.Time                `json:"created_at"`
-	Authority           string                   `json:"authority"`
-	ExecutionStarted    bool                     `json:"execution_started"`
-	QualificationCredit bool                     `json:"qualification_credit"`
-	SHA256              string                   `json:"sha256"`
-}
+type CandidateIntent = candidateevidence.Intent
+type CandidateOutcome = candidateevidence.Outcome
+type CandidateAttempt = candidateevidence.Attempt
 
-func (i CandidateIntent) validate() error {
-	schema := "mantik-candidate-attempt-intent-v1"
-	if i.ServiceIntent != nil {
-		schema = "mantik-registered-candidate-attempt-intent-v1"
-		s := i.ServiceIntent
-		if s.Validate() != nil || s.Command.RequestID != i.RequestID || !reflect.DeepEqual(s.Command.Job, i.Job) || i.CreatedAt.Before(s.CreatedAt) {
-			return ErrConflict
-		}
-	}
-	if i.Schema != schema || !journalIdentity.MatchString(i.JournalID) || !launchID.MatchString(i.RequestID) || i.Sequence < 1 || i.Sequence > MaxCandidateAttempts || i.Job.Validate() != nil || i.CreatedAt.IsZero() || i.CreatedAt.Year() < 1 || i.CreatedAt.Year() > 9999 || i.Authority != "local_candidate_attempt_intent_only" || i.ExecutionStarted || i.QualificationCredit {
-		return ErrConflict
-	}
-	expected := i.SHA256
-	i.SHA256 = ""
-	if expected != workerplan.Hash(i) {
-		return ErrConflict
-	}
-	return nil
-}
-
-type CandidateOutcome struct {
-	Schema                string    `json:"schema"`
-	IntentSHA256          string    `json:"intent_sha256"`
-	CapturedAt            time.Time `json:"captured_at"`
-	Receipt               Receipt   `json:"receipt"`
-	Authority             string    `json:"authority"`
-	CurrentHostStateKnown bool      `json:"current_host_state_known"`
-	QualificationCredit   bool      `json:"qualification_credit"`
-	SHA256                string    `json:"sha256"`
-}
-type CandidateAttempt struct {
-	Intent  CandidateIntent   `json:"intent"`
-	Outcome *CandidateOutcome `json:"outcome"`
-}
 type CandidateHistory struct {
 	Schema                string             `json:"schema"`
 	JournalID             string             `json:"journal_id"`
@@ -218,7 +175,7 @@ func retainedCandidateOutcome(root string, i CandidateIntent, o CandidateOutcome
 	if err != nil {
 		return err
 	}
-	return validateCandidateOutcomeEvidence(i, o, a, stdout, stderr)
+	return candidateevidence.ValidateOutcomeEvidence(i, o, a, stdout, stderr)
 }
 
 func candidateHistoryLocked(root string) (CandidateHistory, error) {
@@ -247,7 +204,7 @@ func candidateHistoryLocked(root string) (CandidateHistory, error) {
 			h.PendingArtifacts = append(h.PendingArtifacts, name)
 		case strings.HasPrefix(name, "intent-") && strings.HasSuffix(name, ".json"):
 			var i CandidateIntent
-			if journalDecode(root, name, maxIntentBytes, &i) != nil || i.validate() != nil || i.JournalID != m.ID || name != "intent-"+i.RequestID+".json" {
+			if journalDecode(root, name, maxIntentBytes, &i) != nil || i.Validate() != nil || i.JournalID != m.ID || name != "intent-"+i.RequestID+".json" {
 				return h, ErrConflict
 			}
 			if i.ServiceIntent == nil && m.ReceiverID != "" || i.ServiceIntent != nil && i.ServiceIntent.Command.ReceiverID != m.ReceiverID {
@@ -363,7 +320,7 @@ func reserveRegisteredCandidate(ctx context.Context, root, id string, j candidat
 		i.Schema, i.ServiceIntent = "mantik-registered-candidate-attempt-intent-v1", service
 	}
 	i.SHA256 = workerplan.Hash(i)
-	if i.validate() != nil {
+	if i.Validate() != nil {
 		return "", CandidateAttempt{}, false, ErrConflict
 	}
 	if err := writeJSON(root, "intent-"+id+".json", i); err != nil {

@@ -94,7 +94,7 @@ func loadCandidateBuild(root, approved string) (Acquisition, candidatebuild.Job,
 	}
 	var a Acquisition
 	p := candidateExecution(j)
-	if json.Unmarshal(raw, &a) != nil || a.validateExecution(root, p, approved) != nil {
+	if json.Unmarshal(raw, &a) != nil || a.Validate(root, receiptProfile(p), approved) != nil {
 		return Acquisition{}, j, ErrConflict
 	}
 	return a, j, nil
