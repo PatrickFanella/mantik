@@ -126,3 +126,7 @@ attempts without that journal.
 [Sample property checks](candidate-properties.md) can separately assess declared
 relations over every eligible pair of retained outputs. They do not replace the
 worker's example comparison or establish properties beyond those samples.
+
+[Cutoff replay projections](candidate-replay.md) can derive availability-ordered
+inputs for explicit historical fixture cutoffs. Each frame remains a separate
+worker run and does not replay service economics.

@@ -403,3 +403,7 @@ and failed attempts. Reusing a request ID reconciles its original handle.
 [Candidate sample properties](docs/reference/candidate-properties.md) separately
 check declared repeated-price and monotonic signal relations over retained worker
 outputs, preserving violations, missing pairs and inapplicable requirements.
+
+[Candidate cutoff replay](docs/reference/candidate-replay.md) derives jobs from
+only the synthetic records visible at an explicit cutoff, retains every parent
+exposure and exports the exact derived dataset bytes.

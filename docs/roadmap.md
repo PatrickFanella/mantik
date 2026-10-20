@@ -290,3 +290,8 @@ explicit repeated-price/monotonic requirements, separately from example annotati
 agreement. Missing or inapplicable coverage cannot pass. This does not establish
 universal properties, point-in-time replay or close #18. See
 [the property contract](reference/candidate-properties.md).
+
+Candidate replay projections now retain every parent exposure and derive
+availability-ordered worker inputs at explicit cutoffs, including no-input frames.
+This is synthetic input replay; generated-source/service lineage and a final #18
+acceptance audit remain. See [the replay contract](reference/candidate-replay.md).
