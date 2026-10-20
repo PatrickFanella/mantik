@@ -109,6 +109,11 @@ Its 2026-10-19 refresh verifies the recorded decision/hypothesis contracts after
 behavioral execution and replay remain unfinished. Recorded fixture coverage does not
 close the integrated M4 exit gate.
 
+[Candidate fixture test plans](reference/candidate-fixture-tests.md) now bind
+explicit expected signals to every retained input and compare caller-reported
+outputs without executing source. Behavioral workers and service-owned candidate
+attempt lineage remain unfinished parts of #18.
+
 - [#15: Define decision workflow and LLM tool contracts](https://git.subcult.tv/subculture-collective/mantik/issues/15). Depends on #3, #12, #9.
 - [#16: Add hypothesis lifecycle and autonomous research-attempt history](https://git.subcult.tv/subculture-collective/mantik/issues/16). Depends on #6, #15.
 - [#17: Add an isolated research-worker protocol for reusable tools](https://git.subcult.tv/subculture-collective/mantik/issues/17). Depends on #5, #15.

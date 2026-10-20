@@ -80,3 +80,7 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Candidate compile checks](candidate-build.md) — a fixed interface, isolated
   compiler, bounded failure results and owned local attempt reconciliation.
+
+- [Candidate fixture plans and recorded comparisons](candidate-fixture-tests.md)
+  — explicit expectations for every pinned input and complete failure-aware
+  comparison; no source execution or execution attestation.

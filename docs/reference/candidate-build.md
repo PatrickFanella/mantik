@@ -121,7 +121,9 @@ conflicted. Bounded logs do not prove earlier daemon output never rotated.
 ## Remaining work
 
 This supplies compile/interface evidence and retained local physical attempts
-for #18. Behavioral/property/failure replay, service-owned candidate registration
+for #18. [Fixture plans and recorded comparisons](candidate-fixture-tests.md)
+now define expected signal cases for a later behavioral worker, without executing
+source or attesting supplied outputs. Behavioral/property/failure replay, service-owned candidate registration
 and search lineage, worker dispatch, strategy activation and the full issue gate
 remain unfinished. Even functions with panicking initializers can compile here
 because they never execute. Host settings supply inspected process-isolation
