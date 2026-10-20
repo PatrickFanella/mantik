@@ -99,7 +99,7 @@ func candidateOutcomeHTTP(t *testing.T, s candidateHTTPBackend, i candidateattem
 		t.Fatal("strict artifact roundtrip changed", err)
 	}
 
-	for _, path := range []string{"/v1/candidate-worker-outcomes/" + i.Command.RequestID, "/v1/candidate-worker-outcomes/" + i.Command.RequestID + "/capture"} {
+	for _, path := range []string{"/v1/candidate-worker-outcomes", "/v1/candidate-worker-outcomes/" + i.Command.RequestID, "/v1/candidate-worker-outcomes/" + i.Command.RequestID + "/capture"} {
 		call("GET", path, "", false, 401)
 		call("GET", path+"?best=true", "", true, 422)
 		call("GET", path+"?%zz", "", true, 422)
@@ -108,7 +108,7 @@ func candidateOutcomeHTTP(t *testing.T, s candidateHTTPBackend, i candidateattem
 	call("POST", "/v1/candidate-worker-outcomes?best=true", string(body), true, 422)
 	call("GET", "/v1/candidate-worker-outcomes/missing", "", true, 404)
 	call("GET", "/v1/candidate-worker-outcomes/missing/capture", "", true, 404)
-	call("GET", "/v1/candidate-worker-outcomes", "", true, 405) // No pending/history aggregate contract.
+	call("GET", "/v1/candidate-worker-outcomes", "", true, 200)
 	call("POST", "/v1/candidate-worker-outcomes/"+i.Command.RequestID+"/launch", "{}", true, 404)
 	for _, bad := range []string{string(body) + "{}", strings.Replace(string(body), `"receiver_id":`, `"Receiver_id":`, 1), strings.Replace(string(body), `"capture":`, `"qualification_credit":true,"capture":`, 1), strings.Replace(string(body), `"capture":`, `"capture":null,"capture":`, 1), strings.Replace(string(body), `"stdout":`, `"stdout":"not-base64!","unknown":`, 1)} {
 		call("POST", "/v1/candidate-worker-outcomes", bad, true, 422)
@@ -162,6 +162,15 @@ func candidateOutcomeHTTP(t *testing.T, s candidateHTTPBackend, i candidateattem
 		if err := Run(context.Background(), append(bad, "--api-url", server.URL, "--receiver-id", i.Command.ReceiverID, "--id", i.Command.RequestID, "--intent-sha256", i.SHA256, "--capture-sha256", c.SHA256), &out, &diag); err == nil || out.Len() != 0 {
 			t.Fatal("invalid command emitted", bad, err)
 		}
+	}
+
+	var out, diag bytes.Buffer
+	if err := Run(context.Background(), []string{"candidate-worker-outcomes", "--api-url", server.URL, "--receiver-id", i.Command.ReceiverID}, &out, &diag); err != nil {
+		t.Fatal(err)
+	}
+	var history candidateevidence.History
+	if err := json.Unmarshal(out.Bytes(), &history); err != nil || history.Validate() != nil || len(history.IntentHistory.Intents) != 2 || len(history.Outcomes) != 1 || history.Outcomes[0] != first || !reflect.DeepEqual(history.UnreportedRequestIDs, []string{"intent-second"}) {
+		t.Fatal("HTTP coherent history changed", err)
 	}
 	return first, c
 }

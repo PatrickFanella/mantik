@@ -55,6 +55,10 @@ func candidateOutcomeContracts(t *testing.T, s candidateOutcomeBackend) {
 	if all, err := s.CandidateWorkerOutcomes(ctx); err != nil || all == nil || len(all) != 0 {
 		t.Fatal(all, err)
 	}
+
+	if h, err := s.CandidateWorkerOutcomeHistory(ctx); err != nil || h.Validate() != nil || len(h.IntentHistory.Intents) != 0 || len(h.Outcomes) != 0 || h.UnreportedRequestIDs == nil {
+		t.Fatal("invalid empty outcome history", err)
+	}
 	first, err := s.StartCandidateWorker(ctx, c, func() time.Time { return at })
 	if err != nil {
 		t.Fatal(err)
@@ -65,6 +69,10 @@ func candidateOutcomeContracts(t *testing.T, s candidateOutcomeBackend) {
 		t.Fatal(err)
 	}
 	r1, r2 := outcomeFixture(t, first), outcomeFixture(t, second)
+	if h, err := s.CandidateWorkerOutcomeHistory(ctx); err != nil || h.Validate() != nil || !reflect.DeepEqual(h.UnreportedRequestIDs, []string{first.Command.RequestID, second.Command.RequestID}) {
+		t.Fatal("pending intents missing", err)
+	}
+
 	now := func() time.Time { return at.Add(time.Minute) }
 	// Outcomes can arrive out of intent order; a pending earlier intent is retained.
 	secondRecord, err := s.ReportCandidateWorkerOutcome(ctx, r2, now)
@@ -74,12 +82,34 @@ func candidateOutcomeContracts(t *testing.T, s candidateOutcomeBackend) {
 	if all, err := s.CandidateWorkerOutcomes(ctx); err != nil || len(all) != 1 || all[0].IntentSequence != 2 {
 		t.Fatal(all, err)
 	}
+
+	h, err := s.CandidateWorkerOutcomeHistory(ctx)
+	if err != nil || h.Validate() != nil || len(h.Outcomes) != 1 || h.Outcomes[0] != secondRecord || !reflect.DeepEqual(h.UnreportedRequestIDs, []string{first.Command.RequestID}) {
+		t.Fatal("out-of-order report hid pending intent", err)
+	}
+	h.IntentHistory.Intents[0].Command.Job.Plan.Cases[0].ID = "changed"
+	h.Outcomes[0].ReasonCode = "changed"
+	h.UnreportedRequestIDs[0] = "changed"
+	if fresh, err := s.CandidateWorkerOutcomeHistory(ctx); err != nil || fresh.Validate() != nil || fresh.IntentHistory.Intents[0].Command.Job.Plan.Cases[0].ID == "changed" {
+		t.Fatal("caller mutated history storage", err)
+	}
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
 			r, err := s.ReportCandidateWorkerOutcome(ctx, r1, now)
 			if err != nil || r.IntentSequence != 1 || r.VerifyCapture(first, r1.Capture) != nil {
 				t.Errorf("concurrent report: %v", err)
+			}
+		})
+	}
+
+	for range 4 {
+		wg.Go(func() {
+			for range 3 {
+				h, err := s.CandidateWorkerOutcomeHistory(ctx)
+				if err != nil || h.Validate() != nil || len(h.IntentHistory.Intents) != 2 {
+					t.Errorf("concurrent incoherent history: %v", err)
+				}
 			}
 		})
 	}
@@ -161,6 +191,11 @@ func candidateOutcomeContracts(t *testing.T, s candidateOutcomeBackend) {
 	if _, err := s.ReportCandidateWorkerOutcome(ctx, r3, func() time.Time { return at }); err == nil {
 		t.Fatal("outcome accepted before its claimed capture time")
 	}
+
+	beforeRestart, err := s.CandidateWorkerOutcomeHistory(ctx)
+	if err != nil || beforeRestart.Validate() != nil || !reflect.DeepEqual(beforeRestart.UnreportedRequestIDs, []string{"third"}) {
+		t.Fatal("unreported third intent missing", err)
+	}
 	if pg, ok := s.(*Postgres); ok {
 		config := pg.pool.Config().ConnString()
 		pg.Close()
@@ -170,6 +205,10 @@ func candidateOutcomeContracts(t *testing.T, s candidateOutcomeBackend) {
 		}
 		t.Cleanup(next.Close)
 		s = next
+		if restored, err := s.CandidateWorkerOutcomeHistory(ctx); err != nil || !reflect.DeepEqual(beforeRestart, restored) {
+			t.Fatal("restart changed coherent outcome history", err)
+		}
+
 		if restored, err := s.CandidateWorkerOutcome(ctx, r1.RequestID); err != nil || restored != record {
 			t.Fatal("restart changed record", err)
 		}
@@ -196,6 +235,11 @@ func candidateOutcomeContracts(t *testing.T, s candidateOutcomeBackend) {
 	if err != nil || len(all) != 3 || all[0] != record || all[1] != secondRecord || all[2].IntentSequence != 3 {
 		t.Fatal(all, err)
 	}
+
+	final, err := s.CandidateWorkerOutcomeHistory(ctx)
+	if err != nil || final.Validate() != nil || len(final.Outcomes) != 3 || len(final.UnreportedRequestIDs) != 0 {
+		t.Fatal("complete outcome history changed", err)
+	}
 	after, _ := s.Snapshot(ctx)
 	afterRegistry, _ := s.CandidateRegistry(ctx)
 	if !reflect.DeepEqual(state, after) || !reflect.DeepEqual(registry, afterRegistry) {
@@ -211,6 +255,10 @@ func candidateOutcomeContracts(t *testing.T, s candidateOutcomeBackend) {
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
+
+	if _, err := s.CandidateWorkerOutcomeHistory(cancelled); err == nil {
+		t.Fatal("cancelled history read accepted")
+	}
 	if _, err := s.CandidateWorkerOutcomes(cancelled); err == nil {
 		t.Fatal("cancelled read accepted")
 	}
@@ -301,6 +349,10 @@ func candidateOutcomeCorruption(t *testing.T, s candidateOutcomeBackend) {
 			}
 			write(badRecord, badCapture, badIntent)
 			defer write(original, report.Capture, i)
+
+			if _, err := s.CandidateWorkerOutcomeHistory(ctx); err == nil {
+				t.Fatal("coherent history hid corrupted capture/intent dependency")
+			}
 			if _, err := s.CandidateWorkerOutcomeEvidence(ctx, other.RequestID); err == nil {
 				t.Fatal("coherent artifact hid unrelated corruption")
 			}

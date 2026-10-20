@@ -15,6 +15,7 @@ import (
 )
 
 type CandidateWorkerOutcomeStore interface {
+	CandidateWorkerOutcomeHistory(context.Context) (candidateevidence.History, error)
 	CandidateWorkerOutcomeEvidence(context.Context, string) (candidateevidence.Artifact, error)
 	ReportCandidateWorkerOutcome(context.Context, candidateevidence.Report, func() time.Time) (candidateevidence.OutcomeRecord, error)
 	CandidateWorkerOutcome(context.Context, string) (candidateevidence.OutcomeRecord, error)
@@ -316,4 +317,53 @@ func (p *Postgres) CandidateWorkerOutcomeEvidence(ctx context.Context, id string
 		return candidateevidence.Artifact{}, err
 	}
 	return candidateevidence.NewArtifact(r, c)
+}
+
+func (m *Memory) CandidateWorkerOutcomeHistory(ctx context.Context) (candidateevidence.History, error) {
+	if err := ctx.Err(); err != nil {
+		return candidateevidence.History{}, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	all, intents, _, err := m.candidateOutcomeSnapshot("")
+	if err != nil {
+		return candidateevidence.History{}, err
+	}
+	registered, err := m.candidateSnapshot()
+	if err != nil {
+		return candidateevidence.History{}, err
+	}
+	h, err := candidateattempt.HistoryFor(m.receiverID, registered, intents)
+	if err != nil {
+		return candidateevidence.History{}, err
+	}
+	return candidateevidence.HistoryFor(h, all)
+}
+func (p *Postgres) CandidateWorkerOutcomeHistory(ctx context.Context) (candidateevidence.History, error) {
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return candidateevidence.History{}, err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	receiver, registered, _, err := loadCandidates(ctx, tx, "")
+	if err != nil {
+		return candidateevidence.History{}, err
+	}
+	intents, err := loadCandidateIntents(ctx, tx, receiver, candidateRegistrationMap(registered))
+	if err != nil {
+		return candidateevidence.History{}, err
+	}
+	all, _, err := loadCandidateOutcomes(ctx, tx, intents, "")
+	if err != nil {
+		return candidateevidence.History{}, err
+	}
+	ih, err := candidateattempt.HistoryFor(receiver, registered, intents)
+	if err != nil {
+		return candidateevidence.History{}, err
+	}
+	h, err := candidateevidence.HistoryFor(ih, all)
+	if err != nil {
+		return candidateevidence.History{}, err
+	}
+	return h, tx.Commit(ctx)
 }

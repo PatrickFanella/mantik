@@ -143,7 +143,8 @@ authority; service admission must compare it with the service's own retained int
 
 [Outcome backends](candidate-worker-outcomes.md) now retain caller-reported
 captures against their own intent and exact dataset bindings. Authenticated
-submission and pinned outcome/capture/output inspection are available. Coherent
-pending-work summaries, cross-owner execution fencing, generated-source
+submission and pinned outcome/capture/output inspection are available, alongside
+one coherent history of intents, reports and unreported request IDs. Cross-owner
+execution fencing, generated-source
 provenance and the final #18 audit remain unfinished. The original pilot services
 have not been upgraded by adding or testing these contracts.

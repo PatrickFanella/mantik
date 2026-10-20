@@ -112,5 +112,5 @@ portable contract itself performs no service admission. The
 [outcome backends](candidate-worker-outcomes.md) now retain validated reports and
 full capture bytes against their own intent/registration/dataset snapshots.
 Authenticated outcome submission and pinned capture/output inspection are
-available. Coherent pending-work summaries, owner fencing, generated-source
+available, together with coherent intent/report history. Owner fencing, generated-source
 provenance and the final #18 acceptance audit remain separate work. Existing pilot services are unchanged.

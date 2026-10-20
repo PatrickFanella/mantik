@@ -17,13 +17,16 @@ func runCandidateOutcomes(ctx context.Context, command string, args []string, ou
 	fs.SetOutput(errOut)
 	base := fs.String("api-url", defaultURL, "service HTTP origin")
 	receiver := fs.String("receiver-id", "", "required expected receiver identity")
-	id := fs.String("id", "", "required intent request ID")
-	intentSHA := fs.String("intent-sha256", "", "required expected service intent identity")
-	captureSHA := fs.String("capture-sha256", "", "required expected capture identity")
+	var id, intentSHA, captureSHA *string
+	if command != "candidate-worker-outcomes" {
+		id = fs.String("id", "", "required intent request ID")
+		intentSHA = fs.String("intent-sha256", "", "required expected service intent identity")
+		captureSHA = fs.String("capture-sha256", "", "required expected capture identity")
+	}
 	var file, outcomeSHA, artifact string
 	if command == "candidate-worker-outcome-report" {
 		fs.StringVar(&file, "capture", "", "portable caller-reported capture file")
-	} else {
+	} else if command != "candidate-worker-outcomes" {
 		fs.StringVar(&outcomeSHA, "outcome-sha256", "", "required expected retained outcome identity")
 		fs.StringVar(&artifact, "artifact", "outcome", "outcome receipt, capture JSON or exact stdout|stderr bytes")
 	}
@@ -34,7 +37,21 @@ func runCandidateOutcomes(ctx context.Context, command string, args []string, ou
 		return err
 	}
 	u, err := url.Parse(*base)
-	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" || fs.NArg() != 0 || !storage.ValidReceiverID(*receiver) || !review.ID.MatchString(*id) || !candidateRegistrySHA.MatchString(*intentSHA) || !candidateRegistrySHA.MatchString(*captureSHA) {
+	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" || fs.NArg() != 0 || !storage.ValidReceiverID(*receiver) {
+		return candidateevidence.ErrConflict
+	}
+
+	if command == "candidate-worker-outcomes" {
+		var h candidateevidence.History
+		if err := candidateRequest(ctx, *base, "/v1/candidate-worker-outcomes", nil, &h, candidateevidence.MaxHistoryBytes); err != nil {
+			return err
+		}
+		if h.Validate() != nil || h.ReceiverID != *receiver {
+			return candidateevidence.ErrConflict
+		}
+		return emit(out, h)
+	}
+	if !review.ID.MatchString(*id) || !candidateRegistrySHA.MatchString(*intentSHA) || !candidateRegistrySHA.MatchString(*captureSHA) {
 		return candidateevidence.ErrConflict
 	}
 	matches := func(r candidateevidence.OutcomeRecord) bool {

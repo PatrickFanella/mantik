@@ -47,6 +47,7 @@ check activates a strategy or implies profitability.
 | `CandidateWorkerOutcome` | One receipt after complete history validation. |
 | `CandidateWorkerOutcomeCapture` | One complete capture after complete history validation. |
 | `CandidateWorkerOutcomeEvidence` | One receipt and capture from the same validated snapshot. |
+| `CandidateWorkerOutcomeHistory` | Complete intents, structured reports and unreported request IDs from one validated snapshot. |
 
 Outcomes may arrive out of intent order. Gaps mean that those intents have no
 retained outcome; they are not invented failures, successes or assertions of
@@ -98,7 +99,7 @@ binary output, clock refusal, restart, insertion rollback, complete-history
 corruption refusal and migration preservation/checksum refusal. These are backend
 contract checks, separate from actual worker execution or qualification.
 
-This is part of #18. Coherent pending-work summaries, cross-owner execution
+This is part of #18. Cross-owner execution
 fencing, generated-source provenance and the final acceptance audit remain
 unfinished. Existing pilot databases and services have not been upgraded by
 implementing or testing this contract.
@@ -110,6 +111,7 @@ The bearer-authenticated endpoints are:
 | Method and path | Result |
 | --- | --- |
 | `POST /v1/candidate-worker-outcomes` | Submit a `candidateevidence.Report` and return its retained receipt. |
+| `GET /v1/candidate-worker-outcomes` | One coherent intent/report history. |
 | `GET /v1/candidate-worker-outcomes/{id}` | Inspect the selected receipt. |
 | `GET /v1/candidate-worker-outcomes/{id}/capture` | Return the receipt and full capture in one artifact envelope. |
 
@@ -118,7 +120,8 @@ The capture endpoint uses `mantik-candidate-worker-outcome-artifact-v1`:
 empty). The outcome must reconstruct exactly from the capture at its retained
 server time. Memory obtains both under one mutex; PostgreSQL obtains both from
 one repeatable-read snapshot. No separate intent/history requests are combined
-to assert a coherent pending-work view. There is no HTTP outcome list yet.
+to assert a coherent pending-work view. The history endpoint below obtains all
+declarations, reports and their dependencies together.
 
 POST bodies are bounded to `candidateevidence.MaxReportBytes` (the maximum
 capture plus 1,024 bytes of report pins). Unknown, duplicate, mis-cased, trailing,
@@ -168,3 +171,59 @@ authentication, query refusal, exact binary output, and full capture/receipt
 readback after reopening PostgreSQL. Client checks reject changed local pins
 before HTTP and inconsistent or ambiguous responses before output. These checks
 remain separate from native worker execution, deployment and qualification.
+
+## Coherent intent and report history
+
+```sh
+mantik candidate-worker-outcomes \
+  --api-url http://127.0.0.1:PORT --receiver-id RECEIVER
+```
+
+`GET /v1/candidate-worker-outcomes` returns
+`mantik-candidate-worker-outcome-history-v1`. The bounded envelope contains:
+
+- `receiver_id` and the complete existing `intent_history`, including every
+  ordered full service intent and all referenced registration pins.
+- `outcomes`: every structured report in original intent order. Reports can
+  arrive out of order, so their ordinals may have gaps.
+- `unreported_request_ids`: the exact ordered complement of those reports
+  within the retained intent history. Empty arrays are present rather than null.
+- Authority `retained_candidate_worker_reports_only`, false
+  `execution_verified`, `current_host_state_known` and `qualification_credit`
+  flags, and its own content hash (compact Go JSON, own `sha256` empty).
+
+An unreported request is an intent without a retained report in this snapshot.
+It may be unstarted, running, interrupted, abandoned or finished elsewhere. The
+history does not choose among those possibilities. An incomplete, failed or
+cancelled report remains visible as a report and is not relabeled as unreported.
+
+Memory reads the registry/datasets, intents and every report/capture under one
+mutex. PostgreSQL reads them in one repeatable-read transaction. Both validate
+every full capture against the service's own intent before returning summaries.
+The response contains only structured report summaries, not repeated full
+captures; inspect a selected pinned capture to check its complete artifacts.
+No histories fetched in separate HTTP requests are combined to produce this view.
+
+Client validation checks the nested intent/registration pins, ordered report
+ordinals, receiver/request/intent/job identity, retained time relative to intent,
+individual and envelope hashes, authority flags and exact unreported complement.
+It cannot independently reconstruct a capture from a summary or attest that a
+worker ran. The HTTP bearer-authenticated backend supplies the full-capture and
+retained-dataset checks. Compact registration pins do not independently reconstruct
+the full registration's hash. A coherent response is an observation of retained
+content, not a freshness guarantee about later submissions or live host state.
+
+The command refuses filters, selected-ID/artifact flags and positional arguments.
+It requires an expected receiver, validates strict bounded JSON before output,
+and does not combine another history response with the envelope. The response
+bound is `candidateevidence.MaxHistoryBytes`: existing bounded intent history,
+at most 64 bounded outcome receipts, request IDs and envelope overhead. Schema 32
+and existing records are unchanged; no new migration, worker control, provider
+request, activation or qualification is introduced.
+
+Shared Memory/PostgreSQL checks cover empty histories, all-unreported intents,
+out-of-order arrival, concurrent report/read snapshots, detached return values,
+restart identity and complete-prefix corruption refusal. HTTP/CLI checks verify
+pending/report separation and identical complete history after PostgreSQL reopens.
+Client tests reject changed bindings and ordinals, missing/duplicate/reordered
+unreported IDs, null arrays, false authority claims and malformed/oversized JSON.
