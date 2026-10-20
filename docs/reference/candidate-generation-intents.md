@@ -3,8 +3,8 @@
 `storage.CandidateGenerationIntentStore` retains generation declarations before
 any model output is admitted. It binds a complete [offline generation plan](recorded-candidate-generation.md)
 to the service's own authoritative hypothesis publication and exact dataset.
-This backend slice has no HTTP/CLI admission route, provider client, generation
-output or candidate-registration action.
+Authenticated HTTP and CLI commands admit and inspect these declarations. They
+do not call a provider, retain generation output or register candidates.
 
 ## Binding and time
 
@@ -95,7 +95,54 @@ request/publication/retention clock conflicts, restart identity, failed second-r
 insertion rollback, unrelated-prefix corruption refusal and migration preservation.
 These are retained declaration checks, not model calls or generated source proof.
 
-This is part of #18. Authenticated intent access, retained generation outcomes
+This is part of #18. Retained generation outcomes
 bound to these own intents, explicit generated-candidate registration links, a
 provider adapter and the final acceptance audit remain unfinished. No generation
 intent or successful source validation activates a strategy or implies profit.
+
+## Authenticated HTTP and CLI
+
+Every route uses the service bearer token and rejects query parameters, including
+malformed query strings. POST accepts a strict bounded JSON object containing
+`command` and base64 `dataset`; the command includes the complete plan. Unknown,
+mis-cased and duplicate fields, trailing documents, invalid base64 and changed
+dataset bytes are rejected before storage. Backend conflicts/capacity return 409,
+invalid input 422, and missing own intent/publication 404. The operation context
+is bounded to five seconds.
+
+| Route | Result |
+| --- | --- |
+| `POST /v1/candidate-generation-intents` | Retain one declaration or return its exact retry receipt. |
+| `GET /v1/candidate-generation-intents` | Complete coherent receiver history. |
+| `GET /v1/candidate-generation-intents/{id}` | Selected receipt after complete-prefix checks. |
+| `GET /v1/candidate-generation-intents/{id}/dataset` | Receipt and exact dataset in one artifact snapshot. |
+
+With `MANTIK_API_TOKEN` already supplied privately, these commands require the
+expected service receiver and explicit content pins:
+
+```sh
+mantik candidate-generation-intent-start --api-url http://127.0.0.1:41890 \
+  --receiver-id "$RECEIVER" --id generation-1 \
+  --publication "$PUBLICATION" --publication-sha256 "$PUBLICATION_SHA" \
+  --plan plan.json --plan-sha256 "$PLAN_SHA" --dataset dataset.json
+
+mantik candidate-generation-intents --api-url http://127.0.0.1:41890 \
+  --receiver-id "$RECEIVER"
+
+mantik candidate-generation-intent --api-url http://127.0.0.1:41890 \
+  --receiver-id "$RECEIVER" --id generation-1 \
+  --intent-sha256 "$INTENT_SHA" --plan-sha256 "$PLAN_SHA" --artifact prompt
+```
+
+The selected command supports `intent` (default), `plan`, `prompt` and `dataset`.
+It always fetches the coherent receipt/dataset artifact and validates its complete
+shape, hashes, expected receiver/request/intent/plan, and raw dataset before any
+output. Prompt and dataset exports preserve exact bytes without adding a newline.
+The start command validates local plan and dataset pins before contacting the
+service and compares the returned full command with the submitted command.
+History has no filters and is validated before output. None of these commands
+starts generation, a worker, or a trading action.
+
+Shared Memory/PostgreSQL HTTP and CLI checks cover authentication, strict JSON,
+changed owner/publication/plan/data bindings, exact retries, complete history,
+forged responses, byte-preserving exports and full readback after database reopen.

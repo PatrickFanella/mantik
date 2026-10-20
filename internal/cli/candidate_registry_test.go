@@ -20,6 +20,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/candidate"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateattempt"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateevidence"
+	"git.subcult.tv/subculture-collective/mantik/internal/candidategeneration"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidatelineage"
 	"git.subcult.tv/subculture-collective/mantik/internal/dataset"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
@@ -183,6 +184,7 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 	if err := json.Unmarshal(run("candidate-registrations"), &all); err != nil || all.Validate() != nil || len(all.Registrations) != 2 || all.Registrations[1].ID != "child" {
 		t.Fatal(all, err)
 	}
+	generation, generationHistory := generationIntentHTTP(t, server.URL, pub, raw)
 	intent, intentHistory := candidateIntentHTTP(t, server.URL, first, second, raw)
 	outcome, capture := candidateOutcomeHTTP(t, s, intent)
 	var outcomeHistory candidateevidence.History
@@ -202,6 +204,21 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 		var restored candidatelineage.Registry
 		if err := json.Unmarshal(run("candidate-registrations"), &restored); err != nil || !reflect.DeepEqual(all, restored) {
 			t.Fatal("HTTP restart changed registry", err)
+		}
+		var restoredGeneration candidategeneration.Intent
+		generationFlags := []string{"candidate-generation-intent", "--id", generation.Command.RequestID, "--intent-sha256", generation.SHA256, "--plan-sha256", generation.Command.Plan.SHA256}
+		if err := json.Unmarshal(run(generationFlags...), &restoredGeneration); err != nil || !reflect.DeepEqual(generation, restoredGeneration) {
+			t.Fatal("restart changed generation intent", err)
+		}
+		if !bytes.Equal(run(append(append([]string{}, generationFlags...), "--artifact", "dataset")...), raw) {
+			t.Fatal("restart changed exact generation dataset")
+		}
+		if string(run(append(append([]string{}, generationFlags...), "--artifact", "prompt")...)) != generation.Command.Plan.Prompt {
+			t.Fatal("restart changed generation prompt")
+		}
+		var restoredGenerationHistory candidategeneration.IntentHistory
+		if err := json.Unmarshal(run("candidate-generation-intents"), &restoredGenerationHistory); err != nil || !reflect.DeepEqual(generationHistory, restoredGenerationHistory) {
+			t.Fatal("restart changed generation history", err)
 		}
 		var restoredIntent candidateattempt.Intent
 		if err := json.Unmarshal(run("candidate-worker-intent", "--id", intent.Command.RequestID, "--intent-sha256", intent.SHA256), &restoredIntent); err != nil || !reflect.DeepEqual(intent, restoredIntent) {

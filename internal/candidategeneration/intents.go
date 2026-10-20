@@ -3,6 +3,7 @@ package candidategeneration
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"reflect"
 	"regexp"
 	"time"
@@ -178,4 +179,28 @@ func (a IntentArtifact) Validate() error {
 		return ErrInvalid
 	}
 	return nil
+}
+
+// Submission carries the exact dataset, including its original whitespace.
+type Submission struct {
+	Command Command `json:"command"`
+	Dataset []byte  `json:"dataset"`
+}
+
+const MaxSubmissionBytes = MaxIntentBytes + 4*((workerplan.MaxInputBytes+2)/3) + 1024
+const MaxIntentArtifactBytes = MaxSubmissionBytes + 1024
+
+func (s Submission) Validate() error {
+	if s.Command.Validate() != nil || s.Command.Plan.VerifyDataset(s.Dataset) != nil {
+		return ErrInvalid
+	}
+	return nil
+}
+func ReadSubmission(input io.Reader) (Submission, error) {
+	raw, err := io.ReadAll(io.LimitReader(input, MaxSubmissionBytes+1))
+	var s Submission
+	if err != nil || workerplan.ReadBoundedShape(raw, &s, MaxSubmissionBytes) != nil || s.Validate() != nil {
+		return Submission{}, ErrInvalid
+	}
+	return s, nil
 }
