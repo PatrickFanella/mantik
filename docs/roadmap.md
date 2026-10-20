@@ -307,5 +307,8 @@ registration pins and exports exact dataset bytes, with disposable PostgreSQL HT
 restart checks. [Candidate worker intent backends](reference/candidate-worker-intents.md)
 now retain pre-execution registration/job pins with exact retries, bounded complete
 history and restart/corruption checks. Authenticated intent commands now expose a
-coherent receiver/history snapshot and validate job export before output. Worker
-linkage and outcomes remain unfinished; this does not close #18.
+coherent receiver/history snapshot and validate job export before output.
+Receiver-bound local journals now retain the full exported service intent before
+launch and require the same receipt for reconciliation. Service outcome retention,
+cross-owner execution fencing and generated-source provenance remain unfinished;
+this does not close #18.

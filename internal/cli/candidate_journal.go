@@ -74,6 +74,10 @@ func runCandidateJournal(ctx context.Context, command string, args []string, out
 	} else {
 		a, err = workerlaunch.ReconcileCandidateRequest(ctx, root, id, approved, cancel)
 	}
+	return emitCandidateAttempt(out, a, err)
+}
+
+func emitCandidateAttempt(out io.Writer, a workerlaunch.CandidateAttempt, err error) error {
 	// If execution or collection is unresolved, still show the retained intent.
 	// This is not a statement that its original handle is live or stopped.
 	if a.Intent.SHA256 != "" {

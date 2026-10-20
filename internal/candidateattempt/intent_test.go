@@ -47,6 +47,31 @@ func fixture(t *testing.T) (Command, candidatelineage.Registration, []byte, time
 	return Command{ReceiverID: r.ReceiverID, RequestID: "first", RegistrationID: r.ID, RegistrationSHA256: r.SHA256, Job: j}, r, raw, at
 }
 
+func TestReadExportedIntentStrictly(t *testing.T) {
+	c, r, raw, at := fixture(t)
+	i, err := Start(c, r, raw, 1, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(i)
+	got, err := ReadIntent(bytes.NewReader(encoded))
+	if err != nil || !reflect.DeepEqual(i, got) {
+		t.Fatal(got, err)
+	}
+	for _, bad := range [][]byte{
+		append(append([]byte{}, encoded...), []byte("{}")...),
+		[]byte(strings.Replace(string(encoded), `"schema":`, `"unknown":true,"schema":`, 1)),
+		[]byte(strings.Replace(string(encoded), `"schema":`, `"schema":"duplicate","schema":`, 1)),
+		[]byte(strings.Replace(string(encoded), `"schema":`, `"Schema":`, 1)),
+		[]byte(strings.Replace(string(encoded), `"host_state_known":false`, `"host_state_known":true`, 1)),
+		bytes.Repeat([]byte(" "), MaxBytes+1),
+	} {
+		if _, err := ReadIntent(bytes.NewReader(bad)); !errors.Is(err, ErrInvalid) {
+			t.Fatal("ambiguous or unbounded receipt accepted", err)
+		}
+	}
+}
+
 func TestIntentExactBindingsRetriesAndDistinctAttempts(t *testing.T) {
 	c, r, raw, at := fixture(t)
 	now := func() time.Time { return at }

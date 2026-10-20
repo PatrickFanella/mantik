@@ -156,7 +156,8 @@ readbacks before output.
 
 [Candidate worker intent backends](candidate-worker-intents.md) now retain exact
 registration/job bindings before execution, with authenticated intent API/CLI
-access and coherent history. Worker ownership/reconciliation linkage, outcomes,
-generated-source provenance and the
-final #18 acceptance audit remain unfinished. A registration grants no activation,
+access and coherent history. Receiver-bound local execution journals now retain
+the full exported intent and require its exact pins before launch or reconciliation.
+Service outcome retention, cross-owner execution fencing, generated-source
+provenance and the final #18 acceptance audit remain unfinished. A registration grants no activation,
 profitability, independent execution or qualification proof.
