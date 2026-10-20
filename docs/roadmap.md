@@ -363,3 +363,10 @@ Shared contracts cover failure retention, sparse history, concurrency, reopen,
 insert failure, corruption and migration preservation. Output HTTP/CLI admission
 and explicit generated-registration lineage remain next; provider requests remain
 outside this slice.
+
+Authenticated generation-output HTTP/CLI admission and inspection now validate
+expected receiver/intent/plan/recording/outcome pins before emitting evidence.
+Report clients compare the complete pinned service intent before POST and rederive
+the returned receipt. Selected exports validate one full coherent artifact and
+preserve failed-output/source bytes. Shared Memory/PostgreSQL contracts include
+full database reopen readback. Generated-registration lineage remains next.

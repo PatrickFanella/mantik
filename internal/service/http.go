@@ -52,6 +52,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	candidateRoutes(mux, store, clock)
 	candidateIntentRoutes(mux, store, clock)
 	generationIntentRoutes(mux, store, clock)
+	generationOutcomeRoutes(mux, store, clock)
 	candidateOutcomeRoutes(mux, store, clock)
 	trialAttemptRoutes(mux, store, clock)
 	trialRunRoutes(mux, store, clock)
