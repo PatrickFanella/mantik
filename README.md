@@ -395,3 +395,7 @@ model requests and does not submit, close, approve or import research evidence.
 [Candidate behavioral workers](docs/reference/candidate-behavior.md) now run the
 sealed synthetic examples in an owned, bounded container, retaining mismatches,
 partial failures and timeouts without qualification or activation credit.
+
+The [local candidate attempt journal](docs/reference/candidate-attempt-journal.md)
+retains intent before worker launch and every local request, including pending
+and failed attempts. Reusing a request ID reconciles its original handle.

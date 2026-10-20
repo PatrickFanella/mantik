@@ -87,3 +87,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Synthetic candidate behavioral workers](candidate-behavior.md): pinned fixture
   execution, bounded failures and owned host receipts.
+
+- [Local candidate attempt journal](candidate-attempt-journal.md): durable intent,
+  request-ID recovery and complete bounded local attempt history.
