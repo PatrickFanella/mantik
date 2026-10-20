@@ -115,3 +115,6 @@ var CandidateGenerationIntents string
 
 //go:embed 0034_candidate_generation_outcomes.sql
 var CandidateGenerationOutcomes string
+
+//go:embed 0035_generated_candidate_links.sql
+var GeneratedCandidateLinks string

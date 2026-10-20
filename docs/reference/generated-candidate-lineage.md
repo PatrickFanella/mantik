@@ -2,8 +2,9 @@
 
 `internal/generatedcandidate` defines a pure bridge from a complete retained
 [generation outcome](candidate-generation-outcomes.md) to a new
-[candidate registration](candidate-lineage.md). It adds no backend, schema,
-HTTP/CLI admission, provider call, compiler, worker launch or strategy activation.
+[candidate registration](candidate-lineage.md). Memory/PostgreSQL backends retain
+that explicit link atomically with the registration and exact dataset. This adds
+no HTTP/CLI admission, provider call, compiler, worker launch or strategy activation.
 Legacy candidate registration JSON, schema and hashes are unchanged.
 
 ## Explicit source selection
@@ -66,13 +67,50 @@ incorrect complement are invalid. Authority is
 qualification flags and an own content hash.
 
 Compact link metadata cannot independently rederive source provenance from hashes.
-A future backend must validate every full owned generation artifact, publication,
-parent and exact dataset in one coherent snapshot before reads, writes or retries.
-It must persist the returned legacy registration and link atomically; it must not
-call the ordinary registration route first and attach a link afterwards.
+Backends validate every full owned generation artifact, publication, parent and
+exact dataset in one coherent snapshot before reads, writes or retries. They
+persist the returned legacy registration and link atomically; they never call the
+ordinary registration route first and attach a link afterwards.
 
 Pure tests cover legacy wire/hash identity, exact original source, parent chains,
 all 32 slots, clock-free retry at capacity, mixed manual/linked discovery,
 retrofit refusal, rejected output, changed bindings and times, strict readers,
-self-hashed forgeries and detached values. Durable bridge retention, authenticated
-access, provider adapter and final #18 acceptance audit remain unfinished.
+self-hashed forgeries and detached values. Authenticated bridge access, provider adapter and final #18 acceptance audit
+remain unfinished.
+
+## Durable retention (schema 35)
+
+`GeneratedCandidateStore` exposes `RegisterGeneratedCandidate`,
+`GeneratedCandidateRegistry` and `GeneratedCandidateEvidence`. A registration
+command selects the owner's retained generation request and expected hashes;
+source, raw dataset and authoritative publication are read from storage. Returned
+artifacts include the complete legacy registration, link and recorded generation.
+
+Memory holds the complete operation under the existing receiver mutex. PostgreSQL
+uses the receiver row lock shared by ordinary registration writers and commits the
+registration, copied exact dataset, compact link and marker in one transaction.
+Reads use a repeatable-read snapshot. Full generation recordings are checked one
+at a time; only selected artifacts survive validation. Returned values detach.
+
+Schema 35 adds `generation_link_sha256` to registration rows and the bounded
+`mantik_generated_candidate_links` table. Prior and manual registrations have a
+NULL marker; their JSON and hashes are unchanged. Reciprocal deferred foreign keys
+require each non-NULL marker and link hash to exist together at commit. Deleting a
+linked row or clearing its marker alone fails, and a failed link insert rolls back
+the registration and dataset. Application checks additionally rederive every link
+from full retained generation evidence; matching database hashes alone do not
+prove provenance.
+
+Ordinary candidate registry, selected registration/dataset reads, exact retries
+and worker declarations also validate the complete retained link prefix and full
+generation dependencies. Unrelated corruption fails these operations rather than
+silently dropping a link or hiding damaged evidence behind a selected ID. Existing
+worker intents and evidence formats remain unchanged. Generation history can still
+be inspected separately without interpreting a registration as provider proof.
+
+The 34-to-35 migration preserves legacy registrations, datasets, generation
+intents/outcomes/recordings and runtime state without inventing links. The schema
+version and checksum guards refuse incompatible or changed migration histories.
+Older binaries refuse schema 35; rollback requires restoring a compatible private
+backup into separate resources, not dropping retained links in place. This source
+change does not deploy or migrate an existing pilot database.
