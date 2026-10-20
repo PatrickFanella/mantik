@@ -17,6 +17,9 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
+// Interface is the supported synthetic candidate entry point.
+const Interface = "go-entry-price-bool-v1"
+
 const Schema = "mantik-candidate-source-v1"
 const MaxSourceBytes = 64 << 10
 const MaxPackageBytes = 512 << 10

@@ -5,8 +5,10 @@ It retains caller-supplied source before any compilation or evaluation, includin
 source that will fail compilation. It is the first unit of
 [#18](https://git.subcult.tv/subculture-collective/mantik/issues/18). The separate
 [candidate build protocol](candidate-build.md) now supplies isolated compile and
-interface checks with retained physical attempts. Behavioral replay and
-service-owned candidate registration remain unfinished.
+interface checks with retained physical attempts. [Behavioral workers](candidate-behavior.md),
+[replay](candidate-replay.md) and [service registration](candidate-lineage.md) now
+provide separate bounded contracts. [Recorded generation](recorded-candidate-generation.md)
+links an offline request and exact output to a source package without model calls.
 
 ## Declare and inspect
 
@@ -76,13 +78,15 @@ or actual model authorship is inferred from supplied source.
 
 The hypothesis input is a local declaration, not an authoritative publication
 or an admission receipt. Its source origins remain unverified. The package has
-no strategy activation, account-selection or risk-policy capability. A later
-service-owned candidate registration must recheck authoritative publication and
-dataset/recipe bindings before scheduling an evaluation.
+no strategy activation, account-selection or risk-policy capability. The separate
+service-owned candidate registration rechecks authoritative publication and
+dataset/recipe bindings before retaining a worker intent. It does not automatically
+attach generation evidence or grant strategy activation.
 
 This contract establishes immutable source provenance, not Go interface
 conformance, isolation, reproducible compilation, usable strategy behavior or
-profitability. The existing native and Python worker profiles cannot execute
-this source. The separately versioned [compile-only worker](candidate-build.md)
-checks its narrow interface in an owned container. It does not run the candidate;
-behavioral execution requires its own contract and verification.
+profitability. The separately versioned [compile-only worker](candidate-build.md) checks its
+narrow interface in an owned container. It does not run the candidate. The
+[behavioral worker](candidate-behavior.md) compiles and executes finite synthetic
+checks under its own bounded profile and explicit image approval. Its results
+remain separate from this immutable declaration.
