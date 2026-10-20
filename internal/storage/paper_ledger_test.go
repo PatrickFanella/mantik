@@ -186,7 +186,7 @@ func TestPostgresContractsPaperLedgerUpgradeRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _ := s.PaperAccounts(ctx)
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_candidate_generation_outcomes; DROP TABLE mantik_candidate_generation_datasets; DROP TABLE mantik_candidate_generation_intents; DROP TABLE mantik_candidate_worker_outcomes; DROP TABLE mantik_candidate_worker_intents; DROP TABLE mantik_candidate_datasets; DROP TABLE mantik_candidate_registrations; DROP TABLE mantik_fixture_capital; DROP TABLE mantik_paper_ledger_rehearsals; DELETE FROM mantik_schema WHERE version>=28"); err != nil {
+	if _, err := s.pool.Exec(ctx, "ALTER TABLE mantik_candidate_registrations DROP COLUMN generation_link_sha256 CASCADE; DROP TABLE mantik_generated_candidate_links; DROP TABLE mantik_candidate_generation_outcomes; DROP TABLE mantik_candidate_generation_datasets; DROP TABLE mantik_candidate_generation_intents; DROP TABLE mantik_candidate_worker_outcomes; DROP TABLE mantik_candidate_worker_intents; DROP TABLE mantik_candidate_datasets; DROP TABLE mantik_candidate_registrations; DROP TABLE mantik_fixture_capital; DROP TABLE mantik_paper_ledger_rehearsals; DELETE FROM mantik_schema WHERE version>=28"); err != nil {
 		t.Fatal(err)
 	}
 	config := s.pool.Config().ConnString()

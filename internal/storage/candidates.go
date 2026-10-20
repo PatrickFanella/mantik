@@ -59,7 +59,7 @@ func prepareCandidate(all []candidatelineage.Registration, c candidatelineage.Co
 
 // The caller holds m.mu. Validation occurs before filtering a selected row, so
 // unrelated damaged evidence cannot silently disappear from the registry.
-func (m *Memory) candidateSnapshot() ([]candidatelineage.Registration, error) {
+func (m *Memory) candidateRowsSnapshot() ([]candidatelineage.Registration, error) {
 	all := make([]candidatelineage.Registration, 0, len(m.candidates))
 	if len(m.candidates) != len(m.candidateDatasets) {
 		return nil, candidatelineage.ErrInvalid
@@ -175,7 +175,7 @@ func (m *Memory) CandidateDataset(ctx context.Context, id string) ([]byte, error
 
 // loadCandidates streams at most 33 rows and checks each dataset before moving
 // on, retaining only metadata and an explicitly selected artifact in memory.
-func loadCandidates(ctx context.Context, tx pgx.Tx, wanted string) (string, []candidatelineage.Registration, []byte, error) {
+func loadCandidateRows(ctx context.Context, tx pgx.Tx, wanted string) (string, []candidatelineage.Registration, []byte, error) {
 	var receiverID string
 	if err := tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton").Scan(&receiverID); err != nil {
 		return "", nil, nil, err

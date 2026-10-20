@@ -311,7 +311,9 @@ coherent receiver/history snapshot and validate job export before output.
 The [recorded generation bridge](reference/generated-candidate-lineage.md) defines
 source-pinned registration links and full-prefix retry rules while preserving
 legacy registration hashes. It refuses rejected output and retrofitting an old
-unlinked registration. This pure contract does not yet retain linked registrations.
+unlinked registration. Schema 35 now atomically retains the generated link, legacy
+registration and exact dataset in Memory/PostgreSQL; ordinary registration reads
+and retries also validate retained links. Authenticated bridge access remains next.
 Receiver-bound local journals now retain the full exported service intent before
 launch and require the same receipt for reconciliation. Portable
 [outcome captures](reference/candidate-outcome-captures.md) preserve full bound
@@ -373,4 +375,5 @@ expected receiver/intent/plan/recording/outcome pins before emitting evidence.
 Report clients compare the complete pinned service intent before POST and rederive
 the returned receipt. Selected exports validate one full coherent artifact and
 preserve failed-output/source bytes. Shared Memory/PostgreSQL contracts include
-full database reopen readback. Generated-registration lineage remains next.
+full database reopen readback. Generated-registration retention now builds on
+these owner-validated artifacts; authenticated bridge access remains next.

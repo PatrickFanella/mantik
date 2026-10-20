@@ -415,8 +415,10 @@ PostgreSQL backends retain the complete lineage and exact dataset bytes.
 `candidate-dataset` expose authenticated registration and verified readback.
 The [recorded generation bridge](docs/reference/generated-candidate-lineage.md)
 now defines explicit source-pinned registration links, atomic-retention rules and
-refusal to adopt an existing unlinked registration. These are pure contracts;
-durable bridge retention and authenticated access remain unfinished.
+refusal to adopt an existing unlinked registration. Memory/PostgreSQL storage now
+retains linked registrations and exact datasets atomically (schema 35), with
+complete provenance validation before ordinary or generated registration reads
+and retries. Authenticated bridge access remains unfinished.
 The [candidate worker intent backend](docs/reference/candidate-worker-intents.md)
 now binds pre-execution requests to exact registrations and behavior jobs.
 `candidate-worker-intent-start`, `candidate-worker-intents` and
