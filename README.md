@@ -410,5 +410,7 @@ exposure and exports the exact derived dataset bytes.
 
 The [candidate lineage contract](docs/reference/candidate-lineage.md) defines
 publication-bound registrations, parent pins and bounded retry rules. Memory and
-PostgreSQL backends retain the complete lineage and exact dataset bytes; API/CLI
-access and registry-linked worker attempts remain unfinished.
+PostgreSQL backends retain the complete lineage and exact dataset bytes.
+`candidate-register`, `candidate-registrations`, `candidate-registration` and
+`candidate-dataset` expose authenticated registration and verified readback.
+Registry-linked worker attempts remain unfinished.

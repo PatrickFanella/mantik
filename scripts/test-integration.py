@@ -37,7 +37,7 @@ def main():
         run("docker", "create", "--name", runner, "--network", "container:" + name,
             "-w", "/src", "-e", "MANTIK_TEST_DATABASE_URL=" +
             f"postgres://mantik:fixture-only@127.0.0.1:5432/{database}?sslmode=disable",
-            "golang:1.26.9", "go", "test", "-race", "./internal/storage",
+            "golang:1.26.9", "go", "test", "-race", "./internal/storage", "./internal/cli",
             "-run", "TestPostgresContracts", "-count=1", stdout=subprocess.DEVNULL)
         runner_created = True
         for path in ("go.mod", "go.sum", "internal", "migrations"):

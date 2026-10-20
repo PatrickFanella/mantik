@@ -302,5 +302,7 @@ The [candidate lineage contract](reference/candidate-lineage.md) now binds
 candidate packages to authoritative publication inputs and earlier parent pins,
 with complete-prefix validation and bounded request retries. Memory and PostgreSQL
 backends now atomically retain registrations and exact datasets and validate the
-entire history on reads. API/CLI wiring and registry-linked worker attempts remain
-unfinished; this does not close #18.
+entire history on reads. Authenticated API/CLI access now verifies receiver and
+registration pins and exports exact dataset bytes, with disposable PostgreSQL HTTP
+restart checks. Registry-linked worker attempts remain unfinished; this does not
+close #18.

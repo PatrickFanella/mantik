@@ -1,8 +1,8 @@
 # Candidate registration and lineage contract
 
 `internal/candidatelineage` defines the registration contract used by the memory
-and PostgreSQL candidate registry backends. HTTP routes and CLI commands are not
-wired yet. Constructing a consistent record outside a receiver-owned backend does
+and PostgreSQL candidate registry backends, authenticated HTTP routes and CLI
+commands. Constructing a consistent record outside a receiver-owned backend does
 not make it service-owned evidence.
 
 The command contains `receiver_id`, `request_id`, `publication_id`, optional
@@ -88,6 +88,72 @@ byte retention, artifact-insert rollback, capacity/retries, corruption refusal,
 upgrade preservation and migration checksum refusal. They establish backend
 behavior without claiming an HTTP deployment or worker run.
 
-API/CLI access, registry-linked worker attempts, generated-source provenance and
-the final #18 acceptance audit remain unfinished. A registration grants no
-activation, profitability, independent execution or qualification proof.
+## HTTP and CLI
+
+The existing service bearer-token boundary protects all four routes:
+
+| Route | Result |
+| --- | --- |
+| `POST /v1/candidates` | Register the command and exact dataset atomically; exact retries return the original receipt. |
+| `GET /v1/candidates` | Complete `mantik-candidate-registry-v1` receiver history, including an empty array when no declarations exist. |
+| `GET /v1/candidates/{id}` | One retained registration after full-prefix validation. |
+| `GET /v1/candidates/{id}/dataset` | `mantik-candidate-dataset-v1` containing the registration and exact dataset from one backend snapshot. |
+
+Submission is a JSON object with `command` and `dataset`. The latter is the base64
+encoding of the exact file bytes, including whitespace. The bounded reader rejects
+unknown or duplicate fields, case aliases, trailing JSON documents and inputs that
+do not match the command's raw and canonical pins. Requests have no query options;
+the endpoints do not filter to successful candidates or launch a worker. Invalid
+input returns 422, identity/clock/capacity conflicts return 409 and missing
+registrations or publications return 404. Backend corruption is refused.
+
+The registry envelope retains receiver identity, ordered full registrations,
+`retained_candidate_declarations_only` authority and false execution/qualification
+flags. Its SHA-256 covers compact Go JSON with its own `sha256` empty. A consistent
+envelope is a content pin, not independent attestation of server ownership or
+complete search outside that receiver. Dataset envelopes include their declaration
+so clients can validate the returned raw bytes before exporting anything.
+
+```bash
+mantik candidate-register --api-url http://127.0.0.1:40880 \
+  --receiver-id RECEIVER --id root --publication PUBLICATION \
+  --candidate candidate.json --candidate-sha256 CANDIDATE_SHA \
+  --dataset dataset.json
+
+mantik candidate-registrations --api-url http://127.0.0.1:40880 \
+  --receiver-id RECEIVER
+
+mantik candidate-registration --api-url http://127.0.0.1:40880 \
+  --receiver-id RECEIVER --id root --registration-sha256 REGISTRATION_SHA
+
+mantik candidate-dataset --api-url http://127.0.0.1:40880 \
+  --receiver-id RECEIVER --id root --registration-sha256 REGISTRATION_SHA \
+  --format raw > retained-dataset.json
+```
+
+Use the actual receiver ID and content hashes from inspected artifacts and retained
+receipts. Child registration adds `--parent EXISTING_ID`. `MANTIK_API_TOKEN` supplies
+the existing service token. All four commands require an expected receiver ID;
+selected registration and dataset reads also require the expected registration
+SHA. Registration verifies the local candidate and dataset before sending a request
+and checks the response against its command. Read commands reject malformed or
+changed identities before emitting an artifact. Candidate response readers enforce
+strict bounded JSON, including rejection of trailing documents.
+
+Dataset output defaults to a JSON envelope with base64 bytes. `--format raw` emits
+the verified dataset without appending a newline. The shell opens a redirection
+target before starting the command; choose a new path so a rejected request cannot
+truncate an existing artifact. None of these commands contacts a model/provider,
+compiles code or invokes Docker. Existing pilots have not been upgraded by adding
+these commands.
+
+The disposable PostgreSQL harness now also runs the CLI/HTTP integration contract.
+It registers a synthetic source, compares retries, reads the full lineage, exports
+exact bytes, reopens the backing database behind a fresh HTTP handler and verifies
+the same pinned receipts and artifacts. Memory tests cover authentication, strict
+request/response JSON, unsupported query/launch paths and refusal of forged
+readbacks before output.
+
+Registry-linked worker attempts, generated-source provenance and the final #18
+acceptance audit remain unfinished. A registration grants no activation,
+profitability, independent execution or qualification proof.
