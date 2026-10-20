@@ -56,6 +56,7 @@ type snapshot struct {
 		Tty        bool
 	}
 	HostConfig struct {
+		Tmpfs          map[string]string
 		ReadonlyRootfs bool
 		NetworkMode    string
 		CapDrop        []string
@@ -125,13 +126,35 @@ func verifyExecution(s snapshot, a Acquisition, p execution) error {
 	if s.Image != p.image || c.User != "65532:65532" || c.Tty || !reflect.DeepEqual(c.Entrypoint, p.entrypoint) || !reflect.DeepEqual(c.Cmd, p.args) || !reflect.DeepEqual(c.Env, p.env) || !h.ReadonlyRootfs || h.NetworkMode != "none" || !reflect.DeepEqual(h.CapDrop, []string{"ALL"}) || len(h.CapAdd) != 0 || !reflect.DeepEqual(h.SecurityOpt, []string{"no-new-privileges:true"}) || h.Memory != r.MemoryBytes || h.MemorySwap != r.MemoryBytes || h.NanoCpus != int64(r.CPUMillis)*1000000 || h.PidsLimit != int64(r.PIDs) || h.Privileged || h.PidMode != "" || h.IpcMode != "private" || h.UTSMode != "" || h.UsernsMode != "" || len(h.Binds) != 0 || len(h.Devices) != 0 || len(h.PortBindings) != 0 || h.RestartPolicy.Name != "no" || h.LogConfig.Type != "local" || !reflect.DeepEqual(h.LogConfig.Config, map[string]string{"max-size": "20m", "max-file": "1", "compress": "false"}) {
 		return workerplan.ErrInvalid
 	}
-	if len(s.Mounts) != 1 || s.Mounts[0].Source != a.Root+"/input" || s.Mounts[0].Destination != "/worker" || s.Mounts[0].RW || s.Mounts[0].Type != "bind" {
+	expectedTmp := map[string]string(nil)
+	if p.behaviorTmp {
+		expectedTmp = map[string]string{"/tmp": "rw,exec,nosuid,nodev,size=67108864,mode=1777"}
+	}
+	if len(h.Tmpfs) != len(expectedTmp) || (p.behaviorTmp && !reflect.DeepEqual(h.Tmpfs, expectedTmp)) {
+		return workerplan.ErrInvalid
+	}
+	bind, tmp := 0, 0
+	for _, m := range s.Mounts {
+		if m.Source == a.Root+"/input" && m.Destination == "/worker" && !m.RW && m.Type == "bind" {
+			bind++
+			continue
+		}
+		if p.behaviorTmp && m.Source == "" && m.Destination == "/tmp" && m.RW && m.Type == "tmpfs" {
+			tmp++
+			continue
+		}
+		return workerplan.ErrInvalid
+	}
+	if bind != 1 || tmp > 1 {
 		return workerplan.ErrInvalid
 	}
 	return nil
 }
 func createExecutionArgs(a Acquisition, p execution) []string {
 	args := []string{"create", "--pull=never", "--name", a.ContainerName, "--label", ownerLabel + "=" + a.ID, "--label", jobLabel + "=" + p.sha, "--read-only", "--network", "none", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--pids-limit", "64", "--memory", "268435456", "--memory-swap", "268435456", "--cpus", "1", "--user", "65532:65532", "--restart", "no", "--log-driver", "local", "--log-opt", "max-size=20m", "--log-opt", "max-file=1", "--log-opt", "compress=false", "--mount", "type=bind,source=" + a.Root + "/input,destination=/worker,readonly", "--entrypoint", p.entrypoint[0], p.image}
+	if p.behaviorTmp {
+		args = append(args[:len(args)-1], "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=67108864,mode=1777", p.image)
+	}
 	return append(args, p.args...)
 }
 

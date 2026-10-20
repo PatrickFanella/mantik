@@ -155,3 +155,7 @@ failed attempt is not counted as a complete pass.
 candidate image build passed. There is no storage/schema change in this slice;
 database integration was not rerun. Hosted head CI and merge/deployment evidence
 remain separate from these local checks and runtime receipts.
+
+[Behavioral workers](candidate-behavior.md) use a separate image/profile to link
+and run the candidate against a sealed fixture plan. A compile-only receipt
+does not acquire behavioral execution authority.
