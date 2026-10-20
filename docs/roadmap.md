@@ -355,3 +355,11 @@ history/unreported complements and exact retry rules. Pure checks preserve faile
 output and reject changed bindings or inconsistent capture/retention times.
 Durable owner-snapshot validation and atomic report retention are the next slice;
 there is no provider call or new admission route in these contracts.
+
+Generation outcomes now have atomic Memory/PostgreSQL storage (schema 34), with
+one row for receipt and full recording and complete authoritative intent,
+publication, raw dataset and recording checks before reads or exact retries.
+Shared contracts cover failure retention, sparse history, concurrency, reopen,
+insert failure, corruption and migration preservation. Output HTTP/CLI admission
+and explicit generated-registration lineage remain next; provider requests remain
+outside this slice.
