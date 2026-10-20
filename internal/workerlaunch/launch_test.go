@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/candidatebuild"
 	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
 	"git.subcult.tv/subculture-collective/mantik/internal/externalplan"
 	"git.subcult.tv/subculture-collective/mantik/internal/replay"
@@ -45,9 +46,15 @@ func (f *fakeDocker) command(ctx context.Context, args ...string) ([]byte, []byt
 		a, j, err := load(root, f.j.ImageSHA256)
 		p := nativeExecution(j)
 		if f.profile != nil {
-			var externalJob externalplan.Job
-			a, externalJob, err = loadExternal(root, f.profile.image)
-			p = externalExecution(externalJob)
+			if f.profile.acquisitionSchema == "mantik-candidate-build-acquisition-v1" {
+				var candidateJob candidatebuild.Job
+				a, candidateJob, err = loadCandidateBuild(root, f.profile.image)
+				p = candidateExecution(candidateJob)
+			} else {
+				var externalJob externalplan.Job
+				a, externalJob, err = loadExternal(root, f.profile.image)
+				p = externalExecution(externalJob)
+			}
 		}
 		if err != nil {
 			f.t.Fatal("create before durable acquisition", err)

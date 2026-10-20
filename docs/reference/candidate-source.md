@@ -3,9 +3,10 @@
 `candidate-seal` creates an offline, content-addressed research source package.
 It retains caller-supplied source before any compilation or evaluation, including
 source that will fail compilation. It is the first unit of
-[#18](https://git.subcult.tv/subculture-collective/mantik/issues/18); isolated
-compilation, interface checks, replay, failed-worker retention and service-owned
-candidate registration remain unfinished.
+[#18](https://git.subcult.tv/subculture-collective/mantik/issues/18). The separate
+[candidate build protocol](candidate-build.md) now supplies isolated compile and
+interface checks with retained physical attempts. Behavioral replay and
+service-owned candidate registration remain unfinished.
 
 ## Declare and inspect
 
@@ -82,6 +83,6 @@ dataset/recipe bindings before scheduling an evaluation.
 This contract establishes immutable source provenance, not Go interface
 conformance, isolation, reproducible compilation, usable strategy behavior or
 profitability. The existing native and Python worker profiles cannot execute
-this source. A separately versioned worker contract must define the candidate
-interface, compiler/runtime image, resource bounds, credential-free isolation,
-expected checks/results and interruption/retry behavior before execution exists.
+this source. The separately versioned [compile-only worker](candidate-build.md)
+checks its narrow interface in an owned container. It does not run the candidate;
+behavioral execution requires its own contract and verification.

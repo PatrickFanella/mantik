@@ -8,8 +8,10 @@ Conversational direction remains planned. The
 records the delivered inspection scope and its verification limits.
 
 [Candidate source declarations](docs/reference/candidate-source.md) now retain
-exact source with hypothesis, dataset and toolchain pins. Candidate compilation
-and isolated evaluation remain unfinished; declarations grant no admission.
+exact source with hypothesis, dataset and toolchain pins. The separate
+[candidate build protocol](docs/reference/candidate-build.md) now checks a fixed
+Go interface in a credential-free container. Behavioral replay remains
+unfinished; neither declarations nor compile passes grant admission.
 
 The bootstrap implements one deterministic synthetic workflow. It accepts
 fixture quotes for `DEMO`, evaluates an entry, finalizes a decision with safety
