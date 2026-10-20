@@ -74,3 +74,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Terminal supervision acceptance](../research/terminal-supervision-acceptance.md)
   — requirement audit, recorded journeys and the read-only fixture scope.
+
+- [Candidate source declarations](candidate-source.md) — immutable offline source,
+  hypothesis/dataset/toolchain pins; no compilation or execution.

@@ -10,8 +10,10 @@ The adapter's schema is separate from
 `worker-launch` and `worker-reconcile` commands continue to accept only the native
 Go adapter. The separate `external-worker-*` commands below provide durable local
 launch/reconciliation through a versioned external contract. The finite rehearsal
-at the end of this document remains a test driver. Issue #17 remains open pending delivery review of the protocol gate. Service
-dispatch/import and broader autonomous research integration are separate work.
+at the end of this document remains a test driver. The
+[protocol acceptance refresh](../research/research-contract-acceptance.md#external-worker-protocol-refresh-2026-10-19)
+verifies #17's gate after dependency resolution. Service dispatch/import and
+broader autonomous research integration are separate work.
 
 ## Environment and inputs
 

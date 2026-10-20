@@ -14,8 +14,10 @@ Implementation proceeds in three units:
    four synthetic methods in a pinned Python environment. Separate
    `external-worker-*` commands provide versioned job/result validation and
    durable launch/reconciliation with an explicit Python profile. Native worker
-   v1 schemas and profile remain unchanged. Issue #17 remains open pending
-   delivery review of this protocol gate; service integration is separate work.
+   v1 schemas and profile remain unchanged. The
+   [current protocol acceptance refresh](../research/research-contract-acceptance.md#external-worker-protocol-refresh-2026-10-19)
+   verifies this gate after its dependency was resolved; service integration is
+   separate work.
 
 ## Offline commands
 
