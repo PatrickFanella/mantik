@@ -298,7 +298,9 @@ availability-ordered worker inputs at explicit cutoffs, including no-input frame
 This is synthetic input replay; generated-source/service lineage and a final #18
 acceptance audit remain. See [the replay contract](reference/candidate-replay.md).
 
-The pure [candidate lineage contract](reference/candidate-lineage.md) now binds
+The [candidate lineage contract](reference/candidate-lineage.md) now binds
 candidate packages to authoritative publication inputs and earlier parent pins,
-with complete-prefix validation and bounded request retries. This prepares the
-service registry; storage, artifact retention and API/CLI wiring remain unfinished.
+with complete-prefix validation and bounded request retries. Memory and PostgreSQL
+backends now atomically retain registrations and exact datasets and validate the
+entire history on reads. API/CLI wiring and registry-linked worker attempts remain
+unfinished; this does not close #18.

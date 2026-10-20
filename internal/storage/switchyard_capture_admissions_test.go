@@ -305,7 +305,7 @@ func TestPostgresContractsSwitchyardAdmissionUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_fixture_capital; DROP TABLE mantik_paper_ledger_rehearsals; DROP TABLE mantik_paper_accounts; DROP TABLE mantik_switchyard_capture_admissions; DELETE FROM mantik_schema WHERE version>=26"); err != nil {
+	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_candidate_datasets; DROP TABLE mantik_candidate_registrations; DROP TABLE mantik_fixture_capital; DROP TABLE mantik_paper_ledger_rehearsals; DROP TABLE mantik_paper_accounts; DROP TABLE mantik_switchyard_capture_admissions; DELETE FROM mantik_schema WHERE version>=26"); err != nil {
 		t.Fatal(err)
 	}
 	config := s.pool.Config().ConnString()

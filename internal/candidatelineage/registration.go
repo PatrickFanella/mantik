@@ -24,6 +24,7 @@ const MaxBytes = candidate.MaxPackageBytes + 4096
 var ErrInvalid = errors.New("invalid candidate registration or lineage")
 var ErrConflict = errors.New("candidate registration identity, publication, parent or clock conflict")
 var ErrCapacity = errors.New("candidate registration capacity reached")
+var ErrNotFound = errors.New("candidate registration or publication not found")
 var receiver = regexp.MustCompile(`^receiver-[a-zA-Z0-9_-]{16,64}$`)
 var digest = regexp.MustCompile(`^[a-f0-9]{64}$`)
 

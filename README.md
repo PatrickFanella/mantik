@@ -409,5 +409,6 @@ only the synthetic records visible at an explicit cutoff, retains every parent
 exposure and exports the exact derived dataset bytes.
 
 The [candidate lineage contract](docs/reference/candidate-lineage.md) defines
-publication-bound registrations, parent pins and bounded retry rules for the
-planned service registry. Persistence and API/CLI access remain unfinished.
+publication-bound registrations, parent pins and bounded retry rules. Memory and
+PostgreSQL backends retain the complete lineage and exact dataset bytes; API/CLI
+access and registry-linked worker attempts remain unfinished.

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	replay "git.subcult.tv/subculture-collective/mantik/internal/dataset"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
-	"git.subcult.tv/subculture-collective/mantik/internal/replay"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
