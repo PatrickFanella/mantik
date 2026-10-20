@@ -213,3 +213,44 @@ absent. Account allocation (#19), realistic paper economics (#20), automatic
 qualification (#21) and the integrated M4 exit gate remain incomplete. New
 provider/model requests require their own concrete scope; the earlier approved
 extractor diagnostic budgets remain exhausted.
+
+## External worker protocol refresh, 2026-10-19
+
+After #15/#16 closed through PR #135, Gitea's #17 readback showed all three
+protocol acceptance criteria checked. Its recorded closure blocker was the
+previously open #15 dependency. Dependencies #5 and #15 are now closed. A fresh
+launcher rehearsal at source `c8669b450efb388fc7b5133385b79c8d1623b494`
+supports closing this protocol issue; arbitrary generated code and automatic
+service dispatch remain outside that gate.
+
+`external-launch-rehearsal-1792454271230220804` retained 48 commands and eight
+actual worker handles. It ran the pinned Backtesting.py 0.6.6 comparison twice
+against all four native synthetic methods, with equal logical result identity
+and distinct physical acquisitions. It retained a deliberate metric mismatch
+and rejected an adapter-source mismatch. Two real launcher-process losses,
+explicit cancellation, a real 30-second host timeout, and recovery of a timely
+orphan completion after the deadline passed. Native v1 execution/reconciliation
+and cross-protocol rejection passed. All eight handles were inspected stopped
+with PID 0; raw streams, pre-start profiles, acquisition/terminal receipts and
+failed dispositions remain outside Git.
+
+The host binary SHA-256 was
+`ea8ee717ac6a2167352abb0ce904ffafb8170e32db0d59c6a2860215c25ff5f3`.
+The fresh native image ID was
+`sha256:fe62dd265dd0356350d420edd29cffcbd15278250ddaff34c857979bfe164a07`;
+the pinned external image was
+`sha256:1f04795ca24887313f102867e69b876d572520fa35c9231e11d839becd6d9c30`.
+The launcher inspected image/ownership and resource settings independently of
+worker declarations. A host credential canary was not forwarded into workers.
+No service API, model/provider or operational account was used. This is protocol
+and process-isolation evidence, not a sandbox security certification or financial
+qualification. The source for this rehearsal precedes the candidate declaration
+CLI; it does not establish candidate execution.
+
+The [candidate source declaration](../reference/candidate-source.md) now starts
+#18 by retaining immutable source/hypothesis/dataset/toolchain provenance.
+Isolated compilation, conformance/property checks, candidate replay/failure
+cases and candidate attempt/retry retention remain unfinished. Existing fixed
+worker commands do not execute candidate source. #18, general allocation (#19),
+realistic economics (#20), qualification (#21) and the integrated M4 gate remain
+incomplete.
