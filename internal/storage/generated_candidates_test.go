@@ -365,6 +365,11 @@ func generatedDamage(t *testing.T, s generatedBackend) {
 			if _, err := s.RegisterGeneratedCandidate(ctx, second, noClock); err == nil {
 				t.Fatal("retry hid unrelated damage")
 			}
+			fresh := second
+			fresh.RequestID = "new-while-damaged"
+			if _, err := s.RegisterGeneratedCandidate(ctx, fresh, noClock); err == nil {
+				t.Fatal("new registration hid unrelated damage")
+			}
 			if _, err := s.CandidateRegistry(ctx); err == nil {
 				t.Fatal("ordinary registry hid damage")
 			}

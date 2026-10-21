@@ -94,6 +94,12 @@ registration, copied exact dataset, compact link and marker in one transaction.
 Reads use a repeatable-read snapshot. Full generation recordings are checked one
 at a time; only selected artifacts survive validation. Returned values detach.
 
+Registration reuses the complete generation rows already validated under that
+operation's lock and transaction, rather than rescanning the same history. This
+reuse ends with the operation; later reads, new registrations and exact retries
+validate the full prefix again, including unrelated damaged dependencies. The
+five-second HTTP backend deadline and all evidence checks remain unchanged.
+
 Schema 35 adds `generation_link_sha256` to registration rows and the bounded
 `mantik_generated_candidate_links` table. Prior and manual registrations have a
 NULL marker; their JSON and hashes are unchanged. Reciprocal deferred foreign keys

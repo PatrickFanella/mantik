@@ -93,6 +93,12 @@ func (m *Memory) generatedCandidateSnapshot(wanted string) (generatedcandidate.R
 	if err != nil {
 		return generatedcandidate.Registry{}, generatedcandidate.Artifact{}, err
 	}
+	return m.generatedCandidateSnapshotFromRows(regs, intents, outcomes, wanted)
+}
+
+// Reuse only rows validated under the same held mutex. Nothing is cached across
+// calls: unrelated publication, dataset and recording damage is still checked.
+func (m *Memory) generatedCandidateSnapshotFromRows(regs []candidatelineage.Registration, intents []candidategeneration.Intent, outcomes []candidategeneration.Outcome, wanted string) (generatedcandidate.Registry, generatedcandidate.Artifact, error) {
 	return generatedSnapshot(m.receiverID, regs, m.generatedMarkers, m.generatedLinks, wanted, func(id string) (candidategeneration.OutcomeArtifact, error) {
 		return outcomeFromRows(intents, outcomes, id, m.generationRecordings[id])
 	})
@@ -119,11 +125,15 @@ func (m *Memory) RegisterGeneratedCandidate(ctx context.Context, c generatedcand
 	if c.Validate() != nil {
 		return generatedcandidate.Artifact{}, generatedcandidate.ErrInvalid
 	}
-	registry, _, err := m.generatedCandidateSnapshot("")
+	regs, err := m.candidateRowsSnapshot()
 	if err != nil {
 		return generatedcandidate.Artifact{}, err
 	}
 	intents, outcomes, _, err := m.generationOutcomeSnapshot("")
+	if err != nil {
+		return generatedcandidate.Artifact{}, err
+	}
+	registry, _, err := m.generatedCandidateSnapshotFromRows(regs, intents, outcomes, "")
 	if err != nil {
 		return generatedcandidate.Artifact{}, err
 	}
@@ -190,6 +200,16 @@ func loadGeneratedCandidates(ctx context.Context, tx pgx.Tx, wanted string) (gen
 	outcomes, _, err := loadGenerationOutcomes(ctx, tx, receiver, intents, "")
 	if err != nil {
 		return fail(err)
+	}
+	return loadGeneratedCandidateLinks(ctx, tx, receiver, regs, intents, outcomes, wanted)
+}
+
+// These rows were validated in this transaction, after taking the receiver lock
+// for a write (or in the read's repeatable snapshot). Reusing them avoids a
+// second complete generation scan without weakening whole-prefix validation.
+func loadGeneratedCandidateLinks(ctx context.Context, tx pgx.Tx, receiver string, regs []candidatelineage.Registration, intents []candidategeneration.Intent, outcomes []candidategeneration.Outcome, wanted string) (generatedcandidate.Registry, generatedcandidate.Artifact, error) {
+	fail := func(err error) (generatedcandidate.Registry, generatedcandidate.Artifact, error) {
+		return generatedcandidate.Registry{}, generatedcandidate.Artifact{}, err
 	}
 	markers := map[string]string{}
 	links := map[string]generatedcandidate.Link{}
@@ -281,7 +301,7 @@ func (p *Postgres) RegisterGeneratedCandidate(ctx context.Context, c generatedca
 	if receiver != c.ReceiverID {
 		return generatedcandidate.Artifact{}, ErrReceiverMismatch
 	}
-	registry, _, err := loadGeneratedCandidates(ctx, tx, "")
+	_, regs, _, err := loadCandidateRows(ctx, tx, "")
 	if err != nil {
 		return generatedcandidate.Artifact{}, err
 	}
@@ -290,6 +310,10 @@ func (p *Postgres) RegisterGeneratedCandidate(ctx context.Context, c generatedca
 		return generatedcandidate.Artifact{}, err
 	}
 	outcomes, record, err := loadGenerationOutcomes(ctx, tx, receiver, intents, c.GenerationRequestID)
+	if err != nil {
+		return generatedcandidate.Artifact{}, err
+	}
+	registry, _, err := loadGeneratedCandidateLinks(ctx, tx, receiver, regs, intents, outcomes, "")
 	if err != nil {
 		return generatedcandidate.Artifact{}, err
 	}
