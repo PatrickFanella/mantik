@@ -128,8 +128,10 @@ competing proposals against owner-declared cash and exposure limits, with
 commitment deduplication and reasons for rejection or deferral. It produces a
 plan. [Owned policy registration](docs/reference/allocation-policies.md) now
 retains one immutable policy per funded account with reciprocal fixture ownership
-guards and pinned HTTP/CLI readback. General reservations and qualified service
-admission remain pending.
+guards and pinned HTTP/CLI readback. The [allocation ledger core](docs/reference/allocation-ledger.md)
+now derives reservations, cash and position cost with retained comparison/effect
+history and replay checks. General service writes, authoritative decision/effect
+bindings and qualified admission remain pending.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.

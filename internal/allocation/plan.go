@@ -124,7 +124,15 @@ type Plan struct {
 	SHA256                  string     `json:"sha256"`
 }
 
-func validTime(t time.Time) bool { return !t.IsZero() && t.UTC().Year() >= 1 && t.UTC().Year() <= 9999 }
+func validTime(t time.Time) bool {
+	if t.IsZero() || t.UTC().Year() < 1 || t.UTC().Year() > 9999 {
+		return false
+	}
+	// UTC range alone does not ensure JSON can encode the original zone/year.
+	// Inputs must survive hashing and detached journal/readback construction.
+	_, err := t.MarshalJSON()
+	return err == nil
+}
 func validHash(s string) bool {
 	return len(s) == 64 && strings.IndexFunc(s, func(c rune) bool { return !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') }) == -1
 }
@@ -227,6 +235,7 @@ func Evaluate(ctx context.Context, policy Policy, state Snapshot, proposals []Pr
 		decisionHashes[c.DecisionSHA256] = c.DecisionID
 	}
 	var committed int64
+	activeDecisions := map[string]bool{}
 	for _, list := range [][]Exposure{state.Positions, state.Orders} {
 		for _, e := range list {
 			_, strategyOK := strategies[e.StrategyID]
@@ -241,6 +250,7 @@ func Evaluate(ctx context.Context, policy Policy, state Snapshot, proposals []Pr
 				return Plan{}, ErrInvalid
 			}
 			exposureIDs[e.ID] = true
+			activeDecisions[e.DecisionID] = true
 			committed += e.AmountCents
 			add(e.StrategyID, e.Symbol, e.AmountCents)
 		}
@@ -323,6 +333,11 @@ func Evaluate(ctx context.Context, policy Policy, state Snapshot, proposals []Pr
 			if intrinsic {
 				reject("proposal_exceeds_policy")
 				break
+			}
+			// Each active decision may need both an outstanding order and a
+			// partially filled position. Reserve room for both projections.
+			if len(activeDecisions)+plannedCount >= MaxExposures/2 {
+				deferFor("exposure_capacity", "cash_or_commitments_changed")
 			}
 			if len(state.Commitments)+plannedCount >= MaxCommitments {
 				deferFor("commitment_history_capacity", "new_funded_account_policy")

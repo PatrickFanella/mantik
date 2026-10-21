@@ -60,7 +60,8 @@ reconsideration triggers:
 - `already_committed`: the retained decision identity matches; no new cash is
   reserved, including when its former position is closed.
 - `defer`: admission needs reassessment, cash/exposure must change, or commitment
-  history is full. Each applicable temporary limit remains visible.
+  history or partial-fill projection capacity is full. Each applicable temporary
+  limit remains visible.
 - `reject`: unsupported strategy/symbol, expired or conflicting decision identity,
   or an amount exceeding a policy limit even with no competing exposure. A new
   finalized decision is required for reconsideration.
@@ -74,7 +75,10 @@ can exceed that rule. A snapshot already above the account's capital ceiling is
 invalid and produces no partial plan.
 
 Bounds are 128 proposals per batch, 256 active exposures, 256 retained commitment
-identities and 64 rules of each kind/admission assertions. Duplicate proposal IDs
+identities and 64 rules of each kind/admission assertions. An active decision
+reserves room for both an order and a partial position: the planner defers a new
+commitment at 128 active decisions, even if only order exposures exist so far.
+Duplicate proposal IDs
 or decision hashes invalidate the batch. History is never evicted to make room;
 capacity defers new commitments while preserving duplicate detection. Funding
 and individual notionals are bounded by the existing paper-account contract.
@@ -97,7 +101,9 @@ corrupt funding, stale snapshots and canceled evaluation. Two hundred seeded
 batches of forty competing proposals check conservation, all exposure ceilings
 and order-independent arbitration. Inputs remain unchanged by planning.
 
-Owner policy configuration now has durable registration and readback. The next
+Owner policy configuration now has durable registration and readback. The
+[ledger core](allocation-ledger.md) derives accounting and retains comparisons
+and effects with full replay checks, without a service write route. The next
 #19 unit must serialize finalized-decision/admission bindings, complete
 allocation history and reservation commits with authoritative
 account projections in Memory/PostgreSQL. It must retain declined decisions and

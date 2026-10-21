@@ -320,3 +320,38 @@ func TestSnapshotBoundaryRealizedCashAndSymbolSyntax(t *testing.T) {
 		t.Fatal("unbound result")
 	}
 }
+
+func TestAllocationLeavesRoomForEveryPartialFillProjection(t *testing.T) {
+	p, s, at := fixture(t)
+	for i := 0; i < MaxExposures/2; i++ {
+		key := fmt.Sprintf("active-%03d", i)
+		s.Commitments = append(s.Commitments, Commitment{key, workerplan.Hash(key), "baseline-v1", "ALPHA"})
+		s.Orders = append(s.Orders, Exposure{"order-" + key, key, workerplan.Hash(key), "baseline-v1", "ALPHA", 2})
+		s.AvailableCashCents -= 2
+	}
+	q := proposal("next", "baseline-v1", "ALPHA", 1, at)
+	d := evaluate(t, p, s, []Proposal{q}, at).Decisions[0]
+	if d.Status != "defer" || !slices.Contains(d.Reasons, "exposure_capacity") {
+		t.Fatal(d)
+	}
+	// All accepted orders can become partial positions simultaneously; the
+	// planner's projection limit still admits the authoritative resulting state.
+	for i := range s.Orders {
+		s.Orders[i].AmountCents--
+		e := s.Orders[i]
+		e.ID = "position-" + e.DecisionID
+		s.Positions = append(s.Positions, e)
+	}
+	if len(s.Orders)+len(s.Positions) != MaxExposures {
+		t.Fatal("fixture did not fill projection capacity")
+	}
+	evaluate(t, p, s, []Proposal{}, at)
+	// Closing and releasing one decision frees both slots; its identity remains.
+	s.Positions = s.Positions[1:]
+	s.Orders = s.Orders[1:]
+	s.AvailableCashCents += 2
+	d = evaluate(t, p, s, []Proposal{q}, at).Decisions[0]
+	if d.Status != "reserve_plan" {
+		t.Fatal(d)
+	}
+}
