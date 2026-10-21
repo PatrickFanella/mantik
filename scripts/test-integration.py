@@ -34,10 +34,13 @@ def main():
         # Share only the disposable database network namespace. Copy source
         # instead of mounting a host path: Gitea job paths may not exist on the
         # Docker daemon host. No ports, shared volumes, or existing DB are used.
+        # Package concurrency shares this one database server and CPU budget.
+        # Keep packages sequential; each package still exercises its own
+        # concurrent transactions and the race detector remains enabled.
         run("docker", "create", "--name", runner, "--network", "container:" + name,
             "-w", "/src", "-e", "MANTIK_TEST_DATABASE_URL=" +
             f"postgres://mantik:fixture-only@127.0.0.1:5432/{database}?sslmode=disable",
-            "golang:1.26.9", "go", "test", "-race", "./internal/storage", "./internal/cli",
+            "golang:1.26.9", "go", "test", "-race", "-p", "1", "./internal/storage", "./internal/cli",
             "-run", "TestPostgresContracts", "-count=1", stdout=subprocess.DEVNULL)
         runner_created = True
         for path in ("go.mod", "go.sum", "internal", "migrations"):

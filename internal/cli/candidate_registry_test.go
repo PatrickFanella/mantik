@@ -103,7 +103,12 @@ func TestPostgresContractsCandidateRegistryHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if _, err := conn.Exec(ctx, "DROP DATABASE "+pgx.Identifier{db}.Sanitize()); err != nil {
+		// A canceled HTTP transaction may still be unwinding its connection.
+		// Fence this test-owned database before removing those sessions.
+		if _, err := conn.Exec(ctx, "ALTER DATABASE "+pgx.Identifier{db}.Sanitize()+" ALLOW_CONNECTIONS false"); err != nil {
+			t.Error(err)
+		}
+		if _, err := conn.Exec(ctx, "DROP DATABASE "+pgx.Identifier{db}.Sanitize()+" WITH (FORCE)"); err != nil {
 			t.Error(err)
 		}
 		_ = conn.Close(ctx)
