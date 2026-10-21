@@ -20,8 +20,13 @@ DATABASE_URL or touch existing database volumes. The storage and CLI integration
 packages run sequentially (`go test -p 1`) against this disposable server, so
 CPU-heavy storage contracts do not compete with HTTP contracts that enforce
 production request deadlines. Concurrent transaction checks inside each package
-and the race detector remain enabled. A timed-out HTTP request still fails the
-suite; the harness does not retry requests or increase application deadlines.
+and the race detector remain enabled. Each package has an explicit fifteen-minute
+test budget (`-timeout=15m`), within the unchanged thirty-minute hosted CI job
+limit. This replaces Go's implicit ten-minute package alarm: merged-main run
+16524 exhausted it while `TestPostgresContractsLocalCaptures` itself had run for
+one second and was validating retained JSON. Application request timeouts and
+all assertions retain their existing values. A timed-out HTTP request still
+fails the suite; the harness does not retry requests or increase application deadlines.
 The candidate HTTP test fences its own temporary database against new
 connections before forcing its removal, so a canceled transaction still draining
 its connection cannot prevent cleanup.
