@@ -45,8 +45,12 @@ across competing proposals remains incomplete.
    The [owned policy registry](../reference/allocation-policies.md) now retains
    one immutable policy per service-owned account and fences reciprocal fixture
    ownership, with strict HTTP/CLI registration and pinned readback. Ledger-derived
-   projections, decision/admission bindings, reservation transactions and retained
-   reconsideration history remain required before this step is complete.
+   projections, decision/admission bindings and reservation transactions remain
+   required before this step is complete. The [allocation ledger core](../reference/allocation-ledger.md)
+   now derives cash, reservations and position cost, retains comparison/reconsideration
+   history and checks effect/recovery transitions by replay. It has no public
+   import or operational writer; service-owned decision, admission and effect
+   evidence and durable retention/capacity handling must be integrated next.
 4. Bind qualified strategy admission and finalized decisions to reservations,
    preserving existing action delivery and independent safety checks. Realistic
    paper execution and qualification are separate gates (#20 and #21).
