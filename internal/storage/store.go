@@ -9,6 +9,7 @@ import (
 	"errors"
 	"sync"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateattempt"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateevidence"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidategeneration"
@@ -47,6 +48,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	allocationPolicies       map[string]allocation.PolicyRecord
 	generationOutcomes       map[string]candidategeneration.Outcome
 	generationRecordings     map[string][]byte
 	generatedLinks           map[string]generatedcandidate.Link
@@ -92,7 +94,7 @@ type Memory struct {
 }
 
 func NewMemory() *Memory {
-	return &Memory{generatedLinks: map[string]generatedcandidate.Link{}, generatedMarkers: map[string]string{}, generationOutcomes: map[string]candidategeneration.Outcome{}, generationRecordings: map[string][]byte{}, generationIntents: map[string]candidategeneration.Intent{}, generationDatasets: map[string][]byte{}, candidateWorkerOutcomes: map[string]candidateevidence.OutcomeRecord{}, candidateOutcomeCaptures: map[string][]byte{}, candidateWorkerIntents: map[string]candidateattempt.Intent{}, candidates: map[string]candidatelineage.Registration{}, candidateDatasets: map[string][]byte{}, paperLedgers: map[string]paperledger.Rehearsal{}, paperAccounts: map[string]paperaccount.Account{}, switchyardAdmissions: map[string]extraction.SwitchyardAdmission{}, switchyardCaptures: map[string]extraction.SwitchyardCapture{}, localCaptureAdmissions: map[string]extraction.LocalAdmission{}, localCaptures: map[string]extraction.LocalCapture{}, extractionAdmissions: map[string]extraction.Admission{}, extractions: map[string]extraction.Attempt{}, externalAttempts: map[string]workertrial.Attempt{}, externalOutputs: map[string]map[string]string{}, externalJobs: map[string]workertrial.Record{}, externalInputs: map[string]map[string][]byte{}, trialRuns: map[string]trial.Run{}, trialInputs: map[string]string{}, trialResults: map[string]string{}, trialAttempts: map[string]trial.Attempt{}, trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
+	return &Memory{allocationPolicies: map[string]allocation.PolicyRecord{}, generatedLinks: map[string]generatedcandidate.Link{}, generatedMarkers: map[string]string{}, generationOutcomes: map[string]candidategeneration.Outcome{}, generationRecordings: map[string][]byte{}, generationIntents: map[string]candidategeneration.Intent{}, generationDatasets: map[string][]byte{}, candidateWorkerOutcomes: map[string]candidateevidence.OutcomeRecord{}, candidateOutcomeCaptures: map[string][]byte{}, candidateWorkerIntents: map[string]candidateattempt.Intent{}, candidates: map[string]candidatelineage.Registration{}, candidateDatasets: map[string][]byte{}, paperLedgers: map[string]paperledger.Rehearsal{}, paperAccounts: map[string]paperaccount.Account{}, switchyardAdmissions: map[string]extraction.SwitchyardAdmission{}, switchyardCaptures: map[string]extraction.SwitchyardCapture{}, localCaptureAdmissions: map[string]extraction.LocalAdmission{}, localCaptures: map[string]extraction.LocalCapture{}, extractionAdmissions: map[string]extraction.Admission{}, extractions: map[string]extraction.Attempt{}, externalAttempts: map[string]workertrial.Attempt{}, externalOutputs: map[string]map[string]string{}, externalJobs: map[string]workertrial.Record{}, externalInputs: map[string]map[string][]byte{}, trialRuns: map[string]trial.Run{}, trialInputs: map[string]string{}, trialResults: map[string]string{}, trialAttempts: map[string]trial.Attempt{}, trials: map[string]trial.Registration{}, publications: map[string]hypothesis.Publication{}, reviews: map[string]review.Attempt{}, news: newscase.InitialState(), collectors: feedcollector.InitialState(), receiverID: "receiver-" + rand.Text(), state: workflow.InitialState(), effects: map[string]domain.ActionEffect{}, observations: map[string][]byte{}, receipts: map[string]domain.Receipt{}, events: []domain.Event{}}
 }
 
 // NewQueuedMemory exercises the persistent delivery contract without a database.

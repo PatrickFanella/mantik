@@ -118,3 +118,6 @@ var CandidateGenerationOutcomes string
 
 //go:embed 0035_generated_candidate_links.sql
 var GeneratedCandidateLinks string
+
+//go:embed 0036_allocation_policies.sql
+var AllocationPolicies string
