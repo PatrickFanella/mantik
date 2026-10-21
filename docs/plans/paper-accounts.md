@@ -38,6 +38,12 @@ across competing proposals remains incomplete.
    account limits, exposure/concentration/correlation checks, existing-order
    commitments and retained defer/reject reasons and reconsideration triggers.
    Research proposals cannot choose their account or supply admission authority.
+   The [allocation policy core](../reference/allocation-policy.md) now compares
+   finite owner-supplied snapshots and competing proposals, with cash/exposure
+   limits, admission assertions, retained commitment identities and structured
+   reasons/triggers. It returns a plan only. Durable owner-derived projections,
+   decision/admission bindings, reservation transactions and retained
+   reconsideration history remain required before this step is complete.
 4. Bind qualified strategy admission and finalized decisions to reservations,
    preserving existing action delivery and independent safety checks. Realistic
    paper execution and qualification are separate gates (#20 and #21).
