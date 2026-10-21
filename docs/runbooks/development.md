@@ -16,7 +16,15 @@ The integration harness creates a uniquely named PostgreSQL container and a
 Go 1.26.9 test container. They share only the disposable database network
 namespace, publish no ports, and copy test source rather than bind-mounting a
 host path. Cleanup removes only those containers. It does not read a supplied
-DATABASE_URL or touch existing database volumes.
+DATABASE_URL or touch existing database volumes. The storage and CLI integration
+packages run sequentially (`go test -p 1`) against this disposable server, so
+CPU-heavy storage contracts do not compete with HTTP contracts that enforce
+production request deadlines. Concurrent transaction checks inside each package
+and the race detector remain enabled. A timed-out HTTP request still fails the
+suite; the harness does not retry requests or increase application deadlines.
+The candidate HTTP test fences its own temporary database against new
+connections before forcing its removal, so a canceled transaction still draining
+its connection cannot prevent cleanup.
 
 The PostgreSQL contract tests cover concurrent retries, conflicting content,
 transaction rollback, state readback after reopening the pool, and migration
