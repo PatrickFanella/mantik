@@ -123,6 +123,10 @@ store replays a bounded checkpoint against its own action/effect ledger.
 `fixture-capital` validates and displays its cash, reservations and position.
 These commands operate only the synthetic fixture, with no automatic binding of
 existing cases or qualified strategy allocation.
+The [allocation policy core](docs/reference/allocation-policy.md) compares
+competing proposals against owner-declared cash and exposure limits, with
+commitment deduplication and reasons for rejection or deferral. It produces a
+plan; durable general allocation and qualified service admission remain pending.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.
