@@ -99,6 +99,13 @@ func (p *Postgres) BindFixtureCapital(ctx context.Context, c FixtureCapitalBindi
 	if receiver != c.ReceiverID || !ValidReceiverID(receiver) {
 		return FixtureCapitalReadback{}, ErrReceiverMismatch
 	}
+	policies, err := readAllocationPolicies(ctx, tx, receiver, s)
+	if err != nil {
+		return FixtureCapitalReadback{}, err
+	}
+	if allocationOwnership(policies, c.AccountID) != nil {
+		return FixtureCapitalReadback{}, fixturecapital.ErrConflict
+	}
 	if c.ScopeCode != FixtureCapitalBindingScope {
 		return FixtureCapitalReadback{}, fixturecapital.ErrInvalid
 	}

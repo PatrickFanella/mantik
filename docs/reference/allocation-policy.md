@@ -3,8 +3,9 @@
 `internal/allocation.Evaluate` compares one finite batch of research and
 copy-follow proposals against an owner-supplied policy and account snapshot.
 It is a pure Go contract for issue #19. No HTTP route or CLI command accepts
-these snapshots; there is no import, reservation writer, admission issuer,
-provider call or execution path in this unit. Issue #19 remains open.
+these snapshots. The separate [owned policy registration](allocation-policies.md)
+retains configuration only; there is no snapshot import, general reservation
+writer, admission issuer, provider call or execution path. Issue #19 remains open.
 
 ## Ownership and inputs
 
@@ -96,8 +97,9 @@ corrupt funding, stale snapshots and canceled evaluation. Two hundred seeded
 batches of forty competing proposals check conservation, all exposure ceilings
 and order-independent arbitration. Inputs remain unchanged by planning.
 
-The next #19 unit must serialize owner policy, finalized-decision/admission
-bindings, complete allocation history and reservation commits with authoritative
+Owner policy configuration now has durable registration and readback. The next
+#19 unit must serialize finalized-decision/admission bindings, complete
+allocation history and reservation commits with authoritative
 account projections in Memory/PostgreSQL. It must retain declined decisions and
 reconsideration history, reject caller-supplied balances/admissions, and expose
 validated service/terminal readbacks. Realistic fills (#20) and qualification

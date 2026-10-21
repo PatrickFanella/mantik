@@ -68,6 +68,13 @@ func (m *Memory) BindFixtureCapital(ctx context.Context, c FixtureCapitalBinding
 	if c.ReceiverID != m.receiverID || !ValidReceiverID(c.ReceiverID) {
 		return FixtureCapitalReadback{}, ErrReceiverMismatch
 	}
+	policies, err := m.allocationPoliciesLocked()
+	if err != nil {
+		return FixtureCapitalReadback{}, err
+	}
+	if allocationOwnership(policies, c.AccountID) != nil {
+		return FixtureCapitalReadback{}, fixturecapital.ErrConflict
+	}
 	a, ok := m.paperAccounts[c.AccountID]
 	if !ok {
 		return FixtureCapitalReadback{}, paperaccount.ErrNotFound

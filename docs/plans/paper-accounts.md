@@ -41,8 +41,11 @@ across competing proposals remains incomplete.
    The [allocation policy core](../reference/allocation-policy.md) now compares
    finite owner-supplied snapshots and competing proposals, with cash/exposure
    limits, admission assertions, retained commitment identities and structured
-   reasons/triggers. It returns a plan only. Durable owner-derived projections,
-   decision/admission bindings, reservation transactions and retained
+   reasons/triggers. It returns a plan only.
+   The [owned policy registry](../reference/allocation-policies.md) now retains
+   one immutable policy per service-owned account and fences reciprocal fixture
+   ownership, with strict HTTP/CLI registration and pinned readback. Ledger-derived
+   projections, decision/admission bindings, reservation transactions and retained
    reconsideration history remain required before this step is complete.
 4. Bind qualified strategy admission and finalized decisions to reservations,
    preserving existing action delivery and independent safety checks. Realistic
