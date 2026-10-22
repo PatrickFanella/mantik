@@ -100,3 +100,51 @@ failed PostgreSQL inserts, reconnect retention, and actual HTTP owner routing.
 Local tests and disposable database evidence remain separate from hosted CI,
 deployment, runtime qualification and #27's natural soak. No provider/model call
 is part of declaration registration. This slice does not complete #19 or #21.
+
+## Owner-selected evidence
+
+`GET /v1/paper-evaluation-declarations/{id}/evidence` resolves a retained family
+to actual owner decisions and forward-quote outcomes. It uses the same bearer
+authentication and accepts no query string, request body, caller clock, result,
+decision list or replacement source history. Memory holds its aggregate mutex;
+PostgreSQL reads one repeatable-read, read-only transaction. All declarations,
+strategies, policies, decisions and outcomes are revalidated against their owner
+records before selection. Missing declarations return 404; unavailable or invalid
+owner evidence returns 503. Invalid paths, bodies and queries return 422.
+
+The service reads its clock once. It refuses a clock behind retained collector,
+declaration, decision or outcome history. The report binds that clock, the exact
+declaration and the complete current source catalogues. It is a current read,
+not an immutable evaluation receipt. A source-catalogue or clock change can
+change its hash. The response is bounded to 8 MiB and detached from retained
+storage. Reading it writes no journal, account, admission or operational state.
+
+Rows include every decision matching an exact declared strategy-record pin,
+ordered by finalization time and then ID. Decisions outside the observation
+window, abstentions, unavailable-as-of sources and synthetic evidence remain
+visible with exclusion statuses. Both finalization and quote occurrence must
+fall within `[window_start, window_end)`. A selected source must have occurred,
+been received, become available and been published by decision finalization.
+The original evidence class remains visible; no class is promoted.
+
+Within a strategy, aliases of the same provider/feed/canonical-symbol occurrence
+select only the first available decision. Capture IDs, raw pins, receipt times
+and price corrections at the same occurrence cannot create another selection.
+Different variants may select paired decisions from that occurrence, but the
+report counts the provider occurrence once across the family. This is not proof
+of independence across feeds/providers or overlapping holding horizons. The
+`independent_samples_available` flag stays false; these counts cannot satisfy
+`min_independent_decisions` or an admission rule on their own.
+
+All actual forward-outcome attempts remain attached to their decision, including
+waiting and unavailable statuses. `observed_outcome_decisions` counts a selected
+canonical decision once if it has any observed forward-quote outcome. Retrying
+an assessment under a new ID cannot increase that count. An observed quote is
+not a fill, realized PnL, benchmark result or completed evaluation check.
+
+The phases are `awaiting_window`, `observation_window`,
+`awaiting_outcome_deadline` and `outcome_deadline_elapsed`. Elapsing a deadline
+does not imply complete outcomes or a passed window. Evaluation, admission,
+execution and qualification flags all remain false. Relevant economic replay,
+statistical checks and the deterministic admission issuer still need their
+actual owners before the financial execution aggregate can act.
