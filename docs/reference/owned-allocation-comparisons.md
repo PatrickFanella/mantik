@@ -49,7 +49,22 @@ and preserve protective/recovery capacity before it can activate reservations.
 
 ## Admission, retry and replay
 
-The service currently supplies an empty admission set. An otherwise applicable
+New comparisons retain `admission_checks` derived from the actual finalized
+owner decision, immutable strategy and retained quote basis. Each check pins the
+receiver, decision, strategy record and definition, basis, quote input ID and
+actual evidence class. `checked_at` is the original comparison time;
+`valid_until` is the proposal's quote-based expiry.
+
+These are prerequisite availability checks. They confirm a retained finalized
+decision, identify its unqualified source class, and explicitly report the
+unavailable applicable evaluation receipt and owned execution evidence. They do
+not run an evaluation recipe, certify source quality or issue an admission.
+Synthetic, recorded and prospective market inputs remain unqualified. Before
+expiry, status is `deferred` with source/evaluation/execution reconsideration
+triggers. At or after expiry, status is `expired` and requires a new finalized
+decision. Admission, execution and qualification flags remain false.
+
+The service continues to supply an empty admission set to the allocation core. An otherwise applicable
 proposal records `defer` with `admission_unavailable` and
 `admission_reassessment`; an expired one records `decision_expired` and requires
 a new finalized decision. No caller-supplied admission, balance, snapshot, effect,
@@ -58,7 +73,7 @@ and positions, orders and commitments remain empty.
 
 Each comparison appends one hash-linked entry to its policy's allocation ledger.
 The owned record pins that entry, ledger head and policy. It has schema
-`mantik-owned-allocation-deferral-v1`, authority
+`mantik-owned-allocation-deferral-v2`, authority
 `service_owned_allocation_deferral_only`, and false execution/qualification
 flags. Returned core ledger values remain accounting evidence; they are not
 portable admission or execution grants.
@@ -69,7 +84,9 @@ a new clock. A new record returns 201. Reusing an ID with different pins returns
 it never overwrites an old comparison. Captured policy catalogues remain bound
 to current immutable owner records, so a later policy cannot rewrite an earlier
 assignment. Reads and retries validate the whole journal before selecting a
-record; a corrupt unrelated entry also fails the read.
+record; a corrupt unrelated entry also fails the read. Readiness is reconstructed
+from owner records at the original time, so self-rehashing counterfeit flags,
+source classes, expiries or accepted statuses cannot bypass replay.
 
 ## Persistence and compatibility
 
@@ -84,8 +101,12 @@ retries remain available at capacity. This bounded deferral journal is not an
 operational order ledger; protective exits, recovery capacity, fee funding,
 admission lifecycle and execution effects must be implemented before activation.
 
-The migration is additive and preserves accounts, policies, strategies,
-decisions and the fixture state. Older schema-38 writers reject schema 39.
+Schema 42 fences writers that cannot preserve v2 readiness fields in the same
+journal. Its migration changes table metadata, with no new balance or admission
+writer. Existing v1 records remain replayable with their original omitted
+`admission_checks` field, wire shape and hashes; a journal may contain both
+versions. Unknown schemas fail closed. Schema-41 binaries reject schema 42.
+Accounts, policies, strategies, decisions and the fixture state are preserved.
 Rollback requires stopping the new writer and restoring the retained pre-upgrade
 backup with its matching binary; do not delete schema rows or tables in service.
 

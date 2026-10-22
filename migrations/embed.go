@@ -136,3 +136,6 @@ var PaperOutcomes string
 
 //go:embed 0041_social_watches.sql
 var SocialWatches string
+
+//go:embed 0042_owned_admission_checks.sql
+var OwnedAdmissionChecks string
