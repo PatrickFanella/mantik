@@ -474,6 +474,12 @@ now have atomic Memory/PostgreSQL retention with complete-prefix validation.
 exact output/source bytes. Generated-registration lineage remains unfinished.
 No provider execution or model authorship is asserted.
 
+Service-owned [allocation comparisons](docs/reference/owned-allocation-comparisons.md)
+now retain native decision/policy bindings and replayable deferral ledgers in
+Memory/PostgreSQL. The server selects funding from exact strategy-policy matches;
+clients supply retained decision IDs and pins. Admission and execution bindings
+remain incomplete, so these comparisons cannot reserve cash or create orders.
+
 Service-owned [paper proposals and abstentions](docs/reference/owned-paper-decisions.md)
 retain native evaluations from owned strategy and price/calendar evidence.
 They grant no admission, allocation or execution authority.

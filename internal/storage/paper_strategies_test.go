@@ -153,7 +153,7 @@ func TestPostgresContractsPaperStrategyUpgradeAndAtomicity(t *testing.T) {
 	policies, _ := s.AllocationPolicies(ctx)
 	accounts, _ := s.PaperAccounts(ctx)
 	cfg := s.pool.Config().ConnString()
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_paper_decisions; DROP TABLE mantik_paper_strategies; DELETE FROM mantik_schema WHERE version>=37"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_owned_allocations; DROP TABLE mantik_paper_decisions; DROP TABLE mantik_paper_strategies; DELETE FROM mantik_schema WHERE version>=37"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

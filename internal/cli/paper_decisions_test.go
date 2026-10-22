@@ -3,17 +3,23 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -35,6 +41,9 @@ func (c *ownedDecisionClock) Now() time.Time {
 type ownedDecisionHTTPBackend interface {
 	strategyHTTPBackend
 	storage.PaperDecisionStore
+	storage.OwnedAllocationStore
+	storage.PaperAccountStore
+	storage.AllocationPolicyStore
 	storage.FeedCollectorStore
 	storage.FeedEvidenceStore
 	storage.CollectorSubmissionStore
@@ -122,6 +131,44 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if first.Record.Validate() != nil || first.Record.Evaluation.Action != "entry_candidate" || first.Record.Evaluation.PriceCents != 10000 || !first.Record.Evaluation.Signal || first.Record.ExecutionAvailable || first.Record.AdmissionAvailable || first.Record.QualificationCredit {
 		t.Fatal(first)
 	}
+	// Actual public finalizer -> owner-selected funding policy -> atomic retained
+	// comparison. No public proposal, balance or admission assertion is involved.
+	account, err := s.CreatePaperAccount(ctx, owner, paperaccount.Config{ID: "allocation-owner", Currency: "USD", OpeningCashCents: 200000, CapitalLimitCents: 200000}, clock.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := allocation.PolicyCommand{ReceiverID: owner, AccountID: account.Account.Config.ID, Policy: allocation.Policy{ID: "owner-policy", AccountSHA256: account.Account.SHA256, MaxSnapshotAgeSeconds: 60, Strategies: []allocation.Strategy{{ID: d.ID, ArtifactSHA256: strategy.Record.DefinitionSHA256, LimitCents: 200000}}, Symbols: []allocation.Symbol{{ID: d.Symbol, LimitCents: 200000, Groups: []string{}}}, Groups: []allocation.Group{}}}
+	if _, err = s.RegisterAllocationPolicy(ctx, policy, clock.Now); err != nil {
+		t.Fatal(err)
+	}
+	compare := storage.OwnedAllocationCommand{ID: "compare-first", ReceiverID: owner, Decisions: []storage.OwnedDecisionPin{{ID: first.Record.Command.ID, SHA256: first.Record.SHA256}}}
+	var allocationFirst, allocationRetry storage.OwnedAllocationReceipt
+	if err = json.Unmarshal(request("POST", "/v1/allocation-comparisons", compare, 201), &allocationFirst); err != nil {
+		t.Fatal(err)
+	}
+	if allocationFirst.Record.ExecutionAvailable || allocationFirst.Record.QualificationCredit || allocationFirst.Record.Entry.Plan == nil || allocationFirst.Record.Entry.Plan.Decisions[0].Status != "defer" || allocationFirst.Record.Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
+		t.Fatal(allocationFirst)
+	}
+	clock.panicRead = true
+	if err = json.Unmarshal(request("POST", "/v1/allocation-comparisons", compare, 200), &allocationRetry); err != nil || !allocationRetry.Duplicate || !reflect.DeepEqual(allocationFirst.Record, allocationRetry.Record) {
+		t.Fatal(allocationRetry, err)
+	}
+	clock.panicRead = false
+	compareRaw, _ := json.Marshal(compare)
+	for _, field := range []string{`"account_id":"allocation-owner",`, `"Snapshot":{},`, `"admissions":[],`, `"effect":{},`, `"balance_cents":100,`, `"policy_id":"owner-policy",`} {
+		request("POST", "/v1/allocation-comparisons", strings.Replace(string(compareRaw), `"id":`, field+`"id":`, 1), 422)
+	}
+	request("POST", "/v1/allocation-comparisons?", compare, 422)
+	request("GET", "/v1/allocation-comparisons?at=future", nil, 422)
+	var allocationCatalog storage.OwnedAllocationCatalog
+	_ = json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &allocationCatalog)
+	if len(allocationCatalog.Records) != 1 || len(allocationCatalog.Ledgers) != 1 {
+		t.Fatal(allocationCatalog)
+	}
+	projection, err := allocation.ReplayLedger(ctx, allocationCatalog.Ledgers[0])
+	if err != nil || projection.Snapshot.AvailableCashCents != 200000 || len(projection.Snapshot.Orders) != 0 || len(projection.Snapshot.Positions) != 0 {
+		t.Fatal(projection, err)
+	}
 	clock.panicRead = true
 	if err := json.Unmarshal(request("POST", "/v1/paper-decisions", command, 200), &retry); err != nil || !retry.Duplicate || !reflect.DeepEqual(first.Record, retry.Record) {
 		t.Fatal(retry, err)
@@ -188,5 +235,60 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	after, _ := s.Snapshot(ctx)
 	if before.ObservationCount != after.ObservationCount || !reflect.DeepEqual(before.Events, after.Events) || !reflect.DeepEqual(before.State.Case, after.State.Case) || !reflect.DeepEqual(before.State.Actions, after.State.Actions) {
 		t.Fatal("finalization changed operational state")
+	}
+}
+
+// Disposable integration only; no development/production database is accepted.
+func TestPostgresContractsOwnedDecisionAllocationHTTP(t *testing.T) {
+	base := os.Getenv("MANTIK_TEST_DATABASE_URL")
+	if base == "" {
+		t.Skip("use make test-integration")
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := "mantik_test_owned_allocation_http_" + strings.ToLower(rand.Text())
+	if _, err = conn.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{db}.Sanitize()+" TEMPLATE template0"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, e := conn.Exec(ctx, "DROP DATABASE "+pgx.Identifier{db}.Sanitize()+" WITH (FORCE)")
+		if e != nil {
+			t.Error(e)
+		}
+		_ = conn.Close(ctx)
+	})
+	u.Path = "/" + db
+	s, err := storage.OpenPostgres(ctx, u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	ownedPaperDecisionHTTP(t, s)
+	s.Close()
+	reopened, err := storage.OpenPostgres(ctx, u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	clock := &ownedDecisionClock{panicRead: true}
+	server := httptest.NewServer(service.HandlerWithClock(reopened, "restart-token", clock))
+	defer server.Close()
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/allocation-comparisons", nil)
+	req.Header.Set("Authorization", "Bearer restart-token")
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var got storage.OwnedAllocationCatalog
+	if err = json.NewDecoder(response.Body).Decode(&got); err != nil || response.StatusCode != 200 || len(got.Records) != 1 || len(got.Ledgers) != 1 || got.Records[0].Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
+		t.Fatal(got, err, response.StatusCode)
 	}
 }

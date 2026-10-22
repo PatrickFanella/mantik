@@ -1,0 +1,69 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"time"
+
+	"git.subcult.tv/subculture-collective/mantik/internal/storage"
+	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
+)
+
+func ownedAllocationError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, storage.ErrOwnedAllocationInvalid):
+		write(w, 422, map[string]string{"error": "invalid owned allocation comparison"})
+	case errors.Is(err, storage.ErrOwnedAllocationConflict), errors.Is(err, storage.ErrOwnedAllocationCapacity), errors.Is(err, storage.ErrReceiverMismatch):
+		write(w, 409, map[string]string{"error": err.Error()})
+	default:
+		write(w, 503, map[string]string{"error": "owned allocation storage unavailable"})
+	}
+}
+func ownedAllocationRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
+	backend, ok := store.(storage.OwnedAllocationStore)
+	if !ok {
+		return
+	}
+	mux.HandleFunc("POST /v1/allocation-comparisons", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "" || r.URL.ForceQuery {
+			ownedAllocationError(w, storage.ErrOwnedAllocationInvalid)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 8192)
+		defer r.Body.Close()
+		raw, err := io.ReadAll(r.Body)
+		var c storage.OwnedAllocationCommand
+		if err != nil || workerplan.ReadBoundedShape(raw, &c, 8192) != nil || c.Validate() != nil {
+			ownedAllocationError(w, storage.ErrOwnedAllocationInvalid)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		result, err := backend.CompareOwnedAllocation(ctx, c, clock.Now, evaluateOwnedPaperDecision)
+		if err != nil {
+			ownedAllocationError(w, err)
+			return
+		}
+		code := 201
+		if result.Duplicate {
+			code = 200
+		}
+		write(w, code, result)
+	})
+	mux.HandleFunc("GET /v1/allocation-comparisons", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "" || r.URL.ForceQuery {
+			ownedAllocationError(w, storage.ErrOwnedAllocationInvalid)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		result, err := backend.OwnedAllocations(ctx, evaluateOwnedPaperDecision)
+		if err != nil {
+			ownedAllocationError(w, err)
+			return
+		}
+		write(w, 200, result)
+	})
+}

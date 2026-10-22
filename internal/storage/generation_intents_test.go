@@ -325,7 +325,7 @@ func TestPostgresContractsGenerationIntentUpgrade(t *testing.T) {
 	}
 	state, _ := s.Snapshot(ctx)
 	registry, _ := s.CandidateRegistry(ctx)
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_paper_decisions; DROP TABLE mantik_paper_strategies; DROP TABLE mantik_allocation_policies; ALTER TABLE mantik_candidate_registrations DROP COLUMN generation_link_sha256 CASCADE; DROP TABLE mantik_generated_candidate_links; DROP TABLE mantik_candidate_generation_outcomes; DROP TABLE mantik_candidate_generation_datasets; DROP TABLE mantik_candidate_generation_intents; DELETE FROM mantik_schema WHERE version>=33"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_owned_allocations; DROP TABLE mantik_paper_decisions; DROP TABLE mantik_paper_strategies; DROP TABLE mantik_allocation_policies; ALTER TABLE mantik_candidate_registrations DROP COLUMN generation_link_sha256 CASCADE; DROP TABLE mantik_generated_candidate_links; DROP TABLE mantik_candidate_generation_outcomes; DROP TABLE mantik_candidate_generation_datasets; DROP TABLE mantik_candidate_generation_intents; DELETE FROM mantik_schema WHERE version>=33"); err != nil {
 		t.Fatal(err)
 	}
 	config := s.pool.Config().ConnString()
