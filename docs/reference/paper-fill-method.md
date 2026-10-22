@@ -62,8 +62,9 @@ The identity includes symbol, market timestamp, bid/ask prices and quantities;
 capture IDs, receipt time and source hash changes cannot replenish that update.
 A new distinct update may supply the declared fraction again. This is a quote-
 based liquidity assumption; queue position, hidden depth and venue matching are
-unsupported. The execution owner must allocate liquidity across competing orders;
-this per-order method does not provide a shared order book or portfolio lock.
+unsupported. The per-order method does not allocate shared liquidity. The
+internal shared-book method below supplies that dependency; a service owner must
+still bind it to actual retained evidence, capital and atomic persistence.
 
 ## Journal and ownership
 
@@ -98,3 +99,48 @@ signed proceeds, duplicate/conflicting commands, corruption, capacity and JSON
 reconstruction. Seeded multi-step scenarios check quantity and cost conservation;
 concurrent calls check that the pure method does not mutate shared input values.
 The full operational acceptance criteria of #19, #20 and #21 remain open.
+
+## Shared displayed-liquidity book
+
+`NewBook`, `ApplyBook` and `ReplayBook` implement the distinct aggregate method
+`usd-equity-shared-displayed-quote-v1`. A book declares one model and one immutable,
+ID-sorted list of at most 32 orders. Lexical order ID determines priority. This
+is an explicit simulation assumption, not venue queue priority or an allocation
+ranking. All orders must use the same caller mode; symbols may differ.
+
+A quote command visits working orders for its symbol in that declared order.
+Eligible buys share the whole-share floor of the model's ask-liquidity fraction;
+sells independently share the bid fraction. Only actual modeled fills consume
+that allowance. An untriggered stop, nonmarketable limit, fee-limited partial or
+ineligible order leaves the remaining allowance for later orders. Other symbols
+do not consume it. The original quote, source hash and market-update identity
+remain intact; the method caps execution without fabricating a smaller quote.
+
+Consumption is retained across commands under the same market-update identity.
+New capture IDs, source hashes, receipt times and evidence-class labels do not
+replenish an economically identical update. A distinct market update supplies a
+new allowance under the declared quote-based assumption. Quote IDs remain
+immutable across all orders, including when no order can fill. Unusable quotes
+retain the per-order suppression rules.
+
+A command can instead cancel one working order by ID or advance eligible orders
+with a quote-free tick. Exact retries return the historical outcomes and current
+projection after full replay. The hash-linked journal regenerates every outcome
+and shared allowance. Invalid inputs and conflicts return no partial aggregate.
+The method is pure and returns detached values; a concurrent service writer must
+serialize and atomically retain it with allocation and effects.
+
+The bound is 128 commands and 8 MiB without eviction. Exact retries work at
+capacity. This finite kernel has no reserved protective/recovery capacity and
+must not be installed as a protective worker queue. Authority is
+`owner_supplied_shared_paper_fill_method_only`, with false execution attestation
+and qualification credit. There is no public book writer, CLI, database migration
+or operational activation. Provider-size normalization, service-owned admission,
+funded reservations, atomic effect/ledger persistence and recovery remain
+unfinished under #19/#20/#21/#25.
+
+Tests check shared bid/ask conservation, capture aliases, stable priority,
+fee-limited fills, ineligible orders, symbol isolation, unusable-quote suppression,
+single-order parity with the existing method, historical retries, cancellation,
+self-rehashed corruption, bounded retention, JSON replay and concurrent immutable
+calls. Seeded scenarios check quantities, costs and debit ceilings.
