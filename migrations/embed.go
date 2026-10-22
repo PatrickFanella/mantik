@@ -145,3 +145,6 @@ var OwnedExecutionCosts string
 
 //go:embed 0044_owned_protective_funding.sql
 var OwnedProtectiveFunding string
+
+//go:embed 0045_decision_reviews.sql
+var DecisionReviews string

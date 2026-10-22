@@ -154,6 +154,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	for _, q := range []string{"?", "?prompt=claim-profit", "?model=unavailable", "?action=execute", "?as_of=tomorrow"} {
 		request("GET", "/v1/paper-decisions/"+command.ID+"/explanation"+q, nil, 422)
 	}
+	decisionReviewHTTP(t, request, server.URL, clock, first.Record)
 	request("GET", "/v1/paper-decisions/missing/explanation", nil, 404)
 	unauth, err := http.Get(server.URL + "/v1/paper-decisions/" + command.ID + "/explanation")
 	if err != nil {

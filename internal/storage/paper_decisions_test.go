@@ -18,6 +18,7 @@ import (
 type decisionBackend interface {
 	strategyBackend
 	PaperDecisionStore
+	DecisionReviewStore
 	FeedCollectorStore
 }
 
@@ -70,6 +71,7 @@ func ownedDecisionContracts(t *testing.T, s decisionBackend) {
 		t.Fatal(all, err)
 	}
 	first := all.Records[0]
+	decisionReviewContracts(t, s, first, at.Add(2*time.Second), eval)
 	if first.AdmissionAvailable || first.ExecutionAvailable || first.QualificationCredit {
 		t.Fatal(first)
 	}
@@ -148,6 +150,9 @@ func ownedDecisionContracts(t *testing.T, s decisionBackend) {
 	damaged.Record.SHA256 = ""
 	damaged.Record.SHA256 = workerplan.Hash(damaged.Record)
 	set(damaged)
+	if _, err := s.DecisionReviews(ctx, eval); err == nil {
+		t.Fatal("review read accepted a forged actual decision")
+	}
 	if _, err := s.PaperDecisions(ctx, eval); err == nil {
 		t.Fatal("self-hashed execution forgery accepted")
 	}
@@ -189,7 +194,7 @@ func TestPostgresContractsOwnedDecisionUpgrade(t *testing.T) {
 	accounts, _ := s.PaperAccounts(ctx)
 	policies, _ := s.AllocationPolicies(ctx)
 	cfg := s.pool.Config().ConnString()
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_social_watch_journal; DROP TABLE mantik_paper_outcomes; DROP TABLE mantik_owned_allocations; DROP TABLE mantik_paper_decisions; DELETE FROM mantik_schema WHERE version>=38"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_decision_reviews; DROP TABLE mantik_social_watch_journal; DROP TABLE mantik_paper_outcomes; DROP TABLE mantik_owned_allocations; DROP TABLE mantik_paper_decisions; DELETE FROM mantik_schema WHERE version>=38"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

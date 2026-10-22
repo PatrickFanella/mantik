@@ -178,7 +178,7 @@ func TestPostgresContractsSocialUpgradeRollback(t *testing.T) {
 	before, _ := s.Snapshot(ctx)
 	accounts, _ := s.PaperAccounts(ctx)
 	cfg := s.pool.Config().ConnString()
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_social_watch_journal; DELETE FROM mantik_schema WHERE version>=41"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_decision_reviews; DROP TABLE mantik_social_watch_journal; DELETE FROM mantik_schema WHERE version>=41"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
