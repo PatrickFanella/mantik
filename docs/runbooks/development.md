@@ -82,7 +82,9 @@ mise exec -- make build
 Use a second terminal with the same token for `status` and the current-time
 fixture ingestion example below. Change credentials and ports to match
 `.env` if customized. `serve` applies embedded migrations through schema version
-5 at startup. It rejects an unsupported database name or changed migration
+37 at startup. Schema 37 adds the [native paper strategy configuration
+registry](../reference/paper-strategies.md) without activating strategies.
+It rejects an unsupported database name or changed migration
 checksum. Version 2 preserves retained events and derives protection for an
 existing open fixture position; missing finalized evidence aborts the upgrade.
 Older binaries cannot write this schema safely. See the

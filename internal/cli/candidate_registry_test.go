@@ -133,6 +133,7 @@ func TestPostgresContractsCandidateRegistryHTTP(t *testing.T) {
 func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() candidateHTTPBackend) {
 	ctx := context.Background()
 	allocationPolicyHTTP(t, s.(policyHTTPBackend))
+	paperStrategyHTTP(t, s.(strategyHTTPBackend))
 	p, raw, pub := candidateHTTPFixture(t, s)
 	before, _ := s.Snapshot(ctx)
 	server := httptest.NewServer(service.Handler(s, "candidate-http-token"))

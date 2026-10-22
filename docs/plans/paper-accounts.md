@@ -51,6 +51,9 @@ across competing proposals remains incomplete.
    history and checks effect/recovery transitions by replay. It has no public
    import or operational writer; service-owned decision, admission and effect
    evidence and durable retention/capacity handling must be integrated next.
+   [Native paper strategy definitions](../reference/paper-strategies.md) now retain
+   a receiver-owned method/configuration/safety record as the next decision
+   binding input. They neither admit a method nor authorize a reservation.
 4. Bind qualified strategy admission and finalized decisions to reservations,
    preserving existing action delivery and independent safety checks. Realistic
    paper execution and qualification are separate gates (#20 and #21).
