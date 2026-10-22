@@ -292,7 +292,7 @@ func TestLedgerRetentionCapacityDoesNotEvictAndRetryStaysClockFree(t *testing.T)
 	l, _, at := ledgerFixture(t)
 	// Empty comparisons still consume retained request identities. Build a full
 	// valid history to exercise its boundary without quadratic append setup.
-	plan, err := Evaluate(context.Background(), l.Policy.Command.Policy, initialLedger(l.Policy).snapshot, []Proposal{}, at)
+	plan, err := Evaluate(context.Background(), l.Policy.Command.Policy, initialLedger(l.Policy, l.Schema).snapshot, []Proposal{}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +390,7 @@ func TestLedgerRefusesUnencodableEvidenceTimes(t *testing.T) {
 			if !errors.Is(err, ErrInvalid) || !reflect.DeepEqual(got, Ledger{}) || !reflect.DeepEqual(p, LedgerProjection{}) || r.Sequence != 0 {
 				t.Fatal("unencodable input produced a ledger", err)
 			}
-			s := initialLedger(l.Policy).snapshot
+			s := initialLedger(l.Policy, l.Schema).snapshot
 			s.Admissions = admissions
 			if _, err := Evaluate(context.Background(), l.Policy.Command.Policy, s, []Proposal{q}, at); !errors.Is(err, ErrInvalid) {
 				t.Fatal("planner accepted unencodable evidence", err)

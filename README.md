@@ -474,6 +474,11 @@ now have atomic Memory/PostgreSQL retention with complete-prefix validation.
 exact output/source bytes. Generated-registration lineage remains unfinished.
 No provider execution or model authorship is asserted.
 
+The [allocation ledger's opt-in v2 contract](docs/reference/allocation-ledger.md#ledger-versions-and-fee-bearing-exits)
+can reconcile exit fees that exceed sale proceeds when available cash funds the
+difference. Existing v1 replay and the service's deferral-only behavior remain
+unchanged; no execution authority is granted.
+
 Service-owned [allocation comparisons](docs/reference/owned-allocation-comparisons.md)
 now retain native decision/policy bindings and replayable deferral ledgers in
 Memory/PostgreSQL. The server selects funding from exact strategy-policy matches;

@@ -31,7 +31,8 @@ adversely upward to cents, and sell slippage rounds downward. A result below one
 cent or above the price bound does not fill. Gross is price times filled shares.
 Variable fees round upward to a cent, then add the fixed per-fill commission.
 Buy debit is gross plus fees. Sell net proceeds are gross less fees and can be
-negative when fees exceed gross. Portfolio accounting must explicitly support and
+negative when fees exceed gross. The internal [v2 allocation ledger](allocation-ledger.md#ledger-versions-and-fee-bearing-exits)
+can reconcile a funded net debit. Portfolio accounting must explicitly select and
 fund that debit before such a model can be admitted for operational use. This
 method does not calculate cost basis or realized PnL.
 

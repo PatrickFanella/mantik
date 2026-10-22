@@ -12,6 +12,10 @@ import (
 )
 
 const LedgerSchema = "mantik-allocation-ledger-core-v1"
+
+// CostLedgerSchema opts into funded negative net proceeds on position closes.
+// Legacy callers keep their existing v1 wire hashes and nonnegative contract.
+const CostLedgerSchema = "mantik-allocation-ledger-core-v2"
 const MaxLedgerEntries = 1024
 
 var ErrLedgerConflict = errors.New("allocation ledger command or evidence identity conflict")
@@ -85,10 +89,20 @@ func ledgerDetach[T any](v T) T {
 	return out
 }
 func NewLedger(p PolicyRecord) (Ledger, error) {
+	return newLedger(p, LedgerSchema)
+}
+
+// NewCostLedger starts a new, explicitly versioned ledger. It does not upgrade
+// old entries or attest an admission/effect. An owner must fund and atomically
+// preflight execution before enacting a receipt that debits available cash.
+func NewCostLedger(p PolicyRecord) (Ledger, error) {
+	return newLedger(p, CostLedgerSchema)
+}
+func newLedger(p PolicyRecord, schema string) (Ledger, error) {
 	if p.Validate() != nil {
 		return Ledger{}, ErrInvalid
 	}
-	l := Ledger{Schema: LedgerSchema, Policy: ledgerDetach(p), Entries: []LedgerEntry{}}
+	l := Ledger{Schema: schema, Policy: ledgerDetach(p), Entries: []LedgerEntry{}}
 	l.SHA256 = workerplan.Hash(l)
 	return l, nil
 }
@@ -103,14 +117,22 @@ type ledgerState struct {
 	head           string
 }
 
-func initialLedger(p PolicyRecord) ledgerState {
-	return ledgerState{snapshot: Snapshot{Account: p.Account, AsOf: p.RegisteredAt, AvailableCashCents: p.Account.Config.OpeningCashCents, Positions: []Exposure{}, Orders: []Exposure{}, Admissions: []Admission{}, Commitments: []Commitment{}}, reservations: []Reservation{}, proposals: map[string]Proposal{}, decisionHashes: map[string]string{}, effects: map[string]bool{}, effectHashes: map[string]bool{}, head: p.SHA256}
+func initialLedger(p PolicyRecord, schema string) ledgerState {
+	head := p.SHA256
+	if schema == CostLedgerSchema {
+		// A schema-only rehash cannot reinterpret a retained v1 entry chain as v2.
+		head = workerplan.Hash(struct {
+			Schema       string `json:"schema"`
+			PolicySHA256 string `json:"policy_sha256"`
+		}{schema, p.SHA256})
+	}
+	return ledgerState{snapshot: Snapshot{Account: p.Account, AsOf: p.RegisteredAt, AvailableCashCents: p.Account.Config.OpeningCashCents, Positions: []Exposure{}, Orders: []Exposure{}, Admissions: []Admission{}, Commitments: []Commitment{}}, reservations: []Reservation{}, proposals: map[string]Proposal{}, decisionHashes: map[string]string{}, effects: map[string]bool{}, effectHashes: map[string]bool{}, head: head}
 }
 func (s *ledgerState) project() LedgerProjection {
 	return ledgerDetach(LedgerProjection{Snapshot: s.snapshot, Reservations: s.reservations, HeadSHA256: s.head, Authority: "owner_supplied_allocation_ledger_core_only"})
 }
 
-func (s *ledgerState) apply(ctx context.Context, p Policy, c LedgerCommand, at time.Time) (*Plan, error) {
+func (s *ledgerState) apply(ctx context.Context, p Policy, c LedgerCommand, at time.Time, schema string) (*Plan, error) {
 	if !id(c.ID) || (c.Comparison == nil) == (c.Effect == nil) || !validTime(at) || at.Before(s.snapshot.AsOf) {
 		return nil, ErrInvalid
 	}
@@ -200,7 +222,12 @@ func (s *ledgerState) apply(ctx context.Context, p Policy, c LedgerCommand, at t
 	case "close":
 		// A known filled position remains closable while an outstanding entry
 		// effect is unknown. Its reserved remainder stays held independently.
-		if !amount(e.AmountCents) || e.AmountCents > r.FilledCents-r.ClosedCostCents || e.ProceedsCents < 0 || e.ProceedsCents > 2*paperaccount.MaxOpeningCashCents {
+		if !amount(e.AmountCents) || e.AmountCents > r.FilledCents-r.ClosedCostCents || e.ProceedsCents < -paperaccount.MaxOpeningCashCents || e.ProceedsCents > 2*paperaccount.MaxOpeningCashCents {
+			return nil, ErrLedgerConflict
+		}
+		// Check the signed bounds first, so negating an untrusted minimum
+		// int64 cannot overflow. Held reservations never count as funding.
+		if e.ProceedsCents < 0 && (schema != CostLedgerSchema || s.snapshot.AvailableCashCents < -e.ProceedsCents) {
 			return nil, ErrLedgerConflict
 		}
 		r.ClosedCostCents += e.AmountCents
@@ -237,7 +264,7 @@ func replayLedger(ctx context.Context, l Ledger) (ledgerState, error) {
 	if err := ctx.Err(); err != nil {
 		return ledgerState{}, err
 	}
-	if l.Schema != LedgerSchema || l.Policy.Validate() != nil || l.Entries == nil || len(l.Entries) > MaxLedgerEntries {
+	if (l.Schema != LedgerSchema && l.Schema != CostLedgerSchema) || l.Policy.Validate() != nil || l.Entries == nil || len(l.Entries) > MaxLedgerEntries {
 		return ledgerState{}, ErrInvalid
 	}
 	sha := l.SHA256
@@ -248,7 +275,7 @@ func replayLedger(ctx context.Context, l Ledger) (ledgerState, error) {
 	if sha != workerplan.Hash(l) {
 		return ledgerState{}, ErrInvalid
 	}
-	s := initialLedger(l.Policy)
+	s := initialLedger(l.Policy, l.Schema)
 	seen := map[string]bool{}
 	for _, entry := range l.Entries {
 		if err := ctx.Err(); err != nil {
@@ -263,7 +290,7 @@ func replayLedger(ctx context.Context, l Ledger) (ledgerState, error) {
 		if h != workerplan.Hash(entry) {
 			return ledgerState{}, ErrInvalid
 		}
-		plan, err := s.apply(ctx, l.Policy.Command.Policy, entry.Command, entry.At)
+		plan, err := s.apply(ctx, l.Policy.Command.Policy, entry.Command, entry.At, l.Schema)
 		if err != nil || !reflect.DeepEqual(plan, entry.Plan) {
 			return ledgerState{}, ErrInvalid
 		}
@@ -321,7 +348,7 @@ func AppendLedger(ctx context.Context, l Ledger, c LedgerCommand, now func() tim
 		return fail(ErrInvalid)
 	}
 	at := now().UTC()
-	plan, err := s.apply(ctx, l.Policy.Command.Policy, c, at)
+	plan, err := s.apply(ctx, l.Policy.Command.Policy, c, at, l.Schema)
 	if err != nil {
 		return fail(err)
 	}
