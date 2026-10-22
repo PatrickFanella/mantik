@@ -149,3 +149,37 @@ The allocation core can preflight entry debits from a fully replayed shared
 book through `ApplyEntryFillBook`; see the [entry-fill binding contract](allocation-ledger.md#replayed-entry-fill-binding).
 It requires existing reservations and an exact owner model. This internal
 composition does not provide a durable service execution owner or admission.
+
+## Conservative occurrence capacity
+
+`paperfill.NewOccurrenceBook` selects the explicit
+`usd-equity-shared-occurrence-quote-v2` book method. Within one owner-selected
+provider/feed stream, all usable quotes at the same canonical symbol and UTC
+occurrence time share one bid capacity and one ask capacity. Capture IDs,
+receipt times, evidence labels, raw pins, price corrections and size increases
+cannot replenish either capacity. The first available usable quote sets each
+side's participation-adjusted capacity; subsequent corrections can only reduce
+it. Capacity is recorded even if no order fills. When a correction reduces it
+below quantity already consumed, remaining capacity is zero; historical fills
+stay in the journal. A later occurrence receives a separate budget.
+
+Future or quarantined quotes do not establish capacity. Original source quotes
+remain unchanged in book commands and fill evidence. Replay rederives the
+capacity history, fees and outcomes. This conservative timestamp rule may
+understate liquidity when a provider reports multiple real updates at one
+timestamp; it does not attest venue liquidity or independence across feeds.
+The execution owner must select a single provider/feed stream and validate
+whole-share sizes, availability and provenance before constructing a book.
+
+`NewBook` and `usd-equity-shared-displayed-quote-v1` retain their original
+market-update arithmetic and serialized replay. Version 1 distinguishes price
+and size corrections as separate market updates; new financial owners must
+explicitly choose their intended method rather than silently rewriting old
+books. `RootBook` preserves the selected method when deriving entry-debit and
+exit-proceeds bindings. Changing the method cannot relabel a retained hash
+chain or its posted financial effects.
+
+Both methods remain internal, owner-supplied simulation reducers. This change
+adds no source importer, HTTP/CLI writer, admission, order owner, durable
+financial commit or qualification. The real service execution/recovery owners
+and applicable evaluation/admission remain unfinished under #19/#20/#21.

@@ -45,7 +45,7 @@ func ApplyExitFillBook(ctx context.Context, ledger Ledger, entries, exits paperf
 	if !reflect.DeepEqual(checked, ledger) || !reflect.DeepEqual(entries.Model, exits.Model) {
 		return fail(ErrLedgerConflict)
 	}
-	root, err := paperfill.NewBook(exits.Model, exits.Orders)
+	root, err := paperfill.RootBook(exits)
 	if err != nil {
 		return fail(err)
 	}
