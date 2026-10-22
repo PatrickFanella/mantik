@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
@@ -136,11 +137,11 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	first := original.Records[0]
 	assertOwnedReadiness(t, first, decision.Record, strategy.Record, input.ID, d.InputEvidenceClass, "deferred")
 	if withModel {
-		if len(first.ExecutionCosts) != 1 || first.Schema != "mantik-owned-allocation-deferral-v3" {
+		if len(first.ExecutionCosts) != 1 || first.Schema != "mantik-owned-allocation-deferral-v4" {
 			t.Fatal(first)
 		}
 		cost := first.ExecutionCosts[0]
-		if cost.Quantity != d.Quantity || cost.MaxDebitCents != d.Quantity*10023 || cost.FeeCeilingCents != d.Quantity*23 || cost.LimitCents != 10000 || cost.ModelSHA256 != workerplan.Hash(*p.ExecutionModel) || cost.QuoteInputID != input.ID || first.Entry.Plan.Decisions[0].Proposal.NotionalCents != cost.MaxDebitCents {
+		if cost.Quantity != d.Quantity || cost.MaxDebitCents != d.Quantity*10023 || cost.FeeCeilingCents != d.Quantity*23 || cost.LimitCents != 10000 || cost.ModelSHA256 != workerplan.Hash(*p.ExecutionModel) || cost.QuoteInputID != input.ID || cost.ProtectiveFunding == nil || cost.ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || cost.ProtectiveFunding.TotalFundingCents != cost.MaxDebitCents+d.Quantity*3 || first.Entry.Plan.Decisions[0].Proposal.NotionalCents != cost.ProtectiveFunding.TotalFundingCents {
 			t.Fatal(cost)
 		}
 	}
@@ -272,6 +273,65 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			}
 		}
 	}
+	if withModel {
+		// Reconstruct the prior v3 journal from the same actual owner sources.
+		// New v4 records must coexist without changing the old entry amount/hash.
+		legacy := clone(journal)
+		legacy.Records = legacy.Records[:1]
+		old := &legacy.Records[0].Record
+		old.Schema = "mantik-owned-allocation-deferral-v3"
+		old.ExecutionCosts[0].ProtectiveFunding = nil
+		old.ExecutionCosts[0].SHA256 = ""
+		old.ExecutionCosts[0].SHA256 = workerplan.Hash(old.ExecutionCosts[0])
+		cmd := clone(old.Entry.Command)
+		cmd.Comparison.Proposals[0].NotionalCents = old.ExecutionCosts[0].MaxDebitCents
+		priorPolicy := legacy.Records[0].Policies.Records[0]
+		ledger, e := allocation.NewLedger(priorPolicy)
+		if e != nil {
+			t.Fatal(e)
+		}
+		ledger, _, _, e = allocation.AppendLedger(ctx, ledger, cmd, func() time.Time { return old.At })
+		if e != nil {
+			t.Fatal(e)
+		}
+		old.Entry = ledger.Entries[0]
+		old.LedgerSHA256 = ledger.SHA256
+		old.SHA256 = ""
+		old.SHA256 = workerplan.Hash(*old)
+		encoded, _ := json.Marshal(old.ExecutionCosts[0])
+		var wire map[string]json.RawMessage
+		if json.Unmarshal(encoded, &wire) != nil || wire["protective_funding"] != nil {
+			t.Fatal("v3 wire changed")
+		}
+		writeJournal(legacy)
+		retry, e := s.CompareOwnedAllocation(ctx, c, noClock, eval)
+		if e != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, *old) {
+			t.Fatal("v3 retry", e)
+		}
+		// An old decision cannot acquire a changed immutable proposal amount.
+		incompatible := clone(c)
+		incompatible.ID = "changed-old-budget"
+		if _, e = s.CompareOwnedAllocation(ctx, incompatible, now, eval); !errors.Is(e, ErrOwnedAllocationConflict) {
+			t.Fatal("old budget was reinterpreted", e)
+		}
+		freshDecision := decision.Record.Command
+		freshDecision.ID = "fresh-protected-decision"
+		finalized, e := s.FinalizePaperDecision(ctx, freshDecision, now, eval)
+		if e != nil {
+			t.Fatal(e)
+		}
+		mixedCommand := clone(c)
+		mixedCommand.ID = "mixed-funding"
+		mixedCommand.Decisions = []OwnedDecisionPin{{ID: finalized.Record.Command.ID, SHA256: finalized.Record.SHA256}}
+		if _, e = s.CompareOwnedAllocation(ctx, mixedCommand, now, eval); e != nil {
+			t.Fatal(e)
+		}
+		mixed, e := s.OwnedAllocations(ctx, eval)
+		if e != nil || len(mixed.Records) != 2 || !reflect.DeepEqual(mixed.Records[0], *old) || mixed.Records[1].Schema != "mantik-owned-allocation-deferral-v4" {
+			t.Fatal("mixed v3/v4", e)
+		}
+		writeJournal(journal)
+	}
 	// Old records retain the original v1 JSON/hash contract in a mixed journal.
 	if !withModel {
 		legacy := clone(journal)
@@ -297,7 +357,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	}
 	if withModel {
 		for _, mutate := range []func(*OwnedExecutionCost){
-			func(c *OwnedExecutionCost) { c.MaxDebitCents-- }, func(c *OwnedExecutionCost) { c.FeeCeilingCents = 0 }, func(c *OwnedExecutionCost) { c.ModelSHA256 = workerplan.Hash("other") }, func(c *OwnedExecutionCost) { c.LimitCents++ },
+			func(c *OwnedExecutionCost) { c.ProtectiveFunding.ExitShortfallCeilingCents-- }, func(c *OwnedExecutionCost) { c.ProtectiveFunding.TotalFundingCents-- }, func(c *OwnedExecutionCost) { c.ProtectiveFunding = nil }, func(c *OwnedExecutionCost) { c.MaxDebitCents-- }, func(c *OwnedExecutionCost) { c.FeeCeilingCents = 0 }, func(c *OwnedExecutionCost) { c.ModelSHA256 = workerplan.Hash("other") }, func(c *OwnedExecutionCost) { c.LimitCents++ },
 		} {
 			bad := clone(journal)
 			r := &bad.Records[0].Record
@@ -414,7 +474,7 @@ func TestPostgresContractsOwnedAllocationUpgradeRollback(t *testing.T) {
 
 func assertOwnedReadiness(t *testing.T, r OwnedAllocationRecord, decision PaperDecisionRecord, strategy paperstrategy.Record, quote, class, status string) {
 	t.Helper()
-	if (r.Schema != "mantik-owned-allocation-deferral-v2" && r.Schema != "mantik-owned-allocation-deferral-v3") || len(r.AdmissionChecks) != 1 {
+	if (r.Schema != "mantik-owned-allocation-deferral-v2" && r.Schema != "mantik-owned-allocation-deferral-v3" && r.Schema != "mantik-owned-allocation-deferral-v4") || len(r.AdmissionChecks) != 1 {
 		t.Fatal(r)
 	}
 	c := r.AdmissionChecks[0]

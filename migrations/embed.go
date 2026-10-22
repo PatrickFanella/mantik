@@ -142,3 +142,6 @@ var OwnedAdmissionChecks string
 
 //go:embed 0043_owned_execution_costs.sql
 var OwnedExecutionCosts string
+
+//go:embed 0044_owned_protective_funding.sql
+var OwnedProtectiveFunding string

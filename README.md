@@ -493,6 +493,9 @@ clients supply retained decision IDs and pins. Optional immutable policy executi
 models now bind full buy debit ceilings, including worst-case whole-share partial
 fees, to actual finalized proposals. Admission and execution bindings
 remain incomplete, so these comparisons cannot reserve cash or create orders.
+Model-bearing comparisons also bind entry debit plus worst supported protective
+exit shortfall into the proposal funding requirement. These remain deferrals;
+no cash is reserved and no execution authority is issued.
 
 The opt-in [automatic outcome worker](docs/reference/owned-paper-outcomes.md#automatic-sealed-collection)
 (`serve --automatic-paper-outcomes`) now seals one retained forward quote outcome

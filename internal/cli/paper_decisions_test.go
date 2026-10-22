@@ -183,7 +183,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if allocationFirst.Record.ExecutionAvailable || allocationFirst.Record.QualificationCredit || allocationFirst.Record.Entry.Plan == nil || allocationFirst.Record.Entry.Plan.Decisions[0].Status != "defer" || allocationFirst.Record.Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
 		t.Fatal(allocationFirst)
 	}
-	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v3" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10023 {
+	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v4" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
 		t.Fatal(allocationFirst)
 	}
 	checks := allocationFirst.Record.AdmissionChecks
@@ -196,7 +196,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	}
 	clock.panicRead = false
 	compareRaw, _ := json.Marshal(compare)
-	for _, field := range []string{`"execution_costs":[],`, `"execution_model":{},`, `"admission_checks":[],`, `"account_id":"allocation-owner",`, `"Snapshot":{},`, `"admissions":[],`, `"effect":{},`, `"balance_cents":100,`, `"policy_id":"owner-policy",`} {
+	for _, field := range []string{`"protective_funding":{},`, `"execution_costs":[],`, `"execution_model":{},`, `"admission_checks":[],`, `"account_id":"allocation-owner",`, `"Snapshot":{},`, `"admissions":[],`, `"effect":{},`, `"balance_cents":100,`, `"policy_id":"owner-policy",`} {
 		request("POST", "/v1/allocation-comparisons", strings.Replace(string(compareRaw), `"id":`, field+`"id":`, 1), 422)
 	}
 	request("POST", "/v1/allocation-comparisons?", compare, 422)

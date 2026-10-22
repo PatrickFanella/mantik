@@ -153,7 +153,7 @@ paper-fill method bounds. The model is pinned even when some of its parameters d
 not affect this debit ceiling. It does not normalize provider size units or
 estimate real venue fills.
 
-New comparisons for these policies use `mantik-owned-allocation-deferral-v3` and
+Schema-43 comparisons for these policies use `mantik-owned-allocation-deferral-v3` and
 retain `execution_costs` with decision/model/quote pins, reference price, limit,
 quantity, gross/fee/debit ceilings and original expiry. The allocation core
 compares the full debit ceiling as the proposal amount, so account and strategy
@@ -171,3 +171,47 @@ proposals, reserve no cash and create no order or effect. Actual normalized sour
 quotes, applicable evaluation/admission, shared execution ownership, atomic funded
 ledger/effect persistence and protective recovery remain unfinished. This cost
 binding does not complete #19, #20 or #21.
+
+## Protective exit funding
+
+New model-bearing comparisons use `mantik-owned-allocation-deferral-v4`. Their
+execution costs also retain `protective_funding`, derived from the same actual
+owner model and strategy quantity. This separates the entry order's
+`max_debit_cents` from the total capital required before a future entry could be
+funded. The proposal amount is `protective_funding.total_funding_cents`.
+
+A sale can have negative net proceeds when commissions exceed its proceeds.
+For the supported whole-share fill method, there can be at most one fill per
+share, prices are at least one cent, and percentage fees are at most 1,000 basis
+points. The maximum shortfall per share is:
+
+```text
+max(0, commission_per_fill_cents - 1 + (fee_bps > 0 ? 1 : 0))
+```
+
+Multiply this by registered quantity to obtain `exit_shortfall_ceiling_cents`;
+add it to the entry maximum debit to obtain `total_funding_cents`. One-cent,
+one-share partial fills attain this bound. Larger proceeds can pay their own
+fees. Spread and stop gaps can worsen prices but cannot cross the method's
+one-cent supported execution floor. Missing prices, an unfilled stop-limit,
+expiry and unresolved delivery do not imply that an exit occurred.
+
+The combined amount must fit the method's money bounds. Replay derives every
+field from immutable owner records. A self-rehashed smaller shortfall, changed
+recipe or removed protective object fails validation. Client requests still
+accept only decision IDs and pins; they cannot select budgets or balances.
+
+Schema 44 fences writers that cannot preserve this field. Prior v3 records keep
+their omitted protective object, original entry-only amount and wire hashes.
+Exact retries remain historical. A different comparison cannot change the
+proposal amount of a decision already retained under v3; it returns a conflict
+when the new budget differs. A new owner-finalized decision is required for a
+new funding requirement. Mixed journals can retain v3 and v4 records for distinct
+decisions. Rollback requires stopping the new writer and restoring the retained
+pre-upgrade backup with its matching schema-43 binary.
+
+This binds a funding requirement, not a reservation. Admission remains
+unavailable; no cash, position, order or effect changes. A funded execution owner
+must keep protective cash separate from the entry debit, preflight and reconcile
+actual fills atomically, and retain recovery capacity before activation. This
+change does not complete #19, #20 or #21 and supplies no qualification credit.

@@ -63,3 +63,21 @@ func TestExecutionCostBoundsPartialFillFees(t *testing.T) {
 		t.Fatal("quantity outside model")
 	}
 }
+
+func TestProtectiveFundingRejectsCombinedOverflow(t *testing.T) {
+	at := time.Date(2026, 10, 22, 14, 0, 0, 0, time.UTC)
+	m := paperfill.Model{Method: paperfill.Method, CommissionPerFillCents: 1000000, LiquidityBPS: 10000, MaxQuoteAgeSeconds: 60}
+	d := strategyDefinition("overflow")
+	d.Quantity = 600000
+	d.EntryAtOrBelowCents = 10000
+	d.Safety.MaxNotionalCents = 6000000000
+	decision := PaperDecisionRecord{Command: PaperDecisionCommand{ID: "decision"}, Evaluation: PaperDecisionEvaluation{PriceCents: 9000}}
+	policy := allocation.PolicyRecord{Command: allocation.PolicyCommand{ExecutionModel: &m}}
+	strategy := paperstrategy.Record{Command: paperstrategy.Command{Definition: d}}
+	if _, err := executionCost(policy, decision, strategy, at); err != nil {
+		t.Fatal("entry alone should fit", err)
+	}
+	if _, err := executionCostWithProtection(policy, decision, strategy, at); err == nil {
+		t.Fatal("combined funding overflow accepted")
+	}
+}

@@ -12,19 +12,43 @@ import (
 // A budget is derived from owner policy and a finalized proposal. It is not an
 // order, reservation, fill, admission or permission to mutate an account.
 type OwnedExecutionCost struct {
-	Method              string    `json:"method"`
-	DecisionID          string    `json:"decision_id"`
-	DecisionSHA256      string    `json:"decision_sha256"`
-	ModelSHA256         string    `json:"model_sha256"`
-	QuoteInputID        string    `json:"quote_input_id"`
-	ReferencePriceCents int64     `json:"reference_price_cents"`
-	LimitCents          int64     `json:"limit_cents"`
-	Quantity            int64     `json:"quantity"`
-	GrossCeilingCents   int64     `json:"gross_ceiling_cents"`
-	FeeCeilingCents     int64     `json:"fee_ceiling_cents"`
-	MaxDebitCents       int64     `json:"max_debit_cents"`
-	ValidUntil          time.Time `json:"valid_until"`
-	SHA256              string    `json:"sha256"`
+	Method              string                  `json:"method"`
+	DecisionID          string                  `json:"decision_id"`
+	DecisionSHA256      string                  `json:"decision_sha256"`
+	ModelSHA256         string                  `json:"model_sha256"`
+	QuoteInputID        string                  `json:"quote_input_id"`
+	ReferencePriceCents int64                   `json:"reference_price_cents"`
+	LimitCents          int64                   `json:"limit_cents"`
+	Quantity            int64                   `json:"quantity"`
+	GrossCeilingCents   int64                   `json:"gross_ceiling_cents"`
+	FeeCeilingCents     int64                   `json:"fee_ceiling_cents"`
+	MaxDebitCents       int64                   `json:"max_debit_cents"`
+	ValidUntil          time.Time               `json:"valid_until"`
+	ProtectiveFunding   *OwnedProtectiveFunding `json:"protective_funding,omitempty"`
+	SHA256              string                  `json:"sha256"`
+}
+
+// This bounds only fees that can exceed sale proceeds under this exact method.
+// A funded execution owner must keep this cash separate from entry reservations.
+type OwnedProtectiveFunding struct {
+	Method                    string `json:"method"`
+	ExitShortfallCeilingCents int64  `json:"exit_shortfall_ceiling_cents"`
+	TotalFundingCents         int64  `json:"total_funding_cents"`
+}
+
+func executionCostWithProtection(policy allocation.PolicyRecord, decision PaperDecisionRecord, strategy paperstrategy.Record, until time.Time) (OwnedExecutionCost, error) {
+	c, err := executionCost(policy, decision, strategy, until)
+	if err != nil {
+		return c, err
+	}
+	shortfall, err := paperfill.ExitShortfallCeiling(*policy.Command.ExecutionModel, c.Quantity)
+	if err != nil || c.MaxDebitCents > paperfill.MaxMoneyCents-shortfall {
+		return OwnedExecutionCost{}, ErrOwnedAllocationInvalid
+	}
+	c.ProtectiveFunding = &OwnedProtectiveFunding{Method: "whole-share-entry-and-exit-shortfall-v1", ExitShortfallCeilingCents: shortfall, TotalFundingCents: c.MaxDebitCents + shortfall}
+	c.SHA256 = ""
+	c.SHA256 = workerplan.Hash(c)
+	return c, nil
 }
 
 func executionCost(policy allocation.PolicyRecord, decision PaperDecisionRecord, strategy paperstrategy.Record, until time.Time) (OwnedExecutionCost, error) {
@@ -58,7 +82,7 @@ func executionCost(policy allocation.PolicyRecord, decision PaperDecisionRecord,
 	c.SHA256 = workerplan.Hash(c)
 	return c, nil
 }
-func ownedExecutionCosts(comparison allocation.Comparison, policy allocation.PolicyRecord, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision) ([]OwnedExecutionCost, error) {
+func ownedExecutionCosts(comparison allocation.Comparison, policy allocation.PolicyRecord, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, protective bool) ([]OwnedExecutionCost, error) {
 	costs := make([]OwnedExecutionCost, 0, len(comparison.Proposals))
 	for _, proposal := range comparison.Proposals {
 		decision, ok := retained[proposal.ID]
@@ -69,8 +93,16 @@ func ownedExecutionCosts(comparison allocation.Comparison, policy allocation.Pol
 		if err != nil || strategy.SHA256 != decision.Record.Command.StrategySHA256 {
 			return nil, ErrOwnedAllocationConflict
 		}
-		cost, err := executionCost(policy, decision.Record, strategy, proposal.ValidUntil)
-		if err != nil || cost.MaxDebitCents != proposal.NotionalCents {
+		derive := executionCost
+		if protective {
+			derive = executionCostWithProtection
+		}
+		cost, err := derive(policy, decision.Record, strategy, proposal.ValidUntil)
+		amount := cost.MaxDebitCents
+		if cost.ProtectiveFunding != nil {
+			amount = cost.ProtectiveFunding.TotalFundingCents
+		}
+		if err != nil || amount != proposal.NotionalCents {
 			return nil, ErrOwnedAllocationInvalid
 		}
 		costs = append(costs, cost)
