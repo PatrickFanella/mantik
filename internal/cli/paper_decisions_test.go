@@ -132,6 +132,36 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if first.Record.Validate() != nil || first.Record.Evaluation.Action != "entry_candidate" || first.Record.Evaluation.PriceCents != 10000 || !first.Record.Evaluation.Signal || first.Record.ExecutionAvailable || first.Record.AdmissionAvailable || first.Record.QualificationCredit {
 		t.Fatal(first)
 	}
+	explanationBefore, _ := s.Snapshot(ctx)
+	var explanation service.DecisionExplanation
+	clock.panicRead = true
+	rawExplanation := request("GET", "/v1/paper-decisions/"+command.ID+"/explanation", nil, 200)
+	clock.panicRead = false
+	if err := json.Unmarshal(rawExplanation, &explanation); err != nil || explanation.DecisionSHA256 != first.Record.SHA256 || explanation.BasisSHA256 != first.Record.BasisSHA256 || explanation.StrategySHA256 != strategy.Record.SHA256 || explanation.ReferencePriceCents != 10000 || explanation.Action != "entry_candidate" || !reflect.DeepEqual(explanation.Coverage, first.Record.Evaluation.Coverage) {
+		t.Fatal(explanation, err)
+	}
+	if explanation.ModelUsed || explanation.AdmissionAvailable || explanation.ExecutionAvailable || explanation.QualificationCredit || explanation.Authority != "finalized_research_decision_explanation_only" {
+		t.Fatal(explanation)
+	}
+	if !strings.Contains(strings.Join(explanation.Statements, " "), "Admission is still required") || !strings.Contains(strings.Join(explanation.Statements, " "), "not a fill price") {
+		t.Fatal(explanation.Statements)
+	}
+	explanationAfter, _ := s.Snapshot(ctx)
+	if !reflect.DeepEqual(explanationBefore, explanationAfter) {
+		t.Fatal("explanation changed operations")
+	}
+	for _, q := range []string{"?", "?prompt=claim-profit", "?model=unavailable", "?action=execute", "?as_of=tomorrow"} {
+		request("GET", "/v1/paper-decisions/"+command.ID+"/explanation"+q, nil, 422)
+	}
+	request("GET", "/v1/paper-decisions/missing/explanation", nil, 404)
+	unauth, err := http.Get(server.URL + "/v1/paper-decisions/" + command.ID + "/explanation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unauth.Body.Close()
+	if unauth.StatusCode != 401 {
+		t.Fatal(unauth.StatusCode)
+	}
 	// Actual public finalizer -> owner-selected funding policy -> atomic retained
 	// comparison. No public proposal, balance or admission assertion is involved.
 	account, err := s.CreatePaperAccount(ctx, owner, paperaccount.Config{ID: "allocation-owner", Currency: "USD", OpeningCashCents: 200000, CapitalLimitCents: 200000}, clock.Now)
@@ -188,6 +218,18 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	_ = json.Unmarshal(request("POST", "/v1/paper-decisions", next, 201), &abstain)
 	if abstain.Record.Evaluation.Action != "abstain" || abstain.Record.Evaluation.PriceCents != 0 {
 		t.Fatal(abstain)
+	}
+	clock.panicRead = true
+	if later := request("GET", "/v1/paper-decisions/"+command.ID+"/explanation", nil, 200); !bytes.Equal(later, rawExplanation) {
+		t.Fatal("later evidence rewrote finalized explanation")
+	}
+	clock.panicRead = false
+	var missingExplanation service.DecisionExplanation
+	if err := json.Unmarshal(request("GET", "/v1/paper-decisions/"+next.ID+"/explanation", nil, 200), &missingExplanation); err != nil || missingExplanation.Action != "abstain" || missingExplanation.ReferencePriceCents != 0 || missingExplanation.ReasonCode != abstain.Record.Evaluation.ReasonCode {
+		t.Fatal(missingExplanation, err)
+	}
+	if strings.Contains(strings.Join(missingExplanation.Statements, " "), "reference price was") {
+		t.Fatal("missing price invented a price", missingExplanation)
 	}
 	request("POST", "/v1/paper-decisions", command, 200)
 	request("GET", "/v1/paper-decisions/"+command.ID, nil, 200)

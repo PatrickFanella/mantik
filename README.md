@@ -485,6 +485,10 @@ Memory/PostgreSQL. The server selects funding from exact strategy-policy matches
 clients supply retained decision IDs and pins. Admission and execution bindings
 remain incomplete, so these comparisons cannot reserve cash or create orders.
 
+Authenticated [finalized-decision explanations](docs/reference/owned-paper-decisions.md#grounded-explanations)
+render retained reasons and evidence pins without a model request or changes to
+decision, admission, allocation or execution authority.
+
 Service-owned [social watches and recordings](docs/reference/owned-social-watches.md)
 bind versioned provider/account policies to exact, explicitly unqualified source
 recordings. Revisions, deletions, repost roots and repeated-claim groups remain
