@@ -103,6 +103,25 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		write(w, 200, all)
 	}
+	mux.HandleFunc("GET /v1/social-recordings/{id}/applicability", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "" || r.URL.ForceQuery {
+			socialWatchError(w, socialwatch.ErrInvalid)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		all, err := backend.SocialHistory(ctx)
+		if err != nil {
+			socialWatchError(w, err)
+			return
+		}
+		result, err := socialwatch.InspectApplicability(socialwatch.Journal{Schema: socialwatch.Schema, ReceiverID: all.ReceiverID, Entries: all.History}, r.PathValue("id"), clock.Now())
+		if err != nil {
+			socialWatchError(w, err)
+			return
+		}
+		write(w, http.StatusOK, result)
+	})
 	mux.HandleFunc("GET /v1/social-history", read)
 	mux.HandleFunc("GET /v1/social-watches/{id}", read)
 }
