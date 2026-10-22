@@ -127,3 +127,6 @@ var PaperStrategies string
 
 //go:embed 0038_paper_decisions.sql
 var PaperDecisions string
+
+//go:embed 0039_owned_allocations.sql
+var OwnedAllocations string
