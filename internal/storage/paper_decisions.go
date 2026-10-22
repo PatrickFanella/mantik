@@ -197,7 +197,7 @@ func verifyPaperDecision(v retainedPaperDecision, strategies paperstrategy.Catal
 // finalized decision. Outcome assessments share this custody check.
 func verifyPaperDecisionBasis(c PaperDecisionCommand, b PaperDecisionBasis, asof time.Time, strategies paperstrategy.Catalog, current FeedEvidenceSnapshot) error {
 	s, err := paperstrategy.Select(strategies, c.StrategyID)
-	if err != nil || !reflect.DeepEqual(s, b.Strategy) || current.ReceiverID != c.ReceiverID {
+	if err != nil || !reflect.DeepEqual(s, b.Strategy) || current.ReceiverID != c.ReceiverID || b.Feed.ReceiverID != c.ReceiverID {
 		return ErrPaperDecisionConflict
 	}
 	e, ok := current.Collectors.Entries[c.RegistrationID]

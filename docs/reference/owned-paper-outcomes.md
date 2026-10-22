@@ -138,3 +138,26 @@ abstentions and capacity. Worker tests retain a failed cycle and its recovery,
 and check cancellation and stopped health. This is automatic decision-outcome
 collection for #21 and a dependency for #19; applicable admission recipes,
 retirement, funded allocation and atomic execution/effects remain unfinished.
+
+## Replay cost and evaluation reuse
+
+A catalogue read still validates every retained decision, outcome command,
+source basis, result and hash against its actual owners. Within that single
+read, repeated pure native evaluations of a completely equal observation basis
+and evaluation clock may reuse the derived value. A digest only selects a
+bucket; full value equality is required before reuse. Distinct clocks or bases
+remain separate, even when JSON encodes them identically. Callback inputs are
+detached, failed evaluations are not cached, and the cache ends with the read. Retained cache inputs total at most 4 MiB
+of serialized basis/clock bytes; inputs beyond that budget are evaluated
+without retention.
+
+Each retained record remains independently validated and retains its original
+bytes, ID, timestamp and evidence class. The reuse does not consolidate outcome
+attempts, grant sample independence, change the five-second HTTP deadline, skip
+source-custody checks or issue admission. This reduces repeated replay work; it
+does not establish the cause of any earlier hosted HTTP 503 by itself.
+
+Historical basis validation also checks that the embedded feed receiver matches
+the decision's receiver. Altering that receiver and recomputing record hashes
+cannot transfer source custody, including for an abstention whose evaluator
+does not inspect prices.
