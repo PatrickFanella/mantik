@@ -88,6 +88,10 @@ type OwnedAllocationStore interface {
 // Resolve all selected decisions to one unambiguous owner policy. Mixed-account
 // and overlapping policy assignments fail closed instead of double reserving.
 func ownedComparison(c OwnedAllocationCommand, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, at time.Time) (allocation.PolicyRecord, allocation.Comparison, error) {
+	return ownedComparisonFunding(c, policies, decisions, strategies, retained, at, true)
+}
+
+func ownedComparisonFunding(c OwnedAllocationCommand, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, at time.Time, protective bool) (allocation.PolicyRecord, allocation.Comparison, error) {
 	out := allocation.Comparison{Proposals: []allocation.Proposal{}, Admissions: []allocation.Admission{}}
 	if c.Validate() != nil || policies.Validate() != nil || policies.ReceiverID != c.ReceiverID || decisions.ReceiverID != c.ReceiverID || strategies.ReceiverID != c.ReceiverID {
 		return allocation.PolicyRecord{}, out, ErrOwnedAllocationInvalid
@@ -141,11 +145,18 @@ func ownedComparison(c OwnedAllocationCommand, policies allocation.PolicyCatalog
 		until := input.Input.OccurredAt.Add(time.Duration(min(d.Safety.MaxQuoteAgeSeconds, 60)) * time.Second)
 		notional := price * d.Quantity
 		if selected.Command.ExecutionModel != nil {
-			cost, err := executionCost(selected, decision, strategy, until)
+			derive := executionCost
+			if protective {
+				derive = executionCostWithProtection
+			}
+			cost, err := derive(selected, decision, strategy, until)
 			if err != nil {
 				return selected, out, err
 			}
 			notional = cost.MaxDebitCents
+			if cost.ProtectiveFunding != nil {
+				notional = cost.ProtectiveFunding.TotalFundingCents
+			}
 		}
 		out.Proposals = append(out.Proposals, allocation.Proposal{ID: pin.ID, DecisionSHA256: pin.SHA256, StrategyID: d.ID, Symbol: d.Symbol, Origin: "research", NotionalCents: notional, ValidUntil: until})
 	}
@@ -180,7 +191,7 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 				return out, ErrOwnedAllocationConflict
 			}
 		}
-		policy, comparison, err := ownedComparison(r.Command, item.Policies, decisions, strategies, retained, r.At)
+		policy, comparison, err := ownedComparisonFunding(r.Command, item.Policies, decisions, strategies, retained, r.At, r.Schema == "mantik-owned-allocation-deferral-v4")
 		if err != nil {
 			return out, err
 		}
@@ -203,14 +214,14 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 			if policy.Command.ExecutionModel != nil {
 				return out, ErrOwnedAllocationInvalid
 			}
-		case "mantik-owned-allocation-deferral-v2", "mantik-owned-allocation-deferral-v3":
+		case "mantik-owned-allocation-deferral-v2", "mantik-owned-allocation-deferral-v3", "mantik-owned-allocation-deferral-v4":
 			expected.Schema = r.Schema
 			expected.AdmissionChecks, err = ownedAdmissionReadiness(comparison, decisions, strategies, retained, r.At)
 			if err != nil {
 				return out, err
 			}
-			if r.Schema == "mantik-owned-allocation-deferral-v3" {
-				expected.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained)
+			if r.Schema == "mantik-owned-allocation-deferral-v3" || r.Schema == "mantik-owned-allocation-deferral-v4" {
+				expected.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained, r.Schema == "mantik-owned-allocation-deferral-v4")
 				if err != nil {
 					return out, err
 				}
@@ -281,6 +292,9 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 	}
 	next, _, receipt, err := allocation.AppendLedger(ctx, ledger, allocation.LedgerCommand{ID: c.ID, Comparison: &comparison}, func() time.Time { return at })
 	if err != nil {
+		if errors.Is(err, allocation.ErrLedgerConflict) {
+			return journal, OwnedAllocationReceipt{}, ErrOwnedAllocationConflict
+		}
 		return journal, OwnedAllocationReceipt{}, err
 	}
 	r := OwnedAllocationRecord{Schema: "mantik-owned-allocation-deferral-v1", Command: clone(c), At: at, PolicySHA256: policy.SHA256, LedgerSHA256: next.SHA256, Entry: next.Entries[receipt.Sequence-1], Authority: "service_owned_allocation_deferral_only"}
@@ -290,8 +304,8 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		return journal, OwnedAllocationReceipt{}, err
 	}
 	if policy.Command.ExecutionModel != nil {
-		r.Schema = "mantik-owned-allocation-deferral-v3"
-		r.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained)
+		r.Schema = "mantik-owned-allocation-deferral-v4"
+		r.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained, r.Schema == "mantik-owned-allocation-deferral-v4")
 		if err != nil {
 			return journal, OwnedAllocationReceipt{}, err
 		}
