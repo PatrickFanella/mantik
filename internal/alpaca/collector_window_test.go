@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
+
+	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -202,7 +205,8 @@ func TestRegularCollectorRealDeadlineBoundsWholeRun(t *testing.T) {
 			out, err := j.RunCollector(context.Background(), client, s, control, receiver)
 			// The deadline starts at intent, so a loaded machine may expire during
 			// calendar acquisition/publication, before any quote. Progress is not a
-			// timing guarantee; stopped state, bounded reads and released authority are.
+			// timing guarantee; stopped acquisition and truthful stop confirmation are.
+			// Cleanup has its own finite deadline and can remain unconfirmed under load.
 			if err == nil || out.State != "stopped" || out.StopCode != "window_deadline" || out.Published > 1 || calendars.Load() > 1 || quotes.Load() > 1 {
 				t.Fatal(out, err, calendars.Load(), quotes.Load())
 			}
@@ -211,11 +215,113 @@ func TestRegularCollectorRealDeadlineBoundsWholeRun(t *testing.T) {
 				t.Fatal(snapshotErr)
 			}
 			lease := snapshot.State.Entries[s.Binding.CollectorRegistrationID].Lease
-			if lease != nil && !lease.Stopped {
-				t.Fatal("deadline left acquired authority active", out, lease)
+			if out.StopConfirmed && (lease == nil || !lease.Stopped) {
+				t.Fatal("confirmed cleanup without a stopped lease", out, lease)
+			}
+			if lease != nil {
+				assertCollectorLeaseExpires(t, snapshot, s)
+			}
+			beforeCalendar, beforeQuotes, beforeControl := calendars.Load(), quotes.Load(), control.calls
+			replay, replayErr := j.RunCollector(context.Background(), client, s, control, receiver)
+			if !errors.Is(replayErr, ErrCollectorStopped) || !reflect.DeepEqual(replay, out) || calendars.Load() != beforeCalendar || quotes.Load() != beforeQuotes || control.calls != beforeControl {
+				t.Fatal("deadline replay repeated acquisition or cleanup", replay, replayErr)
 			}
 			if slowCalendar && (quotes.Load() != 0 || out.Published != 0) {
 				t.Fatal("quote acquired after calendar deadline", out, quotes.Load())
+			}
+		})
+	}
+}
+
+// A terminal acquisition record is not a claim that an unavailable control
+// service acknowledged stop. A retained lease is finite even without that reply.
+func assertCollectorLeaseExpires(t *testing.T, snapshot CollectorSnapshot, spec CollectorSpec) {
+	t.Helper()
+	entry := snapshot.State.Entries[spec.Binding.CollectorRegistrationID]
+	lease := entry.Lease
+	if lease == nil || lease.Generation == 0 || lease.OwnerID != spec.OwnerID || lease.ExpiresAt.After(lease.UpdatedAt.Add(300*time.Second)) || !lease.Stopped && !lease.ExpiresAt.Equal(lease.UpdatedAt.Add(300*time.Second)) {
+		t.Fatal("invalid or unbounded retained lease", lease)
+	}
+	at := lease.ExpiresAt
+	if at.Before(snapshot.State.LastClock) {
+		at = snapshot.State.LastClock
+	}
+	expected := "expired"
+	if lease.Stopped {
+		expected = "stopped"
+	}
+	if status := feedcollector.LeaseStatus(entry, snapshot.State.LastClock, at); status != expected {
+		t.Fatal("lease remained current at expiry", status, lease)
+	}
+	// Check the actual state machine, rather than waiting five minutes or
+	// changing a real service clock. Neither terminal form can renew at expiry.
+	_, _, err := feedcollector.Apply(snapshot.State, feedcollector.Command{RequestID: "deadline-expired-renew", Operation: "renew", RegistrationID: entry.Registration.ID, OwnerID: lease.OwnerID, Generation: lease.Generation}, at)
+	if !errors.Is(err, feedcollector.ErrLeaseLost) {
+		t.Fatal("expired/stopped generation renewed", err)
+	}
+}
+
+type deadlineStopControl struct{ *testCollectorControl }
+
+func (c deadlineStopControl) Command(ctx context.Context, receiver string, cmd feedcollector.Command) (feedcollector.Receipt, error) {
+	if cmd.Operation == "stop" {
+		c.calls++
+		return feedcollector.Receipt{}, context.DeadlineExceeded
+	}
+	return c.testCollectorControl.Command(ctx, receiver, cmd)
+}
+
+func TestRegularCollectorDeadlineWithUnknownStopRetainsTruthAndNeverResumes(t *testing.T) {
+	for _, mode := range []string{"unapplied_stop_timeout", "applied_stop_lost_reply"} {
+		t.Run(mode, func(t *testing.T) {
+			j, s, control, receiver := collectorFixture(t)
+			s.Session.IntervalSeconds = 1
+			s.RegularSession = &RegularSessionWindow{MaxDurationSeconds: 3600}
+			zone, _ := time.LoadLocation("America/New_York")
+			if at := time.Now().In(zone); at.Hour() == 23 && at.Minute() == 59 {
+				t.Skip("manufactured same-day session ends at 23:59")
+			}
+			var backend CollectorControl = deadlineStopControl{control}
+			if mode == "applied_stop_lost_reply" {
+				control.lostStop = true
+				backend = control
+			}
+			var calls atomic.Int32
+			client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				if r.URL.Path == "/v2/calendar" {
+					_, _ = fmt.Fprintf(w, `[{"date":%q,"open":"00:00","close":"23:59"}]`, r.URL.Query().Get("start"))
+					return
+				}
+				_, _ = fmt.Fprint(w, freshQuote())
+			})
+			out, err := j.runCollectorAt(context.Background(), client, s, backend, receiver, func(context.Context, time.Duration) error { return context.DeadlineExceeded }, time.Now)
+			if !errors.Is(err, ErrCollectorStopped) || out.State != "stopped" || out.StopCode != "window_deadline" || out.StopConfirmed || out.Published != 1 || calls.Load() != 2 {
+				t.Fatal("unknown stop became successful completion", out, err, calls.Load())
+			}
+			snapshot, snapshotErr := control.Snapshot(context.Background())
+			if snapshotErr != nil {
+				t.Fatal(snapshotErr)
+			}
+			lease := snapshot.State.Entries[s.Binding.CollectorRegistrationID].Lease
+			if lease == nil || lease.Stopped != (mode == "applied_stop_lost_reply") {
+				t.Fatal("injected stop disposition lost", lease)
+			}
+			assertCollectorLeaseExpires(t, snapshot, s)
+			// The last request must be the exact fenced stop attempt. A missing reply
+			// stays missing; a later inspection may not manufacture a confirmation.
+			var request collectorStep
+			if _, err := j.readCollection(collectorName(s.Session.ID, fmt.Sprintf("step-%03d-request", out.Steps)), &request); err != nil || request.Command.Operation != "stop" || request.Command.Generation != lease.Generation {
+				t.Fatal("stop intent not retained", request, err)
+			}
+			beforeCalls, beforeControl := calls.Load(), control.calls
+			replay, replayErr := j.RunCollector(context.Background(), client, s, backend, receiver)
+			if !errors.Is(replayErr, ErrCollectorStopped) || !reflect.DeepEqual(replay, out) || calls.Load() != beforeCalls || control.calls != beforeControl {
+				t.Fatal("unknown stop was retried or resumed", replay, replayErr)
+			}
+			state, stateErr := receiver.store.Snapshot(context.Background())
+			if stateErr != nil || state.ObservationCount != 0 || len(state.State.Actions.Items) != 0 {
+				t.Fatal("collector reached fixture financial actions", stateErr)
 			}
 		})
 	}
