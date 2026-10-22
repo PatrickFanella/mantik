@@ -71,8 +71,15 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	}
 	// Storage contracts use a pure test evaluator, never an admission issuer.
 	// The HTTP contract separately exercises the actual calendar/price evaluator.
-	eval := func(PaperDecisionCommand, PaperDecisionBasis, time.Time) (PaperDecisionEvaluation, error) {
-		return PaperDecisionEvaluation{Action: "entry_candidate", ReasonCode: "storage_contract_only", PriceCents: 10000, Signal: true, Coverage: domain.MarketCoverageReport{Quote: domain.MarketQuoteCoverage{InputID: input.ID}}}, nil
+	eval := func(c PaperDecisionCommand, b PaperDecisionBasis, _ time.Time) (PaperDecisionEvaluation, error) {
+		quoteID := input.ID
+		if c.ID == "alias-capture" {
+			quoteID = collectorInput(at, "alias-input").ID
+		}
+		if c.ID == "fresh-protected-decision" || c.ID == "fresh-protected-alias" {
+			quoteID = collectorInput(at.Add(500*time.Millisecond), "fresh-protected-input").ID
+		}
+		return PaperDecisionEvaluation{Action: "entry_candidate", ReasonCode: "storage_contract_only", PriceCents: b.Feed.Routing.Inputs[quoteID].Input.PriceCents, Signal: true, Coverage: domain.MarketCoverageReport{Quote: domain.MarketQuoteCoverage{InputID: quoteID}}}, nil
 	}
 	decision, err := s.FinalizePaperDecision(ctx, PaperDecisionCommand{ID: "first", ReceiverID: owner, StrategyID: d.ID, StrategySHA256: strategy.Record.SHA256, RegistrationID: reg.ID}, clock, eval)
 	if err != nil {
@@ -135,6 +142,57 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		}
 	}
 	first := original.Records[0]
+	// A second finalization/request ID must not multiply the same market source
+	// into another proposal. Neither same-batch nor historical alias checks read
+	// a clock, and a failed attempt leaves the atomic comparison journal intact.
+	aliasCommand := decision.Record.Command
+	aliasCommand.ID = "alias-decision"
+	alias, e := s.FinalizePaperDecision(ctx, aliasCommand, now, eval)
+	if e != nil {
+		t.Fatal(e)
+	}
+	aliasComparison := clone(c)
+	aliasComparison.ID = "alias-comparison"
+	aliasComparison.Decisions = []OwnedDecisionPin{{ID: alias.Record.Command.ID, SHA256: alias.Record.SHA256}}
+	if _, e = s.CompareOwnedAllocation(ctx, aliasComparison, noClock, eval); !errors.Is(e, ErrOwnedAllocationConflict) {
+		t.Fatal("same source acquired a new proposal identity", e)
+	}
+	aliasComparison.ID = "alias-batch"
+	aliasComparison.Decisions = append(aliasComparison.Decisions, c.Decisions...)
+	if _, e = s.CompareOwnedAllocation(ctx, aliasComparison, noClock, eval); !errors.Is(e, ErrOwnedAllocationConflict) {
+		t.Fatal("same-batch alias accepted", e)
+	}
+	// Comparisons and alias rejections so far leave operational state untouched.
+	priorCapture, e := s.Snapshot(ctx)
+	if e != nil || !reflect.DeepEqual(before, priorCapture) {
+		t.Fatal("comparison changed operational fixture before source publication", e)
+	}
+	// A new capture ID, raw pin and receipt time still describe one occurrence.
+	aliasInput := collectorInput(at, "alias-input")
+	aliasInput.ReceivedAt = at.Add(time.Millisecond)
+	if _, e = s.SubmitCollectorResearch(ctx, owner, feedcollector.Fence{RegistrationID: reg.ID, OwnerID: "worker-one", Generation: 1}, aliasInput, now); e != nil {
+		t.Fatal(e)
+	}
+	// This explicit feed publication changes routing state. Subsequent
+	// comparison operations must preserve that new source-owned baseline.
+	before, e = s.Snapshot(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	aliasCommand.ID = "alias-capture"
+	alias, e = s.FinalizePaperDecision(ctx, aliasCommand, now, eval)
+	if e != nil || alias.Record.Evaluation.PriceCents != aliasInput.PriceCents || alias.Record.Evaluation.Coverage.Quote.InputID != aliasInput.ID {
+		t.Fatal("alias must resolve its actual new retained capture", e)
+	}
+	aliasComparison.ID = "capture-alias-comparison"
+	aliasComparison.Decisions = []OwnedDecisionPin{{ID: alias.Record.Command.ID, SHA256: alias.Record.SHA256}}
+	if _, e = s.CompareOwnedAllocation(ctx, aliasComparison, noClock, eval); !errors.Is(e, ErrOwnedAllocationConflict) {
+		t.Fatal("capture alias accepted", e)
+	}
+	unchanged, e := s.OwnedAllocations(ctx, eval)
+	if e != nil || !reflect.DeepEqual(unchanged, original) {
+		t.Fatal("alias rejection altered journal", e)
+	}
 	assertOwnedReadiness(t, first, decision.Record, strategy.Record, input.ID, d.InputEvidenceClass, "deferred")
 	if withModel {
 		if len(first.ExecutionCosts) != 1 || first.Schema != "mantik-owned-allocation-deferral-v4" {
@@ -316,9 +374,27 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		}
 		freshDecision := decision.Record.Command
 		freshDecision.ID = "fresh-protected-decision"
+		// Use a genuinely later market occurrence, not a new name for the old
+		// quote, when exercising a fresh v4 comparison after legacy v3 history.
+		freshInput := collectorInput(at.Add(500*time.Millisecond), "fresh-protected-input")
+		if _, e = s.SubmitCollectorResearch(ctx, owner, feedcollector.Fence{RegistrationID: reg.ID, OwnerID: "worker-one", Generation: 1}, freshInput, now); e != nil {
+			t.Fatal(e)
+		}
 		finalized, e := s.FinalizePaperDecision(ctx, freshDecision, now, eval)
 		if e != nil {
 			t.Fatal(e)
+		}
+		freshAliasCommand := freshDecision
+		freshAliasCommand.ID = "fresh-protected-alias"
+		freshAlias, e := s.FinalizePaperDecision(ctx, freshAliasCommand, now, eval)
+		if e != nil {
+			t.Fatal(e)
+		}
+		newBatch := clone(c)
+		newBatch.ID = "new-source-alias-batch"
+		newBatch.Decisions = []OwnedDecisionPin{{ID: freshAlias.Record.Command.ID, SHA256: freshAlias.Record.SHA256}, {ID: finalized.Record.Command.ID, SHA256: finalized.Record.SHA256}}
+		if _, e = s.CompareOwnedAllocation(ctx, newBatch, noClock, eval); !errors.Is(e, ErrOwnedAllocationConflict) {
+			t.Fatal("previously unseen source aliases accepted in one batch", e)
 		}
 		mixedCommand := clone(c)
 		mixedCommand.ID = "mixed-funding"

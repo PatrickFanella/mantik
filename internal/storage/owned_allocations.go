@@ -271,6 +271,9 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 	if len(journal.Records) >= MaxOwnedAllocations {
 		return journal, OwnedAllocationReceipt{}, ErrOwnedAllocationCapacity
 	}
+	if err := ownedProposalSourceAliases(journal, retained, c); err != nil {
+		return journal, OwnedAllocationReceipt{}, err
+	}
 	if now == nil {
 		return journal, OwnedAllocationReceipt{}, ErrOwnedAllocationInvalid
 	}
@@ -321,6 +324,64 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		return journal, OwnedAllocationReceipt{}, ErrOwnedAllocationCapacity
 	}
 	return journal, OwnedAllocationReceipt{clone(r), false}, nil
+}
+
+// A request/decision/capture ID is not an independent economic signal. Bind
+// proposal identity to the actual retained strategy and provider market update,
+// ignoring capture IDs, receiver times, registration aliases and raw-record pins.
+// The same finalized decision may be reconsidered; another decision cannot
+// repackage its source update as a second proposal for that strategy.
+func ownedProposalSourceAliases(journal ownedAllocationJournal, retained map[string]retainedPaperDecision, c OwnedAllocationCommand) error {
+	source := func(pin OwnedDecisionPin) (string, error) {
+		v, ok := retained[pin.ID]
+		if !ok || v.Record.SHA256 != pin.SHA256 || v.Basis.Feed.Routing == nil {
+			return "", ErrOwnedAllocationConflict
+		}
+		quote, ok := v.Basis.Feed.Routing.Inputs[v.Record.Evaluation.Coverage.Quote.InputID]
+		collector, registered := v.Basis.Feed.Collectors.Entries[v.Record.Command.RegistrationID]
+		if !ok || !registered || quote.Input.Kind != "quote" || quote.Input.PriceCents != v.Record.Evaluation.PriceCents {
+			return "", ErrOwnedAllocationConflict
+		}
+		return workerplan.Hash(struct {
+			StrategySHA256 string
+			Provider       string
+			Feed           string
+			Symbol         string
+			OccurredAt     time.Time
+		}{v.Basis.Strategy.SHA256, collector.Registration.Provider, collector.Registration.Feed, quote.Input.Symbol, quote.Input.OccurredAt.UTC()}), nil
+	}
+	// Keep historical deferral bytes and retries intact. New commands may not
+	// select an alias of any earlier proposal, including legacy journal rows.
+	previous := map[string]map[string]bool{}
+	for _, item := range journal.Records {
+		for _, pin := range item.Record.Command.Decisions {
+			key, err := source(pin)
+			if err != nil {
+				return err
+			}
+			if previous[key] == nil {
+				previous[key] = map[string]bool{}
+			}
+			previous[key][pin.ID] = true
+		}
+	}
+	selected := map[string]string{}
+	for _, pin := range c.Decisions {
+		key, err := source(pin)
+		if err != nil {
+			return err
+		}
+		if old := selected[key]; old != "" && old != pin.ID {
+			return ErrOwnedAllocationConflict
+		}
+		for old := range previous[key] {
+			if old != pin.ID {
+				return ErrOwnedAllocationConflict
+			}
+		}
+		selected[key] = pin.ID
+	}
+	return nil
 }
 
 func (m *Memory) ownedAllocationSourcesLocked(eval PaperDecisionEvaluator) (allocation.PolicyCatalog, PaperDecisionCatalog, paperstrategy.Catalog, error) {
