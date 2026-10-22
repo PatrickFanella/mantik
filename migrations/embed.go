@@ -121,3 +121,6 @@ var GeneratedCandidateLinks string
 
 //go:embed 0036_allocation_policies.sql
 var AllocationPolicies string
+
+//go:embed 0037_paper_strategies.sql
+var PaperStrategies string

@@ -184,7 +184,7 @@ func TestPostgresContractsAllocationPolicyUpgradeRollbackAndRestart(t *testing.T
 	before, _ := s.Snapshot(ctx)
 	accounts, _ := s.PaperAccounts(ctx)
 	config := s.pool.Config().ConnString()
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_allocation_policies; DELETE FROM mantik_schema WHERE version=36"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_paper_strategies; DROP TABLE mantik_allocation_policies; DELETE FROM mantik_schema WHERE version>=36"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -194,7 +194,7 @@ func TestPostgresContractsAllocationPolicyUpgradeRollbackAndRestart(t *testing.T
 	}
 	defer up.Close()
 	var maximum int
-	if err = up.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 36 {
+	if err = up.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 37 {
 		t.Fatal(maximum, err)
 	}
 	after, _ := up.Snapshot(ctx)

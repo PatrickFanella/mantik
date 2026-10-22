@@ -387,7 +387,7 @@ func TestPostgresContractsGenerationOutcomeUpgrade(t *testing.T) {
 	registry, _ := s.CandidateRegistry(ctx)
 	intents, _ := s.CandidateGenerationIntentHistory(ctx)
 	artifact, _ := s.CandidateGenerationIntentEvidence(ctx, c.RequestID)
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_allocation_policies; ALTER TABLE mantik_candidate_registrations DROP COLUMN generation_link_sha256 CASCADE; DROP TABLE mantik_generated_candidate_links; DROP TABLE mantik_candidate_generation_outcomes; DELETE FROM mantik_schema WHERE version>=34"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_paper_strategies; DROP TABLE mantik_allocation_policies; ALTER TABLE mantik_candidate_registrations DROP COLUMN generation_link_sha256 CASCADE; DROP TABLE mantik_generated_candidate_links; DROP TABLE mantik_candidate_generation_outcomes; DELETE FROM mantik_schema WHERE version>=34"); err != nil {
 		t.Fatal(err)
 	}
 	config := s.pool.Config().ConnString()

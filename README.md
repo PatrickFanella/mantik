@@ -131,7 +131,11 @@ retains one immutable policy per funded account with reciprocal fixture ownershi
 guards and pinned HTTP/CLI readback. The [allocation ledger core](docs/reference/allocation-ledger.md)
 now derives reservations, cash and position cost with retained comparison/effect
 history and replay checks. General service writes, authoritative decision/effect
-bindings and qualified admission remain pending.
+bindings and qualified admission remain pending. [Service-owned native paper
+strategy definitions](docs/reference/paper-strategies.md) now retain versioned
+threshold configuration and safety under a receiver, with strict HTTP/CLI
+registration and pinned readback. Configuration does not grant admission or
+execution.
 
 Compose reads `.env`; the native CLI does not load it. The token above matches
 the example's local-only default. Export your chosen token if you change it.
