@@ -49,16 +49,17 @@ func (c OwnedAllocationCommand) Validate() error {
 }
 
 type OwnedAllocationRecord struct {
-	Schema              string                 `json:"schema"`
-	Command             OwnedAllocationCommand `json:"command"`
-	At                  time.Time              `json:"at"`
-	PolicySHA256        string                 `json:"policy_sha256"`
-	LedgerSHA256        string                 `json:"ledger_sha256"`
-	Entry               allocation.LedgerEntry `json:"entry"`
-	Authority           string                 `json:"authority"`
-	ExecutionAvailable  bool                   `json:"execution_available"`
-	QualificationCredit bool                   `json:"qualification_credit"`
-	SHA256              string                 `json:"sha256"`
+	Schema              string                    `json:"schema"`
+	Command             OwnedAllocationCommand    `json:"command"`
+	At                  time.Time                 `json:"at"`
+	PolicySHA256        string                    `json:"policy_sha256"`
+	LedgerSHA256        string                    `json:"ledger_sha256"`
+	Entry               allocation.LedgerEntry    `json:"entry"`
+	Authority           string                    `json:"authority"`
+	ExecutionAvailable  bool                      `json:"execution_available"`
+	QualificationCredit bool                      `json:"qualification_credit"`
+	AdmissionChecks     []OwnedAdmissionReadiness `json:"admission_checks,omitempty"`
+	SHA256              string                    `json:"sha256"`
 }
 type OwnedAllocationReceipt struct {
 	Record    OwnedAllocationRecord `json:"record"`
@@ -187,6 +188,18 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 			return out, ErrOwnedAllocationInvalid
 		}
 		expected := OwnedAllocationRecord{Schema: "mantik-owned-allocation-deferral-v1", Command: clone(r.Command), At: r.At.UTC(), PolicySHA256: policy.SHA256, LedgerSHA256: next.SHA256, Entry: next.Entries[receipt.Sequence-1], Authority: "service_owned_allocation_deferral_only"}
+		switch r.Schema {
+		case "mantik-owned-allocation-deferral-v1":
+			// Legacy records retain their exact wire shape and hash.
+		case "mantik-owned-allocation-deferral-v2":
+			expected.Schema = r.Schema
+			expected.AdmissionChecks, err = ownedAdmissionReadiness(comparison, decisions, strategies, retained, r.At)
+			if err != nil {
+				return out, err
+			}
+		default:
+			return out, ErrOwnedAllocationInvalid
+		}
 		expected.SHA256 = workerplan.Hash(expected)
 		if !reflect.DeepEqual(expected, r) {
 			return out, ErrOwnedAllocationInvalid
@@ -251,6 +264,11 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		return journal, OwnedAllocationReceipt{}, err
 	}
 	r := OwnedAllocationRecord{Schema: "mantik-owned-allocation-deferral-v1", Command: clone(c), At: at, PolicySHA256: policy.SHA256, LedgerSHA256: next.SHA256, Entry: next.Entries[receipt.Sequence-1], Authority: "service_owned_allocation_deferral_only"}
+	r.Schema = "mantik-owned-allocation-deferral-v2"
+	r.AdmissionChecks, err = ownedAdmissionReadiness(comparison, decisions, strategies, retained, at)
+	if err != nil {
+		return journal, OwnedAllocationReceipt{}, err
+	}
 	r.SHA256 = workerplan.Hash(r)
 	journal = clone(journal)
 	journal.Records = append(journal.Records, retainedOwnedAllocation{r, clone(policies)})

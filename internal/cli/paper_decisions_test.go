@@ -180,13 +180,17 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if allocationFirst.Record.ExecutionAvailable || allocationFirst.Record.QualificationCredit || allocationFirst.Record.Entry.Plan == nil || allocationFirst.Record.Entry.Plan.Decisions[0].Status != "defer" || allocationFirst.Record.Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
 		t.Fatal(allocationFirst)
 	}
+	checks := allocationFirst.Record.AdmissionChecks
+	if len(checks) != 1 || checks[0].DecisionSHA256 != first.Record.SHA256 || checks[0].BasisSHA256 != first.Record.BasisSHA256 || checks[0].StrategySHA256 != strategy.Record.SHA256 || checks[0].QuoteInputID != first.Record.Evaluation.Coverage.Quote.InputID || checks[0].EvidenceClass != d.InputEvidenceClass || checks[0].Status != "deferred" || checks[0].AdmissionAvailable || checks[0].ExecutionAvailable || checks[0].QualificationCredit {
+		t.Fatal(checks)
+	}
 	clock.panicRead = true
 	if err = json.Unmarshal(request("POST", "/v1/allocation-comparisons", compare, 200), &allocationRetry); err != nil || !allocationRetry.Duplicate || !reflect.DeepEqual(allocationFirst.Record, allocationRetry.Record) {
 		t.Fatal(allocationRetry, err)
 	}
 	clock.panicRead = false
 	compareRaw, _ := json.Marshal(compare)
-	for _, field := range []string{`"account_id":"allocation-owner",`, `"Snapshot":{},`, `"admissions":[],`, `"effect":{},`, `"balance_cents":100,`, `"policy_id":"owner-policy",`} {
+	for _, field := range []string{`"admission_checks":[],`, `"account_id":"allocation-owner",`, `"Snapshot":{},`, `"admissions":[],`, `"effect":{},`, `"balance_cents":100,`, `"policy_id":"owner-policy",`} {
 		request("POST", "/v1/allocation-comparisons", strings.Replace(string(compareRaw), `"id":`, field+`"id":`, 1), 422)
 	}
 	request("POST", "/v1/allocation-comparisons?", compare, 422)

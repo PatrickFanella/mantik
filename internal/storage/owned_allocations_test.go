@@ -123,6 +123,7 @@ func ownedAllocationContracts(t *testing.T, s ownedAllocationBackend) {
 		}
 	}
 	first := original.Records[0]
+	assertOwnedReadiness(t, first, decision.Record, strategy.Record, input.ID, d.InputEvidenceClass, "deferred")
 	plan := first.Entry.Plan
 	if plan == nil || plan.Decisions[0].Status != "defer" || plan.Decisions[0].Reasons[0] != "admission_unavailable" || plan.PlannedReservationCents != 0 || first.ExecutionAvailable || first.QualificationCredit {
 		t.Fatal(first)
@@ -158,6 +159,7 @@ func ownedAllocationContracts(t *testing.T, s ownedAllocationBackend) {
 	if err != nil || expired.Record.Entry.Plan.Decisions[0].Reasons[0] != "decision_expired" {
 		t.Fatal(expired, err)
 	}
+	assertOwnedReadiness(t, expired.Record, decision.Record, strategy.Record, input.ID, d.InputEvidenceClass, "expired")
 	// A second matching policy cannot choose another account for this decision.
 	other := policyAccount(t, s, "other")
 	overlap := policyCommand(other, "overlap")
@@ -236,6 +238,66 @@ func ownedAllocationContracts(t *testing.T, s ownedAllocationBackend) {
 			t.Fatal("decode")
 		}
 	}
+	writeJournal := func(j ownedAllocationJournal) {
+		t.Helper()
+		if m, ok := s.(*Memory); ok {
+			m.ownedAllocations = clone(j)
+		} else {
+			raw, e := json.Marshal(j)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = s.(*Postgres).pool.Exec(ctx, "UPDATE mantik_owned_allocations SET payload=$1", raw); e != nil {
+				t.Fatal(e)
+			}
+		}
+	}
+	// Old records retain the original v1 JSON/hash contract in a mixed journal.
+	legacy := clone(journal)
+	old := &legacy.Records[0].Record
+	old.Schema = "mantik-owned-allocation-deferral-v1"
+	old.AdmissionChecks = nil
+	old.SHA256 = ""
+	old.SHA256 = workerplan.Hash(*old)
+	rawLegacy, _ := json.Marshal(old)
+	var wire map[string]json.RawMessage
+	if json.Unmarshal(rawLegacy, &wire) != nil || wire["admission_checks"] != nil {
+		t.Fatal("legacy wire changed")
+	}
+	writeJournal(legacy)
+	mixed, e := s.OwnedAllocations(ctx, eval)
+	if e != nil || !reflect.DeepEqual(mixed.Records[0], *old) || mixed.Records[1].Schema != "mantik-owned-allocation-deferral-v2" {
+		t.Fatal("legacy replay", e)
+	}
+	oldRetry, e := s.CompareOwnedAllocation(ctx, c, noClock, eval)
+	if e != nil || !oldRetry.Duplicate || !reflect.DeepEqual(oldRetry.Record, *old) {
+		t.Fatal("legacy retry", e)
+	}
+	// Rehashing both layers cannot manufacture admission, qualification or source class.
+	for _, mutate := range []func(*OwnedAdmissionReadiness){
+		func(r *OwnedAdmissionReadiness) { r.AdmissionAvailable = true },
+		func(r *OwnedAdmissionReadiness) { r.ExecutionAvailable = true },
+		func(r *OwnedAdmissionReadiness) { r.QualificationCredit = true },
+		func(r *OwnedAdmissionReadiness) { r.Status = "accepted" },
+		func(r *OwnedAdmissionReadiness) { r.EvidenceClass = "qualified" },
+		func(r *OwnedAdmissionReadiness) { r.ValidUntil = r.ValidUntil.Add(time.Hour) },
+	} {
+		bad := clone(journal)
+		r := &bad.Records[0].Record
+		mutate(&r.AdmissionChecks[0])
+		r.AdmissionChecks[0].SHA256 = ""
+		r.AdmissionChecks[0].SHA256 = workerplan.Hash(r.AdmissionChecks[0])
+		r.SHA256 = ""
+		r.SHA256 = workerplan.Hash(*r)
+		writeJournal(bad)
+		if _, e := s.OwnedAllocations(ctx, eval); e == nil {
+			t.Fatal("counterfeit readiness read")
+		}
+		if _, e := s.CompareOwnedAllocation(ctx, c, noClock, eval); e == nil {
+			t.Fatal("retry hid counterfeit readiness")
+		}
+	}
+	writeJournal(journal)
 	journal.Records[0].Record.Entry.Plan.Decisions[0].Status = "reserve_plan"
 	r := &journal.Records[0].Record
 	r.SHA256 = ""
@@ -305,5 +367,24 @@ func TestPostgresContractsOwnedAllocationUpgradeRollback(t *testing.T) {
 	if broken, err := OpenPostgres(ctx, url); err == nil {
 		broken.Close()
 		t.Fatal("changed39 accepted")
+	}
+}
+
+func assertOwnedReadiness(t *testing.T, r OwnedAllocationRecord, decision PaperDecisionRecord, strategy paperstrategy.Record, quote, class, status string) {
+	t.Helper()
+	if r.Schema != "mantik-owned-allocation-deferral-v2" || len(r.AdmissionChecks) != 1 {
+		t.Fatal(r)
+	}
+	c := r.AdmissionChecks[0]
+	hash := c.SHA256
+	c.SHA256 = ""
+	if workerplan.Hash(c) != hash || c.Schema != "mantik-owned-admission-readiness-v1" || c.ReceiverID != r.Command.ReceiverID || c.DecisionID != decision.Command.ID || c.DecisionSHA256 != decision.SHA256 || c.StrategyID != strategy.Command.Definition.ID || c.StrategySHA256 != strategy.SHA256 || c.DefinitionSHA256 != strategy.DefinitionSHA256 || c.BasisSHA256 != decision.BasisSHA256 || c.QuoteInputID != quote || c.EvidenceClass != class || !c.CheckedAt.Equal(r.At) || !c.ValidUntil.Equal(r.Entry.Plan.Decisions[0].Proposal.ValidUntil) || c.Status != status || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit || c.Authority != "service_owned_admission_readiness_only" {
+		t.Fatal(c)
+	}
+	if len(c.Gates) != 4 || c.Gates[0].Status != "verified" || c.Gates[1].ReasonCode != class || c.Gates[2].Status != "unavailable" || c.Gates[3].Status != "unavailable" {
+		t.Fatal(c.Gates)
+	}
+	if status == "expired" && !reflect.DeepEqual(c.ReconsiderTriggers, []string{"new_finalized_decision"}) {
+		t.Fatal(c)
 	}
 }
