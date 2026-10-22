@@ -135,3 +135,46 @@ JSON round-trip replay, refuse debits that would consume reserved cash, preserve
 unknown remainders and completed commitments, and check exact historical retries,
 duplicate effects, schema rewrites and self-rehashed unfunded closes. The service
 continues to require genuine admission/effect owners before any activation.
+
+## Replayed entry-fill binding
+
+`allocation.ApplyEntryFillBook` stages entry debits from the existing shared
+paper-fill book. The internal function accepts a ledger and book, replays both
+complete histories, and derives fee-inclusive debit amounts from the resulting
+fills. It accepts no separate amount, replacement balance, admission or effect
+assertion. The exact execution model must be retained in the ledger's policy.
+
+Each book order must be a USD buy limit whose ID matches an already reserved
+proposal, whose symbol matches that proposal, whose placement follows the
+retained reserve decision, and whose expiry is within the proposal's validity.
+Its debit ceiling cannot exceed the proposal's original funding. Fill replay
+retains shared displayed liquidity across competing orders; a four-share offer
+cannot become four shares for each order. Missing or unfilled quote outcomes
+produce no debit. They do not release the reservation.
+
+Each derived effect and ledger command uses `entry-fill-` followed by the hash
+of the binding method, immutable book-root hash and exact replayed fill hash.
+The method is `replayed-shared-book-entry-debit-v1`. Existing entry debits for
+these decisions must match the same derived commands, hashes and fill times.
+A revised root, a truncated book that omits an existing debit, or an earlier
+amount-only effect conflicts. Adding book commands preserves prior fill
+identities; exact retained debits are duplicates and new fills consume the
+remaining reservation once. The ledger's normal time, uncertainty, capacity and
+funding rules continue to apply. An old prefix cannot hide later debits.
+
+All debit appends are staged in detached values. If a later debit fails, the
+function returns an error with zero ledger/projection results and no receipts;
+both supplied histories remain unchanged. This is an immutable preflight,
+**not a durable transaction**. The execution owner still needs actual source
+selection, admission, order/position/protection ownership and an atomic durable
+commit of the source book and resulting allocation ledger. Sell/close effects
+and recovery/release bindings remain separate work. There is no HTTP or CLI
+book import, no storage write, and no execution or qualification grant.
+
+Tests use manufactured owner inputs to verify shared partial-fill costs,
+conservation, exact retries, incremental book history, missing quotes, missing
+admission, model/order/proposal mismatches, rehashed invalid outcomes, prior
+effect conflicts, unknown holds, cancellation, detached concurrent preflight
+and rollback of an entire staged debit batch after a later failure. These
+checks advance #19/#20's internal binding dependency; they do not establish
+service integration or complete either issue's acceptance gates.
