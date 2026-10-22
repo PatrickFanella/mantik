@@ -196,6 +196,18 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 		t.Fatal(allocationRetry, err)
 	}
 	clock.panicRead = false
+	aliasCommand := command
+	aliasCommand.ID = "owned-source-alias"
+	var alias storage.PaperDecisionReceipt
+	if err = json.Unmarshal(request("POST", "/v1/paper-decisions", aliasCommand, 201), &alias); err != nil {
+		t.Fatal(err)
+	}
+	aliasComparison := compare
+	aliasComparison.ID = "compare-source-alias"
+	aliasComparison.Decisions = []storage.OwnedDecisionPin{{ID: alias.Record.Command.ID, SHA256: alias.Record.SHA256}}
+	clock.panicRead = true
+	request("POST", "/v1/allocation-comparisons", aliasComparison, 409)
+	clock.panicRead = false
 	compareRaw, _ := json.Marshal(compare)
 	for _, field := range []string{`"protective_funding":{},`, `"execution_costs":[],`, `"execution_model":{},`, `"admission_checks":[],`, `"account_id":"allocation-owner",`, `"Snapshot":{},`, `"admissions":[],`, `"effect":{},`, `"balance_cents":100,`, `"policy_id":"owner-policy",`} {
 		request("POST", "/v1/allocation-comparisons", strings.Replace(string(compareRaw), `"id":`, field+`"id":`, 1), 422)

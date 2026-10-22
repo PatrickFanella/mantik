@@ -28,7 +28,7 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	clock.panicRead = true
 	defer func() { clock.panicRead = false }()
 	var all storage.PaperAttributionCatalog
-	if err := json.Unmarshal(request("GET", "/v1/paper-attribution", nil, 200), &all); err != nil || len(all.Rows) != 4 || all.ReceiverID != candidate.Command.ReceiverID || all.ExecutionAvailable || all.QualificationCredit || all.Authority != "service_owned_phase_attribution_only" {
+	if err := json.Unmarshal(request("GET", "/v1/paper-attribution", nil, 200), &all); err != nil || len(all.Rows) != 5 || all.ReceiverID != candidate.Command.ReceiverID || all.ExecutionAvailable || all.QualificationCredit || all.Authority != "service_owned_phase_attribution_only" {
 		t.Fatal(all, err)
 	}
 	hash := all.SHA256
@@ -82,7 +82,7 @@ func assertRestartedPaperAttribution(t *testing.T, serverURL string) {
 	}
 	defer response.Body.Close()
 	var got storage.PaperAttributionCatalog
-	if err = json.NewDecoder(response.Body).Decode(&got); err != nil || response.StatusCode != 200 || len(got.Rows) != 4 || got.ExecutionAvailable || got.QualificationCredit {
+	if err = json.NewDecoder(response.Body).Decode(&got); err != nil || response.StatusCode != 200 || len(got.Rows) != 5 || got.ExecutionAvailable || got.QualificationCredit {
 		t.Fatal(got, err, response.StatusCode)
 	}
 	declarationRequest, _ := http.NewRequest("GET", serverURL+"/v1/paper-evaluation-declarations", nil)

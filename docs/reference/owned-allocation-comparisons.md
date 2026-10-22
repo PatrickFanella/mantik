@@ -7,7 +7,7 @@ Both routes use the existing bearer authentication.
 
 This is the first durable service binding for the allocation core. It records
 admission deferrals and expired-decision rejections. It cannot reserve cash,
-create orders, apply fills or qualify a strategy. Issue #19 remains open for
+create orders, apply fills or qualify a strategy. Issue #19's acceptance remains incomplete for
 admission and effect bindings and funded execution; issues #20 and #21 still
 require their actual execution and qualification owners.
 
@@ -31,6 +31,23 @@ invalid pins and bodies over 8 KiB. It accepts between one and 32 decisions,
 ordered by ID with no duplicates. A pin is an identity check; the server also
 replays the actual decision and verifies its retained strategy and feed basis.
 Abstentions cannot enter allocation.
+
+A new decision or capture ID cannot turn the same source occurrence into another
+proposal for the same strategy. Before reading a new comparison clock, the owner
+checks the selected batch and all earlier comparison decisions. The identity is
+the exact retained strategy record plus the collector's provider/feed, canonical
+symbol and quote occurrence time. Capture/registration IDs, receipt times, raw
+record hashes and price corrections at that occurrence do not create additional
+proposal identities. A conflict returns HTTP 409 without a journal write.
+
+The original finalized decision may be reconsidered under a new comparison ID;
+exact comparison retries stay clock-free. A genuinely later occurrence or a
+different immutable strategy remains distinct, subject to the existing policy
+and admission gates. This conservative rule does not establish independence
+across providers or score evidence. Historical deferral receipts keep their
+original bytes and replay behavior; the write guard does not retroactively
+grant, repair or activate them. A future execution owner still needs canonical
+source identities in its atomic admission/reservation/effect transaction.
 
 For each decision, the server matches the actual strategy definition hash to
 registered allocation-policy strategy rules. Exactly one policy must match,

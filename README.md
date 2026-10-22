@@ -486,7 +486,8 @@ replenishing liquidity. Service-owned admission, capital and effect bindings
 remain unfinished.
 
 Service-owned [allocation comparisons](docs/reference/owned-allocation-comparisons.md)
-now retain native decision/policy bindings, owner-derived admission readiness
+reject new proposal aliases of the same strategy and provider market occurrence,
+including aliases of earlier comparisons. They retain native decision/policy bindings, owner-derived admission readiness
 checks and replayable deferral ledgers in
 Memory/PostgreSQL. The server selects funding from exact strategy-policy matches;
 clients supply retained decision IDs and pins. Optional immutable policy execution
