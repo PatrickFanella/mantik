@@ -39,13 +39,7 @@ func reviewRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		return
 	}
 	mux.HandleFunc("POST /v1/news-reviews", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			ReceiverID string `json:"receiver_id"`
-			RequestID  string `json:"request_id"`
-			CaseID     string `json:"case_id"`
-			Version    int    `json:"version"`
-			TypeID     string `json:"type_id,omitempty"`
-		}
+		var body researchRequestArguments
 		if !reviewStartBody(w, r, &body) {
 			return
 		}

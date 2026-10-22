@@ -130,6 +130,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 		}
 		write(w, status, receipt)
 	})
+	supervisionRoutes(mux, store)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if token != "" && r.URL.Path != "/healthz" && subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
 			write(w, 401, map[string]string{"error": "authentication required"})

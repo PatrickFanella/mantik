@@ -534,3 +534,9 @@ They grant no admission, allocation or execution authority.
 The internal [paper fill method](docs/reference/paper-fill-method.md) declares
 spread, cost, latency, liquidity and stop behavior for replay and future ongoing
 paper use. Its order journal grants no operational execution authority.
+
+[Typed supervision calls](docs/reference/supervision-tools.md) let authenticated
+conversation adapters inspect retained records, request research, change research
+watch policies, recheck exceptions and submit finalized-decision claim reviews
+through the existing owners. They make no model calls and grant no financial
+authority; conversation UI, prose interpretation and case triage remain open.
