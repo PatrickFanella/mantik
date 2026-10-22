@@ -540,6 +540,8 @@ conversation adapters inspect retained records, request research, change researc
 watch policies, recheck exceptions and submit finalized-decision claim reviews
 through the existing owners. They make no model calls and grant no financial
 authority; conversation UI, prose interpretation and case triage remain open.
+`supervision-mcp` exposes these same owners through a bounded stdio MCP bridge
+for conversation clients; it requires the expected receiver and existing API token.
 
 [Service-owned paper attribution](docs/reference/paper-attribution.md) joins
 finalized decisions, retained forward-price assessments and allocation choices
