@@ -99,7 +99,7 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Finalized decision claim reviews and cases](decision-review-cases.md)
 
-- [Typed supervision calls](supervision-tools.md) — fixed authenticated tools that
+- [Typed supervision calls and stdio MCP](supervision-tools.md) — fixed authenticated tools that
   retain owner validation and retry semantics without model or financial authority.
 
 - [Service-owned paper attribution](paper-attribution.md) — consistent phase
