@@ -144,3 +144,8 @@ fee-limited fills, ineligible orders, symbol isolation, unusable-quote suppressi
 single-order parity with the existing method, historical retries, cancellation,
 self-rehashed corruption, bounded retention, JSON replay and concurrent immutable
 calls. Seeded scenarios check quantities, costs and debit ceilings.
+
+The allocation core can preflight entry debits from a fully replayed shared
+book through `ApplyEntryFillBook`; see the [entry-fill binding contract](allocation-ledger.md#replayed-entry-fill-binding).
+It requires existing reservations and an exact owner model. This internal
+composition does not provide a durable service execution owner or admission.

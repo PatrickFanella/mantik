@@ -547,3 +547,8 @@ in one consistent read. Cost ceilings remain separate from expenses; unavailable
 execution, PnL and economic baselines remain explicit. The `paper-attribution`
 CLI reads this service view as a table or complete JSON; selected rows require
 their attribution hash and the expected receiver identity.
+
+The internal [entry-fill binding](docs/reference/allocation-ledger.md#replayed-entry-fill-binding)
+derives allocation debits from replayed shared paper fills under existing
+reservations and an exact owner model. It stages changes without a storage
+write; admission and atomic durable execution remain required before activation.
