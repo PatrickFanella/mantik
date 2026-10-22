@@ -41,6 +41,7 @@ func (c *ownedDecisionClock) Now() time.Time {
 type ownedDecisionHTTPBackend interface {
 	strategyHTTPBackend
 	storage.PaperDecisionStore
+	storage.PaperOutcomeStore
 	storage.OwnedAllocationStore
 	storage.PaperAccountStore
 	storage.AllocationPolicyStore
