@@ -40,8 +40,9 @@ select an account or policy in this request. Policy limits and priority remain
 operator configuration. The policy's funding account must still match its
 retained owner, and fixture capital cannot own that account.
 
-The proposal amount is the retained price multiplied by the registered quantity,
-within the strategy's safety cap. Expiry is the actual retained quote occurrence
+For legacy policies without an execution model, the proposal amount is the
+retained price multiplied by registered quantity within the strategy's safety cap.
+These records remain deferral-only and do not provide an execution cost ceiling. Expiry is the actual retained quote occurrence
 plus the smaller of 60 seconds and the strategy's maximum quote age. Neither
 comparison time nor a retry extends that expiry. This amount has no execution
 authority: a future execution binding must reserve the full cost including fees
@@ -114,3 +115,59 @@ Verification uses the authenticated handler with manufactured calendar/price
 inputs, concurrent Memory/PostgreSQL owner contracts, SQL failure rollback,
 self-rehashed corruption rejection, historical expiry, capacity, restart and
 migration checks. Those fixtures supply no qualification or profitability proof.
+
+## Owner-bound execution cost ceilings
+
+An operator may register an immutable funding policy with an optional
+`execution_model` alongside `receiver_id`, `account_id` and `policy` in
+`POST /v1/allocation-policies`. The object is the versioned
+[`paperfill.Model`](paper-fill-method.md#declared-assumptions), including method,
+slippage, fees, per-fill commission, liquidity fraction, latency and quote age.
+It declares simulation assumptions and supplies no provider evidence or admission.
+This configuration is accepted at policy registration; allocation-comparison
+requests still contain only retained decision IDs and pins. The existing policy
+file CLI continues to register policies without a model.
+
+Model-bearing policy records use `mantik-owned-allocation-policy-v2`; the whole
+model is included in the immutable record hash. Changing it under the same policy
+or account identity conflicts. Policies without a model retain their original v1
+wire shape and hash.
+
+For a model-bearing policy, each comparison derives a buy cost ceiling from the
+actual retained decision, registered strategy and quote-based expiry. The limit
+is the smaller of the reference price plus adversely rounded modeled slippage,
+the strategy's entry threshold and its gross-notional ceiling per share. That
+limit remains at or above the reference price. An execution owner must enforce
+it as a buy limit; a modeled price above it must remain unfilled.
+
+The fee ceiling assumes every whole share fills separately. For quantity `Q`,
+limit `L`, fee basis points `F` and fixed commission `C`, the maximum debit is:
+
+```text
+Q * L + Q * (ceil(L * F / 10000) + C)
+```
+
+This bounds upward fee rounding and commissions for any partition into whole-share
+partials at or below the limit. Quantity and arithmetic must fit the declared
+paper-fill method bounds. The model is pinned even when some of its parameters do
+not affect this debit ceiling. It does not normalize provider size units or
+estimate real venue fills.
+
+New comparisons for these policies use `mantik-owned-allocation-deferral-v3` and
+retain `execution_costs` with decision/model/quote pins, reference price, limit,
+quantity, gross/fee/debit ceilings and original expiry. The allocation core
+compares the full debit ceiling as the proposal amount, so account and strategy
+limits cannot later treat entry fees as free capital. Replay reconstructs that
+amount and every cost field from owner records. Self-rehashing a smaller fee or
+changed model pin cannot bypass the binding.
+
+Schema 43 fences older writers that do not retain these fields. The migration
+changes policy-table metadata. Legacy policies and v1/v2 comparison records remain
+replayable with unchanged hashes, alongside new model-bearing records. Rollback
+requires the retained pre-upgrade backup and its matching schema-42 binary.
+
+Admission remains unavailable: v3 comparisons still defer or reject expired
+proposals, reserve no cash and create no order or effect. Actual normalized source
+quotes, applicable evaluation/admission, shared execution ownership, atomic funded
+ledger/effect persistence and protective recovery remain unfinished. This cost
+binding does not complete #19, #20 or #21.

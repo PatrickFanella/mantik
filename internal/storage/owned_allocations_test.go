@@ -13,6 +13,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
@@ -29,6 +30,13 @@ func TestPostgresContractsOwnedAllocations(t *testing.T) {
 	ownedAllocationContracts(t, timerPostgres(t, "ownedallocations"))
 }
 func ownedAllocationContracts(t *testing.T, s ownedAllocationBackend) {
+	ownedAllocationCostContracts(t, s, false)
+}
+func TestMemoryOwnedExecutionCosts(t *testing.T) { ownedAllocationCostContracts(t, NewMemory(), true) }
+func TestPostgresContractsOwnedExecutionCosts(t *testing.T) {
+	ownedAllocationCostContracts(t, timerPostgres(t, "ownedcosts"), true)
+}
+func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withModel bool) {
 	t.Helper()
 	ctx := context.Background()
 	at := time.Now().UTC()
@@ -44,6 +52,9 @@ func ownedAllocationContracts(t *testing.T, s ownedAllocationBackend) {
 	p := policyCommand(account, "policy")
 	p.Policy.Strategies[0].ArtifactSHA256 = strategy.Record.DefinitionSHA256
 	p.Policy.Symbols[0].ID = "SPY"
+	if withModel {
+		p.ExecutionModel = &paperfill.Model{Method: paperfill.Method, SlippageBPS: 10, FeeBPS: 20, CommissionPerFillCents: 3, LiquidityBPS: 5000, LatencyMillis: 1000, MaxQuoteAgeSeconds: 60}
+	}
 	if _, err = s.RegisterAllocationPolicy(ctx, p, clock); err != nil {
 		t.Fatal(err)
 	}
@@ -124,6 +135,15 @@ func ownedAllocationContracts(t *testing.T, s ownedAllocationBackend) {
 	}
 	first := original.Records[0]
 	assertOwnedReadiness(t, first, decision.Record, strategy.Record, input.ID, d.InputEvidenceClass, "deferred")
+	if withModel {
+		if len(first.ExecutionCosts) != 1 || first.Schema != "mantik-owned-allocation-deferral-v3" {
+			t.Fatal(first)
+		}
+		cost := first.ExecutionCosts[0]
+		if cost.Quantity != d.Quantity || cost.MaxDebitCents != d.Quantity*10023 || cost.FeeCeilingCents != d.Quantity*23 || cost.LimitCents != 10000 || cost.ModelSHA256 != workerplan.Hash(*p.ExecutionModel) || cost.QuoteInputID != input.ID || first.Entry.Plan.Decisions[0].Proposal.NotionalCents != cost.MaxDebitCents {
+			t.Fatal(cost)
+		}
+	}
 	plan := first.Entry.Plan
 	if plan == nil || plan.Decisions[0].Status != "defer" || plan.Decisions[0].Reasons[0] != "admission_unavailable" || plan.PlannedReservationCents != 0 || first.ExecutionAvailable || first.QualificationCredit {
 		t.Fatal(first)
@@ -253,25 +273,47 @@ func ownedAllocationContracts(t *testing.T, s ownedAllocationBackend) {
 		}
 	}
 	// Old records retain the original v1 JSON/hash contract in a mixed journal.
-	legacy := clone(journal)
-	old := &legacy.Records[0].Record
-	old.Schema = "mantik-owned-allocation-deferral-v1"
-	old.AdmissionChecks = nil
-	old.SHA256 = ""
-	old.SHA256 = workerplan.Hash(*old)
-	rawLegacy, _ := json.Marshal(old)
-	var wire map[string]json.RawMessage
-	if json.Unmarshal(rawLegacy, &wire) != nil || wire["admission_checks"] != nil {
-		t.Fatal("legacy wire changed")
+	if !withModel {
+		legacy := clone(journal)
+		old := &legacy.Records[0].Record
+		old.Schema = "mantik-owned-allocation-deferral-v1"
+		old.AdmissionChecks = nil
+		old.SHA256 = ""
+		old.SHA256 = workerplan.Hash(*old)
+		rawLegacy, _ := json.Marshal(old)
+		var wire map[string]json.RawMessage
+		if json.Unmarshal(rawLegacy, &wire) != nil || wire["admission_checks"] != nil {
+			t.Fatal("legacy wire changed")
+		}
+		writeJournal(legacy)
+		mixed, e := s.OwnedAllocations(ctx, eval)
+		if e != nil || !reflect.DeepEqual(mixed.Records[0], *old) || mixed.Records[1].Schema != "mantik-owned-allocation-deferral-v2" {
+			t.Fatal("legacy replay", e)
+		}
+		oldRetry, e := s.CompareOwnedAllocation(ctx, c, noClock, eval)
+		if e != nil || !oldRetry.Duplicate || !reflect.DeepEqual(oldRetry.Record, *old) {
+			t.Fatal("legacy retry", e)
+		}
 	}
-	writeJournal(legacy)
-	mixed, e := s.OwnedAllocations(ctx, eval)
-	if e != nil || !reflect.DeepEqual(mixed.Records[0], *old) || mixed.Records[1].Schema != "mantik-owned-allocation-deferral-v2" {
-		t.Fatal("legacy replay", e)
-	}
-	oldRetry, e := s.CompareOwnedAllocation(ctx, c, noClock, eval)
-	if e != nil || !oldRetry.Duplicate || !reflect.DeepEqual(oldRetry.Record, *old) {
-		t.Fatal("legacy retry", e)
+	if withModel {
+		for _, mutate := range []func(*OwnedExecutionCost){
+			func(c *OwnedExecutionCost) { c.MaxDebitCents-- }, func(c *OwnedExecutionCost) { c.FeeCeilingCents = 0 }, func(c *OwnedExecutionCost) { c.ModelSHA256 = workerplan.Hash("other") }, func(c *OwnedExecutionCost) { c.LimitCents++ },
+		} {
+			bad := clone(journal)
+			r := &bad.Records[0].Record
+			mutate(&r.ExecutionCosts[0])
+			r.ExecutionCosts[0].SHA256 = ""
+			r.ExecutionCosts[0].SHA256 = workerplan.Hash(r.ExecutionCosts[0])
+			r.SHA256 = ""
+			r.SHA256 = workerplan.Hash(*r)
+			writeJournal(bad)
+			if _, e := s.OwnedAllocations(ctx, eval); e == nil {
+				t.Fatal("counterfeit cost read")
+			}
+			if _, e := s.CompareOwnedAllocation(ctx, c, noClock, eval); e == nil {
+				t.Fatal("retry hid counterfeit cost")
+			}
+		}
 	}
 	// Rehashing both layers cannot manufacture admission, qualification or source class.
 	for _, mutate := range []func(*OwnedAdmissionReadiness){
@@ -372,7 +414,7 @@ func TestPostgresContractsOwnedAllocationUpgradeRollback(t *testing.T) {
 
 func assertOwnedReadiness(t *testing.T, r OwnedAllocationRecord, decision PaperDecisionRecord, strategy paperstrategy.Record, quote, class, status string) {
 	t.Helper()
-	if r.Schema != "mantik-owned-allocation-deferral-v2" || len(r.AdmissionChecks) != 1 {
+	if (r.Schema != "mantik-owned-allocation-deferral-v2" && r.Schema != "mantik-owned-allocation-deferral-v3") || len(r.AdmissionChecks) != 1 {
 		t.Fatal(r)
 	}
 	c := r.AdmissionChecks[0]
