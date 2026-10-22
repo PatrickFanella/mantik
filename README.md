@@ -477,3 +477,7 @@ No provider execution or model authorship is asserted.
 Service-owned [paper proposals and abstentions](docs/reference/owned-paper-decisions.md)
 retain native evaluations from owned strategy and price/calendar evidence.
 They grant no admission, allocation or execution authority.
+
+The internal [paper fill method](docs/reference/paper-fill-method.md) declares
+spread, cost, latency, liquidity and stop behavior for replay and future ongoing
+paper use. Its order journal grants no operational execution authority.
