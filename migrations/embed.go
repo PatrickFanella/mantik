@@ -124,3 +124,6 @@ var AllocationPolicies string
 
 //go:embed 0037_paper_strategies.sql
 var PaperStrategies string
+
+//go:embed 0038_paper_decisions.sql
+var PaperDecisions string

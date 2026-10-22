@@ -85,3 +85,8 @@ capacity, namespace fencing, corrupt retained receipts, schema 26 upgrade and
 restart/restore. Run `make verify`, `make test-race`, `make test-integration` and
 an isolated built-CLI rehearsal. Existing services and financial data stay outside
 the rehearsal. Issue #19 remains incomplete after this first unit.
+
+The [owned paper decision registry](../reference/owned-paper-decisions.md) retains
+service-computed research proposals and abstentions with their evidence basis.
+Account selection, genuine admission and execution-effect bindings, and the
+atomic operational allocation ledger remain incomplete for issue #19.
