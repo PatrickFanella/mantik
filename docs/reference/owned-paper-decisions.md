@@ -72,8 +72,8 @@ cannot establish ownership of the private basis.
 ## Storage and rollback
 
 Memory serializes selection, evaluation and retention under its aggregate mutex.
-PostgreSQL schema 38 adds `mantik_paper_decisions`; writes lock the receiver,
-collector and state in that order before selecting inputs and retaining a result
+PostgreSQL schema 38 adds `mantik_paper_decisions`; writes lock the collector,
+state and receiver in that order before selecting inputs and retaining a result
 atomically. Catalogue reads use a repeatable-read transaction. The bounded JSON
 envelope uses `bytea` so JSONB field reordering cannot rewrite the captured basis
 hash. Failed inserts roll back without changing economic or research input state.
@@ -82,3 +82,9 @@ The migration preserves schema-37 state. Older binaries refuse the new schema.
 Rollback uses a compatible private backup restored into separate resources with
 its matching binary. Dropping tables in a running service is not a rollback.
 Local tests, hosted CI, deployment, runtime and qualification are distinct checks.
+
+The lock order follows both existing feed writers (collector before state) and
+capital writers (state before receiver). The PostgreSQL regression holds the
+capital owner's state row, observes finalization blocked on that row through
+`pg_blocking_pids`, then acquires receiver and commits. Both operations must finish
+without deadlock; the former receiver-first order fails with SQLSTATE `40P01`.

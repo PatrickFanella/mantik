@@ -348,18 +348,22 @@ func (p *Postgres) FinalizePaperDecision(ctx context.Context, c PaperDecisionCom
 		return PaperDecisionReceipt{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
+	// Acquire the global row-order subset collector -> state -> receiver.
+	// Feed publication/submission locks collector -> state, while capital policy
+	// and fixture binding lock state -> receiver. Receiver-first here can cycle
+	// with an owner holding state while waiting for receiver.
+	feed, err := readFeedEvidence(ctx, tx, true)
+	if err != nil {
+		return PaperDecisionReceipt{}, err
+	}
 	var owner string
 	if err = tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton FOR UPDATE").Scan(&owner); err != nil {
 		return PaperDecisionReceipt{}, err
 	}
-	if owner != c.ReceiverID {
+	if owner != c.ReceiverID || owner != feed.ReceiverID {
 		return PaperDecisionReceipt{}, ErrReceiverMismatch
 	}
 	s, err := readPaperStrategies(ctx, tx, owner)
-	if err != nil {
-		return PaperDecisionReceipt{}, err
-	}
-	feed, err := readFeedEvidence(ctx, tx, true)
 	if err != nil {
 		return PaperDecisionReceipt{}, err
 	}
