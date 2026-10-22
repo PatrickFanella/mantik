@@ -554,6 +554,10 @@ The internal [entry-fill binding](docs/reference/allocation-ledger.md#replayed-e
 derives allocation debits from replayed shared paper fills under existing
 reservations and an exact owner model. It stages changes without a storage
 write; admission and atomic durable execution remain required before activation.
+The companion [exit-fill binding](docs/reference/allocation-ledger.md#replayed-exit-fill-binding)
+derives closing cost basis and net proceeds from terminal entry history and
+replayed sell fills. It conserves partial-close basis and refuses unfunded fees
+without creating a public balance writer or granting execution authority.
 
 [Owned paper evaluation declarations](docs/reference/paper-evaluation-declarations.md)
 pin planned variant families, future observation windows, owner models, baselines
