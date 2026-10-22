@@ -219,6 +219,13 @@ func marketUpdate(q Quote) string {
 	}{q.Symbol, q.OccurredAt, q.BidCents, q.AskCents, q.BidQuantity, q.AskQuantity})
 }
 func step(m Model, o Order, p Projection, c Command, seen map[string]string) (Projection, Outcome, error) {
+	return stepBounded(m, o, p, c, seen, nil)
+}
+
+// Shared-book replay supplies an additional remaining side allowance without
+// changing the original quote or its market-update identity. Legacy order
+// replay passes nil and retains its original outcomes and hashes.
+func stepBounded(m Model, o Order, p Projection, c Command, seen map[string]string, remainingLiquidity *int64) (Projection, Outcome, error) {
 	if !paperaccount.ID.MatchString(c.ID) || !validTime(c.At) || c.At.Before(p.LastClock) || c.Cancel && c.Quote != nil {
 		return Projection{}, Outcome{}, ErrInvalid
 	}
@@ -305,6 +312,12 @@ func step(m Model, o Order, p Projection, c Command, seen map[string]string) (Pr
 		}
 	}
 	quantity := min(p.RemainingQuantity, available*m.LiquidityBPS/10000)
+	if remainingLiquidity != nil {
+		if *remainingLiquidity < 0 {
+			return Projection{}, Outcome{}, ErrInvalid
+		}
+		quantity = min(quantity, *remainingLiquidity)
+	}
 	if quantity == 0 {
 		return finish("displayed_liquidity_unavailable")
 	}

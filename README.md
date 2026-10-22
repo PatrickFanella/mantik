@@ -479,6 +479,12 @@ can reconcile exit fees that exceed sale proceeds when available cash funds the
 difference. Existing v1 replay and the service's deferral-only behavior remain
 unchanged; no execution authority is granted.
 
+The internal [shared paper-liquidity method](docs/reference/paper-fill-method.md#shared-displayed-liquidity-book)
+now allocates each displayed bid/ask allowance across competing orders under one
+replayable model, preserving source quotes and preventing recapture aliases from
+replenishing liquidity. Service-owned admission, capital and effect bindings
+remain unfinished.
+
 Service-owned [allocation comparisons](docs/reference/owned-allocation-comparisons.md)
 now retain native decision/policy bindings, owner-derived admission readiness
 checks and replayable deferral ledgers in
