@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
@@ -128,6 +129,45 @@ func newPaperOutcome(c PaperOutcomeCommand, b PaperOutcomeBasis, at time.Time, e
 	}
 	return r, nil
 }
+
+// Reuse only pure evaluations of an exactly equal basis and clock inside one
+// catalogue replay. Each record still receives independent custody, command,
+// envelope and hash validation. Hash buckets are guarded by full equality;
+// neither a digest collision nor an omitted JSON field can alias inputs.
+func memoPaperOutcomeEvaluator(eval PaperOutcomeEvaluator) PaperOutcomeEvaluator {
+	type evaluated struct {
+		basis PaperOutcomeBasis
+		at    time.Time
+		value PaperOutcomeEvaluation
+	}
+	cache := map[[32]byte][]evaluated{}
+	bytes := 0
+	return func(b PaperOutcomeBasis, at time.Time) (PaperOutcomeEvaluation, error) {
+		raw, marshalErr := json.Marshal(struct {
+			Basis PaperOutcomeBasis
+			At    time.Time
+		}{b, at})
+		key := sha256.Sum256(raw)
+		for _, old := range cache[key] {
+			if reflect.DeepEqual(old.basis, b) && reflect.DeepEqual(old.at, at) {
+				return old.value, nil
+			}
+		}
+		// Own a detached copy before calling the evaluator, which receives another
+		// copy so even a faulty callback cannot mutate a future cache comparison.
+		original := clone(b)
+		value, err := eval(clone(b), at)
+		if err != nil {
+			return PaperOutcomeEvaluation{}, err
+		}
+		if marshalErr == nil && len(raw) <= MaxPaperOutcomeBytes-bytes {
+			cache[key] = append(cache[key], evaluated{original, at, value})
+			bytes += len(raw)
+		}
+		return value, nil
+	}
+}
+
 func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, decisionEval PaperDecisionEvaluator, eval PaperOutcomeEvaluator) (PaperOutcomeCatalog, error) {
 	out := PaperOutcomeCatalog{ReceiverID: owner, Records: []PaperOutcomeRecord{}}
 	if eval == nil || len(all) > MaxPaperOutcomes {
@@ -136,6 +176,7 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 	if _, err := paperDecisionCatalog(owner, decisions, strategies, feed, decisionEval); err != nil {
 		return out, err
 	}
+	eval = memoPaperOutcomeEvaluator(eval)
 	for id, v := range all {
 		r, b := v.Record, v.Basis
 		d, ok := decisions[r.Command.DecisionID]
