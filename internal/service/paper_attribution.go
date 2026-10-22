@@ -1,0 +1,44 @@
+package service
+
+import (
+	"context"
+	"net/http"
+	"time"
+
+	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
+	"git.subcult.tv/subculture-collective/mantik/internal/storage"
+)
+
+func paperAttributionRoutes(mux *http.ServeMux, store storage.Store) {
+	backend, ok := store.(storage.PaperAttributionStore)
+	if !ok {
+		return
+	}
+	read := func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if r.URL.RawQuery != "" || r.URL.ForceQuery || id != "" && !paperaccount.ID.MatchString(id) {
+			write(w, 422, map[string]string{"error": "invalid paper attribution query"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		all, err := backend.PaperAttribution(ctx, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+		if err != nil {
+			write(w, 503, map[string]string{"error": "paper attribution storage unavailable"})
+			return
+		}
+		if id == "" {
+			write(w, 200, all)
+			return
+		}
+		for _, row := range all.Rows {
+			if row.Decision.Command.ID == id {
+				write(w, 200, row)
+				return
+			}
+		}
+		write(w, 404, map[string]string{"error": "paper attribution decision not found"})
+	}
+	mux.HandleFunc("GET /v1/paper-attribution", read)
+	mux.HandleFunc("GET /v1/paper-attribution/{id}", read)
+}
