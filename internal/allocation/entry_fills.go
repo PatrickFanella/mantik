@@ -37,7 +37,7 @@ func ApplyEntryFillBook(ctx context.Context, ledger Ledger, book paperfill.Book)
 	if model == nil || !reflect.DeepEqual(*model, book.Model) {
 		return fail(ErrLedgerConflict)
 	}
-	root, err := paperfill.NewBook(book.Model, book.Orders)
+	root, err := paperfill.RootBook(book)
 	if err != nil {
 		return fail(err)
 	}

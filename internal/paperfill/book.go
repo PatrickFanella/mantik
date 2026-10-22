@@ -11,6 +11,7 @@ import (
 )
 
 const BookMethod = "usd-equity-shared-displayed-quote-v1"
+const OccurrenceBookMethod = "usd-equity-shared-occurrence-quote-v2"
 const MaxBookOrders = 32
 const MaxBookBytes = 8 << 20
 
@@ -44,10 +45,15 @@ type BookOrderProjection struct {
 	OrderID    string     `json:"order_id"`
 	Projection Projection `json:"projection"`
 }
+type BookCapacity struct {
+	Bid int64 `json:"bid"`
+	Ask int64 `json:"ask"`
+}
 type BookLiquidity struct {
-	MarketUpdateSHA256 string `json:"market_update_sha256"`
-	BidUsed            int64  `json:"bid_used"`
-	AskUsed            int64  `json:"ask_used"`
+	Capacity           *BookCapacity `json:"capacity,omitempty"`
+	MarketUpdateSHA256 string        `json:"market_update_sha256"`
+	BidUsed            int64         `json:"bid_used"`
+	AskUsed            int64         `json:"ask_used"`
 }
 type BookProjection struct {
 	Orders              []BookOrderProjection `json:"orders"`
@@ -65,6 +71,22 @@ type BookReceipt struct {
 }
 
 func NewBook(m Model, orders []Order) (Book, error) {
+	return newBook(BookMethod, m, orders)
+}
+
+// NewOccurrenceBook shares a conservative capacity across price/size corrections
+// at one symbol/time. The owner must provide one provider/feed stream.
+func NewOccurrenceBook(m Model, orders []Order) (Book, error) {
+	return newBook(OccurrenceBookMethod, m, orders)
+}
+
+// RootBook retains the exact book method in financial effect bindings.
+func RootBook(b Book) (Book, error) { return newBook(b.Method, b.Model, b.Orders) }
+
+func newBook(method string, m Model, orders []Order) (Book, error) {
+	if method != BookMethod && method != OccurrenceBookMethod {
+		return Book{}, ErrInvalid
+	}
 	if m.Validate() != nil || len(orders) == 0 || len(orders) > MaxBookOrders {
 		return Book{}, ErrInvalid
 	}
@@ -76,7 +98,7 @@ func NewBook(m Model, orders []Order) (Book, error) {
 		orders[i].PlacedAt = orders[i].PlacedAt.UTC()
 		orders[i].ExpiresAt = orders[i].ExpiresAt.UTC()
 	}
-	b := Book{Schema: "mantik-shared-paper-fill-book-v1", Method: BookMethod, Model: m, Orders: orders, Entries: []BookEntry{}}
+	b := Book{Schema: "mantik-shared-paper-fill-book-v1", Method: method, Model: m, Orders: orders, Entries: []BookEntry{}}
 	b.SHA256 = workerplan.Hash(b)
 	return b, nil
 }
@@ -136,6 +158,26 @@ func bookStep(b Book, p BookProjection, c BookCommand, seen map[string]string) (
 			return BookProjection{}, nil, ErrConflict
 		}
 	}
+	// Record usable, already available occurrence capacity even when no order
+	// fills. A later favorable correction cannot enlarge an earlier observation.
+	if b.Method == OccurrenceBookMethod && c.Quote != nil && c.Quote.Quality == "usable" && !c.Quote.ReceivedAt.After(c.At) {
+		q := *c.Quote
+		key := bookLiquidityKey(b, q)
+		bid, ask := q.BidQuantity*b.Model.LiquidityBPS/10000, q.AskQuantity*b.Model.LiquidityBPS/10000
+		index := -1
+		for i, l := range p.Liquidity {
+			if l.MarketUpdateSHA256 == key {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			p.Liquidity = append(p.Liquidity, BookLiquidity{MarketUpdateSHA256: key, Capacity: &BookCapacity{Bid: bid, Ask: ask}})
+		} else {
+			cap := p.Liquidity[index].Capacity
+			cap.Bid, cap.Ask = min(cap.Bid, bid), min(cap.Ask, ask)
+		}
+	}
 	p.LastClock = c.At
 	outcomes := []BookOrderOutcome{}
 	for i, o := range b.Orders {
@@ -153,7 +195,7 @@ func bookStep(b Book, p BookProjection, c BookCommand, seen map[string]string) (
 		var remaining int64
 		index := -1
 		if c.Quote != nil && c.Quote.Quality == "usable" {
-			update := marketUpdate(*c.Quote)
+			update := bookLiquidityKey(b, *c.Quote)
 			for j, l := range p.Liquidity {
 				if l.MarketUpdateSHA256 == update {
 					index = j
@@ -171,7 +213,14 @@ func bookStep(b Book, p BookProjection, c BookCommand, seen map[string]string) (
 			if o.Side == "sell" {
 				quantity = c.Quote.BidQuantity
 			}
-			remaining = quantity*b.Model.LiquidityBPS/10000 - used
+			capacity := quantity * b.Model.LiquidityBPS / 10000
+			if index >= 0 && p.Liquidity[index].Capacity != nil {
+				capacity = p.Liquidity[index].Capacity.Ask
+				if o.Side == "sell" {
+					capacity = p.Liquidity[index].Capacity.Bid
+				}
+			}
+			remaining = max(int64(0), capacity-used)
 			allowance = &remaining
 		}
 		next, out, err := stepBounded(b.Model, o, p.Orders[i].Projection, command, seen, allowance)
@@ -182,7 +231,7 @@ func bookStep(b Book, p BookProjection, c BookCommand, seen map[string]string) (
 		outcomes = append(outcomes, BookOrderOutcome{OrderID: o.ID, Outcome: out})
 		if out.Fill != nil {
 			if index < 0 {
-				p.Liquidity = append(p.Liquidity, BookLiquidity{MarketUpdateSHA256: marketUpdate(*c.Quote)})
+				p.Liquidity = append(p.Liquidity, BookLiquidity{MarketUpdateSHA256: bookLiquidityKey(b, *c.Quote)})
 				index = len(p.Liquidity) - 1
 			}
 			if o.Side == "sell" {
@@ -195,14 +244,24 @@ func bookStep(b Book, p BookProjection, c BookCommand, seen map[string]string) (
 	return p, outcomes, nil
 }
 
+func bookLiquidityKey(b Book, q Quote) string {
+	if b.Method == OccurrenceBookMethod {
+		return workerplan.Hash(struct {
+			Symbol     string
+			OccurredAt time.Time
+		}{q.Symbol, q.OccurredAt.UTC()})
+	}
+	return marketUpdate(q)
+}
+
 // ReplayBook rederives outcomes from unchanged source quotes. Repeated capture
 // IDs, receipt times and source pins cannot replenish an identical market update.
 func ReplayBook(ctx context.Context, b Book) (BookProjection, error) {
 	if err := ctx.Err(); err != nil {
 		return BookProjection{}, err
 	}
-	root, err := NewBook(b.Model, b.Orders)
-	if err != nil || b.Schema != root.Schema || b.Method != BookMethod || b.Entries == nil || len(b.Entries) > MaxEntries {
+	root, err := RootBook(b)
+	if err != nil || b.Schema != root.Schema || b.Method != root.Method || b.Entries == nil || len(b.Entries) > MaxEntries {
 		return BookProjection{}, ErrInvalid
 	}
 	raw, err := json.Marshal(b)
