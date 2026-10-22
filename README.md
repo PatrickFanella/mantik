@@ -485,6 +485,13 @@ Memory/PostgreSQL. The server selects funding from exact strategy-policy matches
 clients supply retained decision IDs and pins. Admission and execution bindings
 remain incomplete, so these comparisons cannot reserve cash or create orders.
 
+Service-owned [forward quote outcomes](docs/reference/owned-paper-outcomes.md)
+assess actual retained native proposals against a fixed later observation window.
+The service selects prices from its own publication history; callers select only
+a decision identity and hash. Waiting, missing and observed assessments are
+immutable. Quote deltas are decision observations, with no fill, PnL, admission
+or qualification grant.
+
 Service-owned [paper proposals and abstentions](docs/reference/owned-paper-decisions.md)
 retain native evaluations from owned strategy and price/calendar evidence.
 They grant no admission, allocation or execution authority.

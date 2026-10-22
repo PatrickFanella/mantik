@@ -130,3 +130,6 @@ var PaperDecisions string
 
 //go:embed 0039_owned_allocations.sql
 var OwnedAllocations string
+
+//go:embed 0040_paper_outcomes.sql
+var PaperOutcomes string

@@ -273,7 +273,7 @@ func TestPostgresContractsOwnedAllocationUpgradeRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	url := s.pool.Config().ConnString()
-	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_owned_allocations; DELETE FROM mantik_schema WHERE version=39"); err != nil {
+	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_paper_outcomes; DROP TABLE mantik_owned_allocations; DELETE FROM mantik_schema WHERE version>=39"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

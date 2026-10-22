@@ -182,9 +182,20 @@ func sameFeedRecord(a, b FeedEvidenceRecord) bool {
 // Validate historical sources against their actual retained owner records. A new
 // lease or later input does not rewrite a completed decision's as-of basis.
 func verifyPaperDecision(v retainedPaperDecision, strategies paperstrategy.Catalog, current FeedEvidenceSnapshot, eval PaperDecisionEvaluator) error {
-	r := v.Record
-	b := v.Basis
-	c := r.Command
+	if err := verifyPaperDecisionBasis(v.Record.Command, v.Basis, v.Record.FinalizedAt, strategies, current); err != nil {
+		return err
+	}
+	r, b, c := v.Record, v.Basis, v.Record.Command
+	expected, err := newPaperDecision(c, b, r.FinalizedAt, eval)
+	if err != nil || !reflect.DeepEqual(expected, r) {
+		return ErrPaperDecisionInvalid
+	}
+	return nil
+}
+
+// verifyPaperDecisionBasis validates retained sources without manufacturing a
+// finalized decision. Outcome assessments share this custody check.
+func verifyPaperDecisionBasis(c PaperDecisionCommand, b PaperDecisionBasis, asof time.Time, strategies paperstrategy.Catalog, current FeedEvidenceSnapshot) error {
 	s, err := paperstrategy.Select(strategies, c.StrategyID)
 	if err != nil || !reflect.DeepEqual(s, b.Strategy) || current.ReceiverID != c.ReceiverID {
 		return ErrPaperDecisionConflict
@@ -197,7 +208,7 @@ func verifyPaperDecision(v retainedPaperDecision, strategies paperstrategy.Catal
 	leaseFound := old.Lease == nil
 	if old.Lease != nil {
 		for _, cmd := range current.Collectors.Commands {
-			if cmd.Command.RegistrationID == c.RegistrationID && cmd.Receipt.At.Compare(r.FinalizedAt) <= 0 && reflect.DeepEqual(cmd.Receipt.Entry, old) {
+			if cmd.Command.RegistrationID == c.RegistrationID && cmd.Receipt.At.Compare(asof) <= 0 && reflect.DeepEqual(cmd.Receipt.Entry, old) {
 				leaseFound = true
 				break
 			}
@@ -217,10 +228,6 @@ func verifyPaperDecision(v retainedPaperDecision, strategies paperstrategy.Catal
 		if !ok || x.Fence.RegistrationID != c.RegistrationID || !reflect.DeepEqual(x, y) || current.Routing == nil || !reflect.DeepEqual(b.Feed.Routing.Inputs[id], current.Routing.Inputs[id]) {
 			return ErrPaperDecisionConflict
 		}
-	}
-	expected, err := newPaperDecision(c, b, r.FinalizedAt, eval)
-	if err != nil || !reflect.DeepEqual(expected, r) {
-		return ErrPaperDecisionInvalid
 	}
 	return nil
 }
