@@ -52,6 +52,9 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	if err := json.Unmarshal(request("GET", "/v1/paper-attribution/"+abstain.Command.ID, nil, 200), &noAction); err != nil || !reflect.DeepEqual(noAction.Decision, abstain) || !reflect.DeepEqual(noAction.Observations[0], outcomes[1]) || len(noAction.Allocations) != 0 {
 		t.Fatal(noAction, err)
 	}
+	row.SHA256 = hash
+	all.SHA256 = workerplan.Hash(all)
+	paperAttributionCLIContract(t, serverURL, all, row, noAction)
 	request("GET", "/v1/paper-attribution/missing", nil, 404)
 	for _, path := range []string{"/v1/paper-attribution?", "/v1/paper-attribution?account_id=caller", "/v1/paper-attribution/" + candidate.Command.ID + "?model=unavailable", "/v1/paper-attribution/" + candidate.Command.ID + "?at=future", "/v1/paper-attribution/invalid.id"} {
 		request("GET", path, nil, 422)
