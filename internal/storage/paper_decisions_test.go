@@ -18,6 +18,7 @@ import (
 type decisionBackend interface {
 	strategyBackend
 	PaperDecisionStore
+	PaperDecisionSourceStore
 	DecisionReviewStore
 	FeedCollectorStore
 }
@@ -71,6 +72,19 @@ func ownedDecisionContracts(t *testing.T, s decisionBackend) {
 		t.Fatal(all, err)
 	}
 	first := all.Records[0]
+	sources, err := s.PaperDecisionSources(ctx, c.ID, eval)
+	if err != nil || !reflect.DeepEqual(sources.Decision, first) || sources.Decision.BasisSHA256 != workerplan.Hash(sources.Basis) {
+		t.Fatal("source read", sources, err)
+	}
+	sources.Basis.Feed.ReceiverID = "mutated"
+	sources.Decision.Evaluation.ReasonCode = "mutated"
+	sourcesAgain, err := s.PaperDecisionSources(ctx, c.ID, eval)
+	if err != nil || sourcesAgain.Basis.Feed.ReceiverID != owner || !reflect.DeepEqual(sourcesAgain.Decision, first) {
+		t.Fatal("source detachment", err)
+	}
+	if _, err := s.PaperDecisionSources(ctx, "missing", eval); !errors.Is(err, ErrPaperDecisionNotFound) {
+		t.Fatal(err)
+	}
 	decisionReviewContracts(t, s, first, at.Add(2*time.Second), eval)
 	if first.AdmissionAvailable || first.ExecutionAvailable || first.QualificationCredit {
 		t.Fatal(first)
@@ -92,6 +106,9 @@ func ownedDecisionContracts(t *testing.T, s decisionBackend) {
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
+	if _, err := s.PaperDecisionSources(canceled, c.ID, eval); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
 	if _, err := s.FinalizePaperDecision(canceled, c, noClock, eval); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
@@ -152,6 +169,9 @@ func ownedDecisionContracts(t *testing.T, s decisionBackend) {
 	set(damaged)
 	if _, err := s.DecisionReviews(ctx, eval); err == nil {
 		t.Fatal("review read accepted a forged actual decision")
+	}
+	if _, err := s.PaperDecisionSources(ctx, "missing", eval); err == nil {
+		t.Fatal("source selection hid corrupt catalogue")
 	}
 	if _, err := s.PaperDecisions(ctx, eval); err == nil {
 		t.Fatal("self-hashed execution forgery accepted")

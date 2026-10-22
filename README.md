@@ -528,6 +528,11 @@ a decision identity and hash. Waiting, missing and observed assessments are
 immutable. Quote deltas are decision observations, with no fill, PnL, admission
 or qualification grant.
 
+Authenticated [retained market dimensions](docs/reference/owned-paper-decisions.md#retained-market-dimensions)
+bind finalized decisions to original bid/ask recordings and raw provider sizes.
+Share-unit normalization remains unavailable; these readbacks grant no admission
+or financial execution authority.
+
 Service-owned [paper proposals and abstentions](docs/reference/owned-paper-decisions.md)
 retain native evaluations from owned strategy and price/calendar evidence.
 They grant no admission, allocation or execution authority.
