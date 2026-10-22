@@ -96,3 +96,5 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Cutoff-visible candidate replay inputs](candidate-replay.md): complete parent
   exposures, availability ordering and verified derived artifacts.
+
+- [Finalized decision claim reviews and cases](decision-review-cases.md)

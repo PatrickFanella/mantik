@@ -129,3 +129,8 @@ authorized watch changes, scoped operator actions and contradiction-review cases
 still require typed owner bindings. This endpoint does not implement those actions
 or close the issue. It changes no database schema, account, order, operation,
 worker or protection state.
+
+Explicit factual claims about these records can be checked through
+[finalized decision claim reviews](decision-review-cases.md). Contradictory or
+unsupported claims open a review case without changing the decision. Original
+prose remains unverified, including when supplied claims match.

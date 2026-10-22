@@ -506,6 +506,10 @@ admission authority is added.
 Authenticated [finalized-decision explanations](docs/reference/owned-paper-decisions.md#grounded-explanations)
 render retained reasons and evidence pins without a model request or changes to
 decision, admission, allocation or execution authority.
+Typed [decision claim reviews](docs/reference/decision-review-cases.md) now retain
+contradictory or unsupported claims in an open review case per actual finalized
+decision. Original prose stays unverified; reviews do not revise decision or
+financial authority.
 
 Service-owned [social watches and recordings](docs/reference/owned-social-watches.md)
 bind versioned provider/account policies to exact, explicitly unqualified source
