@@ -41,6 +41,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	paperStrategyRoutes(mux, store, clock)
 	paperDecisionRoutes(mux, store, clock)
 	paperOutcomeRoutes(mux, store, clock)
+	socialWatchRoutes(mux, store, clock)
 	ownedAllocationRoutes(mux, store, clock)
 	fixtureCapitalRoutes(mux, store)
 	paperLedgerRoutes(mux, store, clock)

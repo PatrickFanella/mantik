@@ -485,6 +485,12 @@ Memory/PostgreSQL. The server selects funding from exact strategy-policy matches
 clients supply retained decision IDs and pins. Admission and execution bindings
 remain incomplete, so these comparisons cannot reserve cash or create orders.
 
+Service-owned [social watches and recordings](docs/reference/owned-social-watches.md)
+bind versioned provider/account policies to exact, explicitly unqualified source
+recordings. Revisions, deletions, repost roots and repeated-claim groups remain
+inspectable. Connectors report unavailable per watch; no provider request,
+research dispatch, independent evidence, fill or trading grant is implied.
+
 Service-owned [forward quote outcomes](docs/reference/owned-paper-outcomes.md)
 assess actual retained native proposals against a fixed later observation window.
 The service selects prices from its own publication history; callers select only

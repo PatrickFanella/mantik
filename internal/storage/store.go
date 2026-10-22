@@ -25,6 +25,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/paperledger"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
+	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
 	"git.subcult.tv/subculture-collective/mantik/internal/trial"
 	"git.subcult.tv/subculture-collective/mantik/internal/workertrial"
 	"git.subcult.tv/subculture-collective/mantik/internal/workflow"
@@ -49,6 +50,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	socialJournal            *socialwatch.Journal
 	ownedAllocations         ownedAllocationJournal
 	paperOutcomes            map[string]retainedPaperOutcome
 	paperDecisions           map[string]retainedPaperDecision

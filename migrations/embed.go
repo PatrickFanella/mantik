@@ -133,3 +133,6 @@ var OwnedAllocations string
 
 //go:embed 0040_paper_outcomes.sql
 var PaperOutcomes string
+
+//go:embed 0041_social_watches.sql
+var SocialWatches string
