@@ -62,6 +62,9 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	request := func(method, path string, body any, want int) []byte {
 		t.Helper()
 		raw, _ := json.Marshal(body)
+		if body == nil {
+			raw = nil
+		}
 		if text, ok := body.(string); ok {
 			raw = []byte(text)
 		}

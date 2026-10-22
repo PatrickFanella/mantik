@@ -23,7 +23,7 @@ type evaluationDeclarationBackend interface {
 	PaperEvaluationDeclarationStore
 }
 
-func declarationFixture(t *testing.T, s evaluationDeclarationBackend) (PaperEvaluationDeclarationCommand, time.Time) {
+func declarationFixture(t *testing.T, s evaluationDeclarationBackend, evidenceClass ...string) (PaperEvaluationDeclarationCommand, time.Time) {
 	t.Helper()
 	ctx := context.Background()
 	at := time.Now().UTC()
@@ -32,6 +32,9 @@ func declarationFixture(t *testing.T, s evaluationDeclarationBackend) (PaperEval
 	strategies := []paperstrategy.Record{}
 	for _, id := range []string{"baseline-v1", "variant-v1"} {
 		d := strategyDefinition(id)
+		if len(evidenceClass) > 0 {
+			d.InputEvidenceClass = evidenceClass[0]
+		}
 		r, err := s.RegisterPaperStrategy(ctx, paperstrategy.Command{ReceiverID: account.ReceiverID, Definition: d}, func() time.Time { return at })
 		if err != nil {
 			t.Fatal(err)

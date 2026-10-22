@@ -47,6 +47,31 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 		t.Fatal(all, err)
 	}
 	clock.panicRead = false
+	var evidence storage.PaperEvaluationEvidence
+	path := "/v1/paper-evaluation-declarations/" + c.ID + "/evidence"
+	if err := json.Unmarshal(request("GET", path, nil, 200), &evidence); err != nil || evidence.Declaration.SHA256 != r.SHA256 || evidence.Phase != "awaiting_window" || len(evidence.Rows) != 5 || evidence.DistinctProviderOccurrences != 0 || evidence.IndependentSamplesAvailable || evidence.EvaluationAvailable || evidence.AdmissionAvailable || evidence.ExecutionAvailable || evidence.QualificationCredit || !evidence.AsOf.Equal(clock.at) {
+		t.Fatal(evidence, err)
+	}
+	unsigned := evidence
+	unsigned.SHA256 = ""
+	if workerplan.Hash(unsigned) != evidence.SHA256 {
+		t.Fatal("evidence hash")
+	}
+	clock.panicRead = true
+	request("GET", path+"?at=future", nil, 422)
+	request("GET", path, map[string]any{"admission_available": true}, 422)
+	request("GET", "/v1/paper-evaluation-declarations/invalid.id/evidence", nil, 422)
+	clock.panicRead = false
+	request("GET", "/v1/paper-evaluation-declarations/missing/evidence", nil, 404)
+	request("POST", path, nil, 405)
+	response, err := http.Get(serverURL + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != 401 {
+		t.Fatal(response.StatusCode)
+	}
 	raw, _ := json.Marshal(c)
 	for _, extra := range []string{`"admission_available":true,`, `"balances":{},`, `"evaluation_results":[],`, `"at":"2020-01-01T00:00:00Z",`, `"qualification_credit":true,`, `"effect":{},`} {
 		request("POST", "/v1/paper-evaluation-declarations", strings.Replace(string(raw), `"id":`, extra+`"id":`, 1), 422)

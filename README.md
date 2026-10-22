@@ -564,3 +564,6 @@ without creating a public balance writer or granting execution authority.
 pin planned variant families, future observation windows, owner models, baselines
 and sensitivity/sample criteria before evaluation. Registration retains a plan;
 it supplies no result, admission or qualification credit.
+The declaration's [owner-selected evidence view](docs/reference/paper-evaluation-declarations.md#owner-selected-evidence)
+resolves actual family decisions and forward outcomes in one consistent read,
+retaining exclusions and duplicate-source lineage without scoring qualification.
