@@ -19,6 +19,40 @@ these structures must not become a public authority or balance import route.
 The projection declares `owner_supplied_allocation_ledger_core_only`; execution
 availability and qualification credit remain false.
 
+## Ledger versions and fee-bearing exits
+
+`NewLedger` continues to create `mantik-allocation-ledger-core-v1`. Its wire
+hashes and nonnegative close-proceeds rules are unchanged. The schema-39 owned
+allocation comparison service still uses this version and cannot reserve or
+apply effects.
+
+`NewCostLedger` explicitly creates `mantik-allocation-ledger-core-v2` for future
+owners that bind realistic fills. Version 2 permits a negative close's net
+proceeds when exit fees exceed gross sale proceeds. The debit must fit available
+cash at that transition. Outstanding reservations and remaining position cost
+cannot fund it. Zero available cash permits a zero-proceeds close but refuses a
+net debit. Negative proceeds are bounded by the maximum opening amount; the
+existing total cash, exposure, realized-PnL and conservation bounds still apply.
+An unfunded close returns no replacement ledger or projection.
+
+For example, a one-share entry costing 10,003 cents including its fee, followed
+by a one-cent sale with a 20-cent exit fee, has net sale proceeds of -19 cents.
+Closing from 100,000 cents of opening funding leaves 89,978 cents available and
+records -10,022 cents of realized PnL. This is arithmetic under declared model
+assumptions, not a qualified return.
+
+The v2 entry chain starts from a schema/policy-bound root. Changing a retained
+v1 ledger's schema and outer hash cannot reinterpret its entries as v2, and v1
+cannot replay v2 entries. There is no automatic migration or conversion of old
+balances. Existing v1 histories remain readable under their original contract.
+
+Both versions remain internal accounting cores. A real execution owner must
+select genuine admission, reservation, order and fill receipts; preflight the
+full fee-inclusive transition before enacting execution; and commit the effect
+and ledger atomically. Pure concurrent calculations commit nothing. No public
+balance/effect import, funded service execution or qualification grant is added
+by `NewCostLedger`.
+
 ## Retained comparison and accounting
 
 Comparisons use the [allocation policy](allocation-policy.md), including
@@ -42,7 +76,8 @@ Effects identify the decision and a unique owner-supplied evidence ID/hash:
 - `resolve` clears that hold with a separate explicit receipt, without inventing
   a fill or release. A subsequent known effect makes the financial transition.
 - `close` removes a positive position cost basis, adds net proceeds to available
-  cash and records proceeds minus cost as realized PnL. Zero proceeds are valid.
+  cash and records proceeds minus cost as realized PnL. Zero proceeds are valid;
+  v2 also supports a funded net debit as described above.
   Proceeds and resulting available cash are bounded at twice the maximum paper
   opening amount; realized PnL retains the planner's signed maximum-opening bound.
 
@@ -93,3 +128,10 @@ clock-free retries, self-hashed corruption, canceled replay, detached values,
 concurrent immutable comparisons and retention capacity. Fifty seeded lifecycle
 sequences check cash/reservation/cost conservation and gain/loss reconciliation.
 No fixture evidence establishes model authorship, market qualification or profit.
+
+Compatibility tests pin an existing v1 empty/history/entry hash. Cross-model
+tests reconcile actual paper-fill outputs with both entry and exit fees, verify
+JSON round-trip replay, refuse debits that would consume reserved cash, preserve
+unknown remainders and completed commitments, and check exact historical retries,
+duplicate effects, schema rewrites and self-rehashed unfunded closes. The service
+continues to require genuine admission/effect owners before any activation.
