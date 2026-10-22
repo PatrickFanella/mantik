@@ -88,3 +88,44 @@ capital writers (state before receiver). The PostgreSQL regression holds the
 capital owner's state row, observes finalization blocked on that row through
 `pg_blocking_pids`, then acquires receiver and commits. Both operations must finish
 without deadlock; the former receiver-first order fails with SQLSTATE `40P01`.
+
+## Grounded explanations
+
+`GET /v1/paper-decisions/{id}/explanation` renders a deterministic explanation of
+a retained finalized decision. The existing bearer authentication is required.
+The endpoint accepts only the selected path identity and rejects query parameters,
+including prompts, model selection, replacement actions and caller clocks.
+
+The service first replays the complete decision catalogue against actual retained
+strategy/feed records. It then renders the selected finalized envelope. Hash
+validation of a caller-supplied envelope alone is insufficient; this route accepts
+no imported decision, prose, evaluation, admission or effect assertion.
+
+The response pins the receiver, decision, private evidence basis, strategy record,
+collector registration and original finalization time. It includes the retained
+action, reason, reference price, stored signal flag and full coverage report with
+quote/calendar capture and input identities. `record_path` selects the retained
+decision detail. Original source material stays in the existing feed custody; the
+explanation does not fetch or rewrite it. A source capture identity is a targeted
+inspection reference, not independent evidence credit.
+
+Statements distinguish a research entry candidate from an abstention. A positive
+reference price is labeled as USD cents and explicitly distinguished from a fill.
+Missing prices are not narrated as zero-price observations. Coverage statements
+use only retained statuses; later market observations, lease changes and request
+time do not rewrite the original explanation. Unsupported free-form claims or
+proposed narratives are not accepted by this endpoint.
+
+The method is `deterministic-retained-decision-facts-v1`, with schema
+`mantik-finalized-decision-explanation-v1` and authority
+`finalized_research_decision_explanation_only`. Model usage, admission,
+execution and qualification flags remain false. No model request or fresh
+operational clock is needed. The explanation hash binds all returned facts and
+statements, so the same retained decision produces the same response after new
+observations arrive.
+
+This is a read-only foundation for issue #23. Conversation-driven research,
+authorized watch changes, scoped operator actions and contradiction-review cases
+still require typed owner bindings. This endpoint does not implement those actions
+or close the issue. It changes no database schema, account, order, operation,
+worker or protection state.

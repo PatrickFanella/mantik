@@ -120,6 +120,15 @@ func paperDecisionRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		for _, v := range all.Records {
 			if v.Command.ID == id {
+				if r.Pattern == "GET /v1/paper-decisions/{id}/explanation" {
+					explanation, err := explainPaperDecision(v)
+					if err != nil {
+						paperDecisionError(w, err)
+						return
+					}
+					write(w, http.StatusOK, explanation)
+					return
+				}
 				write(w, 200, v)
 				return
 			}
@@ -128,4 +137,5 @@ func paperDecisionRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 	}
 	mux.HandleFunc("GET /v1/paper-decisions", read)
 	mux.HandleFunc("GET /v1/paper-decisions/{id}", read)
+	mux.HandleFunc("GET /v1/paper-decisions/{id}/explanation", read)
 }
