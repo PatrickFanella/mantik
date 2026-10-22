@@ -120,6 +120,30 @@ actual runtime/lease before deciding on a new run. Known-lease cleanup still has
 its independent five-second deadline; an unconfirmed release stays unconfirmed.
 A stopped or incomplete identity never resumes automatically.
 
+`state: stopped` describes acquisition termination. It does not imply
+`stop_confirmed: true`. Cleanup can time out before the server applies stop, or
+the server can apply stop while its reply is lost. Both retain an unconfirmed
+result and the original fenced stop request. A confirmed result requires the
+retained valid stop receipt; a later status read cannot infer confirmation from
+elapsed time or a stopped acquisition record.
+
+An unapplied stop may leave the declared lease current until its existing
+300-second expiry. Expiry prevents new submissions and renewal by that
+generation; exact historical delivery readback remains a separate recovery path.
+Stopping does not extend the lease. A lost claim reply supplies no trusted
+generation and is never followed by a guessed stop. Inspect actual server and
+runtime state before explicit recovery. Never treat the local deadline as proof
+of immediate server release.
+
+Regression scenarios cover deadline termination with both an unapplied stop
+timeout and an applied stop whose reply is lost. They require truthful
+confirmation, retained stop intent, finite lease expiry, refusal of expired
+renewal, and exact stopped replay without more acquisition or control requests.
+The real-deadline test permits unconfirmed cleanup while retaining those safety
+checks. These tests use local manufactured evidence; they do not qualify an
+existing collector's recovery, restart a terminal observation, or complete #25.
+
+
 These windows coordinate evidence acquisition only. They do not prove
 continuous feed availability, collector OS liveness, strategy performance,
 profitability, or authority to execute an order.
