@@ -217,3 +217,12 @@ func TestServeRejectsInvalidFeedPolicyBeforeDatabaseOrListen(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestServeAutomaticOutcomeFlag(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+	var out, diag bytes.Buffer
+	err := Run(context.Background(), []string{"serve", "--automatic-paper-outcomes"}, &out, &diag)
+	if err == nil || err.Error() != "DATABASE_URL is required for serve" {
+		t.Fatal(err, diag.String())
+	}
+}

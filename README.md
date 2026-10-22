@@ -494,6 +494,12 @@ models now bind full buy debit ceilings, including worst-case whole-share partia
 fees, to actual finalized proposals. Admission and execution bindings
 remain incomplete, so these comparisons cannot reserve cash or create orders.
 
+The opt-in [automatic outcome worker](docs/reference/owned-paper-outcomes.md#automatic-sealed-collection)
+(`serve --automatic-paper-outcomes`) now seals one retained forward quote outcome
+per matured entry decision without a client assessment request. Missing prices,
+retries, capacity and worker health remain explicit; no provider/model call or
+admission authority is added.
+
 Authenticated [finalized-decision explanations](docs/reference/owned-paper-decisions.md#grounded-explanations)
 render retained reasons and evidence pins without a model request or changes to
 decision, admission, allocation or execution authority.

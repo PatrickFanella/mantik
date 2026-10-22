@@ -245,9 +245,10 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest, feedPolicyPath string
-	var exportDataset bool
+	var exportDataset, automaticOutcomes bool
 	switch args[0] {
 	case "serve":
+		fs.BoolVar(&automaticOutcomes, "automatic-paper-outcomes", false, "automatically retain sealed forward quote outcomes; no admission authority")
 		fs.StringVar(&feedPolicyPath, "feed-readiness-policy", "", "optional receiver-bound feed readiness policy JSON file")
 		fs.StringVar(&listen, "listen", "127.0.0.1:40880", "listen address; non-loopback requires MANTIK_API_TOKEN")
 	case "demo":
@@ -275,7 +276,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	if args[0] == "serve" {
-		return serve(ctx, listen, feedPolicyPath)
+		return serve(ctx, listen, feedPolicyPath, automaticOutcomes)
 	}
 	if args[0] == "replay" {
 		if exportDataset {
@@ -397,7 +398,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	return nil
 }
 
-func serve(ctx context.Context, listen, policyPath string) error {
+func serve(ctx context.Context, listen, policyPath string, automaticOutcomes bool) error {
 	var policy *service.FeedReadinessPolicy
 	if policyPath != "" {
 		file, err := os.Open(policyPath)
@@ -465,7 +466,16 @@ func serve(ctx context.Context, listen, policyPath string) error {
 		defer close(actionDone)
 		service.RunActionWorkerWithFixtureGate(workerCtx, store, workerID+"-actions", service.WallClock{}, interval, 30*time.Second, gate)
 	}()
-	defer func() { stopWorker(); <-workerDone; <-actionDone }()
+	outcomeDone := make(chan struct{})
+	if automaticOutcomes {
+		go func() {
+			defer close(outcomeDone)
+			service.RunPaperOutcomeWorker(workerCtx, store, workerID+"-outcomes", service.WallClock{})
+		}()
+	} else {
+		close(outcomeDone)
+	}
+	defer func() { stopWorker(); <-workerDone; <-actionDone; <-outcomeDone }()
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	finished := make(chan error, 1)
 	go func() { finished <- server.Serve(listener) }()

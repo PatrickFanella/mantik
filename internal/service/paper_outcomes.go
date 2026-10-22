@@ -147,7 +147,7 @@ func paperOutcomeRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		defer r.Body.Close()
 		raw, err := io.ReadAll(r.Body)
 		var c storage.PaperOutcomeCommand
-		if err != nil || workerplan.ReadBoundedShape(raw, &c, 4096) != nil || c.Validate() != nil {
+		if err != nil || workerplan.ReadBoundedShape(raw, &c, 4096) != nil || c.Validate() != nil || reservedPaperOutcomeID(c.ID) {
 			paperOutcomeError(w, storage.ErrPaperOutcomeInvalid)
 			return
 		}

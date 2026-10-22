@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
@@ -18,9 +19,24 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+// Interleave a real publication after worker selection and before the owner
+// transaction. The transaction must use its live service clock, not a stale
+// cycle-start timestamp.
+type interleavedOutcomeWorkerStore struct {
+	ownedDecisionHTTPBackend
+	once   sync.Once
+	before func()
+}
+
+func (s *interleavedOutcomeWorkerStore) AssessPaperOutcome(ctx context.Context, c storage.PaperOutcomeCommand, now func() time.Time, d storage.PaperDecisionEvaluator, e storage.PaperOutcomeEvaluator) (storage.PaperOutcomeReceipt, error) {
+	s.once.Do(s.before)
+	return s.ownedDecisionHTTPBackend.AssessPaperOutcome(ctx, c, now, d, e)
+}
 
 func TestOwnedPaperOutcomeHTTP(t *testing.T) { ownedPaperOutcomeHTTP(t, storage.NewMemory()) }
 func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
@@ -126,12 +142,38 @@ func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 		}
 		return r
 	}
+	reserved := commandOutcome
+	reserved.ID = service.AutomaticPaperOutcomeID(first.Record)
+	request("POST", "/v1/paper-outcomes", reserved, 422)
 	early := assess("early", "waiting_horizon")
 	clock.at = clock.at.Add(10 * time.Second)
 	waiting := assess("due", "waiting_price")
+	// The automatic worker must not seal at the inclusive window endpoint.
+	boundary := &ownedDecisionClock{at: first.Record.FinalizedAt.Add(70 * time.Second)}
+	if err := service.RunPaperOutcomeCycle(ctx, s, boundary); err != nil {
+		t.Fatal(err)
+	}
+	var boundaryCatalog storage.PaperOutcomeCatalog
+	if json.Unmarshal(request("GET", "/v1/paper-outcomes", nil, 200), &boundaryCatalog) != nil || len(boundaryCatalog.Records) != 2 {
+		t.Fatal("sealed before window closed", boundaryCatalog)
+	}
 	// A fresh quote timestamp alone cannot make a late publication timely.
 	clock.at = clock.at.Add(61 * time.Second)
 	missing := assess("missing", "price_unavailable")
+	var workers sync.WaitGroup
+	for range 8 {
+		workers.Go(func() {
+			if err := service.RunPaperOutcomeCycle(ctx, s, clock); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	workers.Wait()
+	var automaticFirst storage.PaperOutcomeRecord
+	if err := json.Unmarshal(request("GET", "/v1/paper-outcomes/"+reserved.ID, nil, 200), &automaticFirst); err != nil || automaticFirst.Evaluation.Status != "price_unavailable" || automaticFirst.AdmissionAvailable || automaticFirst.ExecutionAvailable || automaticFirst.QualificationCredit {
+		t.Fatal(automaticFirst, err)
+	}
+
 	late := quote("late", "102")
 	late.ReceivedAt = first.Record.FinalizedAt.Add(11 * time.Second)
 	late.Original = fmt.Sprintf(`{"quotes":{"SPY":{"t":%q,"ap":102,"bp":101,"as":10,"bs":10}}}`, late.ReceivedAt.Format(time.RFC3339Nano))
@@ -248,12 +290,60 @@ func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	wrong.ID = "wrong-pin"
 	wrong.DecisionSHA256 = strings.Repeat("0", 64)
 	request("POST", "/v1/paper-outcomes", wrong, 409)
+	command.ID = "automatic-abstention"
+	var abstention storage.PaperDecisionReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-decisions", command, 201), &abstention); err != nil || abstention.Record.Evaluation.Action != "abstain" {
+		t.Fatal(abstention, err)
+	}
+	// Late collection recovers all matured decisions, selecting only evidence
+	// actually published within each original window. No HTTP assessment needed.
+	clock.at = first.Record.FinalizedAt.Add(170 * time.Second)
+	backward := &interleavedOutcomeWorkerStore{ownedDecisionHTTPBackend: s, before: func() { clock.at = first.Record.FinalizedAt.Add(70 * time.Second) }}
+	if err := service.RunPaperOutcomeCycle(ctx, backward, clock); !errors.Is(err, storage.ErrPaperOutcomeInvalid) {
+		t.Fatal("clock rollback committed an automatic record", err)
+	}
+	request("GET", "/v1/paper-outcomes/"+service.AutomaticPaperOutcomeID(fourth.Record), nil, 404)
+	clock.at = first.Record.FinalizedAt.Add(170 * time.Second)
+	interleaved := &interleavedOutcomeWorkerStore{ownedDecisionHTTPBackend: s, before: func() { clock.at = clock.at.Add(time.Second); publish(quote("during-automatic-cycle", "100")) }}
+	if err := service.RunPaperOutcomeCycle(ctx, interleaved, clock); err != nil {
+		t.Fatal(err)
+	}
+	var automaticAgain storage.PaperOutcomeRecord
+	if err := json.Unmarshal(request("GET", "/v1/paper-outcomes/"+reserved.ID, nil, 200), &automaticAgain); err != nil || !reflect.DeepEqual(automaticAgain, automaticFirst) {
+		t.Fatal("automatic retry rewrote history", automaticAgain, err)
+	}
+	for _, decision := range []storage.PaperDecisionRecord{second.Record, third.Record, fourth.Record} {
+		var record storage.PaperOutcomeRecord
+		if err := json.Unmarshal(request("GET", "/v1/paper-outcomes/"+service.AutomaticPaperOutcomeID(decision), nil, 200), &record); err != nil || record.Evaluation.Status != "observed" || record.AdmissionAvailable || record.ExecutionAvailable || record.QualificationCredit {
+			t.Fatal(record, err)
+		}
+	}
 	var catalog storage.PaperOutcomeCatalog
-	if err := json.Unmarshal(request("GET", "/v1/paper-outcomes", nil, 200), &catalog); err != nil || len(catalog.Records) != 12 {
+	if err := json.Unmarshal(request("GET", "/v1/paper-outcomes", nil, 200), &catalog); err != nil || len(catalog.Records) != 16 {
 		t.Fatal(catalog, err)
 	}
 	request("GET", "/v1/paper-outcomes/observed", nil, 200)
 	request("GET", "/v1/paper-outcomes/absent", nil, 404)
+	// Full retention leaves canonical old retries available, but a new matured
+	// decision must fail visibly rather than evicting evidence or changing IDs.
+	for i := len(catalog.Records); i < storage.MaxPaperOutcomes; i++ {
+		assess(fmt.Sprintf("capacity-%02d", i), "observed")
+	}
+	clock.at = first.Record.FinalizedAt.Add(171 * time.Second)
+	publish(quote("capacity-entry", "100"))
+	command.ID = "capacity-entry"
+	var capacityEntry storage.PaperDecisionReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-decisions", command, 201), &capacityEntry); err != nil || capacityEntry.Record.Evaluation.Action != "entry_candidate" {
+		t.Fatal(capacityEntry, err)
+	}
+	clock.at = first.Record.FinalizedAt.Add(242 * time.Second)
+	if err := service.RunPaperOutcomeCycle(ctx, s, clock); !errors.Is(err, storage.ErrPaperOutcomeCapacity) {
+		t.Fatal("worker hid capacity failure", err)
+	}
+	var full storage.PaperOutcomeCatalog
+	if err := json.Unmarshal(request("GET", "/v1/paper-outcomes", nil, 200), &full); err != nil || len(full.Records) != storage.MaxPaperOutcomes {
+		t.Fatal(full, err)
+	}
 	// Source submission changes routing as expected. The outcome API itself owns
 	// no operation or balance writes; the original case is still waiting.
 	after, err := s.Snapshot(ctx)

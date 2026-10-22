@@ -9,7 +9,7 @@ import (
 )
 
 // Scopes are independently inspectable; fixture readiness excludes real feeds.
-var Scopes = []string{"process", "storage", "feed_coverage", "action_delivery", "protective_monitoring", "fixture_operation"}
+var Scopes = []string{"process", "storage", "feed_coverage", "action_delivery", "protective_monitoring", "paper_outcome_collection", "fixture_operation"}
 
 // Readiness derives current availability without mutating persisted evidence.
 func Readiness(state domain.State, now time.Time, storageOK bool, scope string) domain.ReadinessReport {
@@ -24,6 +24,7 @@ func Readiness(state domain.State, now time.Time, storageOK bool, scope string) 
 		report.Capabilities["storage"] = cap(false, "unavailable", "storage_unavailable")
 		report.Capabilities["action_delivery"] = cap(false, "unknown", "storage_unavailable")
 		report.Capabilities["protective_monitoring"] = cap(false, "unknown", "storage_unavailable")
+		report.Capabilities["paper_outcome_collection"] = cap(false, "unknown", "storage_unavailable")
 	} else {
 		// A copied state detects missing protection/stalled work immediately, even
 		// before the worker persists its next observation of that condition.
@@ -35,7 +36,7 @@ func Readiness(state domain.State, now time.Time, storageOK bool, scope string) 
 		if err == nil {
 			Sync(&observed, now)
 		}
-		for _, name := range []string{"action_delivery", "protective_monitoring"} {
+		for _, name := range []string{"action_delivery", "protective_monitoring", "paper_outcome_collection"} {
 			value := cap(false, "not_configured", "worker_not_observed")
 			if state.Operations != nil {
 				w, ok := state.Operations.Workers[name]
