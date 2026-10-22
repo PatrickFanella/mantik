@@ -287,6 +287,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 		t.Fatal("wrong pin emitted", err)
 	}
 	paperAttributionHTTP(t, request, server.URL, clock, first.Record, abstain.Record)
+	paperEvaluationDeclarationHTTP(t, request, server.URL, clock, strategy.Record, policyReceipt.Record)
 	after, _ := s.Snapshot(ctx)
 	if before.ObservationCount != after.ObservationCount || !reflect.DeepEqual(before.Events, after.Events) || !reflect.DeepEqual(before.State.Case, after.State.Case) || !reflect.DeepEqual(before.State.Actions, after.State.Actions) {
 		t.Fatal("finalization changed operational state")

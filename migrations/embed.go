@@ -148,3 +148,6 @@ var OwnedProtectiveFunding string
 
 //go:embed 0045_decision_reviews.sql
 var DecisionReviews string
+
+//go:embed 0046_paper_evaluation_declarations.sql
+var PaperEvaluationDeclarations string

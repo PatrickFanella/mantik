@@ -104,3 +104,5 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Service-owned paper attribution](paper-attribution.md) — consistent phase
   readbacks with traceable decisions, observations and allocation identities.
+
+- [Owned paper evaluation declarations](paper-evaluation-declarations.md) — immutable future windows, strategy/model pins and intended checks; no evaluation or admission result.

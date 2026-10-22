@@ -554,3 +554,8 @@ The internal [entry-fill binding](docs/reference/allocation-ledger.md#replayed-e
 derives allocation debits from replayed shared paper fills under existing
 reservations and an exact owner model. It stages changes without a storage
 write; admission and atomic durable execution remain required before activation.
+
+[Owned paper evaluation declarations](docs/reference/paper-evaluation-declarations.md)
+pin planned variant families, future observation windows, owner models, baselines
+and sensitivity/sample criteria before evaluation. Registration retains a plan;
+it supplies no result, admission or qualification credit.
