@@ -90,6 +90,28 @@ func ownedSocialHTTP(t *testing.T, s socialHTTPBackend) {
 	if record.PolicyStatus != "structured_extraction_unavailable" || record.Command.Original != string(raw) || record.Source.Kind != "declared_position" || record.ExecutionAvailable || record.DispatchAvailable || record.IndependentEvidenceCredit || record.QualificationCredit || record.ProviderAccessVerified || record.InstrumentMappingVerified {
 		t.Fatal(record)
 	}
+	var applicability socialwatch.Applicability
+	if err := json.Unmarshal(request("GET", "/v1/social-recordings/recording/applicability", nil, 200), &applicability); err != nil || applicability.Status != "structured_extraction_unavailable" || applicability.CaptureSHA256 != record.SHA256 || applicability.Selected.OriginalSHA256 != record.Command.OriginalSHA256 || applicability.AsOf != clock.at {
+		t.Fatal(applicability, err)
+	}
+	if applicability.DispatchAvailable || applicability.ProviderAccessVerified || applicability.InstrumentMappingVerified || applicability.IndependentEvidenceCredit || applicability.AdmissionAvailable || applicability.ExecutionAvailable || applicability.QualificationCredit {
+		t.Fatal("applicability invented authority", applicability)
+	}
+	for _, path := range []string{"/v1/social-recordings/recording/applicability?", "/v1/social-recordings/recording/applicability?as_of=2000-01-01T00:00:00Z", "/v1/social-recordings/recording/applicability?provider_access_verified=true"} {
+		request("GET", path, nil, 422)
+	}
+	request("GET", "/v1/social-recordings/missing/applicability", nil, 404)
+	unauth, _ := http.Get(server.URL + "/v1/social-recordings/recording/applicability")
+	unauth.Body.Close()
+	if unauth.StatusCode != 401 {
+		t.Fatal(unauth.StatusCode)
+	}
+	actual := clock.at
+	clock.at = actual.Add(-time.Nanosecond)
+	if err := json.Unmarshal(request("GET", "/v1/social-recordings/recording/applicability", nil, 200), &applicability); err != nil || applicability.Status != "not_available_at_cutoff" || applicability.Current != nil {
+		t.Fatal(applicability, err)
+	}
+	clock.at = actual
 	clock.panicRead = true
 	if err := json.Unmarshal(request("POST", "/v1/social-recordings", cap, 200), &retry); err != nil || !retry.Duplicate || !reflect.DeepEqual(capture.Entry, retry.Entry) {
 		t.Fatal(retry, err)
@@ -154,6 +176,12 @@ func ownedSocialHTTP(t *testing.T, s socialHTTPBackend) {
 	var ignored socialwatch.Receipt
 	if err := json.Unmarshal(request("POST", "/v1/social-recordings", cap, 201), &ignored); err != nil || ignored.Entry.Capture.PolicyStatus != "watch_disabled" {
 		t.Fatal(ignored, err)
+	}
+	if err := json.Unmarshal(request("GET", "/v1/social-recordings/recording/applicability", nil, 200), &applicability); err != nil || applicability.Status != "watch_policy_changed" {
+		t.Fatal(applicability, err)
+	}
+	if err := json.Unmarshal(request("GET", "/v1/social-recordings/disabled-capture/applicability", nil, 200), &applicability); err != nil || applicability.Status != "watch_disabled" {
+		t.Fatal(applicability, err)
 	}
 	var all socialwatch.Catalog
 	if err := json.Unmarshal(request("GET", "/v1/social-history", nil, 200), &all); err != nil || len(all.History) != 4 || len(all.Watches) != 1 {

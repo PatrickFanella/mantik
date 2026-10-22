@@ -128,3 +128,42 @@ Schema-40 data is preserved. Old schema-40 writers refuse schema 41. Rollback
 uses a private pre-upgrade backup restored into separate resources with its
 matching binary; dropping live tables is not rollback. Local checks, hosted CI,
 merge, deployment, provider behavior and natural soak evidence remain distinct.
+
+## Source applicability before dispatch
+
+`GET /v1/social-recordings/{capture-id}/applicability` inspects the selected
+recording against the service clock and the retained history. Authentication is
+required. The endpoint accepts no query parameters or caller-supplied cutoff,
+source history, provider verification, admission, or effect assertions.
+
+The read validates the complete journal, including entries newer than the
+cutoff, before selecting the available prefix. The response pins both the full
+history and that prefix. `selected` identifies the exact capture and original
+byte digest; `current` identifies the latest accepted revision available at the
+cutoff. A future capture is reported as `not_available_at_cutoff`. Later edits,
+deletions, watch-policy changes, disabled watches, stale source material, and
+unsupported structured extraction have explicit statuses. Previous capture
+receipts remain unchanged; a later source recovery cannot promote an unresolved
+receipt.
+
+Repost lineage pins each exact parent capture visible when the repost was
+retained, in journal sequence order. A parent revision occurring after the repost
+is inapplicable. Nested reposts retain the entire parent chain. Edits preserve
+that chain; they cannot erase a chronology fault. A later parent edit or deletion
+invalidates the current repost view while a historical inspection still uses
+only its available prefix. Earlier cutoffs are supported by internal replay
+inspection; HTTP callers cannot select one. Mixed evidence classes produce an
+explicit repost-applicability fault. An unversioned platform repost reference does not
+prove which historical text the author saw; the view refuses ambiguous chronology
+rather than inferring a different parent revision.
+
+`current_source_assertion_dispatch_unbound` means the source revision and watch
+policy are current within this recorded history. It does not authenticate the
+provider/account, verify instrument mapping, establish independent evidence,
+dispatch work, admit a strategy, or authorize an economic effect. Those flags
+remain false. Applicability responses are read-time projections, not persisted
+dispatch or qualification receipts. The response hash includes its service-clock
+cutoff, so separate reads at different times can have different hashes. The
+read describes the fetched storage snapshot; it is not a transactional dispatch
+check. A future dispatch owner must recompute applicability under its write
+transaction rather than accepting this response as a token.

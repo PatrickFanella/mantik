@@ -490,6 +490,9 @@ bind versioned provider/account policies to exact, explicitly unqualified source
 recordings. Revisions, deletions, repost roots and repeated-claim groups remain
 inspectable. Connectors report unavailable per watch; no provider request,
 research dispatch, independent evidence, fill or trading grant is implied.
+The authenticated applicability read reports current source revisions, causal
+repost lineage, deletions, policy changes, and staleness without granting dispatch
+or trading authority.
 
 Service-owned [forward quote outcomes](docs/reference/owned-paper-outcomes.md)
 assess actual retained native proposals against a fixed later observation window.
