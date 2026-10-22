@@ -20,6 +20,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
+	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -169,8 +170,10 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 		t.Fatal(err)
 	}
 	policy := allocation.PolicyCommand{ReceiverID: owner, AccountID: account.Account.Config.ID, Policy: allocation.Policy{ID: "owner-policy", AccountSHA256: account.Account.SHA256, MaxSnapshotAgeSeconds: 60, Strategies: []allocation.Strategy{{ID: d.ID, ArtifactSHA256: strategy.Record.DefinitionSHA256, LimitCents: 200000}}, Symbols: []allocation.Symbol{{ID: d.Symbol, LimitCents: 200000, Groups: []string{}}}, Groups: []allocation.Group{}}}
-	if _, err = s.RegisterAllocationPolicy(ctx, policy, clock.Now); err != nil {
-		t.Fatal(err)
+	policy.ExecutionModel = &paperfill.Model{Method: paperfill.Method, SlippageBPS: 10, FeeBPS: 20, CommissionPerFillCents: 3, LiquidityBPS: 5000, LatencyMillis: 1000, MaxQuoteAgeSeconds: 60}
+	var policyReceipt allocation.PolicyReceipt
+	if err = json.Unmarshal(request("POST", "/v1/allocation-policies", policy, 201), &policyReceipt); err != nil || policyReceipt.Record.Schema != "mantik-owned-allocation-policy-v2" || policyReceipt.Record.Command.ExecutionModel == nil {
+		t.Fatal(policyReceipt, err)
 	}
 	compare := storage.OwnedAllocationCommand{ID: "compare-first", ReceiverID: owner, Decisions: []storage.OwnedDecisionPin{{ID: first.Record.Command.ID, SHA256: first.Record.SHA256}}}
 	var allocationFirst, allocationRetry storage.OwnedAllocationReceipt
@@ -178,6 +181,9 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 		t.Fatal(err)
 	}
 	if allocationFirst.Record.ExecutionAvailable || allocationFirst.Record.QualificationCredit || allocationFirst.Record.Entry.Plan == nil || allocationFirst.Record.Entry.Plan.Decisions[0].Status != "defer" || allocationFirst.Record.Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
+		t.Fatal(allocationFirst)
+	}
+	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v3" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10023 {
 		t.Fatal(allocationFirst)
 	}
 	checks := allocationFirst.Record.AdmissionChecks
@@ -190,7 +196,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	}
 	clock.panicRead = false
 	compareRaw, _ := json.Marshal(compare)
-	for _, field := range []string{`"admission_checks":[],`, `"account_id":"allocation-owner",`, `"Snapshot":{},`, `"admissions":[],`, `"effect":{},`, `"balance_cents":100,`, `"policy_id":"owner-policy",`} {
+	for _, field := range []string{`"execution_costs":[],`, `"execution_model":{},`, `"admission_checks":[],`, `"account_id":"allocation-owner",`, `"Snapshot":{},`, `"admissions":[],`, `"effect":{},`, `"balance_cents":100,`, `"policy_id":"owner-policy",`} {
 		request("POST", "/v1/allocation-comparisons", strings.Replace(string(compareRaw), `"id":`, field+`"id":`, 1), 422)
 	}
 	request("POST", "/v1/allocation-comparisons?", compare, 422)

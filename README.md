@@ -489,7 +489,9 @@ Service-owned [allocation comparisons](docs/reference/owned-allocation-compariso
 now retain native decision/policy bindings, owner-derived admission readiness
 checks and replayable deferral ledgers in
 Memory/PostgreSQL. The server selects funding from exact strategy-policy matches;
-clients supply retained decision IDs and pins. Admission and execution bindings
+clients supply retained decision IDs and pins. Optional immutable policy execution
+models now bind full buy debit ceilings, including worst-case whole-share partial
+fees, to actual finalized proposals. Admission and execution bindings
 remain incomplete, so these comparisons cannot reserve cash or create orders.
 
 Authenticated [finalized-decision explanations](docs/reference/owned-paper-decisions.md#grounded-explanations)

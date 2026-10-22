@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
+	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
@@ -23,9 +24,10 @@ var ErrPolicyNotFound = errors.New("allocation policy or funding account not fou
 var receiverPattern = regexp.MustCompile(`^receiver-[a-zA-Z0-9_-]{16,64}$`)
 
 type PolicyCommand struct {
-	ReceiverID string `json:"receiver_id"`
-	AccountID  string `json:"account_id"`
-	Policy     Policy `json:"policy"`
+	ReceiverID     string           `json:"receiver_id"`
+	AccountID      string           `json:"account_id"`
+	Policy         Policy           `json:"policy"`
+	ExecutionModel *paperfill.Model `json:"execution_model,omitempty"`
 }
 type PolicyRecord struct {
 	Schema                string               `json:"schema"`
@@ -59,6 +61,9 @@ func (p Policy) ValidateFor(a paperaccount.Account) error {
 	return err
 }
 func (c PolicyCommand) Validate() error {
+	if c.ExecutionModel != nil && c.ExecutionModel.Validate() != nil {
+		return ErrInvalid
+	}
 	if !receiverPattern.MatchString(c.ReceiverID) || !id(c.AccountID) || !id(c.Policy.ID) || !validHash(c.Policy.AccountSHA256) {
 		return ErrInvalid
 	}
@@ -73,6 +78,9 @@ func NewPolicyRecord(c PolicyCommand, a paperaccount.Account, at time.Time) (Pol
 	var owned PolicyCommand
 	_ = json.Unmarshal(raw, &owned)
 	r := PolicyRecord{Schema: "mantik-owned-allocation-policy-v1", Command: owned, Account: a, RegisteredAt: at.UTC(), Authority: "operator_declared_allocation_policy_only"}
+	if owned.ExecutionModel != nil {
+		r.Schema = "mantik-owned-allocation-policy-v2"
+	}
 	r.SHA256 = workerplan.Hash(r)
 	return r, nil
 }

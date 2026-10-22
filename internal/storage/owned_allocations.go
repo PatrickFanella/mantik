@@ -59,6 +59,7 @@ type OwnedAllocationRecord struct {
 	ExecutionAvailable  bool                      `json:"execution_available"`
 	QualificationCredit bool                      `json:"qualification_credit"`
 	AdmissionChecks     []OwnedAdmissionReadiness `json:"admission_checks,omitempty"`
+	ExecutionCosts      []OwnedExecutionCost      `json:"execution_costs,omitempty"`
 	SHA256              string                    `json:"sha256"`
 }
 type OwnedAllocationReceipt struct {
@@ -138,7 +139,15 @@ func ownedComparison(c OwnedAllocationCommand, policies allocation.PolicyCatalog
 		}
 		// Expiry follows the actual price occurrence, not the comparison clock.
 		until := input.Input.OccurredAt.Add(time.Duration(min(d.Safety.MaxQuoteAgeSeconds, 60)) * time.Second)
-		out.Proposals = append(out.Proposals, allocation.Proposal{ID: pin.ID, DecisionSHA256: pin.SHA256, StrategyID: d.ID, Symbol: d.Symbol, Origin: "research", NotionalCents: price * d.Quantity, ValidUntil: until})
+		notional := price * d.Quantity
+		if selected.Command.ExecutionModel != nil {
+			cost, err := executionCost(selected, decision, strategy, until)
+			if err != nil {
+				return selected, out, err
+			}
+			notional = cost.MaxDebitCents
+		}
+		out.Proposals = append(out.Proposals, allocation.Proposal{ID: pin.ID, DecisionSHA256: pin.SHA256, StrategyID: d.ID, Symbol: d.Symbol, Origin: "research", NotionalCents: notional, ValidUntil: until})
 	}
 	return selected, out, nil
 }
@@ -191,11 +200,22 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 		switch r.Schema {
 		case "mantik-owned-allocation-deferral-v1":
 			// Legacy records retain their exact wire shape and hash.
-		case "mantik-owned-allocation-deferral-v2":
+			if policy.Command.ExecutionModel != nil {
+				return out, ErrOwnedAllocationInvalid
+			}
+		case "mantik-owned-allocation-deferral-v2", "mantik-owned-allocation-deferral-v3":
 			expected.Schema = r.Schema
 			expected.AdmissionChecks, err = ownedAdmissionReadiness(comparison, decisions, strategies, retained, r.At)
 			if err != nil {
 				return out, err
+			}
+			if r.Schema == "mantik-owned-allocation-deferral-v3" {
+				expected.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained)
+				if err != nil {
+					return out, err
+				}
+			} else if policy.Command.ExecutionModel != nil {
+				return out, ErrOwnedAllocationInvalid
 			}
 		default:
 			return out, ErrOwnedAllocationInvalid
@@ -268,6 +288,13 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 	r.AdmissionChecks, err = ownedAdmissionReadiness(comparison, decisions, strategies, retained, at)
 	if err != nil {
 		return journal, OwnedAllocationReceipt{}, err
+	}
+	if policy.Command.ExecutionModel != nil {
+		r.Schema = "mantik-owned-allocation-deferral-v3"
+		r.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained)
+		if err != nil {
+			return journal, OwnedAllocationReceipt{}, err
+		}
 	}
 	r.SHA256 = workerplan.Hash(r)
 	journal = clone(journal)

@@ -139,3 +139,6 @@ var SocialWatches string
 
 //go:embed 0042_owned_admission_checks.sql
 var OwnedAdmissionChecks string
+
+//go:embed 0043_owned_execution_costs.sql
+var OwnedExecutionCosts string

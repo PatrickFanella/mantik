@@ -17,7 +17,7 @@ import (
 func ledgerFixture(t *testing.T) (Ledger, []Admission, time.Time) {
 	t.Helper()
 	p, s, at := fixture(t)
-	r, err := NewPolicyRecord(PolicyCommand{s.Account.ReceiverID, s.Account.Config.ID, p}, s.Account, at)
+	r, err := NewPolicyRecord(PolicyCommand{ReceiverID: s.Account.ReceiverID, AccountID: s.Account.Config.ID, Policy: p}, s.Account, at)
 	if err != nil {
 		t.Fatal(err)
 	}
