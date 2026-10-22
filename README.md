@@ -473,3 +473,7 @@ now have atomic Memory/PostgreSQL retention with complete-prefix validation.
 `candidate-generation-outcomes` now admit and inspect pinned full recordings and
 exact output/source bytes. Generated-registration lineage remains unfinished.
 No provider execution or model authorship is asserted.
+
+Service-owned [paper proposals and abstentions](docs/reference/owned-paper-decisions.md)
+retain native evaluations from owned strategy and price/calendar evidence.
+They grant no admission, allocation or execution authority.

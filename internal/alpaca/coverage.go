@@ -3,54 +3,18 @@ package alpaca
 import (
 	"encoding/json"
 	"errors"
+	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"slices"
 	"time"
 )
 
-// CoverageSpec describes evidence required for one regular-session query. It
-// cannot authorize execution, change retained quality, or configure readiness.
-type CoverageSpec struct {
-	Feed                  string `json:"feed"`
-	Symbol                string `json:"symbol"`
-	EvidenceClass         string `json:"evidence_class"`
-	MaxQuoteAgeSeconds    int64  `json:"max_quote_age_seconds"`
-	MaxCaptureAgeSeconds  int64  `json:"max_capture_age_seconds"`
-	MaxCalendarAgeSeconds int64  `json:"max_calendar_age_seconds"`
-}
-type QuoteCoverage struct {
-	CaptureID              string    `json:"capture_id,omitempty"`
-	InputID                string    `json:"input_id,omitempty"`
-	ReceivedAt             time.Time `json:"received_at,omitzero"`
-	OccurredAt             time.Time `json:"occurred_at,omitzero"`
-	Quality                string    `json:"quality"`
-	Code                   string    `json:"code"`
-	Usable                 bool      `json:"usable"`
-	RegularSessionEligible bool      `json:"regular_session_eligible"`
-}
-type SessionCoverage struct {
-	CaptureID  string    `json:"capture_id,omitempty"`
-	ReceivedAt time.Time `json:"received_at,omitzero"`
-	Date       string    `json:"date"`
-	Status     string    `json:"status"`
-	Code       string    `json:"code"`
-	OpenAt     time.Time `json:"open_at,omitzero"`
-	CloseAt    time.Time `json:"close_at,omitzero"`
-	NextOpenAt time.Time `json:"next_open_at,omitzero"`
-}
-type CoverageReport struct {
-	Scope                     string          `json:"scope"`
-	At                        time.Time       `json:"at"`
-	Spec                      CoverageSpec    `json:"spec"`
-	Session                   SessionCoverage `json:"session"`
-	Quote                     QuoteCoverage   `json:"quote"`
-	PriceRequired             bool            `json:"price_required"`
-	RequiredEvidenceSatisfied bool            `json:"required_evidence_satisfied"`
-	CollectorLivenessVerified bool            `json:"collector_liveness_verified"`
-	GlobalReadinessConfigured bool            `json:"global_readiness_configured"`
-	QualificationCredit       bool            `json:"qualification_credit"`
-}
+// Shared evidence records carry no admission or execution authority.
+type CoverageSpec = domain.MarketCoverageSpec
+type QuoteCoverage = domain.MarketQuoteCoverage
+type SessionCoverage = domain.MarketSessionCoverage
+type CoverageReport = domain.MarketCoverageReport
 
-func (s CoverageSpec) validate() error {
+func validateCoverageSpec(s CoverageSpec) error {
 	if !slices.Contains([]string{"iex", "sip", "delayed_sip"}, s.Feed) || !symbolPattern.MatchString(s.Symbol) || !slices.Contains([]string{"synthetic_unqualified", "recorded_market_unqualified", "prospective_market_unqualified"}, s.EvidenceClass) || s.MaxQuoteAgeSeconds < 1 || s.MaxQuoteAgeSeconds > 86400 || s.MaxCaptureAgeSeconds < 1 || s.MaxCaptureAgeSeconds > 86400 || s.MaxCalendarAgeSeconds < 1 || s.MaxCalendarAgeSeconds > 604800 {
 		return errors.New("coverage requires exact feed/symbol/evidence class and bounded positive age limits")
 	}
@@ -130,7 +94,7 @@ func CoverageFromRecordings(s CoverageSpec, at time.Time, records []Recording) (
 
 func coverage(s CoverageSpec, at time.Time, captures []capture) (CoverageReport, error) {
 	out := CoverageReport{Scope: "local_regular_session_evidence", At: at.UTC(), Spec: s, Quote: QuoteCoverage{Quality: "missing", Code: "quote_capture_missing"}, Session: SessionCoverage{Status: "unknown", Code: "calendar_capture_missing"}}
-	if err := s.validate(); err != nil {
+	if err := validateCoverageSpec(s); err != nil {
 		return out, err
 	}
 	if !validTime(at) {

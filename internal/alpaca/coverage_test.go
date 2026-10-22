@@ -192,7 +192,7 @@ func TestCoverageInvalidScopeAndTamperFailWithoutMutation(t *testing.T) {
 	for _, mutate := range []func(*CoverageSpec){func(s *CoverageSpec) { s.Feed = "" }, func(s *CoverageSpec) { s.EvidenceClass = "qualified" }, func(s *CoverageSpec) { s.MaxQuoteAgeSeconds = 0 }, func(s *CoverageSpec) { s.MaxCalendarAgeSeconds = 604801 }, func(s *CoverageSpec) { s.Symbol = "bad symbol" }} {
 		spec := coverageSpec()
 		mutate(&spec)
-		if spec.validate() == nil {
+		if validateCoverageSpec(spec) == nil {
 			t.Fatal("invalid coverage query admitted")
 		}
 	}
