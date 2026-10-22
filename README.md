@@ -544,4 +544,6 @@ authority; conversation UI, prose interpretation and case triage remain open.
 [Service-owned paper attribution](docs/reference/paper-attribution.md) joins
 finalized decisions, retained forward-price assessments and allocation choices
 in one consistent read. Cost ceilings remain separate from expenses; unavailable
-execution, PnL and economic baselines remain explicit.
+execution, PnL and economic baselines remain explicit. The `paper-attribution`
+CLI reads this service view as a table or complete JSON; selected rows require
+their attribution hash and the expected receiver identity.

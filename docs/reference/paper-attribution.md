@@ -76,3 +76,40 @@ authentication, query rejection and reconstruction after a PostgreSQL reconnect.
 The actual public finalizer and outcome evaluator are exercised separately from
 pure storage fixtures. Local checks, hosted CI, deployment and qualification are
 separate evidence states.
+
+## Terminal readback
+
+`mantik paper-attribution --api-url http://127.0.0.1:40880 --receiver-id RECEIVER`
+reads the live service catalogue. The command uses `MANTIK_API_TOKEN`, accepts
+an HTTP origin, and sends only GET requests. It does not open a local ledger,
+run a model, assess an outcome, finalize a decision or change balances.
+
+The default table keeps finalized abstentions separate from failed requests.
+It prints each retained assessment status and allocation deferral/rejection,
+labels funding ceilings as bounds, and shows unavailable execution quantities,
+fees, realized P&L and economic baselines explicitly. A quote delta appears only
+for an `observed` assessment; waiting or inapplicable assessments show an
+unavailable delta. Repeated assessments do not become independent sample counts
+or a performance rate. Forecast calibration remains unavailable.
+
+Use `--format json` for the complete catalogue, source hash and row hashes.
+Select an exact row with `--id DECISION --record-sha256 ROW_SHA256`; this pin is
+the attribution row hash, not the nested decision record hash. The row can
+change when the service retains another assessment or allocation comparison.
+A stale pin fails before producing output; read the current catalogue to review
+the new row before selecting its hash.
+
+The client checks bounded, strict JSON, receiver identity, envelope hashes,
+nested decision/outcome links and the current unavailable-economics boundary.
+These are representation checks. Source replay and consistent snapshot
+selection remain service responsibilities; a self-computed hash establishes no
+qualification. Wrong receivers, invalid arguments, stale pins, HTTP failures,
+oversized responses and malformed records return errors without attribution
+output. An empty valid catalogue reports insufficient evidence. Source strings
+are quoted in tables so control characters cannot act as terminal instructions.
+The command preserves full JSON for inspection rather than summarizing absent
+measurements as zero.
+
+This delivers CLI readback for the implemented phase attribution. The interactive
+TUI, calibrated forecasts, economic baselines, funded execution measurements and
+social/copy delay analysis remain open under #24 and its dependencies.
