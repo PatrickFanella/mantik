@@ -167,8 +167,8 @@ function returns an error with zero ledger/projection results and no receipts;
 both supplied histories remain unchanged. This is an immutable preflight,
 **not a durable transaction**. The execution owner still needs actual source
 selection, admission, order/position/protection ownership and an atomic durable
-commit of the source book and resulting allocation ledger. Sell/close effects
-and recovery/release bindings remain separate work. There is no HTTP or CLI
+commit of the source book and resulting allocation ledger. The exit-fill reducer
+below derives closes; recovery/release bindings remain separate work. There is no HTTP or CLI
 book import, no storage write, and no execution or qualification grant.
 
 Tests use manufactured owner inputs to verify shared partial-fill costs,
@@ -178,3 +178,53 @@ effect conflicts, unknown holds, cancellation, detached concurrent preflight
 and rollback of an entire staged debit batch after a later failure. These
 checks advance #19/#20's internal binding dependency; they do not establish
 service integration or complete either issue's acceptance gates.
+
+## Replayed exit-fill binding
+
+`allocation.ApplyExitFillBook` accepts an owner-supplied ledger, a completed
+entry book and an exit book. It replays all three and requires every entry debit
+to have already been committed through the entry-fill binding. It cannot post
+a missing entry as a side effect of closing a position. Both books must use the
+exact policy execution model.
+
+Each sell order selects an entry position through the same proposal/order ID.
+The symbol, currency and evidence mode must match. The entry order must be
+terminal (filled, cancelled or expired), with positive filled quantity, before
+exit placement. The exit quantity cannot exceed that position's actual filled
+quantity. Requiring terminal entries freezes the cost basis before any close;
+adding later entry fills or revising the entry book cannot silently change past
+closing allocations.
+
+The versioned method is `replayed-shared-book-exit-proceeds-v1`. Each close uses
+the exact replayed sell fill's net proceeds, including fees and commissions.
+Cost basis includes entry fees. It follows cumulative average cost in whole
+shares: `floor(total_entry_debit * cumulative_closed_quantity / entry_quantity)`.
+Each close receives the difference from the previous cumulative amount; the
+last share receives any rounding remainder. Integer arithmetic divides first
+to avoid overflowing the cost-times-quantity product. Partial closes conserve
+every cent of entry basis when the full position is closed.
+
+Derived close identities bind the method, complete terminal entry-book hash,
+immutable exit-book root and sell-fill hash. An exit-book prefix can be extended
+without changing earlier close identities; exact retained closes are duplicates.
+A truncated close history, changed root, revised entry book or amount-only prior
+close conflicts. New closes still obey ledger time and capacity limits. Negative
+net proceeds require the cost-ledger schema and sufficient available cash;
+outstanding reservations cannot fund closing fees. Missing quotes, unfilled
+stop-limits, cancellation and expiry without fills do not fabricate proceeds or
+release entry reservations.
+
+All closes are staged together in detached values. A later funding or replay
+failure returns no partial ledger, projection or receipts. Tests cover shared
+partial exits, stop gaps, unfilled stop-limits, exact and extended retries,
+source/model/position mismatches, missing entry postings, working entry orders,
+oversells, conflicting prior closes, signed net proceeds, reconstruction,
+cancellation, concurrent immutable preflight and rollback after a later close
+cannot be funded.
+
+This remains an internal execution-method dependency for #19/#20. It does not
+attest order ownership, choose strategy exits, issue admission or persist a
+transaction. The execution owner must retain the actual order/position/protection
+bindings, manage shared liquidity across its complete execution scope, and
+atomically commit books with the financial ledger. No public import, new CLI,
+storage writer, execution grant or qualification credit is added.
