@@ -286,6 +286,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if err := Run(ctx, []string{"paper-decision", "--api-url", server.URL, "--receiver-id", owner, "--id", command.ID, "--record-sha256", strings.Repeat("f", 64)}, &out, &diag); err == nil || out.Len() != 0 {
 		t.Fatal("wrong pin emitted", err)
 	}
+	paperAttributionHTTP(t, request, server.URL, clock, first.Record, abstain.Record)
 	after, _ := s.Snapshot(ctx)
 	if before.ObservationCount != after.ObservationCount || !reflect.DeepEqual(before.Events, after.Events) || !reflect.DeepEqual(before.State.Case, after.State.Case) || !reflect.DeepEqual(before.State.Actions, after.State.Actions) {
 		t.Fatal("finalization changed operational state")
@@ -334,6 +335,7 @@ func TestPostgresContractsOwnedDecisionAllocationHTTP(t *testing.T) {
 	clock := &ownedDecisionClock{panicRead: true}
 	server := httptest.NewServer(service.HandlerWithClock(reopened, "restart-token", clock))
 	defer server.Close()
+	assertRestartedPaperAttribution(t, server.URL)
 	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/allocation-comparisons", nil)
 	req.Header.Set("Authorization", "Bearer restart-token")
 	response, err := http.DefaultClient.Do(req)

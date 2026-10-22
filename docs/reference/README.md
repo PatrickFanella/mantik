@@ -101,3 +101,6 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 
 - [Typed supervision calls](supervision-tools.md) — fixed authenticated tools that
   retain owner validation and retry semantics without model or financial authority.
+
+- [Service-owned paper attribution](paper-attribution.md) — consistent phase
+  readbacks with traceable decisions, observations and allocation identities.

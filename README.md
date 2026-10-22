@@ -540,3 +540,8 @@ conversation adapters inspect retained records, request research, change researc
 watch policies, recheck exceptions and submit finalized-decision claim reviews
 through the existing owners. They make no model calls and grant no financial
 authority; conversation UI, prose interpretation and case triage remain open.
+
+[Service-owned paper attribution](docs/reference/paper-attribution.md) joins
+finalized decisions, retained forward-price assessments and allocation choices
+in one consistent read. Cost ceilings remain separate from expenses; unavailable
+execution, PnL and economic baselines remain explicit.
