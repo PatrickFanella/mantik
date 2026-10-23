@@ -364,3 +364,24 @@ state fails this version's readback contract rather than acquiring authority
 through an imported projection. Execution and qualification flags remain false.
 There is no balance import, capital write endpoint, admission grant or new CLI.
 Issue #19's funded admission and atomic execution/ledger owner remains unfinished.
+
+## Source aliases during owner replay
+
+New comparisons already reject multiple finalized decision IDs derived from the
+same retained strategy/provider/feed/symbol occurrence. Replay now rechecks that
+same source rule for `mantik-owned-allocation-deferral-v5` records against their
+prior journal prefix and within each batch. A second capture ID, altered receipt
+time, recomputed ledger/record/readiness hashes, or an exact retry of a different
+valid comparison cannot hide a v5 source-alias conflict. The complete read/write
+fails without a partial catalogue or receipt.
+
+The v5 writer was introduced after the append-time source-alias rule. This
+replay check therefore preserves valid v5 bytes and exact historical retries.
+Older v1-v4 records retain their prior replay contracts; new comparisons still
+check those earlier sources when enforcing the current append rule. No public
+route accepts a replacement journal or chooses an older record schema.
+
+This is source identity validation for the existing deferral owner. It does not
+assert statistical independence, qualify a source, issue an admission or create
+an economic effect. No schema migration, source rewrite or balance change is
+performed.

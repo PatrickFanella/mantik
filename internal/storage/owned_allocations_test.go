@@ -388,6 +388,112 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			}
 		}
 	}
+	// Rebuild all portable hashes using actual retained finalized aliases. The
+	// writer rejects these; replay must enforce the same v5 source invariant.
+	forgeAlias := func(batch bool) ownedAllocationJournal {
+		t.Helper()
+		policy := journal.Records[0].Policies.Records[0]
+		ledger, e := allocation.NewLedger(policy)
+		if e != nil {
+			t.Fatal(e)
+		}
+		prefix := []retainedOwnedAllocation{}
+		selected := []PaperDecisionRecord{alias.Record}
+		if batch {
+			selected = append(selected, decision.Record)
+		} else {
+			ledger = clone(original.Ledgers[0])
+			prefix = append(prefix, clone(journal.Records[0]))
+		}
+		r := clone(first)
+		r.Command = OwnedAllocationCommand{ID: "forged-source-alias", ReceiverID: owner, Decisions: []OwnedDecisionPin{}}
+		comparison := allocation.Comparison{Proposals: []allocation.Proposal{}, Admissions: []allocation.Admission{}}
+		r.AdmissionChecks = []OwnedAdmissionReadiness{}
+		if withModel {
+			r.ExecutionCosts = []OwnedExecutionCost{}
+		}
+		for _, d := range selected {
+			r.Command.Decisions = append(r.Command.Decisions, OwnedDecisionPin{ID: d.Command.ID, SHA256: d.SHA256})
+			proposal := clone(first.Entry.Command.Comparison.Proposals[0])
+			proposal.ID = d.Command.ID
+			proposal.DecisionSHA256 = d.SHA256
+			comparison.Proposals = append(comparison.Proposals, proposal)
+			check := clone(first.AdmissionChecks[0])
+			check.DecisionID = d.Command.ID
+			check.DecisionSHA256 = d.SHA256
+			check.BasisSHA256 = d.BasisSHA256
+			check.QuoteInputID = d.Evaluation.Coverage.Quote.InputID
+			r.AdmissionChecks = append(r.AdmissionChecks, check)
+			if withModel {
+				cost := clone(first.ExecutionCosts[0])
+				cost.DecisionID = d.Command.ID
+				cost.DecisionSHA256 = d.SHA256
+				cost.QuoteInputID = d.Evaluation.Coverage.Quote.InputID
+				cost.SHA256 = ""
+				cost.SHA256 = workerplan.Hash(cost)
+				r.ExecutionCosts = append(r.ExecutionCosts, cost)
+			}
+		}
+		ledger, _, _, e = allocation.AppendLedger(ctx, ledger, allocation.LedgerCommand{ID: r.Command.ID, Comparison: &comparison}, func() time.Time { return r.At })
+		if e != nil {
+			t.Fatal(e)
+		}
+		r.Entry = ledger.Entries[len(ledger.Entries)-1]
+		r.LedgerSHA256 = ledger.SHA256
+		r.AdmissionChecks, e = bindOwnedAdmissionReadiness(r, policy)
+		if e != nil {
+			t.Fatal(e)
+		}
+		r.SHA256 = ""
+		r.SHA256 = workerplan.Hash(r)
+		return ownedAllocationJournal{Records: append(prefix, retainedOwnedAllocation{Record: r, Policies: clone(journal.Records[0].Policies)})}
+	}
+	for _, batch := range []bool{false, true} {
+		forged := forgeAlias(batch)
+		writeJournal(forged)
+		got, e := s.OwnedAllocations(ctx, eval)
+		if !errors.Is(e, ErrOwnedAllocationConflict) || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
+			t.Fatal("replay accepted rehashed source aliases", batch, e)
+		}
+		retry, e := s.CompareOwnedAllocation(ctx, c, noClock, eval)
+		if !errors.Is(e, ErrOwnedAllocationConflict) || !reflect.DeepEqual(retry, OwnedAllocationReceipt{}) {
+			t.Fatal("retry hid rehashed source aliases", batch, e)
+		}
+		// Older schemas did not retain this replay invariant. Keep their exact
+		// historical bytes/retries, while new writes still apply the guard.
+		legacy := clone(forged)
+		for i := range legacy.Records {
+			r := &legacy.Records[i].Record
+			r.Schema = "mantik-owned-allocation-deferral-v2"
+			if withModel {
+				r.Schema = "mantik-owned-allocation-deferral-v4"
+			}
+			legacyReadiness(r)
+			r.SHA256 = ""
+			r.SHA256 = workerplan.Hash(*r)
+		}
+		writeJournal(legacy)
+		got, e = s.OwnedAllocations(ctx, eval)
+		if e != nil || len(got.Records) != len(legacy.Records) {
+			t.Fatal("legacy source aliases changed", batch, e)
+		}
+		for i, item := range legacy.Records {
+			if !reflect.DeepEqual(got.Records[i], item.Record) {
+				t.Fatal("legacy bytes changed")
+			}
+			retry, e := s.CompareOwnedAllocation(ctx, item.Record.Command, noClock, eval)
+			if e != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, item.Record) {
+				t.Fatal("legacy retry changed", e)
+			}
+		}
+		newCommand := clone(c)
+		newCommand.ID = "new-comparison-on-legacy-aliases"
+		receipt, e := s.CompareOwnedAllocation(ctx, newCommand, noClock, eval)
+		if !errors.Is(e, ErrOwnedAllocationConflict) || !reflect.DeepEqual(receipt, OwnedAllocationReceipt{}) {
+			t.Fatal("new write bypassed legacy source aliases", e)
+		}
+	}
+	writeJournal(journal)
 	// Preserve prior v2 (without model) and v4 (with protective funding) bytes.
 	legacyBound := clone(journal)
 	for i := range legacyBound.Records {

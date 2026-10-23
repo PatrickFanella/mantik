@@ -567,6 +567,10 @@ admission/effect authority.
 `supervision-mcp` exposes these same owners through a bounded stdio MCP bridge
 for conversation clients; it requires the expected receiver and existing API token.
 
+The owner rechecks source-occurrence aliases when replaying v5 comparisons, so
+recomputed portable hashes cannot bypass the append-time source identity rule.
+Earlier record contracts retain their historical bytes and retries.
+
 The existing allocation-comparison read also returns policy-bound capital
 readbacks from registered opening capital or replayed deferral journals. These
 are read-only projections of that owner's implemented state, with no funded
