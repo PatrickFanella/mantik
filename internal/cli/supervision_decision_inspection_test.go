@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"io"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -15,6 +17,43 @@ import (
 // explanation, quote or caller claim can replace those owner reads.
 func supervisionDecisionInspections(t *testing.T, base, receiver, id string, explanation, market []byte) {
 	t.Helper()
+	var decisions storage.PaperDecisionCatalog
+	if err := requestBounded(context.Background(), base, "/v1/paper-decisions", nil, &decisions, nil, 1<<20, true); err != nil {
+		t.Fatal(err)
+	}
+	var selected storage.PaperDecisionRecord
+	for _, d := range decisions.Records {
+		if d.Command.ID == id {
+			selected = d
+		}
+	}
+	for _, kind := range []string{"e", "m"} {
+		value, err := fetchDecisionInspection(context.Background(), base, selected, kind)
+		if err != nil {
+			t.Fatal("terminal owner inspection", kind, err)
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := explanation
+		if kind == "m" {
+			want = market
+		}
+		var expected, actual any
+		if json.Unmarshal(want, &expected) != nil || json.Unmarshal(raw, &actual) != nil || !reflect.DeepEqual(expected, actual) {
+			t.Fatal("terminal changed owner evidence", kind)
+		}
+	}
+	var terminal bytes.Buffer
+	err := superviseDecisions(context.Background(), io.NopCloser(strings.NewReader("d "+id+"\ne "+id+"\nm "+id+"\nq\n")), &terminal, 100,
+		func(ctx context.Context) (storage.PaperDecisionCatalog, error) { return decisions, nil },
+		func(ctx context.Context, d storage.PaperDecisionRecord, kind string) (any, error) {
+			return fetchDecisionInspection(ctx, base, d, kind)
+		})
+	if err != nil || !strings.Contains(terminal.String(), "FINALIZED RESEARCH DECISIONS") || strings.Contains(terminal.String(), "UNAVAILABLE") {
+		t.Fatal(terminal.String(), err)
+	}
 	session := mcpTestSession(t, base, receiver)
 	session.init(t)
 	listed := session.request(t, 2, "tools/list", map[string]any{})
