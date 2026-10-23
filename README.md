@@ -581,3 +581,5 @@ it supplies no result, admission or qualification credit.
 The declaration's [owner-selected evidence view](docs/reference/paper-evaluation-declarations.md#owner-selected-evidence)
 resolves actual family decisions and forward outcomes in one consistent read,
 retaining exclusions and duplicate-source lineage without scoring qualification.
+Its v2 response keeps post-deadline attempts in `late_outcomes`; only outcomes
+available by the predeclared deadline contribute to the observed-decision count.

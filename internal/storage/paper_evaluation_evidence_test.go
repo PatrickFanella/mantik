@@ -152,6 +152,41 @@ func evaluationEvidenceContracts(t *testing.T, s evaluationEvidenceBackend, clas
 			t.Fatal("reconnect", err)
 		}
 	}
+	// A real late owner assessment stays retained and inspectable, but cannot
+	// extend the declared outcome window on a later evidence read.
+	lateAt := c.Plan.OutcomeDeadline.Add(time.Nanosecond)
+	late, err := s.AssessPaperOutcome(ctx, PaperOutcomeCommand{ID: "assessment-late", ReceiverID: c.ReceiverID, DecisionID: first.Record.Command.ID, DecisionSHA256: first.Record.SHA256}, func() time.Time { return lateAt }, eval, outcomeEval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := s.PaperEvaluationEvidence(ctx, c.ID, func() time.Time { return lateAt.Add(time.Second) }, eval, outcomeEval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, row := range report.Rows {
+		if row.Decision.Command.ID == "first" {
+			found = true
+			if len(row.Outcomes) != 2 || len(row.LateOutcomes) != 1 || !reflect.DeepEqual(row.LateOutcomes[0], late.Record) {
+				t.Fatal("deadline partition lost owner evidence", row)
+			}
+		}
+	}
+	if !found || report.Schema != "mantik-owned-paper-evaluation-evidence-v2" || report.EvaluationAvailable || report.AdmissionAvailable || report.ExecutionAvailable || report.QualificationCredit {
+		t.Fatal(report)
+	}
+	if pg, ok := s.(*Postgres); ok {
+		reopened, err := OpenPostgres(ctx, pg.pool.Config().ConnString())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer reopened.Close()
+		restored, err := reopened.PaperEvaluationEvidence(ctx, c.ID, func() time.Time { return report.AsOf }, eval, outcomeEval)
+		if err != nil || !reflect.DeepEqual(restored, report) {
+			t.Fatal("reconnect changed deadline partition", restored, err)
+		}
+	}
+
 }
 
 // Selector-only exclusions use explicit manufactured records. Source custody
@@ -171,7 +206,7 @@ func TestPaperEvaluationEvidenceExclusionsAndOutcomeDedup(t *testing.T) {
 	for _, r := range m.paperOutcomes {
 		outcomes.Records = append(outcomes.Records, clone(r.Record))
 	}
-	at := plans.Records[0].Command.Plan.OutcomeDeadline
+	at := plans.Records[0].Command.Plan.OutcomeDeadline.Add(time.Second)
 	for name, change := range map[string]func(map[string]retainedPaperDecision){
 		"source_unavailable_at_decision": func(all map[string]retainedPaperDecision) {
 			r := all["first"]
@@ -220,6 +255,21 @@ func TestPaperEvaluationEvidenceExclusionsAndOutcomeDedup(t *testing.T) {
 	r, err := paperEvaluationEvidence(context.Background(), plans.Records[0].Command.ID, plans, decisions, observed, m.paperDecisions, at)
 	if err != nil || r.Variants[0].ObservedOutcomeDecisions != 1 || r.IndependentSamplesAvailable || r.QualificationCredit {
 		t.Fatal(r, err)
+	}
+
+	lateOnly := clone(observed)
+	deadline := plans.Records[0].Command.Plan.OutcomeDeadline
+	for i := range lateOnly.Records {
+		lateOnly.Records[i].EvaluatedAt = deadline.Add(time.Nanosecond)
+	}
+	lateReport, err := paperEvaluationEvidence(context.Background(), plans.Records[0].Command.ID, plans, decisions, lateOnly, m.paperDecisions, at)
+	if err != nil || lateReport.Variants[0].ObservedOutcomeDecisions != 0 {
+		t.Fatal("late observed attempts enlarged declared sample", lateReport, err)
+	}
+	for _, row := range lateReport.Rows {
+		if row.Decision.Command.ID == "first" && (len(row.Outcomes) != 0 || len(row.LateOutcomes) != len(lateOnly.Records)) {
+			t.Fatal("late raw attempts not retained", row)
+		}
 	}
 	observed.Records[0].EvaluatedAt = at.Add(time.Nanosecond)
 	if _, err = paperEvaluationEvidence(context.Background(), plans.Records[0].Command.ID, plans, decisions, observed, m.paperDecisions, at); !errors.Is(err, ErrPaperEvaluationEvidenceInvalid) {

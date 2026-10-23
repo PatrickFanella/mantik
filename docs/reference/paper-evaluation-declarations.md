@@ -136,11 +136,22 @@ of independence across feeds/providers or overlapping holding horizons. The
 `independent_samples_available` flag stays false; these counts cannot satisfy
 `min_independent_decisions` or an admission rule on their own.
 
+The evidence response uses schema `mantik-owned-paper-evaluation-evidence-v2`.
 All actual forward-outcome attempts remain attached to their decision, including
-waiting and unavailable statuses. `observed_outcome_decisions` counts a selected
-canonical decision once if it has any observed forward-quote outcome. Retrying
-an assessment under a new ID cannot increase that count. An observed quote is
-not a fill, realized PnL, benchmark result or completed evaluation check.
+waiting and unavailable statuses. Each row partitions attempts by the owner's
+`evaluated_at`: `outcomes` contains attempts finalized at or before the declared
+`outcome_deadline`; `late_outcomes` retains attempts finalized strictly afterward.
+The exact deadline is inclusive. A report clock before any retained attempt still
+fails, and advancing that clock cannot move a late attempt into the declared
+sample. The full source hash includes both partitions; this is still a current
+read whose hash can change when later evidence arrives.
+
+`observed_outcome_decisions` counts a selected canonical decision once if its
+`outcomes` contains an observed forward-quote outcome. Late observed attempts
+cannot increase that count. Retrying an assessment under a new ID cannot
+increase it either. Being available by the deadline does not establish sample
+independence, qualification or an economic result. An observed quote is not a
+fill, realized PnL, benchmark result or completed evaluation check.
 
 The phases are `awaiting_window`, `observation_window`,
 `awaiting_outcome_deadline` and `outcome_deadline_elapsed`. Elapsing a deadline

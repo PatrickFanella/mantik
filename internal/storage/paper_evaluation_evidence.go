@@ -25,6 +25,7 @@ type PaperEvaluationEvidenceRow struct {
 	Status              string               `json:"status"`
 	CanonicalDecisionID string               `json:"canonical_decision_id"`
 	Outcomes            []PaperOutcomeRecord `json:"outcomes"`
+	LateOutcomes        []PaperOutcomeRecord `json:"late_outcomes"`
 }
 type PaperEvaluationVariantCount struct {
 	StrategyID               string `json:"strategy_id"`
@@ -79,7 +80,7 @@ func paperEvaluationEvidence(ctx context.Context, id string, declarations PaperE
 	if at.Before(declaration.DeclaredAt) {
 		return out, ErrPaperEvaluationEvidenceInvalid
 	}
-	out = PaperEvaluationEvidence{Schema: "mantik-owned-paper-evaluation-evidence-v1", ReceiverID: declarations.ReceiverID, Declaration: clone(declaration), AsOf: at.UTC(), Rows: []PaperEvaluationEvidenceRow{}, Variants: []PaperEvaluationVariantCount{}, Authority: "service_owned_evaluation_evidence_selection_only"}
+	out = PaperEvaluationEvidence{Schema: "mantik-owned-paper-evaluation-evidence-v2", ReceiverID: declarations.ReceiverID, Declaration: clone(declaration), AsOf: at.UTC(), Rows: []PaperEvaluationEvidenceRow{}, Variants: []PaperEvaluationVariantCount{}, Authority: "service_owned_evaluation_evidence_selection_only"}
 	out.SourceSHA256 = workerplan.Hash(struct {
 		Declarations PaperEvaluationDeclarationCatalog
 		Decisions    PaperDecisionCatalog
@@ -130,13 +131,20 @@ func paperEvaluationEvidence(ctx context.Context, id string, declarations PaperE
 		if !ok || basis.Record.SHA256 != decision.SHA256 || basis.Basis.Feed.Routing == nil {
 			return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
 		}
-		row := PaperEvaluationEvidenceRow{Decision: clone(decision), EvidenceClass: basis.Basis.Strategy.Command.Definition.InputEvidenceClass, QuoteInputID: decision.Evaluation.Coverage.Quote.InputID, Outcomes: []PaperOutcomeRecord{}}
+		row := PaperEvaluationEvidenceRow{Decision: clone(decision), EvidenceClass: basis.Basis.Strategy.Command.Definition.InputEvidenceClass, QuoteInputID: decision.Evaluation.Coverage.Quote.InputID, Outcomes: []PaperOutcomeRecord{}, LateOutcomes: []PaperOutcomeRecord{}}
 		for _, outcome := range outcomes.Records {
 			if outcome.EvaluatedAt.After(at) {
 				return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
 			}
 			if outcome.Command.DecisionID == decision.Command.ID {
-				row.Outcomes = append(row.Outcomes, clone(outcome))
+				// Keep post-deadline attempts inspectable without letting a later
+				// report clock expand the predeclared outcome sample. The exact
+				// deadline is inclusive; future-as-of attempts still fail above.
+				if outcome.EvaluatedAt.After(plan.OutcomeDeadline) {
+					row.LateOutcomes = append(row.LateOutcomes, clone(outcome))
+				} else {
+					row.Outcomes = append(row.Outcomes, clone(outcome))
+				}
 			}
 		}
 		quote, present := basis.Basis.Feed.Routing.Inputs[row.QuoteInputID]
