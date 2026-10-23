@@ -171,7 +171,7 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 	if !ValidReceiverID(owner) || journal.Records == nil || len(journal.Records) > MaxOwnedAllocations || policies.Validate() != nil {
 		return out, ErrOwnedAllocationInvalid
 	}
-	ledgers := map[string]allocation.Ledger{}
+	resolved := make([]allocation.PolicyRecord, len(journal.Records))
 	seen := map[string]bool{}
 	var last time.Time
 	for index, item := range journal.Records {
@@ -207,18 +207,59 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 			return out, err
 		}
 
-		ledger, ok := ledgers[policy.Command.Policy.ID]
+		if !reflect.DeepEqual(r.Entry.At, r.At.UTC()) || !reflect.DeepEqual(r.Entry.Command, allocation.LedgerCommand{ID: r.Command.ID, Comparison: &comparison}) {
+			return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
+		}
+		resolved[index] = policy
+		seen[r.Command.ID] = true
+		last = r.At
+	}
+	ledgers := map[string]allocation.Ledger{}
+	for index, item := range journal.Records {
+		policy := resolved[index]
+		key := policy.Command.Policy.ID
+		ledger, ok := ledgers[key]
 		if !ok {
+			var err error
 			ledger, err = allocation.NewLedger(policy)
 			if err != nil {
-				return out, err
+				return OwnedAllocationCatalog{}, err
 			}
 		}
-		next, projection, receipt, err := allocation.AppendLedger(ctx, ledger, allocation.LedgerCommand{ID: r.Command.ID, Comparison: &comparison}, func() time.Time { return r.At })
-		if err != nil || len(projection.Reservations) != 0 || projection.Snapshot.AvailableCashCents != policy.Account.Config.OpeningCashCents {
-			return out, ErrOwnedAllocationInvalid
+		ledger.Entries = append(ledger.Entries, item.Record.Entry)
+		ledgers[key] = ledger
+	}
+	prefixes := map[string][]allocation.LedgerPrefix{}
+	for key, ledger := range ledgers {
+		ledger.SHA256 = ""
+		ledger.SHA256 = workerplan.Hash(ledger)
+		var err error
+		prefixes[key], err = allocation.ReplayLedgerPrefixes(ctx, ledger)
+		if err != nil {
+			return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
 		}
-		expected := OwnedAllocationRecord{Schema: "mantik-owned-allocation-deferral-v1", Command: clone(r.Command), At: r.At.UTC(), PolicySHA256: policy.SHA256, LedgerSHA256: next.SHA256, Entry: next.Entries[receipt.Sequence-1], Authority: "service_owned_allocation_deferral_only"}
+		ledgers[key] = ledger
+	}
+	// Source ownership above and accounting here are both checked in full
+	// before any receipt escapes. Re-evaluating each already-validated ledger
+	// prefix through AppendLedger would repeat all prior transitions.
+	indices := map[string]int{}
+	for index, item := range journal.Records {
+		if err := ctx.Err(); err != nil {
+			return OwnedAllocationCatalog{}, err
+		}
+		r := item.Record
+		policy := resolved[index]
+		comparison := *r.Entry.Command.Comparison
+		key := policy.Command.Policy.ID
+		prefix := prefixes[key][indices[key]]
+		indices[key]++
+		if len(prefix.Projection.Reservations) != 0 || prefix.Projection.Snapshot.AvailableCashCents != policy.Account.Config.OpeningCashCents {
+			return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
+		}
+		var err error
+
+		expected := OwnedAllocationRecord{Schema: "mantik-owned-allocation-deferral-v1", Command: clone(r.Command), At: r.At.UTC(), PolicySHA256: policy.SHA256, LedgerSHA256: prefix.LedgerSHA256, Entry: r.Entry, Authority: "service_owned_allocation_deferral_only"}
 		switch r.Schema {
 		case "mantik-owned-allocation-deferral-v1":
 			// Legacy records retain their exact wire shape and hash.
@@ -265,9 +306,6 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 		if !reflect.DeepEqual(expected, r) {
 			return out, ErrOwnedAllocationInvalid
 		}
-		seen[r.Command.ID] = true
-		last = r.At
-		ledgers[policy.Command.Policy.ID] = next
 		out.Records = append(out.Records, clone(r))
 	}
 	for _, l := range ledgers {
@@ -284,7 +322,7 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 	return clone(out), nil
 }
 
-func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, c OwnedAllocationCommand, now func() time.Time, declarationSource PaperEvaluationDeclarationCatalog) (ownedAllocationJournal, OwnedAllocationReceipt, error) {
+func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, c OwnedAllocationCommand, now func() time.Time, sourceClock time.Time, declarationSource PaperEvaluationDeclarationCatalog) (ownedAllocationJournal, OwnedAllocationReceipt, error) {
 	catalog, err := replayOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained, declarationSource)
 	if err != nil {
 		return journal, OwnedAllocationReceipt{}, err
@@ -313,6 +351,12 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		return journal, OwnedAllocationReceipt{}, ErrOwnedAllocationInvalid
 	}
 	at := now().UTC()
+	// New readiness must not predate source state already observed by this
+	// owner transaction. Exact retries return above without sampling a clock;
+	// historical replay keeps each retained record's original comparison time.
+	if at.Before(sourceClock) {
+		return journal, OwnedAllocationReceipt{}, ErrOwnedAllocationInvalid
+	}
 	policy, comparison, err := ownedComparison(c, policies, decisions, strategies, retained, at)
 	if err != nil {
 		return journal, OwnedAllocationReceipt{}, err
@@ -457,7 +501,7 @@ func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCo
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
-	next, r, err := appendOwnedAllocation(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, c, now, declarations)
+	next, r, err := appendOwnedAllocation(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, c, now, m.collectors.LastClock, declarations)
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
@@ -566,7 +610,7 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, c Owne
 	}
 	var receipt OwnedAllocationReceipt
 	if write {
-		next, r, e := appendOwnedAllocation(ctx, owner, journal, policies, decisions, strategies, retained, c, now, declarations)
+		next, r, e := appendOwnedAllocation(ctx, owner, journal, policies, decisions, strategies, retained, c, now, feed.Collectors.LastClock, declarations)
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}

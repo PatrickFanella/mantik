@@ -145,6 +145,26 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			t.Fatal(err)
 		}
 	}
+	// The collector owner can advance without finalizing another decision.
+	// New comparisons must not be backdated before that actual source clock,
+	// even when the selected decision and declaration are older and valid.
+	if _, err = s.FeedCollectorCommand(ctx, owner, feedcollector.Command{RequestID: "comparison-clock-heartbeat", Operation: "renew", RegistrationID: reg.ID, OwnerID: "worker-one", Generation: 1}, now); err != nil {
+		t.Fatal(err)
+	}
+	calls.Store(0)
+	backdated, e := s.CompareOwnedAllocation(ctx, c, func() time.Time { return at.Add(time.Second - time.Nanosecond) }, eval)
+	if !errors.Is(e, ErrOwnedAllocationInvalid) || !reflect.DeepEqual(backdated, OwnedAllocationReceipt{}) {
+		t.Fatal("comparison preceded the actual collector clock", backdated, e)
+	}
+	emptyAfterClockFailure, e := s.OwnedAllocations(ctx, eval)
+	if e != nil || !reflect.DeepEqual(emptyAfterClockFailure, opening) {
+		t.Fatal("clock failure changed allocation state", emptyAfterClockFailure, e)
+	}
+	before, err = s.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The same command remains usable at the exact source clock after failure.
 	for range 8 {
 		wg.Go(func() {
 			if _, err := s.CompareOwnedAllocation(ctx, c, now, eval); err != nil {
@@ -203,6 +223,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		}
 	}
 	first := original.Records[0]
+	ownedAllocationEntryClockContract(t, s, eval)
 	// A second finalization/request ID must not multiply the same market source
 	// into another proposal. Neither same-batch nor historical alias checks read
 	// a clock, and a failed attempt leaves the atomic comparison journal intact.
@@ -792,6 +813,32 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		}
 	}
 	writeJournal(journal)
+	historicalBefore, e := s.OwnedAllocations(ctx, eval)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.FeedCollectorCommand(ctx, owner, feedcollector.Command{RequestID: "comparison-clock-later-renewal", Operation: "renew", RegistrationID: reg.ID, OwnerID: "worker-one", Generation: 1}, func() time.Time { return at.Add(2 * time.Second) }); e != nil {
+		t.Fatal(e)
+	}
+	historicalAfter, e := s.OwnedAllocations(ctx, eval)
+	if e != nil || !reflect.DeepEqual(historicalBefore, historicalAfter) {
+		t.Fatal("new source clock rewrote historical comparisons", historicalAfter, e)
+	}
+	historicalRetry, e := s.CompareOwnedAllocation(ctx, c, noClock, eval)
+	if e != nil || !historicalRetry.Duplicate || !reflect.DeepEqual(historicalRetry.Record, first) {
+		t.Fatal("new source clock invalidated exact retry", historicalRetry, e)
+	}
+	if pg, ok := s.(*Postgres); ok {
+		reopened, e := OpenPostgres(ctx, pg.pool.Config().ConnString())
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer reopened.Close()
+		restored, e := reopened.OwnedAllocations(ctx, eval)
+		if e != nil || !reflect.DeepEqual(restored, historicalBefore) {
+			t.Fatal("source clock changed restart replay", restored, e)
+		}
+	}
 	journal.Records[0].Record.Entry.Plan.Decisions[0].Status = "reserve_plan"
 	r := &journal.Records[0].Record
 	r.SHA256 = ""
@@ -809,6 +856,75 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	}
 	if _, err = s.CompareOwnedAllocation(ctx, c, noClock, eval); err == nil {
 		t.Fatal("retry hid corrupt journal")
+	}
+}
+
+// Rehash the whole accounting prefix and readiness binding after changing only
+// the ledger time. Accounting remains internally valid; source ownership must
+// still tie that time to the actual comparison record.
+func ownedAllocationEntryClockContract(t *testing.T, s ownedAllocationBackend, eval PaperDecisionEvaluator) {
+	t.Helper()
+	ctx := context.Background()
+	var original ownedAllocationJournal
+	if m, ok := s.(*Memory); ok {
+		m.mu.Lock()
+		original = clone(m.ownedAllocations)
+		m.mu.Unlock()
+	} else {
+		var raw []byte
+		if err := s.(*Postgres).pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(raw, &original); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(j ownedAllocationJournal) {
+		t.Helper()
+		if m, ok := s.(*Memory); ok {
+			m.mu.Lock()
+			m.ownedAllocations = clone(j)
+			m.mu.Unlock()
+			return
+		}
+		raw, err := json.Marshal(j)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = s.(*Postgres).pool.Exec(ctx, "UPDATE mantik_owned_allocations SET payload=$1", raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer write(original)
+	forged := clone(original)
+	if len(forged.Records) != 1 {
+		t.Fatal("fixture requires one comparison")
+	}
+	item := &forged.Records[0]
+	r := &item.Record
+	policy := item.Policies.Records[0]
+	ledger, err := allocation.NewLedger(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger, _, _, err = allocation.AppendLedger(ctx, ledger, r.Entry.Command, func() time.Time { return r.At.Add(time.Nanosecond) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Entry = ledger.Entries[0]
+	r.LedgerSHA256 = ledger.SHA256
+	r.AdmissionChecks, err = bindOwnedAdmissionReadiness(*r, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.SHA256 = ""
+	r.SHA256 = workerplan.Hash(*r)
+	write(forged)
+	if got, err := s.OwnedAllocations(ctx, eval); err == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
+		t.Fatal("rehashed ledger time detached from comparison accepted", got, err)
+	}
+	if receipt, err := s.CompareOwnedAllocation(ctx, r.Command, func() time.Time { panic("corrupt retry read clock") }, eval); err == nil || !reflect.DeepEqual(receipt, OwnedAllocationReceipt{}) {
+		t.Fatal("retry hid mismatched ledger time", receipt, err)
 	}
 }
 

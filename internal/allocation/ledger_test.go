@@ -14,7 +14,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
-func ledgerFixture(t *testing.T) (Ledger, []Admission, time.Time) {
+func ledgerFixture(t testing.TB) (Ledger, []Admission, time.Time) {
 	t.Helper()
 	p, s, at := fixture(t)
 	r, err := NewPolicyRecord(PolicyCommand{ReceiverID: s.Account.ReceiverID, AccountID: s.Account.Config.ID, Policy: p}, s.Account, at)

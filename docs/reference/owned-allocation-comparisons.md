@@ -98,7 +98,15 @@ portable admission or execution grants.
 
 An exact command retry returns HTTP 200 and the original record without reading
 a new clock. A new record returns 201. Reusing an ID with different pins returns
-409. A new comparison ID records reconsideration under current owner policies;
+409. New comparisons sample the service clock once under the owner lock/transaction
+and reject a time earlier than the actual collector state's last clock with HTTP
+422. Equality is allowed. The selected decision's finalization and proposal
+expiry checks still apply. A rejected clock writes no comparison and consumes no
+command identity, so the same command can be retried at a valid service time.
+This floor applies only to new writes: later collector activity does not rewrite
+historical readiness or invalidate an exact clock-free retry or restart replay.
+
+A new comparison ID records reconsideration under current owner policies;
 it never overwrites an old comparison. Captured policy catalogues remain bound
 to current immutable owner records, so a later policy cannot rewrite an earlier
 assignment. Reads and retries validate the whole journal before selecting a
@@ -416,3 +424,21 @@ table comment and migration checksum record; it does not rewrite prior journals
 or activate an admission/effect writer. Upgrade and rollback checks run against
 new disposable PostgreSQL containers. Atomic funded execution and applicable
 positive evaluation/admission remain unfinished.
+
+## Validated ledger prefix replay
+
+The owner validates every retained comparison command against its actual policy
+and finalized decision sources, then reconstructs each policy ledger in one
+validated walk. Every entry hash, chain link, derived plan, temporal transition
+and conservation check still runs. Entry time must exactly match its owner
+comparison time, even if a mismatched entry and its readiness are self-rehashed.
+The walk returns each prefix's ledger hash
+and detached accounting projection, so the owner can verify every historical
+comparison receipt without replaying all earlier transitions for each entry.
+
+An invalid later entry discards all prefix results. Source validation remains
+separate from accounting validation: the internal core cannot attest decision,
+admission or effect ownership, and this read path grants no financial authority.
+Historical wire bytes, schema versions, hashes and clock-free retries are
+unchanged. This does not implement issue #19's admission/effect issuer or an
+atomic durable financial execution transaction.

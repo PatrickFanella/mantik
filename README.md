@@ -619,6 +619,15 @@ preserve prior records without granting admission or financial execution. Issue
 #19's admission issuer, effect ownership and atomic durable financial execution
 remain unfinished.
 
+New allocation comparisons reject service-clock rollback before the collector
+state read by their owner transaction. The same command can be retried at the
+source clock after rejection; historical receipts and exact retries retain their
+original time. This strengthens the existing deferral boundary without issuing
+admission or financial effects.
+Allocation reads validate owner-derived commands and replay each policy ledger
+once, retaining every historical prefix hash and accounting check. This removes
+repeated prefix evaluation without changing retained bytes or granting authority.
+
 
 Allocation owner failures now return zero receipt/catalogue values, including
 when PostgreSQL rejects a write at commit time. A transport failure can still
