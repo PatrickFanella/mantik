@@ -37,8 +37,12 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 		t.Fatal("catalogue hash mismatch")
 	}
 	var row storage.PaperAttributionRow
-	if err := json.Unmarshal(request("GET", "/v1/paper-attribution/"+candidate.Command.ID, nil, 200), &row); err != nil || !reflect.DeepEqual(row.Decision, candidate) || len(row.Observations) != 1 || !reflect.DeepEqual(row.Observations[0], outcomes[0]) || len(row.Allocations) != 1 || row.Allocations[0].Status != "defer" || row.Allocations[0].CostCeiling == nil {
+	if err := json.Unmarshal(request("GET", "/v1/paper-attribution/"+candidate.Command.ID, nil, 200), &row); err != nil || !reflect.DeepEqual(row.Decision, candidate) || len(row.Observations) != 1 || !reflect.DeepEqual(row.Observations[0], outcomes[0]) || len(row.Allocations) != 1 || row.Allocations[0].Status != "defer" || row.Allocations[0].CostCeiling == nil || row.Allocations[0].AdmissionReadiness == nil {
 		t.Fatal(row, err)
+	}
+	var comparisons storage.OwnedAllocationCatalog
+	if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &comparisons); err != nil || len(comparisons.Records) != 1 || len(comparisons.Records[0].AdmissionChecks) != 1 || !reflect.DeepEqual(*row.Allocations[0].AdmissionReadiness, comparisons.Records[0].AdmissionChecks[0]) {
+		t.Fatal("attribution changed retained readiness", comparisons, err)
 	}
 	if row.Economics.ExecutedQuantity != nil || row.Economics.FeesCents != nil || row.Economics.RealizedPnLCents != nil || row.QualificationCredit || row.Economics.Status != "owned_execution_unavailable" || row.Economics.BaselineStatus != "economic_baselines_unavailable" {
 		t.Fatal("invented economics", row)

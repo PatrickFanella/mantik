@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -101,6 +102,9 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 		if !paperaccount.ID.MatchString(a.ComparisonID) || !paperStrategyPin.MatchString(a.RecordSHA256) || !paperStrategyPin.MatchString(a.PolicySHA256) || !paperaccount.ID.MatchString(a.AccountID) || a.At.IsZero() || a.Status != "defer" && a.Status != "reject" || len(a.Reasons) == 0 || a.RequestedFundingCents <= 0 {
 			return storage.ErrPaperAttributionInvalid
 		}
+		if a.AdmissionReadiness != nil && validateAttributionReadiness(*a.AdmissionReadiness, a, r, receiver) != nil {
+			return storage.ErrPaperAttributionInvalid
+		}
 		if a.CostCeiling != nil {
 			cost := *a.CostCeiling
 			h := cost.SHA256
@@ -109,6 +113,52 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 				return storage.ErrPaperAttributionInvalid
 			}
 		}
+	}
+	return nil
+}
+
+// Optional for older retained comparisons. A portable readiness hash does not
+// attest the source owner; only the service replays the underlying journal.
+func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.PaperAllocationAttribution, r storage.PaperAttributionRow, receiver string) error {
+	h := c.SHA256
+	c.SHA256 = ""
+	if !paperStrategyPin.MatchString(h) || workerplan.Hash(c) != h || c.ReceiverID != receiver || c.DecisionID != r.Decision.Command.ID || c.DecisionSHA256 != r.Decision.SHA256 || c.StrategyID != r.Decision.Command.StrategyID || c.StrategySHA256 != r.Decision.Command.StrategySHA256 || c.DefinitionSHA256 != r.DefinitionSHA256 || c.BasisSHA256 != r.Decision.BasisSHA256 || c.EvidenceClass != r.EvidenceClass || !c.CheckedAt.Equal(a.At) || c.Authority != "service_owned_admission_readiness_only" || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit || c.Status != "deferred" && c.Status != "expired" || c.Gates == nil || c.ReconsiderTriggers == nil {
+		return storage.ErrPaperAttributionInvalid
+	}
+	expectedStatus := "deferred"
+	triggers := []string{"qualified_source_evidence", "applicable_evaluation_receipt", "owned_execution_evidence"}
+	if !c.CheckedAt.Before(c.ValidUntil) {
+		expectedStatus = "expired"
+		triggers = []string{"new_finalized_decision"}
+	}
+	gates := []storage.OwnedAdmissionGate{
+		{Name: "finalized_decision", Status: "verified", ReasonCode: "retained_owner_decision"},
+		{Name: "source_evidence_class", Status: "unqualified", ReasonCode: r.EvidenceClass},
+		{Name: "evaluation_recipe", Status: "unavailable", ReasonCode: "relevant_evaluation_receipt_unavailable"},
+		{Name: "execution_reconciliation", Status: "unavailable", ReasonCode: "owned_execution_evidence_unavailable"},
+	}
+	if c.QuoteInputID != r.Decision.Evaluation.Coverage.Quote.InputID || c.ValidUntil.IsZero() || c.Status != expectedStatus || !reflect.DeepEqual(c.Gates, gates) || !reflect.DeepEqual(c.ReconsiderTriggers, triggers) {
+		return storage.ErrPaperAttributionInvalid
+	}
+	switch c.Schema {
+	case "mantik-owned-admission-readiness-v1":
+		if c.Binding != nil {
+			return storage.ErrPaperAttributionInvalid
+		}
+	case "mantik-owned-admission-readiness-v2":
+		b := c.Binding
+		if b == nil || b.ComparisonID != a.ComparisonID || b.PolicySHA256 != a.PolicySHA256 || b.AccountID != a.AccountID || !paperaccount.ID.MatchString(b.PolicyID) || !paperStrategyPin.MatchString(b.AccountSHA256) || !paperStrategyPin.MatchString(b.ProposalSHA256) || !paperStrategyPin.MatchString(b.LedgerSHA256) {
+			return storage.ErrPaperAttributionInvalid
+		}
+		expectedCost := ""
+		if a.CostCeiling != nil {
+			expectedCost = a.CostCeiling.SHA256
+		}
+		if b.ExecutionCostSHA256 != expectedCost {
+			return storage.ErrPaperAttributionInvalid
+		}
+	default:
+		return storage.ErrPaperAttributionInvalid
 	}
 	return nil
 }
@@ -136,6 +186,13 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 		}
 		for _, a := range r.Allocations {
 			fmt.Fprintf(&b, "  ALLOCATION %s account=%s status=%s reasons=%q requested_funding_cents=%d\n", strconv.Quote(a.ComparisonID), strconv.Quote(a.AccountID), strconv.Quote(a.Status), a.Reasons, a.RequestedFundingCents)
+			if a.AdmissionReadiness != nil {
+				c := a.AdmissionReadiness
+				fmt.Fprintf(&b, "    ADMISSION_READINESS status=%s admission=false execution=false\n", strconv.Quote(c.Status))
+				for _, gate := range c.Gates {
+					fmt.Fprintf(&b, "      GATE %s status=%s reason=%s\n", strconv.Quote(gate.Name), strconv.Quote(gate.Status), strconv.Quote(gate.ReasonCode))
+				}
+			}
 			if a.CostCeiling != nil {
 				fmt.Fprintf(&b, "    debit_ceiling_cents=%d (funding bound, not incurred expense)\n", a.CostCeiling.MaxDebitCents)
 			}

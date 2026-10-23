@@ -27,6 +27,11 @@ Rows are sorted by finalized decision ID. Each row contains:
 - Each retained allocation choice for the decision: comparison/record/policy
   identities, owner-selected account, comparison time, status, reasons,
   reconsideration triggers and requested funding.
+- The exact retained admission-readiness record when the allocation comparison
+  has one, including its gates, reconsideration triggers and any comparison,
+  policy, account, proposal, ledger and cost bindings. Legacy comparisons omit
+  this field; absence does not imply readiness. These are deferred or expired
+  prerequisite checks, never an admission grant.
 - The corresponding owner-derived execution cost ceiling when that comparison
   declared an execution model. This is a ceiling, not an expense or fill.
 
@@ -86,7 +91,8 @@ run a model, assess an outcome, finalize a decision or change balances.
 
 The default table keeps finalized abstentions separate from failed requests.
 It prints each retained assessment status and allocation deferral/rejection,
-labels funding ceilings as bounds, and shows unavailable execution quantities,
+prints admission-readiness gates and their retained reasons, labels funding
+ceilings as bounds, and shows unavailable execution quantities,
 fees, realized P&L and economic baselines explicitly. A quote delta appears only
 for an `observed` assessment; waiting or inapplicable assessments show an
 unavailable delta. Repeated assessments do not become independent sample counts
@@ -100,7 +106,9 @@ A stale pin fails before producing output; read the current catalogue to review
 the new row before selecting its hash.
 
 The client checks bounded, strict JSON, receiver identity, envelope hashes,
-nested decision/outcome links and the current unavailable-economics boundary.
+nested decision/outcome links, readiness identity and context bindings, the
+retained unavailable prerequisite gates, and the current unavailable-economics
+boundary.
 These are representation checks. Source replay and consistent snapshot
 selection remain service responsibilities; a self-computed hash establishes no
 qualification. Wrong receivers, invalid arguments, stale pins, HTTP failures,
