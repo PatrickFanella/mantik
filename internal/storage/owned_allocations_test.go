@@ -145,6 +145,26 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			t.Fatal(err)
 		}
 	}
+	// The collector owner can advance without finalizing another decision.
+	// New comparisons must not be backdated before that actual source clock,
+	// even when the selected decision and declaration are older and valid.
+	if _, err = s.FeedCollectorCommand(ctx, owner, feedcollector.Command{RequestID: "comparison-clock-heartbeat", Operation: "renew", RegistrationID: reg.ID, OwnerID: "worker-one", Generation: 1}, now); err != nil {
+		t.Fatal(err)
+	}
+	calls.Store(0)
+	backdated, e := s.CompareOwnedAllocation(ctx, c, func() time.Time { return at.Add(time.Second - time.Nanosecond) }, eval)
+	if !errors.Is(e, ErrOwnedAllocationInvalid) || !reflect.DeepEqual(backdated, OwnedAllocationReceipt{}) {
+		t.Fatal("comparison preceded the actual collector clock", backdated, e)
+	}
+	emptyAfterClockFailure, e := s.OwnedAllocations(ctx, eval)
+	if e != nil || !reflect.DeepEqual(emptyAfterClockFailure, opening) {
+		t.Fatal("clock failure changed allocation state", emptyAfterClockFailure, e)
+	}
+	before, err = s.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The same command remains usable at the exact source clock after failure.
 	for range 8 {
 		wg.Go(func() {
 			if _, err := s.CompareOwnedAllocation(ctx, c, now, eval); err != nil {
@@ -792,6 +812,32 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		}
 	}
 	writeJournal(journal)
+	historicalBefore, e := s.OwnedAllocations(ctx, eval)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.FeedCollectorCommand(ctx, owner, feedcollector.Command{RequestID: "comparison-clock-later-renewal", Operation: "renew", RegistrationID: reg.ID, OwnerID: "worker-one", Generation: 1}, func() time.Time { return at.Add(2 * time.Second) }); e != nil {
+		t.Fatal(e)
+	}
+	historicalAfter, e := s.OwnedAllocations(ctx, eval)
+	if e != nil || !reflect.DeepEqual(historicalBefore, historicalAfter) {
+		t.Fatal("new source clock rewrote historical comparisons", historicalAfter, e)
+	}
+	historicalRetry, e := s.CompareOwnedAllocation(ctx, c, noClock, eval)
+	if e != nil || !historicalRetry.Duplicate || !reflect.DeepEqual(historicalRetry.Record, first) {
+		t.Fatal("new source clock invalidated exact retry", historicalRetry, e)
+	}
+	if pg, ok := s.(*Postgres); ok {
+		reopened, e := OpenPostgres(ctx, pg.pool.Config().ConnString())
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer reopened.Close()
+		restored, e := reopened.OwnedAllocations(ctx, eval)
+		if e != nil || !reflect.DeepEqual(restored, historicalBefore) {
+			t.Fatal("source clock changed restart replay", restored, e)
+		}
+	}
 	journal.Records[0].Record.Entry.Plan.Decisions[0].Status = "reserve_plan"
 	r := &journal.Records[0].Record
 	r.SHA256 = ""

@@ -98,7 +98,15 @@ portable admission or execution grants.
 
 An exact command retry returns HTTP 200 and the original record without reading
 a new clock. A new record returns 201. Reusing an ID with different pins returns
-409. A new comparison ID records reconsideration under current owner policies;
+409. New comparisons sample the service clock once under the owner lock/transaction
+and reject a time earlier than the actual collector state's last clock with HTTP
+422. Equality is allowed. The selected decision's finalization and proposal
+expiry checks still apply. A rejected clock writes no comparison and consumes no
+command identity, so the same command can be retried at a valid service time.
+This floor applies only to new writes: later collector activity does not rewrite
+historical readiness or invalidate an exact clock-free retry or restart replay.
+
+A new comparison ID records reconsideration under current owner policies;
 it never overwrites an old comparison. Captured policy catalogues remain bound
 to current immutable owner records, so a later policy cannot rewrite an earlier
 assignment. Reads and retries validate the whole journal before selecting a
