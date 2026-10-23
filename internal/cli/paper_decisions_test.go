@@ -136,6 +136,29 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if first.Record.Validate() != nil || first.Record.Evaluation.Action != "entry_candidate" || first.Record.Evaluation.PriceCents != 10000 || !first.Record.Evaluation.Signal || first.Record.ExecutionAvailable || first.Record.AdmissionAvailable || first.Record.QualificationCredit {
 		t.Fatal(first)
 	}
+	var market service.PaperDecisionMarketEvidence
+	clock.panicRead = true
+	rawMarket := request("GET", "/v1/paper-decisions/"+command.ID+"/market-evidence", nil, 200)
+	clock.panicRead = false
+	if err := json.Unmarshal(rawMarket, &market); err != nil || market.DecisionSHA256 != first.Record.SHA256 || market.BasisSHA256 != first.Record.BasisSHA256 || market.Quote == nil || market.Quote.AskCents != 10000 || market.Quote.BidCents != 9900 || market.Quote.ProviderBidSize != 10 || market.Quote.ProviderAskSize != 10 || market.Quote.ShareQuantitiesAvailable || market.Quote.SizeUnit != "provider_native_unverified" || market.AdmissionAvailable || market.ExecutionAvailable || market.QualificationCredit {
+		t.Fatal(market, err)
+	}
+	if market.Status != "dimensions_retained_share_units_unverified" || market.CaptureKey != reg.ID+":quote-r1" || market.Provider != "alpaca" || market.Feed != "iex" || market.Quote.InputID != first.Record.Evaluation.Coverage.Quote.InputID || market.Quote.CaptureSHA256 != quote("quote", "100").SHA256 || !market.FinalizedAt.Equal(first.Record.FinalizedAt) || !market.PublishedAt.Equal(clock.at) || market.PublicationFence != fence || market.AdmissionFence != fence {
+		t.Fatal(market)
+	}
+	for _, q := range []string{"?", "?at=future", "?quote_id=other", "?bid_quantity=1000000"} {
+		request("GET", "/v1/paper-decisions/"+command.ID+"/market-evidence"+q, nil, 422)
+	}
+	request("GET", "/v1/paper-decisions/"+command.ID+"/market-evidence", `{"execution_available":true}`, 422)
+	request("GET", "/v1/paper-decisions/missing/market-evidence", nil, 404)
+	unauthMarket, err := http.Get(server.URL + "/v1/paper-decisions/" + command.ID + "/market-evidence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unauthMarket.Body.Close()
+	if unauthMarket.StatusCode != 401 {
+		t.Fatal(unauthMarket.StatusCode)
+	}
 	explanationBefore, _ := s.Snapshot(ctx)
 	var explanation service.DecisionExplanation
 	clock.panicRead = true
@@ -249,7 +272,14 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if later := request("GET", "/v1/paper-decisions/"+command.ID+"/explanation", nil, 200); !bytes.Equal(later, rawExplanation) {
 		t.Fatal("later evidence rewrote finalized explanation")
 	}
+	if later := request("GET", "/v1/paper-decisions/"+command.ID+"/market-evidence", nil, 200); !bytes.Equal(later, rawMarket) {
+		t.Fatal("later evidence rewrote retained market dimensions")
+	}
 	clock.panicRead = false
+	var abstainMarket service.PaperDecisionMarketEvidence
+	if err := json.Unmarshal(request("GET", "/v1/paper-decisions/"+next.ID+"/market-evidence", nil, 200), &abstainMarket); err != nil || abstainMarket.Quote != nil || abstainMarket.Status != "not_applicable_abstention" {
+		t.Fatal(abstainMarket, err)
+	}
 	var missingExplanation service.DecisionExplanation
 	if err := json.Unmarshal(request("GET", "/v1/paper-decisions/"+next.ID+"/explanation", nil, 200), &missingExplanation); err != nil || missingExplanation.Action != "abstain" || missingExplanation.ReferencePriceCents != 0 || missingExplanation.ReasonCode != abstain.Record.Evaluation.ReasonCode {
 		t.Fatal(missingExplanation, err)
@@ -352,6 +382,19 @@ func TestPostgresContractsOwnedDecisionAllocationHTTP(t *testing.T) {
 	server := httptest.NewServer(service.HandlerWithClock(reopened, "restart-token", clock))
 	defer server.Close()
 	assertRestartedPaperAttribution(t, server.URL)
+	marketRequest, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/paper-decisions/owned-first/market-evidence", nil)
+	marketRequest.Header.Set("Authorization", "Bearer restart-token")
+	marketResponse, err := http.DefaultClient.Do(marketRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var market service.PaperDecisionMarketEvidence
+	err = json.NewDecoder(marketResponse.Body).Decode(&market)
+	marketResponse.Body.Close()
+	if err != nil || marketResponse.StatusCode != 200 || market.Quote == nil || market.Quote.AskCents != 10000 || market.Quote.BidCents != 9900 || market.Quote.ProviderAskSize != 10 || market.Quote.ShareQuantitiesAvailable || market.ExecutionAvailable {
+		t.Fatal("market evidence reconnect", market, err)
+	}
+
 	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/allocation-comparisons", nil)
 	req.Header.Set("Authorization", "Bearer restart-token")
 	response, err := http.DefaultClient.Do(req)

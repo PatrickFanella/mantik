@@ -134,3 +134,45 @@ Explicit factual claims about these records can be checked through
 [finalized decision claim reviews](decision-review-cases.md). Contradictory or
 unsupported claims open a review case without changing the decision. Original
 prose remains unverified, including when supplied claims match.
+
+## Retained market dimensions
+
+`GET /v1/paper-decisions/{id}/market-evidence` reads the market dimensions behind
+an actual finalized decision. It uses the service bearer token and accepts no
+query string, body, caller clock, replacement source, quantity or authority.
+Memory validates the complete decision catalogue under its aggregate mutex;
+PostgreSQL uses one repeatable-read, read-only transaction. Selected source data
+is detached before the service inspects it. A missing decision returns 404;
+invalid owner history or inconsistent recording dimensions returns 503.
+
+The response pins the receiver, decision hash, basis hash, finalization time,
+provider/feed, collector registration, raw capture digest, publication key and
+publication/admission fences. Here admission means the collector's retained
+research-input receipt, not paper strategy admission. The inspector revalidates
+all captured recordings, their normalized inputs and collector receipts. The
+selected usable quote must match the decision's input and reference price and
+must have been admitted and published by finalization. The bid and ask are
+whole cents rederived from original recording bytes. The provider size values
+are preserved exactly as `provider_bid_size` and `provider_ask_size`.
+
+The recording schema does not pin a provider size-unit contract. Consequently,
+`size_unit` is `provider_native_unverified` and `share_quantities_available` is
+false. The service does not guess a multiplier, label the values as shares, or
+pass them into the whole-share fill reducer. Source-unit verification and a
+versioned normalization binding remain prerequisites for economic replay and
+financial execution. A retained raw digest proves byte identity within this
+owner history; it does not attest provider access or qualify the evidence.
+
+This is a historical readback, with no new clock. Later quotes, missing-price
+captures and lease changes do not replace the selected finalized basis.
+Abstentions return `not_applicable_abstention` and a null quote, including when
+a reference price happened to be present. Candidate decisions return
+`dimensions_retained_share_units_unverified`. The report hashes its exact
+contents and writes no records, balances or operational state. Admission,
+execution and qualification remain false; this does not complete #19 or #20.
+
+Verification covers original-byte/normalized-input disagreement, unavailable and
+quarantined quotes, foreign provider and capture identities, future publication
+or input admission, complete-catalogue corruption, detached reads, historical
+stability, authentication, rejected caller assertions and disposable PostgreSQL
+reconnect retention. These are fixture contracts, not live market observations.
