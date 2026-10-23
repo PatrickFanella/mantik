@@ -18,9 +18,10 @@ unavailable write owners return 422 before dispatch.
 
 | Tool | Arguments | Owner |
 | --- | --- | --- |
-| `inspect_record` | `kind` and `id`; kinds `decision`, `review_case`, `news_record`, `research_review`, `watch` | Existing targeted GET route for that kind |
+| `inspect_record` | `kind` and `id`; kinds `decision`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
 | `request_research` | `receiver_id`, `request_id`, `case_id`, `version`, optional `type_id` | `POST /v1/news-reviews` |
 | `change_watch_policy` | Existing policy command: `id`, `receiver_id`, optional `previous_sha256`, `policy` | `POST /v1/social-watches` |
+| `change_copy_watch_policy` | Same policy command; research, review or inactive bounded follow intent | `POST /v1/copy-watches` |
 | `recheck_exception` | `exception_id`, `request_id` | Existing recovery route with operation fixed to `recheck` |
 | `review_decision_claims` | Existing `id`, `receiver_id`, `decision_id`, `decision_sha256`, optional `explanation`, `claims` | `POST /v1/paper-decision-reviews` |
 
@@ -42,6 +43,11 @@ Inspect the returned review using its request ID:
 IDs contain only ASCII letters, digits, underscores and hyphens, begin with a
 letter or digit, and are at most 160 characters. The target owner may impose a
 stricter limit. Missing or unsupported records keep that owner's error status.
+`copy_watch` reads the current copy watch. `social_applicability` and
+`copy_applicability` read the existing targeted source-applicability route at the
+service clock, including policy changes and source revisions. Their IDs cannot
+supply paths, query strings or an alternate evaluation time.
+
 Tool calls return the owner's status and JSON body directly, including duplicate
 receipts, receiver conflicts, evidence-version conflicts, capacity failures and
 storage failures. Owner request IDs and watch-policy compare-and-swap checks
@@ -49,7 +55,14 @@ remain authoritative; this adapter has no separate retry journal or clock.
 
 Watch changes allow only `research` and `decision_review` behavior. See
 [social watch policies](owned-social-watches.md) for policy fields and immutable history.
-A configured-rule activation cannot be requested through this adapter. Exception
+The separate `change_copy_watch_policy` tool also accepts `bounded_paper_follow`
+with all four independent follow bounds. Its MCP schema requires those bounds
+only for bounded follow; the service owner checks order/exposure limits, receiver,
+request identity and the current predecessor. The existing social tool remains
+restricted to research and review. See [copy-source records](owned-copy-sources.md).
+These are inactive policy declarations, with no sizing, reservation, admission,
+execution or qualification. A configured-rule activation cannot be requested
+through either tool. Exception
 rechecks retain an attempt and inspect existing state; the tool cannot select
 `reconcile-action`, `retry-protection` or a caller-defined operation. A changed
 request with an existing owner request ID still conflicts.
@@ -82,8 +95,9 @@ sampling, resources, batch messages or a model/chat client.
 At initialization, it authenticates against the chosen HTTP origin, verifies
 `/v1/research-receiver` against the required receiver ID and discovers the actual
 available supervision tools. Tool schemas describe the existing owner command
-fields; unavailable tools are absent. Watch schemas allow research and decision
-review only. Each call rechecks receiver identity before forwarding exactly once
+fields; unavailable tools are absent. The social watch schema allows research
+and decision review; the separate copy schema also describes bounded follow
+intent with required limits. Each call rechecks receiver identity before forwarding exactly once
 to `/v1/supervision/calls`. This receiver check is an HTTP preflight, not an
 atomic lease on a remote process; mutations still require the owner's receiver,
 request ID, evidence version and compare-and-swap checks as applicable.
@@ -105,6 +119,8 @@ error. EOF drains accepted calls; process cancellation closes stdin and cancels
 HTTP work. Standard output contains protocol messages only.
 
 Local contracts exercise real service watch creation/CAS retries and inspection,
+copy bounds and source-applicability inspection through stdio on Memory and
+disposable PostgreSQL, unchanged capital/operations,
 owner failures, restricted actions, receiver mismatch, malformed input, frame
 limits, cancellation and duplicate active IDs. A subprocess contract verifies
 CLI dispatch and stdio-only output. These checks establish local transport

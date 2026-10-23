@@ -46,12 +46,14 @@ type supervisionTool struct {
 var supervisionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,159}$`)
 
 func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
-	tools := []supervisionTool{{"inspect_record", "{kind: decision|review_case|news_record|research_review|watch, id: string}; owner availability applies", false}}
+	tools := []supervisionTool{{"inspect_record", "{kind: decision|review_case|news_record|research_review|watch|copy_watch|social_applicability|copy_applicability, id: string}; owner availability applies", false}}
 	if _, ok := store.(storage.ReviewStore); ok {
 		tools = append(tools, supervisionTool{"request_research", "news-review start command: receiver_id, request_id, case_id, version, optional type_id", true})
 	}
 	if _, ok := store.(storage.SocialWatchStore); ok {
-		tools = append(tools, supervisionTool{"change_watch_policy", "socialwatch.PolicyCommand; behavior restricted to research or decision_review", true})
+		tools = append(tools,
+			supervisionTool{"change_watch_policy", "socialwatch.PolicyCommand; behavior restricted to research or decision_review", true},
+			supervisionTool{"change_copy_watch_policy", "socialwatch.PolicyCommand; research, decision_review or inactive bounded_paper_follow intent; no admission or execution", true})
 	}
 	if _, ok := store.(storage.OperationalStore); ok {
 		tools = append(tools, supervisionTool{"recheck_exception", "{exception_id: string, request_id: string}; fixed recheck operation", true})
@@ -109,13 +111,16 @@ func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
 				invalid(w)
 				return
 			}
-			paths := map[string]string{"decision": "/v1/paper-decisions/", "review_case": "/v1/decision-review-cases/", "news_record": "/v1/news-recordings/", "research_review": "/v1/news-reviews/", "watch": "/v1/social-watches/"}
+			paths := map[string]string{"decision": "/v1/paper-decisions/", "review_case": "/v1/decision-review-cases/", "news_record": "/v1/news-recordings/", "research_review": "/v1/news-reviews/", "watch": "/v1/social-watches/", "copy_watch": "/v1/copy-watches/", "social_applicability": "/v1/social-recordings/", "copy_applicability": "/v1/copy-recordings/"}
 			prefix, ok := paths[args.Kind]
 			if !ok {
 				invalid(w)
 				return
 			}
 			method, path = http.MethodGet, prefix+args.ID
+			if args.Kind == "social_applicability" || args.Kind == "copy_applicability" {
+				path += "/applicability"
+			}
 		case "request_research":
 			var args researchRequestArguments
 			if !decode(&args, 4096) {
@@ -130,6 +135,13 @@ func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
 				return
 			}
 			path, body = "/v1/social-watches", args
+		case "change_copy_watch_policy":
+			var args socialwatch.PolicyCommand
+			if !decode(&args, 4096) || args.Validate() != nil || args.Policy.Behavior == "configured_rule" {
+				invalid(w)
+				return
+			}
+			path, body = "/v1/copy-watches", args
 		case "recheck_exception":
 			var args recheckArguments
 			if !decode(&args, 4096) || !supervisionID.MatchString(args.ExceptionID) {

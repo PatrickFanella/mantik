@@ -227,6 +227,7 @@ func TestPostgresContractsOwnedSocialHTTP(t *testing.T) {
 	}
 	t.Cleanup(s.Close)
 	ownedSocialHTTP(t, s)
+	copySupervisionMCP(t, s)
 
 }
 

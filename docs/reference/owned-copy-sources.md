@@ -34,6 +34,12 @@ both sets of routes operate on the same owner and immutable history. Full source
 history is read through `GET /v1/social-history`, including all policy revisions,
 social records and copy records. No connector is contacted by these operations.
 
+[Typed supervision](supervision-tools.md) exposes the same owner through
+`change_copy_watch_policy` and `inspect_record` kinds `copy_watch` and
+`copy_applicability`, including the stdio MCP bridge. It retains the same request
+IDs, predecessor checks, bound validation and inactive authority. The social
+watch tool remains restricted to research and review.
+
 ## Attributed activity
 
 `POST /v1/copy-recordings` accepts the retained-source capture command. The
