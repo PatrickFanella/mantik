@@ -47,7 +47,7 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Finalized no-action decision; not a workflow failure.", "waiting_horizon", "not_applicable", "quote_delta_cents=unavailable", "not trading P&L", "fees=unavailable", "realized_pnl=unavailable", "funding bound, not incurred expense", "admission_unavailable", "not_calibrated_forecast", "economic_baselines_unavailable", "no independent sample count"} {
+	for _, want := range []string{"Finalized no-action decision; not a workflow failure.", "waiting_horizon", "not_applicable", "quote_delta_cents=unavailable", "not trading P&L", "fees=unavailable", "realized_pnl=unavailable", "funding bound, not incurred expense", "admission_unavailable", "not_calibrated_forecast", "economic_baselines_unavailable", "no independent sample count", "ADMISSION_READINESS", "relevant_evaluation_receipt_unavailable", "owned_execution_evidence_unavailable"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
@@ -55,9 +55,36 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 	if err := run("--id", candidate.Decision.Command.ID, "--record-sha256", strings.Repeat("0", 64)); err == nil || out.Len() != 0 {
 		t.Fatal("wrong pin printed output")
 	}
+	legacyRaw, _ := json.Marshal(candidate)
+	var legacy storage.PaperAttributionRow
+	_ = json.Unmarshal(legacyRaw, &legacy)
+	legacy.Allocations[0].AdmissionReadiness = nil
+	legacy.SHA256 = ""
+	legacy.SHA256 = workerplan.Hash(legacy)
+	if validateAttributionRow(legacy, all.ReceiverID) != nil {
+		t.Fatal("legacy comparison rejected")
+	}
 	// Rehashed malformed receipts must not turn unsupported economic assertions
 	// into a valid presentation, even if every envelope hash is recomputed.
 	for name, mutate := range map[string]func(*storage.PaperAttributionRow){
+		"readiness grant": func(r *storage.PaperAttributionRow) { r.Allocations[0].AdmissionReadiness.AdmissionAvailable = true },
+		"readiness decision": func(r *storage.PaperAttributionRow) {
+			r.Allocations[0].AdmissionReadiness.DecisionSHA256 = strings.Repeat("0", 64)
+		},
+		"readiness policy": func(r *storage.PaperAttributionRow) {
+			r.Allocations[0].AdmissionReadiness.Binding.PolicySHA256 = strings.Repeat("0", 64)
+		},
+		"readiness comparison": func(r *storage.PaperAttributionRow) {
+			r.Allocations[0].AdmissionReadiness.Binding.ComparisonID = "other"
+		},
+		"readiness cost": func(r *storage.PaperAttributionRow) {
+			r.Allocations[0].AdmissionReadiness.Binding.ExecutionCostSHA256 = ""
+		},
+		"readiness gate":   func(r *storage.PaperAttributionRow) { r.Allocations[0].AdmissionReadiness.Gates[2].Status = "verified" },
+		"readiness expiry": func(r *storage.PaperAttributionRow) { r.Allocations[0].AdmissionReadiness.Status = "expired" },
+		"readiness clock": func(r *storage.PaperAttributionRow) {
+			r.Allocations[0].AdmissionReadiness.CheckedAt = r.Allocations[0].AdmissionReadiness.CheckedAt.Add(1)
+		},
 		"qualification": func(r *storage.PaperAttributionRow) { r.QualificationCredit = true },
 		"zero fee":      func(r *storage.PaperAttributionRow) { v := int64(0); r.Economics.FeesCents = &v },
 		"wrong owner":   func(r *storage.PaperAttributionRow) { r.Decision.Command.ReceiverID = "receiver-aaaaaaaaaaaaaaaa" },
@@ -74,6 +101,10 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 			var bad storage.PaperAttributionRow
 			_ = json.Unmarshal(raw, &bad)
 			mutate(&bad)
+			if c := bad.Allocations[0].AdmissionReadiness; c != nil {
+				c.SHA256 = ""
+				c.SHA256 = workerplan.Hash(*c)
+			}
 			bad.SHA256 = ""
 			bad.SHA256 = workerplan.Hash(bad)
 			if validateAttributionRow(bad, all.ReceiverID) == nil {

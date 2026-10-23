@@ -112,6 +112,9 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	if a.Status != "defer" || a.Reasons[0] != "admission_unavailable" || a.RecordSHA256 != comparison.Record.SHA256 || a.PolicySHA256 != comparison.Record.PolicySHA256 || a.AccountID != account.Config.ID || a.CostCeiling == nil || a.CostCeiling.FeeCeilingCents == 0 || a.RequestedFundingCents != comparison.Record.ExecutionCosts[0].ProtectiveFunding.TotalFundingCents {
 		t.Fatal(a)
 	}
+	if a.AdmissionReadiness == nil || !reflect.DeepEqual(*a.AdmissionReadiness, comparison.Record.AdmissionChecks[0]) || a.AdmissionReadiness.Binding == nil || a.AdmissionReadiness.Binding.ComparisonID != a.ComparisonID {
+		t.Fatal("missing retained admission readiness", a)
+	}
 	if original.Rows[0].Decision.Evaluation.Action != "abstain" || original.Rows[0].Observations[0].Evaluation.Status != "not_applicable" || len(original.Rows[0].Allocations) != 0 {
 		t.Fatal("valid abstention lost", original.Rows[0])
 	}
@@ -130,6 +133,8 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	changed.Rows[1].Observations[0].Evaluation.PriceDeltaCents = 999
 	changed.Rows[1].Allocations[0].Reasons[0] = "forged"
 	changed.Rows[1].Allocations[0].CostCeiling.FeeCeilingCents = 0
+	changed.Rows[1].Allocations[0].AdmissionReadiness.Binding.ComparisonID = "forged"
+	changed.Rows[1].Allocations[0].AdmissionReadiness.Gates[0].ReasonCode = "forged"
 	again, err := s.PaperAttribution(ctx, de, oe)
 	if err != nil || !reflect.DeepEqual(again, original) {
 		t.Fatal("mutable readback", err)

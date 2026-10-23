@@ -17,16 +17,17 @@ const MaxPaperAttributionBytes = 8 << 20
 var ErrPaperAttributionInvalid = errors.New("invalid owned paper attribution")
 
 type PaperAllocationAttribution struct {
-	ComparisonID          string              `json:"comparison_id"`
-	RecordSHA256          string              `json:"record_sha256"`
-	PolicySHA256          string              `json:"policy_sha256"`
-	AccountID             string              `json:"account_id"`
-	At                    time.Time           `json:"at"`
-	Status                string              `json:"status"`
-	Reasons               []string            `json:"reasons"`
-	ReconsiderOn          []string            `json:"reconsider_on"`
-	RequestedFundingCents int64               `json:"requested_funding_cents"`
-	CostCeiling           *OwnedExecutionCost `json:"cost_ceiling,omitempty"`
+	ComparisonID          string                   `json:"comparison_id"`
+	RecordSHA256          string                   `json:"record_sha256"`
+	PolicySHA256          string                   `json:"policy_sha256"`
+	AccountID             string                   `json:"account_id"`
+	At                    time.Time                `json:"at"`
+	Status                string                   `json:"status"`
+	Reasons               []string                 `json:"reasons"`
+	ReconsiderOn          []string                 `json:"reconsider_on"`
+	RequestedFundingCents int64                    `json:"requested_funding_cents"`
+	CostCeiling           *OwnedExecutionCost      `json:"cost_ceiling,omitempty"`
+	AdmissionReadiness    *OwnedAdmissionReadiness `json:"admission_readiness,omitempty"`
 }
 
 // Unknown economic values are null, not manufactured zero costs or PnL.
@@ -115,6 +116,13 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 					if cost.DecisionID == d.Command.ID {
 						v := cost
 						item.CostCeiling = &v
+						break
+					}
+				}
+				for _, check := range a.AdmissionChecks {
+					if check.DecisionID == d.Command.ID {
+						v := clone(check)
+						item.AdmissionReadiness = &v
 						break
 					}
 				}
