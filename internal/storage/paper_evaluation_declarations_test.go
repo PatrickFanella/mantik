@@ -77,14 +77,31 @@ func evaluationDeclarationContracts(t *testing.T, s evaluationDeclarationBackend
 	clock := func() time.Time { calls.Add(1); return at.Add(time.Second) }
 	noClock := func() time.Time { panic("historical declaration read clock") }
 	if pg, ok := s.(*Postgres); ok {
-		_, err := pg.pool.Exec(ctx, `CREATE FUNCTION reject_evaluation_declaration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test rollback'; END $$; CREATE TRIGGER reject_evaluation_declaration BEFORE INSERT ON mantik_paper_evaluation_declarations FOR EACH ROW EXECUTE FUNCTION reject_evaluation_declaration()`)
+		// The statement succeeds; only COMMIT rejects the staged declaration.
+		if _, err := pg.pool.Exec(ctx, `CREATE FUNCTION reject_declaration_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test declaration commit rollback'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_declaration_commit AFTER INSERT ON mantik_paper_evaluation_declarations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_declaration_commit()`); err != nil {
+			t.Fatal(err)
+		}
+		failed, err := s.DeclarePaperEvaluation(ctx, c, clock)
+		if err == nil || !reflect.DeepEqual(failed, PaperEvaluationDeclarationReceipt{}) {
+			t.Fatal("commit failure returned staged declaration", failed, err)
+		}
+		empty, err := s.PaperEvaluationDeclarations(ctx)
+		if err != nil || len(empty.Records) != 0 {
+			t.Fatal("commit failure retained declaration", empty, err)
+		}
+		if _, err = pg.pool.Exec(ctx, "DROP TRIGGER reject_declaration_commit ON mantik_paper_evaluation_declarations; DROP FUNCTION reject_declaration_commit()"); err != nil {
+			t.Fatal(err)
+		}
+		_, err = pg.pool.Exec(ctx, `CREATE FUNCTION reject_evaluation_declaration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test rollback'; END $$; CREATE TRIGGER reject_evaluation_declaration BEFORE INSERT ON mantik_paper_evaluation_declarations FOR EACH ROW EXECUTE FUNCTION reject_evaluation_declaration()`)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = s.DeclarePaperEvaluation(ctx, c, clock); err == nil {
-			t.Fatal("failed insert committed")
+		failed, err = s.DeclarePaperEvaluation(ctx, c, clock)
+		if err == nil || !reflect.DeepEqual(failed, PaperEvaluationDeclarationReceipt{}) {
+			t.Fatal("failed insert returned staged declaration", failed, err)
 		}
-		empty, err := s.PaperEvaluationDeclarations(ctx)
+		empty, err = s.PaperEvaluationDeclarations(ctx)
 		if err != nil || len(empty.Records) != 0 {
 			t.Fatal(empty, err)
 		}
@@ -228,11 +245,13 @@ func evaluationDeclarationContracts(t *testing.T, s evaluationDeclarationBackend
 		if _, err = pg.pool.Exec(ctx, "UPDATE mantik_paper_evaluation_declarations SET payload=$1 WHERE id=$2", raw, c.ID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = s.PaperEvaluationDeclarations(ctx); err == nil {
-			t.Fatal("self-rehashed persisted admission accepted")
+		got, err := s.PaperEvaluationDeclarations(ctx)
+		if err == nil || !reflect.DeepEqual(got, PaperEvaluationDeclarationCatalog{}) {
+			t.Fatal("corrupt catalogue returned a partial result", got, err)
 		}
-		if _, err = s.DeclarePaperEvaluation(ctx, c, noClock); err == nil {
-			t.Fatal("exact retry hid persisted corruption")
+		failed, err := s.DeclarePaperEvaluation(ctx, c, noClock)
+		if err == nil || !reflect.DeepEqual(failed, PaperEvaluationDeclarationReceipt{}) {
+			t.Fatal("exact retry hid persisted corruption", failed, err)
 		}
 	}
 }

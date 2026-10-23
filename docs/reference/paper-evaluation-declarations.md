@@ -86,6 +86,12 @@ reads or retries. Rehashing an altered authority, source pin, planned-check list
 or invalid time window cannot make it valid. Hashes do not independently attest
 database provenance.
 
+PostgreSQL returns a declaration receipt only after a successful commit. Write,
+catalogue-validation and commit failures return empty results, so a staged plan
+cannot be mistaken for a durable declaration. A transport failure during commit
+can leave the outcome uncertain: read the owner catalogue before retrying the
+same command identity. This does not grant evaluation or admission authority.
+
 The catalogue retains at most 16 declarations of at most 32 KiB each. Capacity
 returns an error without evicting past attempts. Retained records and command
 slices are detached. Insert failure or cancellation commits no partial record
