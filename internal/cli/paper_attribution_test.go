@@ -44,6 +44,10 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &comparisons); err != nil || len(comparisons.Records) != 1 || len(comparisons.Records[0].AdmissionChecks) != 1 || !reflect.DeepEqual(*row.Allocations[0].AdmissionReadiness, comparisons.Records[0].AdmissionChecks[0]) {
 		t.Fatal("attribution changed retained readiness", comparisons, err)
 	}
+	c := row.Allocations[0].EvaluationContext
+	if c == nil || c.SourceSHA256 != comparisons.Records[0].EvaluationContext.SourceSHA256 || !reflect.DeepEqual(c.Binding, comparisons.Records[0].EvaluationContext.Decisions[0]) || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit {
+		t.Fatal("HTTP evaluation context changed owner record", c)
+	}
 	if row.Economics.ExecutedQuantity != nil || row.Economics.FeesCents != nil || row.Economics.RealizedPnLCents != nil || row.QualificationCredit || row.Economics.Status != "owned_execution_unavailable" || row.Economics.BaselineStatus != "economic_baselines_unavailable" {
 		t.Fatal("invented economics", row)
 	}

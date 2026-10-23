@@ -7,7 +7,7 @@ token, accept no query parameters and make no model or provider requests.
 
 This is a read-only part of #24. Funded execution attribution, passive/no-action
 economic comparisons, social/copy observation-delay analysis, calibrated forecast
-quality and CLI/TUI presentation remain unfinished. Issue #24 stays open. These
+quality and remaining CLI/TUI presentation remain unfinished. Issue #24 stays open. These
 readbacks do not supply the admission or atomic funded effects still needed by
 #19/#20/#21, and they do not start a soak or grant qualification.
 
@@ -32,6 +32,12 @@ Rows are sorted by finalized decision ID. Each row contains:
   policy, account, proposal, ledger and cost bindings. Legacy comparisons omit
   this field; absence does not imply readiness. These are deferred or expired
   prerequisite checks, never an admission grant.
+- The retained evaluation-declaration context for v6 comparisons, including the
+  captured catalogue hash and this decision's exact strategy, policy and declared
+  plan pins. A plan is `declared_not_evaluated`; an empty captured match is
+  `declaration_unavailable`. Legacy comparisons omit this optional context. These
+  states do not establish applicability, evaluation success or admission. Later
+  declarations do not rewrite the historical attribution.
 - The corresponding owner-derived execution cost ceiling when that comparison
   declared an execution model. This is a ceiling, not an expense or fill.
 
@@ -121,3 +127,13 @@ measurements as zero.
 This delivers CLI readback for the implemented phase attribution. The interactive
 TUI, calibrated forecasts, economic baselines, funded execution measurements and
 social/copy delay analysis remain open under #24 and its dependencies.
+
+
+The terminal readback displays `EVALUATION_PLANS` with the captured source hash,
+status and false admission/execution/qualification flags, followed by any
+`DECLARATION` IDs and hashes. It validates the projected decision, strategy and
+policy pins, sorted unique declaration pins and no-grant boundary before printing.
+These integrity checks do not independently attest source custody or historical
+snapshot completeness. The field is derived from the replayed comparison, not a
+fresh lookup of the current declaration catalogue. No stored record, command,
+schema migration, economic metric or authority changes.

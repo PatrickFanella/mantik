@@ -105,6 +105,26 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 		if a.AdmissionReadiness != nil && validateAttributionReadiness(*a.AdmissionReadiness, a, r, receiver) != nil {
 			return storage.ErrPaperAttributionInvalid
 		}
+		if c := a.EvaluationContext; c != nil {
+			b := c.Binding
+			if c.Schema != "mantik-paper-attribution-evaluation-context-v1" || c.Authority != "service_owned_predeclarations_only" || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit || !paperStrategyPin.MatchString(c.SourceSHA256) || b.DecisionID != r.Decision.Command.ID || b.DecisionSHA256 != r.Decision.SHA256 || b.StrategyID != r.Decision.Command.StrategyID || b.StrategySHA256 != r.Decision.Command.StrategySHA256 || b.PolicySHA256 != a.PolicySHA256 || a.AdmissionReadiness == nil || a.AdmissionReadiness.Binding == nil || b.PolicyID != a.AdmissionReadiness.Binding.PolicyID || b.Declarations == nil || len(b.Declarations) > storage.MaxPaperEvaluationDeclarations {
+				return storage.ErrPaperAttributionInvalid
+			}
+			status := "declaration_unavailable"
+			if len(b.Declarations) > 0 {
+				status = "declared_not_evaluated"
+			}
+			if b.Status != status {
+				return storage.ErrPaperAttributionInvalid
+			}
+			previous := ""
+			for _, pin := range b.Declarations {
+				if !paperaccount.ID.MatchString(pin.ID) || pin.ID <= previous || !paperStrategyPin.MatchString(pin.SHA256) {
+					return storage.ErrPaperAttributionInvalid
+				}
+				previous = pin.ID
+			}
+		}
 		if a.CostCeiling != nil {
 			cost := *a.CostCeiling
 			h := cost.SHA256
@@ -191,6 +211,12 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 				fmt.Fprintf(&b, "    ADMISSION_READINESS status=%s admission=false execution=false\n", strconv.Quote(c.Status))
 				for _, gate := range c.Gates {
 					fmt.Fprintf(&b, "      GATE %s status=%s reason=%s\n", strconv.Quote(gate.Name), strconv.Quote(gate.Status), strconv.Quote(gate.ReasonCode))
+				}
+			}
+			if c := a.EvaluationContext; c != nil {
+				fmt.Fprintf(&b, "    EVALUATION_PLANS status=%s source=%s admission=false execution=false qualification=false\n", strconv.Quote(c.Binding.Status), strconv.Quote(c.SourceSHA256))
+				for _, pin := range c.Binding.Declarations {
+					fmt.Fprintf(&b, "      DECLARATION %s sha256=%s (predeclared plan, not evaluated)\n", strconv.Quote(pin.ID), strconv.Quote(pin.SHA256))
 				}
 			}
 			if a.CostCeiling != nil {
