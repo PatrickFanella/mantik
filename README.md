@@ -545,6 +545,8 @@ They grant no admission, allocation or execution authority.
 The internal [paper fill method](docs/reference/paper-fill-method.md) declares
 spread, cost, latency, liquidity and stop behavior for replay and future ongoing
 paper use. Its order journal grants no operational execution authority.
+The internal allocation binding can release a wholly unfilled reservation only
+from replayed cancellation or expiry evidence; filled-order protection stays held.
 
 [Typed supervision calls](docs/reference/supervision-tools.md) let authenticated
 conversation adapters inspect retained records, request research, change research

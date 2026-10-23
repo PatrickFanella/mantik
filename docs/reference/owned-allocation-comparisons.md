@@ -232,3 +232,29 @@ unavailable; no cash, position, order or effect changes. A funded execution owne
 must keep protective cash separate from the entry debit, preflight and reconcile
 actual fills atomically, and retain recovery capacity before activation. This
 change does not complete #19, #20 or #21 and supplies no qualification credit.
+
+## Unfilled terminal reservation binding
+
+The internal `allocation.ApplyUnfilledEntryReleases` reducer derives a release
+only from a fully replayed entry book that records cancellation or expiry with
+zero filled shares. The book's orders must already resolve to reservations under
+the exact owner policy and fill model. All entry debits in that book must already
+be present with their exact replay bindings; release cannot insert missing fills
+or supply an admission. No caller release amount is accepted.
+
+The release uses the original proposal's full reserved amount and pins the book
+root, first terminal entry and order ID. A later unrelated book entry or ledger
+comparison preserves its original identity and timestamp, so retries replay the
+same receipt. Prior amount-only releases, alternate roots, truncated histories,
+unknown effects and missing reservations fail closed. New postings must fit the
+ledger's event order; a late call cannot backdate a previously unposted release.
+Failures return no staged ledger or receipts and leave both inputs unchanged.
+
+Working orders and missing quotes keep their reservation. Any partially or
+fully filled order keeps its entire residual hold, including protective funding;
+this reducer does not infer that position or protection obligations have ended.
+It does not settle positions, release filled-order safety cash, attest market
+units, qualify source evidence or write storage. The future execution owner must
+select actual service-owned decisions, admissions, orders and market evidence,
+and commit book and ledger changes atomically. This is a bounded #19/#20 binding
+dependency, not operational authority or completion of either issue.
