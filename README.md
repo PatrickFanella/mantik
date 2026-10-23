@@ -80,6 +80,7 @@ export MANTIK_API_TOKEN=mantik-local-development
 ./bin/mantik supervise --view cases --limit 10
 ./bin/mantik supervise --view news --limit 10
 ./bin/mantik supervise --view portfolio --limit 10
+MANTIK_API_TOKEN=... ./bin/mantik supervise --view decisions --limit 10
 ./bin/mantik supervise --view exceptions --limit 10
 ./bin/mantik supervise --view library --limit 10
 ./bin/mantik cases
@@ -95,6 +96,11 @@ read-only activity view. `supervise` adds interactive page navigation, event
 details, and explicit stale/retry behavior using short commands followed by
 Enter. The [case inspection commands](docs/reference/cases.md) expose the current
 fixture/routing catalogue and one case's latest retained references.
+`supervise --view decisions` adds authenticated, read-only navigation of finalized
+research decisions, their grounded explanations and retained market evidence.
+It pins each inspection to the displayed decision and receiver. See
+[decision inspection](docs/reference/supervision-tools.md#terminal-decision-inspection).
+
 `supervise --view cases` adds page navigation, current case details, and stale-state
 refresh. The [exception readback](docs/reference/exceptions.md) pages retained faults and
 recovery history without deriving readiness or loading the audit ledger.

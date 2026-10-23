@@ -141,3 +141,42 @@ CLI dispatch and stdio-only output. These checks establish local transport
 behavior, not installed-client integration, model quality or live provider
 qualification. The bridge itself makes only requests to the configured Mantik
 service and contains no provider/model request or balance/effect API.
+
+
+## Terminal decision inspection
+
+`mantik supervise --view decisions --limit 10` reads the existing authenticated
+paper-decision API. Set `MANTIK_API_TOKEN` through the existing private environment;
+the command does not accept a token argument. No model or external provider is
+called. This is a command-driven inspection view; free-form conversation and
+model interpretation remain unfinished.
+
+The view lists finalized research decisions in bounded pages. Use `n` and `p` to
+navigate locally, `r` to refresh the catalogue, and `q` to quit. On the displayed
+page, `d ID` prints the retained finalized record, `e ID` reads its deterministic
+post-decision explanation, and `m ID` reads the retained market dimensions and
+source fences. The latter two commands use the existing service endpoints;
+original source bytes remain available through their existing inspection paths.
+
+Inspection responses must match the displayed receiver, decision hash, historical
+basis, finalization time and registration. Explanations also match the retained
+strategy and evaluation facts. Response hashes, schema and authority flags are
+checked before display. JSON output escapes source strings instead of printing
+source text as terminal commands. These checks bind the service readback; they
+do not independently attest imported records or replace the service's owner
+replay.
+
+A failed catalogue refresh marks the retained page stale and blocks navigation
+and inspection until a successful refresh. A changed receiver is rejected for
+the rest of that session; quit and reconnect to select another owner. Failed or
+mismatched inspections produce an unavailable message without retaining a prior
+inspection as a fresh result. Retry explicitly. Unknown commands, IDs outside
+the displayed page and free-form requests send no inspection request. There is
+no mutation, admission, allocation, execution or qualification action in this
+view.
+
+Memory and disposable PostgreSQL owner contracts compare terminal inspection
+responses with the existing explanation and market-evidence responses. Local
+checks also cover stale reads, receiver changes, page restrictions, evidence
+substitution, authority flags and cancellation. They do not restart or qualify
+the curtailed terminal scenarios or establish conversational model behavior.
