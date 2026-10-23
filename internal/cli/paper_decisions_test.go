@@ -248,12 +248,26 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	request("GET", "/v1/allocation-comparisons?at=future", nil, 422)
 	var allocationCatalog storage.OwnedAllocationCatalog
 	_ = json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &allocationCatalog)
-	if len(allocationCatalog.Records) != 1 || len(allocationCatalog.Ledgers) != 1 {
+	if len(allocationCatalog.Records) != 1 || len(allocationCatalog.Ledgers) != 1 || len(allocationCatalog.Capital) < 1 {
 		t.Fatal(allocationCatalog)
 	}
 	projection, err := allocation.ReplayLedger(ctx, allocationCatalog.Ledgers[0])
 	if err != nil || projection.Snapshot.AvailableCashCents != 200000 || len(projection.Snapshot.Orders) != 0 || len(projection.Snapshot.Positions) != 0 {
 		t.Fatal(projection, err)
+	}
+	capital := storage.OwnedCapitalReadback{}
+	for _, row := range allocationCatalog.Capital {
+		if row.Account.Config.ID == allocationCatalog.Ledgers[0].Policy.Account.Config.ID {
+			capital = row
+		}
+	}
+	if capital.AvailableCashCents != projection.Snapshot.AvailableCashCents || !reflect.DeepEqual(capital.Account, allocationCatalog.Ledgers[0].Policy.Account) || capital.LedgerSHA256 != allocationCatalog.Ledgers[0].SHA256 || capital.Source != "replayed_deferral_journal" || capital.ExecutionAvailable || capital.QualificationCredit || len(capital.Orders) != 0 || len(capital.Positions) != 0 {
+		t.Fatal("capital did not match replayed owner ledger", capital)
+	}
+	capitalHash := capital.SHA256
+	capital.SHA256 = ""
+	if workerplan.Hash(capital) != capitalHash {
+		t.Fatal("capital hash mismatch")
 	}
 	clock.panicRead = true
 	if err := json.Unmarshal(request("POST", "/v1/paper-decisions", command, 200), &retry); err != nil || !retry.Duplicate || !reflect.DeepEqual(first.Record, retry.Record) {
@@ -409,7 +423,7 @@ func TestPostgresContractsOwnedDecisionAllocationHTTP(t *testing.T) {
 	}
 	defer response.Body.Close()
 	var got storage.OwnedAllocationCatalog
-	if err = json.NewDecoder(response.Body).Decode(&got); err != nil || response.StatusCode != 200 || len(got.Records) != 1 || len(got.Ledgers) != 1 || got.Records[0].Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
+	if err = json.NewDecoder(response.Body).Decode(&got); err != nil || response.StatusCode != 200 || len(got.Records) != 1 || len(got.Ledgers) != 1 || len(got.Capital) != 1 || got.Capital[0].LedgerSHA256 != got.Ledgers[0].SHA256 || got.Capital[0].AvailableCashCents != got.Ledgers[0].Policy.Account.Config.OpeningCashCents || got.Records[0].Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
 		t.Fatal(got, err, response.StatusCode)
 	}
 }

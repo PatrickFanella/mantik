@@ -333,3 +333,34 @@ remain in place. Memory and PostgreSQL also reject a damaged replay without
 returning a partial catalogue. These tests use unqualified decision fixtures and
 exercise the implemented deferral owner; funded admission/execution and complete
 issue #19 acceptance remain unfinished.
+
+## Capital readbacks
+
+The existing `GET /v1/allocation-comparisons` response includes `capital`, sorted
+by account ID. It derives one readback for each retained allocation policy from
+the same locked Memory or repeatable-read PostgreSQL snapshot as the replayed
+comparison history. An account without a registered allocation policy has no
+row in this view.
+
+Before a policy has any comparisons, `source: registered_opening_capital` derives
+its balance and empty exposure lists from the registered account and policy.
+Its ledger hash identifies the derived empty ledger; reading inserts no genesis
+event. After comparisons, `source: replayed_deferral_journal` pins the actual
+replayed ledger hash and its last recorded time. `as_of` describes that source
+state, not a fresh market observation or reconciliation heartbeat.
+
+Rows use `mantik-owned-deferral-capital-v1` and authority
+`service_owned_deferral_capital_readback_only`. They retain the complete account,
+policy and ledger pins, available cash, realized PnL, positions, orders and
+commitments. A row hash covers its representation with `sha256` empty. Detached
+readbacks cannot alter owner records, and a failed source replay returns no
+partial capital catalogue.
+
+This owner still permits only deferrals. Its recorded cash equals registered
+opening cash, recorded realized PnL is zero, and exposure/commitment lists are
+empty. These values describe the owner's implemented journal; they do not
+assert that external holdings, effects or losses are absent. Funded ledger
+state fails this version's readback contract rather than acquiring authority
+through an imported projection. Execution and qualification flags remain false.
+There is no balance import, capital write endpoint, admission grant or new CLI.
+Issue #19's funded admission and atomic execution/ledger owner remains unfinished.

@@ -82,6 +82,11 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		}
 		return PaperDecisionEvaluation{Action: "entry_candidate", ReasonCode: "storage_contract_only", PriceCents: b.Feed.Routing.Inputs[quoteID].Input.PriceCents, Signal: true, Coverage: domain.MarketCoverageReport{Quote: domain.MarketQuoteCoverage{InputID: quoteID}}}, nil
 	}
+	opening, e := s.OwnedAllocations(ctx, eval)
+	if e != nil || len(opening.Capital) != 1 || len(opening.Records) != 0 || len(opening.Ledgers) != 0 {
+		t.Fatal("opening capital readback", opening, e)
+	}
+	assertOwnedCapital(t, opening.Capital[0], account, "registered_opening_capital")
 	decision, err := s.FinalizePaperDecision(ctx, PaperDecisionCommand{ID: "first", ReceiverID: owner, StrategyID: d.ID, StrategySHA256: strategy.Record.SHA256, RegistrationID: reg.ID}, clock, eval)
 	if err != nil {
 		t.Fatal(err)
@@ -142,6 +147,13 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	original, err := s.OwnedAllocations(ctx, eval)
 	if err != nil || len(original.Records) != 1 || len(original.Ledgers) != 1 {
 		t.Fatal(original, err)
+	}
+	if len(original.Capital) != 1 {
+		t.Fatal(original)
+	}
+	assertOwnedCapital(t, original.Capital[0], account, "replayed_deferral_journal")
+	if original.Capital[0].LedgerSHA256 != original.Ledgers[0].SHA256 || !original.Capital[0].AsOf.Equal(original.Records[0].At) || original.Capital[0].LedgerSHA256 == opening.Capital[0].LedgerSHA256 {
+		t.Fatal("capital lost actual journal head", original.Capital)
 	}
 	if pg, ok := s.(*Postgres); ok {
 		if _, err = pg.pool.Exec(ctx, `CREATE FUNCTION reject_owned_allocation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test rollback'; END $$; CREATE TRIGGER reject_owned_allocation BEFORE UPDATE ON mantik_owned_allocations FOR EACH ROW EXECUTE FUNCTION reject_owned_allocation()`); err != nil {
