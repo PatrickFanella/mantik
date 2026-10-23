@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -95,11 +96,29 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		t.Fatal(err)
 	}
 	if pg, ok := s.(*Postgres); ok {
+		// The INSERT succeeds, but a deferred constraint rejects COMMIT.
+		if _, err = pg.pool.Exec(ctx, `CREATE FUNCTION reject_owned_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test commit rollback'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_owned_commit AFTER INSERT OR UPDATE ON mantik_owned_allocations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_owned_commit()`); err != nil {
+			t.Fatal(err)
+		}
+		failed, e := s.CompareOwnedAllocation(ctx, c, clock, eval)
+		if e == nil || !strings.Contains(e.Error(), "test commit rollback") || !reflect.DeepEqual(failed, OwnedAllocationReceipt{}) {
+			t.Fatal("commit failure returned staged receipt", failed, e)
+		}
+		empty, e := s.OwnedAllocations(ctx, eval)
+		if e != nil || len(empty.Records) != 0 || len(empty.Ledgers) != 0 {
+			t.Fatal("commit failure retained partial journal", empty, e)
+		}
+		if _, err = pg.pool.Exec(ctx, "DROP TRIGGER reject_owned_commit ON mantik_owned_allocations; DROP FUNCTION reject_owned_commit()"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if pg, ok := s.(*Postgres); ok {
 		if _, err = pg.pool.Exec(ctx, `CREATE FUNCTION reject_owned_allocation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test rollback'; END $$; CREATE TRIGGER reject_owned_allocation BEFORE INSERT OR UPDATE ON mantik_owned_allocations FOR EACH ROW EXECUTE FUNCTION reject_owned_allocation()`); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = s.CompareOwnedAllocation(ctx, c, clock, eval); err == nil {
-			t.Fatal("failed insert committed")
+		if failed, e := s.CompareOwnedAllocation(ctx, c, clock, eval); e == nil || !reflect.DeepEqual(failed, OwnedAllocationReceipt{}) {
+			t.Fatal("failed insert returned receipt", failed, e)
 		}
 		empty, e := s.OwnedAllocations(ctx, eval)
 		if e != nil || len(empty.Records) != 0 {
@@ -130,14 +149,32 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		}
 		failed := clone(c)
 		failed.ID = "failed-update"
-		if _, err = s.CompareOwnedAllocation(ctx, failed, now, eval); err == nil {
-			t.Fatal("failed update committed")
+		if receipt, e := s.CompareOwnedAllocation(ctx, failed, now, eval); e == nil || !reflect.DeepEqual(receipt, OwnedAllocationReceipt{}) {
+			t.Fatal("failed update returned receipt", receipt, e)
 		}
 		unchanged, e := s.OwnedAllocations(ctx, eval)
 		if e != nil || !reflect.DeepEqual(unchanged, original) {
 			t.Fatal("partial journal after failed update", e)
 		}
 		if _, err = pg.pool.Exec(ctx, "DROP TRIGGER reject_owned_allocation ON mantik_owned_allocations; DROP FUNCTION reject_owned_allocation()"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if pg, ok := s.(*Postgres); ok {
+		if _, err = pg.pool.Exec(ctx, `CREATE FUNCTION reject_owned_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test update commit rollback'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_owned_commit AFTER UPDATE ON mantik_owned_allocations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_owned_commit()`); err != nil {
+			t.Fatal(err)
+		}
+		failed := clone(c)
+		failed.ID = "failed-commit-update"
+		if receipt, e := s.CompareOwnedAllocation(ctx, failed, now, eval); e == nil || !strings.Contains(e.Error(), "test update commit rollback") || !reflect.DeepEqual(receipt, OwnedAllocationReceipt{}) {
+			t.Fatal("failed update commit returned receipt", receipt, e)
+		}
+		unchanged, e := s.OwnedAllocations(ctx, eval)
+		if e != nil || !reflect.DeepEqual(unchanged, original) {
+			t.Fatal("failed commit changed prior journal", e)
+		}
+		if _, err = pg.pool.Exec(ctx, "DROP TRIGGER reject_owned_commit ON mantik_owned_allocations; DROP FUNCTION reject_owned_commit()"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -543,8 +580,8 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			t.Fatal(err)
 		}
 	}
-	if _, err = s.OwnedAllocations(ctx, eval); err == nil {
-		t.Fatal("counterfeit entry read")
+	if partial, e := s.OwnedAllocations(ctx, eval); e == nil || !reflect.DeepEqual(partial, OwnedAllocationCatalog{}) {
+		t.Fatal("counterfeit entry returned projection", partial, e)
 	}
 	if _, err = s.CompareOwnedAllocation(ctx, c, noClock, eval); err == nil {
 		t.Fatal("retry hid corrupt journal")

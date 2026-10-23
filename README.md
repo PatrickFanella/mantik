@@ -605,3 +605,9 @@ present) and resulting ledger head. New v5 comparisons retain v2 readiness;
 preserve prior records without granting admission or financial execution. Issue
 #19's admission issuer, effect ownership and atomic durable financial execution
 remain unfinished.
+
+
+Allocation owner failures now return zero receipt/catalogue values, including
+when PostgreSQL rejects a write at commit time. A transport failure can still
+leave the commit outcome uncertain; inspect the owner journal before retrying
+an exact request. See [commit acknowledgment](docs/reference/owned-allocation-comparisons.md#commit-acknowledgment-and-failed-reads).

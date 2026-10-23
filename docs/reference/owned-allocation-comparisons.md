@@ -306,3 +306,30 @@ restart, checksum rejection and schema-fence rollback. The migration failure
 fixture verifies that the prior journal bytes and operational state survive and
 that a failed version insert also rolls back the table comment. These are local
 unqualified fixtures, not operational or economic qualification.
+
+
+## Commit acknowledgment and failed reads
+
+The owner store returns a comparison receipt only after its transaction commits.
+A constructed record, a successful `INSERT` or `UPDATE`, or a completed replay
+inside a transaction is not a committed acknowledgment. SQL write errors,
+deferred constraint failures at `COMMIT`, replay errors and commit errors return
+zero receipt/catalogue values alongside the error. Memory also returns a zero
+catalogue when owner replay fails, so an invalid or partial projection cannot be
+mistaken for a usable readback. The existing HTTP error responses are unchanged.
+
+A deferred-constraint failure has a known rollback outcome. A transport or
+connection failure during commit can have an uncertain outcome even though the
+returned receipt is zero. Read the actual owner journal for the request identity
+before retrying the same command; a retained exact command returns its original
+receipt. An error is not proof that no record committed. This contract adds no
+automatic retry, financial effect or admission authority.
+
+Disposable PostgreSQL regressions force failures at statement and commit time
+for both a new journal and an update to an existing one. They check zero returned
+receipts, preserved prior journal/ledger state, and successful exact-command
+retry after the rejected initial commit. The existing concurrent retry checks
+remain in place. Memory and PostgreSQL also reject a damaged replay without
+returning a partial catalogue. These tests use unqualified decision fixtures and
+exercise the implemented deferral owner; funded admission/execution and complete
+issue #19 acceptance remain unfinished.
