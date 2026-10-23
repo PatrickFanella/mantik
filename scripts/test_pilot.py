@@ -207,3 +207,71 @@ class ObservationLoopContracts(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BackupIdentityGuards(unittest.TestCase):
+    def identity(self):
+        return {'method': 'postgres17-public-table-json-sha256-v1',
+                'tables': [{'table': 'public.mantik_state', 'rows': 1, 'sha256': 'a' * 64}]}
+
+    def test_invalid_identity_and_duplicate_tables(self):
+        from snapshot_identity import validate_identity, require_identity
+        good = self.identity()
+        self.assertEqual(validate_identity(good), good)
+        for bad in [None, {}, dict(good, method='unknown'), dict(good, tables=good['tables'] * 2),
+                    dict(good, tables=[dict(good['tables'][0], rows=True)]),
+                    dict(good, tables=[dict(good['tables'][0], sha256='bad')])]:
+            with self.assertRaises(ValueError):
+                validate_identity(bad)
+        with self.assertRaises(ValueError):
+            require_identity(good, dict(good, tables=[]))
+
+    def restore_fixture(self, directory, identity=True):
+        import hashlib
+        root = Path(directory)
+        dump = root / 'backup.dump'
+        dump.write_bytes(b'fixture archive')
+        manifest = {'root': str(root), 'project': 'mantik-pilot-test', 'image': 'fixture-image', 'source_sha': 'fixture-sha'}
+        receipt = {'source_manifest': manifest, 'sha256': hashlib.sha256(dump.read_bytes()).hexdigest()}
+        if identity:
+            receipt.update(schema='mantik-backup-v2', table_data_identity=self.identity())
+        pilot.save(dump.with_suffix('.json'), receipt)
+        return root, dump, manifest
+
+    def test_mismatch_never_starts_application_workers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, dump, manifest = self.restore_fixture(directory)
+            with patch.object(pilot, 'load', return_value=manifest), patch.object(pilot, 'prepare'), \
+                    patch.object(pilot, 'compose') as compose, patch.object(pilot, 'Snapshot') as snapshot, \
+                    patch.object(pilot, 'compose_command', return_value=['owned-psql']):
+                snapshot.return_value.__enter__.return_value.identity = dict(self.identity(), tables=[])
+                with self.assertRaises(ValueError):
+                    pilot.restore(root, root / 'restored', 41881, dump)
+                self.assertEqual([call.args[1:3] for call in compose.call_args_list], [('up', '-d'), ('exec', '-T')])
+                self.assertEqual(compose.call_args_list[0].args[-1], 'postgres')
+
+    def test_invalid_v2_identity_cannot_prepare_resources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, dump, manifest = self.restore_fixture(directory)
+            receipt = json.loads(dump.with_suffix('.json').read_text())
+            receipt['table_data_identity']['tables'][0]['sha256'] = 'bad'
+            dump.with_suffix('.json').write_text(json.dumps(receipt))
+            with patch.object(pilot, 'load', return_value=manifest), patch.object(pilot, 'prepare') as prepare:
+                with self.assertRaises(ValueError):
+                    pilot.restore(root, root / 'restored', 41881, dump)
+                prepare.assert_not_called()
+
+    def test_legacy_restore_records_unavailable_comparison(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, dump, manifest = self.restore_fixture(directory, identity=False)
+            target = root / 'restored'
+            with patch.object(pilot, 'load', return_value=manifest), \
+                    patch.object(pilot, 'prepare', side_effect=lambda *args: target.mkdir()), \
+                    patch.object(pilot, 'compose'), patch.object(pilot, 'wait_ready'), \
+                    patch.object(pilot, 'snapshot'), patch.object(pilot, 'Snapshot') as identity:
+                pilot.restore(root, target, 41881, dump)
+                identity.assert_not_called()
+            receipt = json.loads((target / 'restore-receipt.json').read_text())
+            self.assertFalse(receipt['table_data_identity_verified'])
+            self.assertEqual(receipt['table_data_identity_status'], 'legacy_receipt_unavailable')
+            self.assertFalse(receipt['qualification_credit'])

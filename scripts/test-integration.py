@@ -4,6 +4,8 @@ import subprocess
 import time
 import uuid
 
+from recovery_contract import recovery_contract
+
 
 def run(*args, **kwargs):
     return subprocess.run(args, check=True, text=True, **kwargs)
@@ -42,6 +44,7 @@ def main():
         run("docker", "create", "--name", runner, "--network", "container:" + name,
             "-w", "/src", "-e", "MANTIK_TEST_DATABASE_URL=" +
             f"postgres://mantik:fixture-only@127.0.0.1:5432/{database}?sslmode=disable",
+            "-e", "MANTIK_RECOVERY_SEED=1",
             "golang:1.26.9", "go", "test", "-race", "-p", "1", "./internal/storage", "./internal/cli",
             "-run", "TestPostgresContracts", "-count=1", "-timeout=15m", stdout=subprocess.DEVNULL)
         runner_created = True
@@ -52,6 +55,7 @@ def main():
                         capture_output=True).stdout.strip()
         if exit_code != "0":
             raise RuntimeError("PostgreSQL contract test container failed: " + exit_code)
+        recovery_contract(name, database)
     finally:
         if runner_created:
             run("docker", "rm", "-f", runner, stdout=subprocess.DEVNULL)
