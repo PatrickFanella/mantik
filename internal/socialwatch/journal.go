@@ -32,14 +32,15 @@ var pin = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var symbolPattern = regexp.MustCompile(`^[A-Z][A-Z0-9.-]{0,15}$`)
 
 type Policy struct {
-	ID                         string   `json:"id"`
-	Provider                   string   `json:"provider"`
-	AccountID                  string   `json:"account_id"`
-	Symbols                    []string `json:"symbols"`
-	Behavior                   string   `json:"behavior"`
-	RuleID                     string   `json:"rule_id"`
-	MaxObservationDelaySeconds int64    `json:"max_observation_delay_seconds"`
-	Enabled                    bool     `json:"enabled"`
+	Follow                     *FollowBounds `json:"follow,omitempty"`
+	ID                         string        `json:"id"`
+	Provider                   string        `json:"provider"`
+	AccountID                  string        `json:"account_id"`
+	Symbols                    []string      `json:"symbols"`
+	Behavior                   string        `json:"behavior"`
+	RuleID                     string        `json:"rule_id"`
+	MaxObservationDelaySeconds int64         `json:"max_observation_delay_seconds"`
+	Enabled                    bool          `json:"enabled"`
 }
 
 func validSymbols(a []string, required bool) bool {
@@ -57,7 +58,14 @@ func (p Policy) Validate() error {
 	if !paperaccount.ID.MatchString(p.ID) || !providerPattern.MatchString(p.Provider) || !sourceID.MatchString(p.AccountID) || !validSymbols(p.Symbols, true) || p.MaxObservationDelaySeconds < 1 || p.MaxObservationDelaySeconds > 86400 {
 		return ErrInvalid
 	}
+	if p.Behavior != "bounded_paper_follow" && p.Follow != nil {
+		return ErrInvalid
+	}
 	switch p.Behavior {
+	case "bounded_paper_follow":
+		if p.RuleID != "" || p.Follow == nil || !p.Follow.validate() {
+			return ErrInvalid
+		}
 	case "research", "decision_review":
 		if p.RuleID != "" {
 			return ErrInvalid
@@ -99,6 +107,7 @@ func (r SourceRef) valid() bool {
 // Original is a Mantik recording manifest, not a platform-authenticated API
 // response. Provider/account fields are source assertions, never attestation.
 type Original struct {
+	Activity   *Activity  `json:"activity,omitempty"`
 	Schema     string     `json:"schema"`
 	Source     SourceRef  `json:"source"`
 	Revision   int64      `json:"revision"`
@@ -111,8 +120,23 @@ type Original struct {
 }
 
 func (o Original) Validate() error {
-	if o.Schema != "mantik-social-recording-v1" || !o.Source.valid() || o.Revision < 1 || o.Revision > 1000000 || !validTime(o.OccurredAt) || !validTime(o.ObservedAt) || o.ObservedAt.Before(o.OccurredAt) || !utf8.ValidString(o.Text) || len(o.Text) > 8192 || !validSymbols(o.Symbols, false) {
+	if (o.Schema != "mantik-social-recording-v1" && o.Schema != CopyRecordingSchema) || !o.Source.valid() || o.Revision < 1 || o.Revision > 1000000 || !validTime(o.OccurredAt) || !validTime(o.ObservedAt) || o.ObservedAt.Before(o.OccurredAt) || !utf8.ValidString(o.Text) || len(o.Text) > 8192 || !validSymbols(o.Symbols, false) {
 		return ErrInvalid
+	}
+	if o.Schema == "mantik-social-recording-v1" && o.Activity != nil {
+		return ErrInvalid
+	}
+	if o.Schema == CopyRecordingSchema {
+		if o.Kind != "post" && o.Kind != "edit" && o.Kind != "delete" {
+			return ErrInvalid
+		}
+		if o.Kind == "delete" {
+			if o.Activity != nil {
+				return ErrInvalid
+			}
+		} else if o.Activity == nil || !o.Activity.validate() || len(o.Symbols) != 1 || o.Symbols[0] != o.Activity.Symbol {
+			return ErrInvalid
+		}
 	}
 	switch o.Kind {
 	case "post", "edit", "forecast", "declared_position":
@@ -146,7 +170,10 @@ type CaptureCommand struct {
 
 func (c CaptureCommand) Decode() (Original, error) {
 	var o Original
-	if !paperaccount.ID.MatchString(c.ID) || !receiverPattern.MatchString(c.ReceiverID) || !paperaccount.ID.MatchString(c.WatchID) || !pin.MatchString(c.PolicySHA256) || !slices.Contains([]string{"synthetic_unqualified", "recorded_social_unqualified"}, c.EvidenceClass) || len(c.Original) > MaxOriginalBytes || !utf8.ValidString(c.Original) || workerplan.Digest([]byte(c.Original)) != c.OriginalSHA256 || workerplan.ReadBoundedShape([]byte(c.Original), &o, MaxOriginalBytes) != nil || o.Validate() != nil {
+	if !paperaccount.ID.MatchString(c.ID) || !receiverPattern.MatchString(c.ReceiverID) || !paperaccount.ID.MatchString(c.WatchID) || !pin.MatchString(c.PolicySHA256) || !slices.Contains([]string{"synthetic_unqualified", "recorded_social_unqualified", "recorded_copy_unqualified"}, c.EvidenceClass) || len(c.Original) > MaxOriginalBytes || !utf8.ValidString(c.Original) || workerplan.Digest([]byte(c.Original)) != c.OriginalSHA256 || workerplan.ReadBoundedShape([]byte(c.Original), &o, MaxOriginalBytes) != nil || o.Validate() != nil {
+		return o, ErrInvalid
+	}
+	if o.Schema == CopyRecordingSchema && c.EvidenceClass == "recorded_social_unqualified" || o.Schema != CopyRecordingSchema && c.EvidenceClass == "recorded_copy_unqualified" {
 		return o, ErrInvalid
 	}
 	return o, nil
@@ -159,27 +186,28 @@ type PolicyRecord struct {
 	SHA256       string        `json:"sha256"`
 }
 type CaptureRecord struct {
-	Command                   CaptureCommand `json:"command"`
-	Source                    Original       `json:"source"`
-	RetainedAt                time.Time      `json:"retained_at"`
-	SourceSemanticSHA256      string         `json:"source_semantic_sha256"`
-	Root                      SourceRef      `json:"root"`
-	ClaimGroupSHA256          string         `json:"claim_group_sha256"`
-	SourceAccepted            bool           `json:"source_accepted"`
-	SourceDuplicate           bool           `json:"source_duplicate"`
-	SourceStatus              string         `json:"source_status"`
-	PolicyStatus              string         `json:"policy_status"`
-	ObservationDelaySeconds   int64          `json:"observation_delay_seconds"`
-	AvailabilityDelaySeconds  int64          `json:"availability_delay_seconds"`
-	Authority                 string         `json:"authority"`
-	ProviderAccessVerified    bool           `json:"provider_access_verified"`
-	InstrumentMappingVerified bool           `json:"instrument_mapping_verified"`
-	IndependentEvidenceCredit bool           `json:"independent_evidence_credit"`
-	DispatchAvailable         bool           `json:"dispatch_available"`
-	AdmissionAvailable        bool           `json:"admission_available"`
-	ExecutionAvailable        bool           `json:"execution_available"`
-	QualificationCredit       bool           `json:"qualification_credit"`
-	SHA256                    string         `json:"sha256"`
+	Copy                      *CopyObservation `json:"copy,omitempty"`
+	Command                   CaptureCommand   `json:"command"`
+	Source                    Original         `json:"source"`
+	RetainedAt                time.Time        `json:"retained_at"`
+	SourceSemanticSHA256      string           `json:"source_semantic_sha256"`
+	Root                      SourceRef        `json:"root"`
+	ClaimGroupSHA256          string           `json:"claim_group_sha256"`
+	SourceAccepted            bool             `json:"source_accepted"`
+	SourceDuplicate           bool             `json:"source_duplicate"`
+	SourceStatus              string           `json:"source_status"`
+	PolicyStatus              string           `json:"policy_status"`
+	ObservationDelaySeconds   int64            `json:"observation_delay_seconds"`
+	AvailabilityDelaySeconds  int64            `json:"availability_delay_seconds"`
+	Authority                 string           `json:"authority"`
+	ProviderAccessVerified    bool             `json:"provider_access_verified"`
+	InstrumentMappingVerified bool             `json:"instrument_mapping_verified"`
+	IndependentEvidenceCredit bool             `json:"independent_evidence_credit"`
+	DispatchAvailable         bool             `json:"dispatch_available"`
+	AdmissionAvailable        bool             `json:"admission_available"`
+	ExecutionAvailable        bool             `json:"execution_available"`
+	QualificationCredit       bool             `json:"qualification_credit"`
+	SHA256                    string           `json:"sha256"`
 }
 type Command struct {
 	Policy  *PolicyCommand  `json:"policy"`
@@ -260,6 +288,9 @@ func versionKey(o Original) string {
 }
 func semantic(o Original) string { o.ObservedAt = time.Time{}; return workerplan.Hash(o) }
 func group(o Original) string {
+	if o.Activity != nil {
+		return copyGroup(o)
+	}
 	return workerplan.Hash(struct {
 		Text    string
 		Symbols []string
@@ -305,6 +336,10 @@ func (p *projection) capture(c CaptureCommand, at time.Time) (CaptureRecord, err
 		return CaptureRecord{}, ErrInvalid
 	}
 	r := CaptureRecord{Command: clone(c), Source: o, RetainedAt: at, SourceSemanticSHA256: semantic(o), Root: o.Source, ClaimGroupSHA256: group(o), SourceStatus: "retained", PolicyStatus: "dispatch_unbound", ObservationDelaySeconds: int64(o.ObservedAt.Sub(o.OccurredAt) / time.Second), AvailabilityDelaySeconds: int64(at.Sub(o.OccurredAt) / time.Second), Authority: "recorded_social_source_assertion_only"}
+	r.Copy = p.copyObservation(o, w)
+	if o.Schema == CopyRecordingSchema {
+		r.Authority = "recorded_copy_source_assertion_only"
+	}
 	old, seen := p.versions[versionKey(o)]
 	previous, hasPrevious := p.sources[sourceKey(o.Source)]
 	switch {
@@ -317,7 +352,7 @@ func (p *projection) capture(c CaptureCommand, at time.Time) (CaptureRecord, err
 		r.ClaimGroupSHA256 = old.ClaimGroupSHA256
 	case !hasPrevious && (o.Revision != 1 || o.Kind == "edit" || o.Kind == "delete"):
 		r.SourceStatus = "unresolved_revision"
-	case hasPrevious && (previous.Source.Kind == "delete" || o.Revision != previous.Source.Revision+1 || (o.Kind != "edit" && o.Kind != "delete") || o.OccurredAt.Before(previous.Source.OccurredAt) || o.ObservedAt.Before(previous.Source.ObservedAt)):
+	case hasPrevious && (previous.Source.Schema != o.Schema || (o.Schema == CopyRecordingSchema && previous.Command.EvidenceClass != c.EvidenceClass) || (o.Activity != nil && previous.Source.Activity != nil && o.Activity.Kind != previous.Source.Activity.Kind) || previous.Source.Kind == "delete" || o.Revision != previous.Source.Revision+1 || (o.Kind != "edit" && o.Kind != "delete") || o.OccurredAt.Before(previous.Source.OccurredAt) || o.ObservedAt.Before(previous.Source.ObservedAt)):
 		r.SourceStatus = "invalid_revision_transition"
 	default:
 		r.SourceAccepted = true
@@ -349,6 +384,12 @@ func (p *projection) capture(c CaptureCommand, at time.Time) (CaptureRecord, err
 		r.PolicyStatus = "source_deleted"
 	case !intersects(w.Symbols, o.Symbols):
 		r.PolicyStatus = "instrument_not_watched_or_unresolved"
+	case w.Behavior == "bounded_paper_follow" && o.Activity == nil:
+		r.PolicyStatus = "copy_activity_required"
+	case o.Activity != nil && slices.Contains([]string{"retracted", "reversed", "cancelled", "rejected"}, o.Activity.State) || o.Activity != nil && o.Activity.Kind == "observed_holding" && o.Activity.Side == "flat":
+		r.PolicyStatus = "source_activity_terminal_or_reversed"
+	case o.Activity != nil:
+		r.PolicyStatus = "copy_source_mapping_and_admission_unavailable"
 	case o.Kind == "forecast" || o.Kind == "declared_position":
 		r.PolicyStatus = "structured_extraction_unavailable"
 	}

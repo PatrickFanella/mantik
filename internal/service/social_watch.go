@@ -51,6 +51,10 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 				socialWatchError(w, socialwatch.ErrInvalid)
 				return
 			}
+			if r.Pattern == "POST /v1/copy-watches" && p.Policy.Behavior == "configured_rule" {
+				socialWatchError(w, socialwatch.ErrInvalid)
+				return
+			}
 			c.Policy = &p
 		} else {
 			var p socialwatch.CaptureCommand
@@ -61,6 +65,13 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			if _, err := p.Decode(); err != nil {
 				socialWatchError(w, err)
 				return
+			}
+			if r.Pattern == "POST /v1/copy-recordings" {
+				o, _ := p.Decode()
+				if o.Schema != socialwatch.CopyRecordingSchema {
+					socialWatchError(w, socialwatch.ErrInvalid)
+					return
+				}
 			}
 			c.Capture = &p
 		}
@@ -79,6 +90,8 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 	}
 	mux.HandleFunc("POST /v1/social-watches", func(w http.ResponseWriter, r *http.Request) { post(w, r, true) })
 	mux.HandleFunc("POST /v1/social-recordings", func(w http.ResponseWriter, r *http.Request) { post(w, r, false) })
+	mux.HandleFunc("POST /v1/copy-watches", func(w http.ResponseWriter, r *http.Request) { post(w, r, true) })
+	mux.HandleFunc("POST /v1/copy-recordings", func(w http.ResponseWriter, r *http.Request) { post(w, r, false) })
 	read := func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.RawQuery != "" || r.URL.ForceQuery {
 			socialWatchError(w, socialwatch.ErrInvalid)
@@ -103,7 +116,7 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		write(w, 200, all)
 	}
-	mux.HandleFunc("GET /v1/social-recordings/{id}/applicability", func(w http.ResponseWriter, r *http.Request) {
+	applicability := func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.RawQuery != "" || r.URL.ForceQuery {
 			socialWatchError(w, socialwatch.ErrInvalid)
 			return
@@ -121,7 +134,10 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			return
 		}
 		write(w, http.StatusOK, result)
-	})
+	}
+	mux.HandleFunc("GET /v1/social-recordings/{id}/applicability", applicability)
+	mux.HandleFunc("GET /v1/copy-recordings/{id}/applicability", applicability)
 	mux.HandleFunc("GET /v1/social-history", read)
 	mux.HandleFunc("GET /v1/social-watches/{id}", read)
+	mux.HandleFunc("GET /v1/copy-watches/{id}", read)
 }

@@ -14,7 +14,8 @@ service is used.
 
 - Stable watch `id`, opaque `provider` and stable `account_id`.
 - A sorted, unique list of 1–16 intended instrument symbols.
-- Intended `behavior`: `research`, `decision_review` or `configured_rule`.
+- Intended `behavior`: `research`, `decision_review`, `configured_rule`, or
+  the inactive `bounded_paper_follow` intent described in [copy sources](owned-copy-sources.md).
   Only `configured_rule` accepts a required `rule_id`.
 - `max_observation_delay_seconds` from 1–86,400 and an `enabled` flag.
 
@@ -36,9 +37,10 @@ decision review or rule ran.
 
 `POST /v1/social-recordings` accepts request/receiver identity, `watch_id`, current
 `policy_sha256`, `evidence_class`, exact `original` string and its raw-byte
-`original_sha256`. Accepted classes are `synthetic_unqualified` and
-`recorded_social_unqualified`. Prospective/qualified labels, caller balances,
-admissions, fills, effects and qualification assertions are not accepted.
+`original_sha256`. For social manifests, accepted classes are `synthetic_unqualified` and
+`recorded_social_unqualified`; the copy extension adds its own manifest and class.
+Prospective/qualified labels, caller balances, admissions, execution/fill
+authority, effects and qualification assertions are not accepted.
 
 The original is a strictly decoded `mantik-social-recording-v1` manifest. It
 contains `source` (`provider`, `account_id`, `post_id`), integer `revision`, `kind`,
@@ -167,3 +169,11 @@ cutoff, so separate reads at different times can have different hashes. The
 read describes the fetched storage snapshot; it is not a transactional dispatch
 check. A future dispatch owner must recompute applicability under its write
 transaction rather than accepting this response as a token.
+
+## Copy activity
+
+[Owned copy-source records](owned-copy-sources.md) extend this same journal with
+explicit claimed-trade/order/fill/holdings kinds and bounded follow-policy intent.
+Copy and social routes share watch identity, revision history and capacity. The
+new fields are optional for existing records; source observations, unit/mapping
+claims and announcement references retain no dispatch or trading authority.
