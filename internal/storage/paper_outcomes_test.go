@@ -62,6 +62,26 @@ func ownedOutcomeContracts(t *testing.T, s outcomeBackend) {
 	var clocks atomic.Int32
 	clock := func() time.Time { clocks.Add(1); return at.Add(time.Second) }
 	noClock := func() time.Time { panic("historical retry read clock") }
+	if pg, ok := s.(*Postgres); ok {
+		// INSERT succeeds; this deferred constraint rejects only COMMIT.
+		if _, err := pg.pool.Exec(ctx, `CREATE FUNCTION reject_finalization_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test finalization commit rollback'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_finalization_commit AFTER INSERT ON mantik_paper_outcomes DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_finalization_commit()`); err != nil {
+			t.Fatal(err)
+		}
+		failed, err := s.AssessPaperOutcome(ctx, c, clock, decisionEval, eval)
+		if err == nil || !reflect.DeepEqual(failed, PaperOutcomeReceipt{}) {
+			t.Fatal("commit failure returned staged finalization", failed, err)
+		}
+		empty, err := s.PaperOutcomes(ctx, decisionEval, eval)
+		if err != nil || len(empty.Records) != 0 {
+			t.Fatal("commit failure retained finalization", empty, err)
+		}
+		if _, err := pg.pool.Exec(ctx, "DROP TRIGGER reject_finalization_commit ON mantik_paper_outcomes; DROP FUNCTION reject_finalization_commit()"); err != nil {
+			t.Fatal(err)
+		}
+		// Reuse the same ID below: rollback must not consume it.
+		clocks.Store(0)
+	}
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {

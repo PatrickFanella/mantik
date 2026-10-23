@@ -391,7 +391,10 @@ func (p *Postgres) FinalizePaperDecision(ctx context.Context, c PaperDecisionCom
 			return PaperDecisionReceipt{}, err
 		}
 	}
-	return PaperDecisionReceipt{v.Record, dup}, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return PaperDecisionReceipt{}, err
+	}
+	return PaperDecisionReceipt{v.Record, dup}, nil
 }
 func (p *Postgres) PaperDecisions(ctx context.Context, eval PaperDecisionEvaluator) (PaperDecisionCatalog, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})

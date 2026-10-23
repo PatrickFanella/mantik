@@ -50,6 +50,14 @@ before new writes or retries. There are at most 32 records, each with a maximum
 replacement or deletion route exists. This bounded research registry must not be
 used as an operational ledger or protective-exit queue.
 
+PostgreSQL returns a finalization receipt only after the owner transaction
+commits successfully. Statement or commit failures return an error and an empty
+receipt. A confirmed rollback retains no new record and leaves the request ID
+available for retry. If a transport failure leaves the commit outcome uncertain,
+read the retained owner history or retry the exact command with the same ID;
+do not infer rollback from the absence of a receipt or allocate a replacement ID.
+This acknowledgment rule supplies no admission, execution or qualification.
+
 ## API and terminal client
 
 New finalizations return 201, exact retries 200, invalid commands 422, identity or

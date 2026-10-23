@@ -347,7 +347,10 @@ func (p *Postgres) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand
 			return PaperOutcomeReceipt{}, err
 		}
 	}
-	return PaperOutcomeReceipt{v.Record, dup}, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return PaperOutcomeReceipt{}, err
+	}
+	return PaperOutcomeReceipt{v.Record, dup}, nil
 }
 func (p *Postgres) PaperOutcomes(ctx context.Context, decisionEval PaperDecisionEvaluator, eval PaperOutcomeEvaluator) (PaperOutcomeCatalog, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})

@@ -81,6 +81,14 @@ check the contract; they do not establish natural runtime duration, market
 qualification or profitability. Local checks, hosted CI, merge, deployment and
 qualification remain separate evidence states.
 
+PostgreSQL returns a finalization receipt only after the owner transaction
+commits successfully. Statement or commit failures return an error and an empty
+receipt. A confirmed rollback retains no new record and leaves the request ID
+available for retry. If a transport failure leaves the commit outcome uncertain,
+read the retained owner history or retry the exact command with the same ID;
+do not infer rollback from the absence of a receipt or allocate a replacement ID.
+This acknowledgment rule supplies no admission, execution or qualification.
+
 ## Automatic sealed collection
 
 `mantik serve --automatic-paper-outcomes` opts the service into automatic
