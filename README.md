@@ -596,3 +596,12 @@ resolves actual family decisions and forward outcomes in one consistent read,
 retaining exclusions and duplicate-source lineage without scoring qualification.
 Its v2 response keeps post-deadline attempts in `late_outcomes`; only outcomes
 available by the predeclared deadline contribute to the observed-decision count.
+
+
+Owned allocation comparisons now bind each admission-readiness receipt to its
+actual owner-selected account, policy, proposal, execution-cost receipt (when
+present) and resulting ledger head. New v5 comparisons retain v2 readiness;
+[the schema-47 fence and legacy replay contract](docs/reference/owned-allocation-comparisons.md#owner-bound-admission-readiness)
+preserve prior records without granting admission or financial execution. Issue
+#19's admission issuer, effect ownership and atomic durable financial execution
+remain unfinished.

@@ -151,3 +151,6 @@ var DecisionReviews string
 
 //go:embed 0046_paper_evaluation_declarations.sql
 var PaperEvaluationDeclarations string
+
+//go:embed 0047_owned_admission_bindings.sql
+var OwnedAdmissionBindings string
