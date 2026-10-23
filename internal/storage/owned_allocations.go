@@ -191,7 +191,7 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 				return out, ErrOwnedAllocationConflict
 			}
 		}
-		policy, comparison, err := ownedComparisonFunding(r.Command, item.Policies, decisions, strategies, retained, r.At, r.Schema == "mantik-owned-allocation-deferral-v4")
+		policy, comparison, err := ownedComparisonFunding(r.Command, item.Policies, decisions, strategies, retained, r.At, r.Schema == "mantik-owned-allocation-deferral-v4" || r.Schema == "mantik-owned-allocation-deferral-v5")
 		if err != nil {
 			return out, err
 		}
@@ -214,14 +214,14 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 			if policy.Command.ExecutionModel != nil {
 				return out, ErrOwnedAllocationInvalid
 			}
-		case "mantik-owned-allocation-deferral-v2", "mantik-owned-allocation-deferral-v3", "mantik-owned-allocation-deferral-v4":
+		case "mantik-owned-allocation-deferral-v2", "mantik-owned-allocation-deferral-v3", "mantik-owned-allocation-deferral-v4", "mantik-owned-allocation-deferral-v5":
 			expected.Schema = r.Schema
 			expected.AdmissionChecks, err = ownedAdmissionReadiness(comparison, decisions, strategies, retained, r.At)
 			if err != nil {
 				return out, err
 			}
-			if r.Schema == "mantik-owned-allocation-deferral-v3" || r.Schema == "mantik-owned-allocation-deferral-v4" {
-				expected.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained, r.Schema == "mantik-owned-allocation-deferral-v4")
+			if r.Schema == "mantik-owned-allocation-deferral-v3" || r.Schema == "mantik-owned-allocation-deferral-v4" || r.Schema == "mantik-owned-allocation-deferral-v5" && policy.Command.ExecutionModel != nil {
+				expected.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained, r.Schema == "mantik-owned-allocation-deferral-v4" || r.Schema == "mantik-owned-allocation-deferral-v5")
 				if err != nil {
 					return out, err
 				}
@@ -230,6 +230,12 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 			}
 		default:
 			return out, ErrOwnedAllocationInvalid
+		}
+		if r.Schema == "mantik-owned-allocation-deferral-v5" {
+			expected.AdmissionChecks, err = bindOwnedAdmissionReadiness(expected, policy)
+			if err != nil {
+				return out, err
+			}
 		}
 		expected.SHA256 = workerplan.Hash(expected)
 		if !reflect.DeepEqual(expected, r) {
@@ -300,18 +306,20 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		}
 		return journal, OwnedAllocationReceipt{}, err
 	}
-	r := OwnedAllocationRecord{Schema: "mantik-owned-allocation-deferral-v1", Command: clone(c), At: at, PolicySHA256: policy.SHA256, LedgerSHA256: next.SHA256, Entry: next.Entries[receipt.Sequence-1], Authority: "service_owned_allocation_deferral_only"}
-	r.Schema = "mantik-owned-allocation-deferral-v2"
+	r := OwnedAllocationRecord{Schema: "mantik-owned-allocation-deferral-v5", Command: clone(c), At: at, PolicySHA256: policy.SHA256, LedgerSHA256: next.SHA256, Entry: next.Entries[receipt.Sequence-1], Authority: "service_owned_allocation_deferral_only"}
 	r.AdmissionChecks, err = ownedAdmissionReadiness(comparison, decisions, strategies, retained, at)
 	if err != nil {
 		return journal, OwnedAllocationReceipt{}, err
 	}
 	if policy.Command.ExecutionModel != nil {
-		r.Schema = "mantik-owned-allocation-deferral-v4"
-		r.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained, r.Schema == "mantik-owned-allocation-deferral-v4")
+		r.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained, true)
 		if err != nil {
 			return journal, OwnedAllocationReceipt{}, err
 		}
+	}
+	r.AdmissionChecks, err = bindOwnedAdmissionReadiness(r, policy)
+	if err != nil {
+		return journal, OwnedAllocationReceipt{}, err
 	}
 	r.SHA256 = workerplan.Hash(r)
 	journal = clone(journal)

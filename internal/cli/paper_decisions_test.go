@@ -24,6 +24,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
+	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
 type ownedDecisionClock struct {
@@ -211,12 +212,16 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if allocationFirst.Record.ExecutionAvailable || allocationFirst.Record.QualificationCredit || allocationFirst.Record.Entry.Plan == nil || allocationFirst.Record.Entry.Plan.Decisions[0].Status != "defer" || allocationFirst.Record.Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
 		t.Fatal(allocationFirst)
 	}
-	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v4" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
+	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v5" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
 		t.Fatal(allocationFirst)
 	}
 	checks := allocationFirst.Record.AdmissionChecks
 	if len(checks) != 1 || checks[0].DecisionSHA256 != first.Record.SHA256 || checks[0].BasisSHA256 != first.Record.BasisSHA256 || checks[0].StrategySHA256 != strategy.Record.SHA256 || checks[0].QuoteInputID != first.Record.Evaluation.Coverage.Quote.InputID || checks[0].EvidenceClass != d.InputEvidenceClass || checks[0].Status != "deferred" || checks[0].AdmissionAvailable || checks[0].ExecutionAvailable || checks[0].QualificationCredit {
 		t.Fatal(checks)
+	}
+	binding := checks[0].Binding
+	if checks[0].Schema != "mantik-owned-admission-readiness-v2" || binding == nil || binding.ComparisonID != compare.ID || binding.AccountID != account.Account.Config.ID || binding.AccountSHA256 != account.Account.SHA256 || binding.PolicyID != policy.Policy.ID || binding.PolicySHA256 != policyReceipt.Record.SHA256 || binding.ProposalSHA256 != workerplan.Hash(allocationFirst.Record.Entry.Plan.Decisions[0].Proposal) || binding.ExecutionCostSHA256 != allocationFirst.Record.ExecutionCosts[0].SHA256 || binding.LedgerSHA256 != allocationFirst.Record.LedgerSHA256 {
+		t.Fatal("unbound owner readiness", binding)
 	}
 	clock.panicRead = true
 	if err = json.Unmarshal(request("POST", "/v1/allocation-comparisons", compare, 200), &allocationRetry); err != nil || !allocationRetry.Duplicate || !reflect.DeepEqual(allocationFirst.Record, allocationRetry.Record) {
@@ -236,7 +241,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	request("POST", "/v1/allocation-comparisons", aliasComparison, 409)
 	clock.panicRead = false
 	compareRaw, _ := json.Marshal(compare)
-	for _, field := range []string{`"protective_funding":{},`, `"execution_costs":[],`, `"execution_model":{},`, `"admission_checks":[],`, `"account_id":"allocation-owner",`, `"Snapshot":{},`, `"admissions":[],`, `"effect":{},`, `"balance_cents":100,`, `"policy_id":"owner-policy",`} {
+	for _, field := range []string{`"binding":{},`, `"proposal_sha256":"caller",`, `"ledger_sha256":"caller",`, `"protective_funding":{},`, `"execution_costs":[],`, `"execution_model":{},`, `"admission_checks":[],`, `"account_id":"allocation-owner",`, `"Snapshot":{},`, `"admissions":[],`, `"effect":{},`, `"balance_cents":100,`, `"policy_id":"owner-policy",`} {
 		request("POST", "/v1/allocation-comparisons", strings.Replace(string(compareRaw), `"id":`, field+`"id":`, 1), 422)
 	}
 	request("POST", "/v1/allocation-comparisons?", compare, 422)

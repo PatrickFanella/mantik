@@ -91,7 +91,7 @@ and positions, orders and commitments remain empty.
 
 Each comparison appends one hash-linked entry to its policy's allocation ledger.
 The owned record pins that entry, ledger head and policy. It has schema
-`mantik-owned-allocation-deferral-v2`, authority
+`mantik-owned-allocation-deferral-v5`, authority
 `service_owned_allocation_deferral_only`, and false execution/qualification
 flags. Returned core ledger values remain accounting evidence; they are not
 portable admission or execution grants.
@@ -191,7 +191,7 @@ binding does not complete #19, #20 or #21.
 
 ## Protective exit funding
 
-New model-bearing comparisons use `mantik-owned-allocation-deferral-v4`. Their
+Model-bearing comparisons introduced `mantik-owned-allocation-deferral-v4`. Their
 execution costs also retain `protective_funding`, derived from the same actual
 owner model and strategy quantity. This separates the entry order's
 `max_debit_cents` from the total capital required before a future entry could be
@@ -258,3 +258,51 @@ units, qualify source evidence or write storage. The future execution owner must
 select actual service-owned decisions, admissions, orders and market evidence,
 and commit book and ledger changes atomically. This is a bounded #19/#20 binding
 dependency, not operational authority or completion of either issue.
+
+
+## Owner-bound admission readiness
+
+New comparisons use `mantik-owned-allocation-deferral-v5` for policies with or
+without an execution model. Each readiness receipt uses
+`mantik-owned-admission-readiness-v2` and includes a `binding` derived during the
+same locked owner append or replay:
+
+- The comparison request identity and selected policy identity/hash.
+- The selected Mantik account identity/hash.
+- The exact proposal hash, including decision pin, requested funding and expiry.
+- The resulting allocation ledger head.
+- The derived execution-cost receipt hash when the policy has a model. This field
+  is omitted when no execution-cost receipt exists.
+
+These fields identify what the readiness check describes when inspected outside
+the enclosing comparison record. They are not caller inputs. The request contract
+still accepts only the request/receiver identities and retained decision pins.
+The service selects the account, policy, proposal, costs and ledger from its own
+validated sources; caller `binding`, account, balance, admission, effect, budget
+and hash assertions are rejected. Replay reconstructs the binding from those
+sources and rejects removed or substituted bindings even when both public record
+hashes are recomputed. Hashes alone do not supply custody or authority.
+
+The existing four prerequisite checks and all authority flags are unchanged.
+Readiness remains deferred or expired, admissions remain empty, no money is
+reserved, and no order or financial effect is created. This is a durable binding
+dependency for #19, not an admission issuer or completed atomic financial
+execution owner. Applicable evaluation, qualified source evidence, execution,
+protection and recovery still need their own implementation and acceptance.
+
+PostgreSQL schema 47 fences older binaries before startup. Its migration changes
+the journal's descriptive table comment and schema checksum; it does not rewrite
+retained records or opening funding. V1-v4 comparison records keep their exact
+wire shapes, hashes and historical retries, including readiness without a
+`binding` and v3 costs without protective funding. V5 may coexist with these old
+records. There is no in-place downgrade: rollback to a binary supporting at most
+schema 46 requires restoring a compatible retained backup into an isolated
+replacement database and verifying it before activation. Do not delete version
+rows or strip new fields to make an older binary accept a live journal.
+
+Disposable integration checks cover concurrent exact retries, detached binding
+readback, rehashed substitutions, old/new journal replay, failed owner writes,
+restart, checksum rejection and schema-fence rollback. The migration failure
+fixture verifies that the prior journal bytes and operational state survive and
+that a failed version insert also rolls back the table comment. These are local
+unqualified fixtures, not operational or economic qualification.

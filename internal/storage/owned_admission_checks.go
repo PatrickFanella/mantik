@@ -17,26 +17,84 @@ type OwnedAdmissionGate struct {
 }
 
 type OwnedAdmissionReadiness struct {
-	Schema              string               `json:"schema"`
-	ReceiverID          string               `json:"receiver_id"`
-	DecisionID          string               `json:"decision_id"`
-	DecisionSHA256      string               `json:"decision_sha256"`
-	StrategyID          string               `json:"strategy_id"`
-	StrategySHA256      string               `json:"strategy_sha256"`
-	DefinitionSHA256    string               `json:"definition_sha256"`
-	BasisSHA256         string               `json:"basis_sha256"`
-	QuoteInputID        string               `json:"quote_input_id"`
-	EvidenceClass       string               `json:"evidence_class"`
-	CheckedAt           time.Time            `json:"checked_at"`
-	ValidUntil          time.Time            `json:"valid_until"`
-	Status              string               `json:"status"`
-	Gates               []OwnedAdmissionGate `json:"gates"`
-	ReconsiderTriggers  []string             `json:"reconsider_triggers"`
-	Authority           string               `json:"authority"`
-	AdmissionAvailable  bool                 `json:"admission_available"`
-	ExecutionAvailable  bool                 `json:"execution_available"`
-	QualificationCredit bool                 `json:"qualification_credit"`
-	SHA256              string               `json:"sha256"`
+	Binding             *OwnedAdmissionBinding `json:"binding,omitempty"`
+	Schema              string                 `json:"schema"`
+	ReceiverID          string                 `json:"receiver_id"`
+	DecisionID          string                 `json:"decision_id"`
+	DecisionSHA256      string                 `json:"decision_sha256"`
+	StrategyID          string                 `json:"strategy_id"`
+	StrategySHA256      string                 `json:"strategy_sha256"`
+	DefinitionSHA256    string                 `json:"definition_sha256"`
+	BasisSHA256         string                 `json:"basis_sha256"`
+	QuoteInputID        string                 `json:"quote_input_id"`
+	EvidenceClass       string                 `json:"evidence_class"`
+	CheckedAt           time.Time              `json:"checked_at"`
+	ValidUntil          time.Time              `json:"valid_until"`
+	Status              string                 `json:"status"`
+	Gates               []OwnedAdmissionGate   `json:"gates"`
+	ReconsiderTriggers  []string               `json:"reconsider_triggers"`
+	Authority           string                 `json:"authority"`
+	AdmissionAvailable  bool                   `json:"admission_available"`
+	ExecutionAvailable  bool                   `json:"execution_available"`
+	QualificationCredit bool                   `json:"qualification_credit"`
+	SHA256              string                 `json:"sha256"`
+}
+
+// OwnedAdmissionBinding identifies the owner-selected comparison context. It is
+// not an admission or an effect command; the bound readiness remains deferred.
+type OwnedAdmissionBinding struct {
+	ComparisonID        string `json:"comparison_id"`
+	PolicyID            string `json:"policy_id"`
+	PolicySHA256        string `json:"policy_sha256"`
+	AccountID           string `json:"account_id"`
+	AccountSHA256       string `json:"account_sha256"`
+	ProposalSHA256      string `json:"proposal_sha256"`
+	LedgerSHA256        string `json:"ledger_sha256"`
+	ExecutionCostSHA256 string `json:"execution_cost_sha256,omitempty"`
+}
+
+// The caller is the owner append/replay path after it has derived the actual
+// comparison, costs and ledger entry. No binding is accepted over the public API.
+func bindOwnedAdmissionReadiness(r OwnedAllocationRecord, policy allocation.PolicyRecord) ([]OwnedAdmissionReadiness, error) {
+	if policy.Validate() != nil || r.PolicySHA256 != policy.SHA256 || r.Entry.Command.Comparison == nil || !decisionPin.MatchString(r.LedgerSHA256) || r.Command.ID != r.Entry.Command.ID || len(r.AdmissionChecks) != len(r.Entry.Command.Comparison.Proposals) {
+		return nil, ErrOwnedAllocationInvalid
+	}
+	proposals := map[string]allocation.Proposal{}
+	for _, p := range r.Entry.Command.Comparison.Proposals {
+		if _, exists := proposals[p.ID]; exists {
+			return nil, ErrOwnedAllocationInvalid
+		}
+		proposals[p.ID] = p
+	}
+	costs := map[string]OwnedExecutionCost{}
+	for _, c := range r.ExecutionCosts {
+		p, ok := proposals[c.DecisionID]
+		if _, exists := costs[c.DecisionID]; exists || !ok || c.DecisionSHA256 != p.DecisionSHA256 {
+			return nil, ErrOwnedAllocationInvalid
+		}
+		costs[c.DecisionID] = c
+	}
+	if policy.Command.ExecutionModel != nil && len(costs) != len(proposals) || policy.Command.ExecutionModel == nil && len(costs) != 0 {
+		return nil, ErrOwnedAllocationInvalid
+	}
+	checks := clone(r.AdmissionChecks)
+	seen := map[string]bool{}
+	for i := range checks {
+		c := &checks[i]
+		p, ok := proposals[c.DecisionID]
+		if !ok || seen[c.DecisionID] || p.DecisionSHA256 != c.DecisionSHA256 || c.ReceiverID != policy.Command.ReceiverID || c.StrategyID != p.StrategyID || !c.ValidUntil.Equal(p.ValidUntil) {
+			return nil, ErrOwnedAllocationInvalid
+		}
+		seen[c.DecisionID] = true
+		c.Schema = "mantik-owned-admission-readiness-v2"
+		c.Binding = &OwnedAdmissionBinding{ComparisonID: r.Command.ID, PolicyID: policy.Command.Policy.ID, PolicySHA256: policy.SHA256, AccountID: policy.Account.Config.ID, AccountSHA256: policy.Account.SHA256, ProposalSHA256: workerplan.Hash(p), LedgerSHA256: r.LedgerSHA256}
+		if cost, ok := costs[c.DecisionID]; ok {
+			c.Binding.ExecutionCostSHA256 = cost.SHA256
+		}
+		c.SHA256 = ""
+		c.SHA256 = workerplan.Hash(*c)
+	}
+	return checks, nil
 }
 
 // The comparison has already been resolved against immutable owner records.

@@ -267,17 +267,17 @@ func TestPostgresContractsPaperEvaluationDeclarationUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_paper_evaluation_declarations; DELETE FROM mantik_schema WHERE version=46"); err != nil {
+	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_paper_evaluation_declarations; DELETE FROM mantik_schema WHERE version>=46"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.migrate(ctx); err != nil {
-		t.Fatal("idempotent schema46 reopen", err)
+		t.Fatal("idempotent schema47 reopen", err)
 	}
 	var maximum int
-	if err = s.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 46 {
+	if err = s.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 47 {
 		t.Fatal(maximum, err)
 	}
 	after, err := s.Snapshot(ctx)
