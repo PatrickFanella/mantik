@@ -318,7 +318,7 @@ func (b *mcpBridge) discover(ctx context.Context) error {
 		ModelUsed           bool `json:"model_used"`
 		QualificationCredit bool `json:"qualification_credit"`
 	}
-	if status != 200 || workerplan.ReadBoundedShape(raw, &c, maxMCPResult) != nil || c.Schema != "mantik-supervision-tools-v1" || c.Tools == nil || len(c.Tools) > 5 || c.ModelUsed || c.QualificationCredit {
+	if status != 200 || workerplan.ReadBoundedShape(raw, &c, maxMCPResult) != nil || c.Schema != "mantik-supervision-tools-v1" || c.Tools == nil || len(c.Tools) > len(supervisionMCPSchemas()) || c.ModelUsed || c.QualificationCredit {
 		return errors.New("invalid Mantik supervision catalogue")
 	}
 	b.tools = []mcpTool{}

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -82,7 +84,7 @@ func TestSupervisionMCPServiceOwnersAndErrors(t *testing.T) {
 	var listed struct {
 		Tools []mcpTool `json:"tools"`
 	}
-	if json.Unmarshal(r["result"], &listed) != nil || len(listed.Tools) != 5 {
+	if json.Unmarshal(r["result"], &listed) != nil || len(listed.Tools) != 6 {
 		t.Fatal(r)
 	}
 	for _, tool := range listed.Tools {
@@ -292,6 +294,173 @@ func TestSupervisionMCPRedirectIsToolError(t *testing.T) {
 	}
 	s.in.Close()
 	if err := <-s.done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCopySupervisionMCP(t *testing.T) { copySupervisionMCP(t, storage.NewMemory()) }
+
+// The same transport contract also runs in the disposable PostgreSQL HTTP test.
+// Calls reach the existing source owner; there is no adapter-owned state.
+func copySupervisionMCP(t *testing.T, store socialHTTPBackend) {
+	t.Helper()
+	t.Setenv("MANTIK_API_TOKEN", "copy-mcp-token")
+	ctx := context.Background()
+	receiver, err := store.NewsCases(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := store.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := store.PaperAccounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 10, 22, 15, 0, 0, 0, time.UTC)
+	clock := &ownedDecisionClock{at: at}
+	server := httptest.NewServer(service.HandlerWithClock(store, "copy-mcp-token", clock))
+	defer server.Close()
+	session := mcpTestSession(t, server.URL, receiver.ReceiverID)
+	session.init(t)
+	requestID := 20
+	call := func(name string, args any, want int) json.RawMessage {
+		t.Helper()
+		requestID++
+		r := session.request(t, requestID, "tools/call", map[string]any{"name": name, "arguments": args})
+		var result struct {
+			Content []struct{ Text string }
+			IsError bool `json:"isError"`
+		}
+		if json.Unmarshal(r["result"], &result) != nil || len(result.Content) != 1 {
+			t.Fatal(r)
+		}
+		var owner struct {
+			HTTPStatus int             `json:"http_status"`
+			Body       json.RawMessage `json:"body"`
+		}
+		if json.Unmarshal([]byte(result.Content[0].Text), &owner) != nil || owner.HTTPStatus != want || result.IsError != (want >= 400) {
+			t.Fatal(result)
+		}
+		return owner.Body
+	}
+	command := socialwatch.PolicyCommand{ID: "mcp-copy-start", ReceiverID: receiver.ReceiverID, Policy: socialwatch.Policy{ID: "mcp-copy", Provider: "recorded", AccountID: "mcp-copy-analyst", Symbols: []string{"SPY"}, Behavior: "bounded_paper_follow", MaxObservationDelaySeconds: 60, Enabled: true, Follow: &socialwatch.FollowBounds{MaxOrderNotionalCents: 10000, MaxExposureCents: 50000, StopDistanceBPS: 100, MaxHoldingSeconds: 3600}}}
+	var first socialwatch.Receipt
+	if json.Unmarshal(call("change_copy_watch_policy", command, 201), &first) != nil || first.Entry.Policy == nil {
+		t.Fatal(first)
+	}
+	clock.panicRead = true
+	var retry socialwatch.Receipt
+	if json.Unmarshal(call("change_copy_watch_policy", command, 200), &retry) != nil || !retry.Duplicate || !reflect.DeepEqual(first.Entry, retry.Entry) {
+		t.Fatal(retry)
+	}
+	clock.panicRead = false
+	// The old social tool cannot silently acquire bounded-follow capability.
+	call("change_watch_policy", command, 422)
+	read := call("inspect_record", map[string]string{"kind": "copy_watch", "id": command.Policy.ID}, 200)
+	direct := func(path string) []byte {
+		t.Helper()
+		req, _ := http.NewRequest("GET", server.URL+path, nil)
+		req.Header.Set("Authorization", "Bearer copy-mcp-token")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		raw, err := io.ReadAll(res.Body)
+		if err != nil || res.StatusCode != 200 {
+			t.Fatal(err, res.StatusCode, string(raw))
+		}
+		return raw
+	}
+	if !bytes.Equal(bytes.TrimSpace(read), bytes.TrimSpace(direct("/v1/copy-watches/"+command.Policy.ID))) {
+		t.Fatal("watch owner read diverged")
+	}
+	original := socialwatch.Original{Schema: socialwatch.CopyRecordingSchema, Source: socialwatch.SourceRef{Provider: "recorded", AccountID: command.Policy.AccountID, PostID: "order-one"}, Revision: 1, Kind: "post", OccurredAt: at, ObservedAt: at, Text: "Unverified recorded order", Symbols: []string{"SPY"}, Activity: &socialwatch.Activity{Kind: "observed_order", State: "open", SourceSymbol: "SPY", Symbol: "SPY", MappingVersion: "asserted-v1", Side: "buy", QuantityUnits: 10, QuantityUnitClaim: "shares", PriceCents: 10000}}
+	raw, _ := json.Marshal(original)
+	capture := socialwatch.CaptureCommand{ID: "mcp-copy-source", ReceiverID: receiver.ReceiverID, WatchID: command.Policy.ID, PolicySHA256: first.Entry.Policy.SHA256, EvidenceClass: "recorded_copy_unqualified", Original: string(raw), OriginalSHA256: workerplan.Digest(raw)}
+	if _, err := store.ApplySocialCommand(ctx, socialwatch.Command{Capture: &capture}, clock.Now); err != nil {
+		t.Fatal(err)
+	}
+	read = call("inspect_record", map[string]string{"kind": "copy_applicability", "id": capture.ID}, 200)
+	if !bytes.Equal(bytes.TrimSpace(read), bytes.TrimSpace(direct("/v1/copy-recordings/"+capture.ID+"/applicability"))) {
+		t.Fatal("applicability owner read diverged")
+	}
+	var applicability socialwatch.Applicability
+	if json.Unmarshal(read, &applicability) != nil || applicability.ExecutionAvailable || applicability.QualificationCredit {
+		t.Fatal(string(read))
+	}
+	// Both fixed inspection aliases select the same retained owner, not a second journal.
+	social := call("inspect_record", map[string]string{"kind": "social_applicability", "id": capture.ID}, 200)
+	if !bytes.Equal(read, social) {
+		t.Fatal("source aliases diverged")
+	}
+	bad := command
+	bad.ID = "stale-copy-update"
+	bad.Policy.Enabled = false
+	call("change_copy_watch_policy", bad, 409)
+	bad = command
+	bad.ID = "missing-copy-bounds"
+	bad.Policy.Follow = nil
+	call("change_copy_watch_policy", bad, 422)
+	bad = command
+	bad.ID = "oversized-copy-order"
+	bounds := *command.Policy.Follow
+	bounds.MaxOrderNotionalCents = bounds.MaxExposureCents + 1
+	bad.Policy.Follow = &bounds
+	call("change_copy_watch_policy", bad, 422)
+	bad = command
+	bad.ID = "copy-rule"
+	bad.Policy.Behavior = "configured_rule"
+	bad.Policy.Follow = nil
+	bad.Policy.RuleID = "rule"
+	call("change_copy_watch_policy", bad, 422)
+	bad = command
+	bad.ID = "wrong-copy-owner"
+	bad.ReceiverID = "receiver-abcdefghijklmnop"
+	call("change_copy_watch_policy", bad, 409)
+	asserted := map[string]any{}
+	raw, _ = json.Marshal(command)
+	_ = json.Unmarshal(raw, &asserted)
+	asserted["admission"] = true
+	call("change_copy_watch_policy", asserted, 422)
+	delete(asserted, "admission")
+	asserted["policy"].(map[string]any)["follow"].(map[string]any)["execution_available"] = true
+	call("change_copy_watch_policy", asserted, 422)
+	call("inspect_record", map[string]string{"kind": "copy_applicability", "id": "../operations"}, 422)
+	// Disable with the actual predecessor and read the changed applicability through MCP.
+	command.ID = "mcp-copy-disable"
+	command.PreviousSHA256 = first.Entry.Policy.SHA256
+	command.Policy.Enabled = false
+	call("change_copy_watch_policy", command, 201)
+	read = call("inspect_record", map[string]string{"kind": "copy_applicability", "id": capture.ID}, 200)
+	if json.Unmarshal(read, &applicability) != nil || applicability.Status != "watch_policy_changed" {
+		t.Fatal(string(read))
+	}
+	history, err := store.SocialHistory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, entry := range history.History {
+		if entry.Policy != nil && entry.Policy.Command.Policy.ID == command.Policy.ID {
+			found++
+		}
+	}
+	if found != 2 {
+		t.Fatal("invalid calls changed policy journal", found)
+	}
+	after, err := store.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountsAfter, err := store.PaperAccounts(ctx)
+	if err != nil || !reflect.DeepEqual(before, after) || !reflect.DeepEqual(accounts, accountsAfter) {
+		t.Fatal("supervision changed capital or operations", err)
+	}
+	session.in.Close()
+	if err := <-session.done; err != nil {
 		t.Fatal(err)
 	}
 }

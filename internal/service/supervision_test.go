@@ -126,7 +126,7 @@ func TestSupervisionRejectsUnboundedOrInventedAuthority(t *testing.T) {
 	// A store without optional owners must not advertise their write tools.
 	minimal := Handler(&outageStore{Store: storage.NewMemory()}, "operator")
 	w := supervisionRequest(minimal, "GET", "/v1/supervision/tools", "", "operator")
-	if w.Code != 200 || strings.Contains(w.Body.String(), "request_research") {
+	if w.Code != 200 || (strings.Contains(w.Body.String(), "request_research") || strings.Contains(w.Body.String(), "change_copy_watch_policy")) {
 		t.Fatal(w.Body.String())
 	}
 	if w = supervisionRequest(minimal, "POST", "/v1/supervision/calls", toolBody("request_research", researchRequestArguments{}), "operator"); w.Code != 422 {

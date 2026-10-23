@@ -548,7 +548,8 @@ paper use. Its order journal grants no operational execution authority.
 
 [Typed supervision calls](docs/reference/supervision-tools.md) let authenticated
 conversation adapters inspect retained records, request research, change research
-watch policies, recheck exceptions and submit finalized-decision claim reviews
+watch policies, declare inactive bounded copy-follow intent, inspect source
+applicability, recheck exceptions and submit finalized-decision claim reviews
 through the existing owners. They make no model calls and grant no financial
 authority; conversation UI, prose interpretation and case triage remain open.
 `supervision-mcp` exposes these same owners through a bounded stdio MCP bridge
