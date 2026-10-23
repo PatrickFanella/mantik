@@ -173,6 +173,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if !strings.Contains(strings.Join(explanation.Statements, " "), "Admission is still required") || !strings.Contains(strings.Join(explanation.Statements, " "), "not a fill price") {
 		t.Fatal(explanation.Statements)
 	}
+	supervisionDecisionInspections(t, server.URL, owner, command.ID, rawExplanation, rawMarket)
 	explanationAfter, _ := s.Snapshot(ctx)
 	if !reflect.DeepEqual(explanationBefore, explanationAfter) {
 		t.Fatal("explanation changed operations")

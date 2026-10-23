@@ -18,7 +18,7 @@ unavailable write owners return 422 before dispatch.
 
 | Tool | Arguments | Owner |
 | --- | --- | --- |
-| `inspect_record` | `kind` and `id`; kinds `decision`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
+| `inspect_record` | `kind` and `id`; kinds `decision`, `decision_explanation`, `decision_market_evidence`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
 | `request_research` | `receiver_id`, `request_id`, `case_id`, `version`, optional `type_id` | `POST /v1/news-reviews` |
 | `change_watch_policy` | Existing policy command: `id`, `receiver_id`, optional `previous_sha256`, `policy` | `POST /v1/social-watches` |
 | `change_copy_watch_policy` | Same policy command; research, review or inactive bounded follow intent | `POST /v1/copy-watches` |
@@ -47,6 +47,20 @@ stricter limit. Missing or unsupported records keep that owner's error status.
 `copy_applicability` read the existing targeted source-applicability route at the
 service clock, including policy changes and source revisions. Their IDs cannot
 supply paths, query strings or an alternate evaluation time.
+
+`decision_explanation` reads `/v1/paper-decisions/{id}/explanation`, a
+deterministic explanation of the actual finalized decision. It invokes no model
+and accepts no caller prose. `decision_market_evidence` reads
+`/v1/paper-decisions/{id}/market-evidence`, which replays the retained source
+owners and exposes the recorded quote dimensions and provenance. The original
+unqualified evidence class and unavailable share-quantity semantics remain
+visible; a raw size is not asserted to be shares or execution liquidity.
+
+These inspections forward empty-body GETs with no inherited chunked framing.
+They accept only `kind` and `id`, preserve owner errors, and neither finalize a
+decision nor change admissions, account balances or operations. The stdio MCP
+schema exposes the same two read-only selections. An unavailable source owner
+returns its error; an absent optional owner retains its 404 response.
 
 Tool calls return the owner's status and JSON body directly, including duplicate
 receipts, receiver conflicts, evidence-version conflicts, capacity failures and
