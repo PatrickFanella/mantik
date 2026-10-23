@@ -52,6 +52,13 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	if err := json.Unmarshal(request("GET", path, nil, 200), &evidence); err != nil || evidence.Declaration.SHA256 != r.SHA256 || evidence.Phase != "awaiting_window" || len(evidence.Rows) != 5 || evidence.DistinctProviderOccurrences != 0 || evidence.IndependentSamplesAvailable || evidence.EvaluationAvailable || evidence.AdmissionAvailable || evidence.ExecutionAvailable || evidence.QualificationCredit || !evidence.AsOf.Equal(clock.at) {
 		t.Fatal(evidence, err)
 	}
+	if evidence.Schema != "mantik-owned-paper-evaluation-evidence-v3" || len(evidence.Variants) != 1 {
+		t.Fatal(evidence)
+	}
+	bound := evidence.Variants[0].SampleBound
+	if bound.RequiredIndependentDecisions != 30 || bound.ObservedOccurrenceUpperBound != 0 || bound.Status != "pending_outcome_deadline" || bound.IndependenceEstablished || bound.AdmissionAvailable || bound.QualificationCredit {
+		t.Fatal("premature sample verdict", bound)
+	}
 	unsigned := evidence
 	unsigned.SHA256 = ""
 	if workerplan.Hash(unsigned) != evidence.SHA256 {

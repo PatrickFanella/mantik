@@ -27,10 +27,38 @@ type PaperEvaluationEvidenceRow struct {
 	Outcomes            []PaperOutcomeRecord `json:"outcomes"`
 	LateOutcomes        []PaperOutcomeRecord `json:"late_outcomes"`
 }
+
+// This is a necessary count bound, not an independent-sample attestation or
+// a passing evaluation. Crossing the threshold never issues an admission.
+type PaperEvaluationSampleBound struct {
+	Method                       string `json:"method"`
+	RequiredIndependentDecisions int    `json:"required_independent_decisions"`
+	ObservedOccurrenceUpperBound int    `json:"observed_occurrence_upper_bound"`
+	Status                       string `json:"status"`
+	ReasonCode                   string `json:"reason_code"`
+	IndependenceEstablished      bool   `json:"independence_established"`
+	AdmissionAvailable           bool   `json:"admission_available"`
+	QualificationCredit          bool   `json:"qualification_credit"`
+}
+
+func paperEvaluationSampleBound(required, observed int, deadlineElapsed bool) PaperEvaluationSampleBound {
+	r := PaperEvaluationSampleBound{Method: "predeclared-observed-occurrence-upper-bound-v1", RequiredIndependentDecisions: required, ObservedOccurrenceUpperBound: observed, Status: "pending_outcome_deadline", ReasonCode: "predeclared_outcome_window_not_closed"}
+	if deadlineElapsed {
+		r.Status = "independence_unproven"
+		r.ReasonCode = "occurrence_count_does_not_establish_independent_samples"
+		if observed < required {
+			r.Status = "insufficient_occurrences"
+			r.ReasonCode = "observed_occurrence_upper_bound_below_predeclared_minimum"
+		}
+	}
+	return r
+}
+
 type PaperEvaluationVariantCount struct {
-	StrategyID               string `json:"strategy_id"`
-	SelectedDecisions        int    `json:"selected_decisions"`
-	ObservedOutcomeDecisions int    `json:"observed_outcome_decisions"`
+	SampleBound              PaperEvaluationSampleBound `json:"sample_bound"`
+	StrategyID               string                     `json:"strategy_id"`
+	SelectedDecisions        int                        `json:"selected_decisions"`
+	ObservedOutcomeDecisions int                        `json:"observed_outcome_decisions"`
 }
 type PaperEvaluationEvidence struct {
 	Schema                      string                        `json:"schema"`
@@ -80,7 +108,7 @@ func paperEvaluationEvidence(ctx context.Context, id string, declarations PaperE
 	if at.Before(declaration.DeclaredAt) {
 		return out, ErrPaperEvaluationEvidenceInvalid
 	}
-	out = PaperEvaluationEvidence{Schema: "mantik-owned-paper-evaluation-evidence-v2", ReceiverID: declarations.ReceiverID, Declaration: clone(declaration), AsOf: at.UTC(), Rows: []PaperEvaluationEvidenceRow{}, Variants: []PaperEvaluationVariantCount{}, Authority: "service_owned_evaluation_evidence_selection_only"}
+	out = PaperEvaluationEvidence{Schema: "mantik-owned-paper-evaluation-evidence-v3", ReceiverID: declarations.ReceiverID, Declaration: clone(declaration), AsOf: at.UTC(), Rows: []PaperEvaluationEvidenceRow{}, Variants: []PaperEvaluationVariantCount{}, Authority: "service_owned_evaluation_evidence_selection_only"}
 	out.SourceSHA256 = workerplan.Hash(struct {
 		Declarations PaperEvaluationDeclarationCatalog
 		Decisions    PaperDecisionCatalog
@@ -211,6 +239,10 @@ func paperEvaluationEvidence(ctx context.Context, id string, declarations PaperE
 			}
 		}
 		out.Rows = append(out.Rows, row)
+	}
+	for i := range out.Variants {
+		v := &out.Variants[i]
+		v.SampleBound = paperEvaluationSampleBound(plan.MinIndependentDecisions, v.ObservedOutcomeDecisions, out.Phase == "outcome_deadline_elapsed")
 	}
 	out.DistinctProviderOccurrences = len(occurrences)
 	if err := ctx.Err(); err != nil {

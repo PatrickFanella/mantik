@@ -91,6 +91,12 @@ func evaluationEvidenceContracts(t *testing.T, s evaluationEvidenceBackend, clas
 	if err != nil || reads != 1 || len(got.Rows) != 5 || got.Phase != "outcome_deadline_elapsed" || got.IndependentSamplesAvailable || got.EvaluationAvailable || got.AdmissionAvailable || got.ExecutionAvailable || got.QualificationCredit {
 		t.Fatal(got, reads, err)
 	}
+	for _, v := range got.Variants {
+		b := v.SampleBound
+		if b.RequiredIndependentDecisions != c.Plan.MinIndependentDecisions || b.ObservedOccurrenceUpperBound != v.ObservedOutcomeDecisions || b.Status != "insufficient_occurrences" || b.IndependenceEstablished || b.AdmissionAvailable || b.QualificationCredit {
+			t.Fatal("invalid owner sample bound", v)
+		}
+	}
 	want := got.SHA256
 	unsigned := clone(got)
 	unsigned.SHA256 = ""
@@ -116,6 +122,7 @@ func evaluationEvidenceContracts(t *testing.T, s evaluationEvidenceBackend, clas
 		t.Fatal("read changed state", err)
 	}
 	got.Rows[0].Decision.Status = "changed"
+	got.Variants[0].SampleBound.RequiredIndependentDecisions = 0
 	again, err := s.PaperEvaluationEvidence(ctx, c.ID, func() time.Time { return c.Plan.OutcomeDeadline }, eval, outcomeEval)
 	if err != nil || again.SHA256 != want {
 		t.Fatal("detachment", err)
@@ -172,7 +179,7 @@ func evaluationEvidenceContracts(t *testing.T, s evaluationEvidenceBackend, clas
 			}
 		}
 	}
-	if !found || report.Schema != "mantik-owned-paper-evaluation-evidence-v2" || report.EvaluationAvailable || report.AdmissionAvailable || report.ExecutionAvailable || report.QualificationCredit {
+	if !found || report.Schema != "mantik-owned-paper-evaluation-evidence-v3" || report.EvaluationAvailable || report.AdmissionAvailable || report.ExecutionAvailable || report.QualificationCredit {
 		t.Fatal(report)
 	}
 	if pg, ok := s.(*Postgres); ok {
@@ -253,7 +260,7 @@ func TestPaperEvaluationEvidenceExclusionsAndOutcomeDedup(t *testing.T) {
 		observed.Records[i].Evaluation.Status = "observed"
 	}
 	r, err := paperEvaluationEvidence(context.Background(), plans.Records[0].Command.ID, plans, decisions, observed, m.paperDecisions, at)
-	if err != nil || r.Variants[0].ObservedOutcomeDecisions != 1 || r.IndependentSamplesAvailable || r.QualificationCredit {
+	if err != nil || r.Variants[0].ObservedOutcomeDecisions != 1 || r.Variants[0].SampleBound.ObservedOccurrenceUpperBound != 1 || r.Variants[0].SampleBound.Status != "insufficient_occurrences" || r.IndependentSamplesAvailable || r.QualificationCredit {
 		t.Fatal(r, err)
 	}
 
@@ -263,7 +270,7 @@ func TestPaperEvaluationEvidenceExclusionsAndOutcomeDedup(t *testing.T) {
 		lateOnly.Records[i].EvaluatedAt = deadline.Add(time.Nanosecond)
 	}
 	lateReport, err := paperEvaluationEvidence(context.Background(), plans.Records[0].Command.ID, plans, decisions, lateOnly, m.paperDecisions, at)
-	if err != nil || lateReport.Variants[0].ObservedOutcomeDecisions != 0 {
+	if err != nil || lateReport.Variants[0].ObservedOutcomeDecisions != 0 || lateReport.Variants[0].SampleBound.ObservedOccurrenceUpperBound != 0 {
 		t.Fatal("late observed attempts enlarged declared sample", lateReport, err)
 	}
 	for _, row := range lateReport.Rows {
@@ -290,5 +297,25 @@ func TestPaperEvaluationEvidenceExclusionsAndOutcomeDedup(t *testing.T) {
 	// limit, while its unsigned form still fits. The hash bytes count too.
 	if _, err = paperEvaluationEvidence(context.Background(), plans.Records[0].Command.ID, plans, padded, outcomes, m.paperDecisions, at); !errors.Is(err, ErrPaperEvaluationEvidenceInvalid) {
 		t.Fatal("final hash escaped response byte limit", err)
+	}
+}
+
+func TestPaperEvaluationSampleBounds(t *testing.T) {
+	for _, complete := range []bool{false, true} {
+		for _, observed := range []int{0, 1, 2, 3, 1000000} {
+			b := paperEvaluationSampleBound(2, observed, complete)
+			status, reason := "pending_outcome_deadline", "predeclared_outcome_window_not_closed"
+			if complete {
+				status = "independence_unproven"
+				reason = "occurrence_count_does_not_establish_independent_samples"
+				if observed < 2 {
+					status = "insufficient_occurrences"
+					reason = "observed_occurrence_upper_bound_below_predeclared_minimum"
+				}
+			}
+			if b.Method != "predeclared-observed-occurrence-upper-bound-v1" || b.RequiredIndependentDecisions != 2 || b.ObservedOccurrenceUpperBound != observed || b.Status != status || b.ReasonCode != reason || b.IndependenceEstablished || b.AdmissionAvailable || b.QualificationCredit {
+				t.Fatal(complete, observed, b)
+			}
+		}
 	}
 }

@@ -136,7 +136,7 @@ of independence across feeds/providers or overlapping holding horizons. The
 `independent_samples_available` flag stays false; these counts cannot satisfy
 `min_independent_decisions` or an admission rule on their own.
 
-The evidence response uses schema `mantik-owned-paper-evaluation-evidence-v2`.
+The evidence response uses schema `mantik-owned-paper-evaluation-evidence-v3`.
 All actual forward-outcome attempts remain attached to their decision, including
 waiting and unavailable statuses. Each row partitions attempts by the owner's
 `evaluated_at`: `outcomes` contains attempts finalized at or before the declared
@@ -159,3 +159,29 @@ does not imply complete outcomes or a passed window. Evaluation, admission,
 execution and qualification flags all remain false. Relevant economic replay,
 statistical checks and the deterministic admission issuer still need their
 actual owners before the financial execution aggregate can act.
+
+## Predeclared sample-count bound
+
+Each variant's `sample_bound` uses method
+`predeclared-observed-occurrence-upper-bound-v1`. It binds the plan's
+`required_independent_decisions` to the same read's
+`observed_occurrence_upper_bound`. The latter is the existing deduplicated,
+in-window, by-deadline `observed_outcome_decisions` count for that variant.
+Variants are not pooled, repeated assessments do not add samples, and late
+outcomes remain excluded.
+
+Before the declared outcome deadline, status is `pending_outcome_deadline`.
+At the deadline and afterward, a count below the predeclared minimum reports
+`insufficient_occurrences`: even treating every counted occurrence as independent
+would not supply enough samples. A count at or above the minimum reports
+`independence_unproven`, never a passing sample check. Distinct occurrences can
+still share underlying information, feeds or overlapping outcome horizons.
+
+This is a necessary count check, not a completed statistical or economic recipe.
+`independence_established`, `admission_available` and `qualification_credit` stay
+false on every bound; the report's evaluation/execution/admission/qualification
+flags also stay false. No independent sample count, p-value, performance score,
+admission expiry or retirement event is manufactured from the count.
+The v3 response adds these derived bounds without changing stored declarations,
+decisions or outcomes. Report hashes change with the representation; no source
+or retained historical receipt is rewritten.

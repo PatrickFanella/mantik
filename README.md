@@ -601,6 +601,9 @@ reconciliation are still required.
 pin planned variant families, future observation windows, owner models, baselines
 and sensitivity/sample criteria before evaluation. Registration retains a plan;
 it supplies no result, admission or qualification credit.
+The evidence view also checks a necessary predeclared sample-count bound.
+Too few observed occurrences can establish insufficiency; meeting the count
+still leaves independence unproven and grants no admission or qualification.
 The declaration's [owner-selected evidence view](docs/reference/paper-evaluation-declarations.md#owner-selected-evidence)
 resolves actual family decisions and forward outcomes in one consistent read,
 retaining exclusions and duplicate-source lineage without scoring qualification.
