@@ -172,13 +172,21 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 	ledgers := map[string]allocation.Ledger{}
 	seen := map[string]bool{}
 	var last time.Time
-	for _, item := range journal.Records {
+	for index, item := range journal.Records {
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
 		r := item.Record
 		if r.Command.ReceiverID != owner || seen[r.Command.ID] || r.At.Before(last) || item.Policies.Validate() != nil {
 			return out, ErrOwnedAllocationInvalid
+		}
+		// v5 was introduced after source aliases were rejected at append. A
+		// portable rehash must not bypass that same invariant during replay.
+		// Earlier schemas retain their historical representation and retries.
+		if r.Schema == "mantik-owned-allocation-deferral-v5" {
+			if err := ownedProposalSourceAliases(ownedAllocationJournal{Records: journal.Records[:index]}, retained, r.Command); err != nil {
+				return OwnedAllocationCatalog{}, err
+			}
 		}
 		for _, old := range item.Policies.Records {
 			found := false
