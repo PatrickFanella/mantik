@@ -317,24 +317,29 @@ func (p *Postgres) paperEvaluationDeclarationAccess(ctx context.Context, write b
 	if write {
 		receipt, err = appendPaperEvaluationDeclaration(owner, all, strategies, policies, c, now)
 		if err != nil {
-			return PaperEvaluationDeclarationCatalog{}, receipt, err
+			return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, err
 		}
 		if !receipt.Duplicate {
 			raw, err = json.Marshal(receipt.Record)
 			if err != nil {
-				return PaperEvaluationDeclarationCatalog{}, receipt, err
+				return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, err
 			}
 			if _, err = tx.Exec(ctx, "INSERT INTO mantik_paper_evaluation_declarations(id,payload) VALUES($1,$2)", c.ID, raw); err != nil {
-				return PaperEvaluationDeclarationCatalog{}, receipt, err
+				return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, err
 			}
 			all[c.ID] = receipt.Record
 		}
 	}
 	catalog, err := paperEvaluationDeclarationCatalog(owner, all, strategies, policies)
 	if err != nil {
-		return catalog, receipt, err
+		return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, err
 	}
-	return catalog, receipt, tx.Commit(ctx)
+	// A staged plan is not a durable declaration. A transport failure at COMMIT
+	// can leave the outcome uncertain; read the owner catalogue before retrying.
+	if err = tx.Commit(ctx); err != nil {
+		return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, err
+	}
+	return catalog, receipt, nil
 }
 func (p *Postgres) DeclarePaperEvaluation(ctx context.Context, c PaperEvaluationDeclarationCommand, now func() time.Time) (PaperEvaluationDeclarationReceipt, error) {
 	if c.Validate() != nil {
