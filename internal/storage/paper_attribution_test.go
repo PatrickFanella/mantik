@@ -43,7 +43,8 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	p.Policy.Strategies[0].ArtifactSHA256 = strategy.Record.DefinitionSHA256
 	p.Policy.Symbols[0].ID = "SPY"
 	p.ExecutionModel = &paperfill.Model{Method: paperfill.Method, LiquidityBPS: 10000, MaxQuoteAgeSeconds: 60, FeeBPS: 20}
-	if _, err = s.RegisterAllocationPolicy(ctx, p, clock); err != nil {
+	policy, err := s.RegisterAllocationPolicy(ctx, p, clock)
+	if err != nil {
 		t.Fatal(err)
 	}
 	reg := feedcollector.Registration{ID: "spy", Provider: "alpaca", Feed: "iex", Symbol: "SPY", EvidenceClass: d.InputEvidenceClass, JournalID: "journal-one", AccessRef: "access-one", LeaseSeconds: 300}
@@ -89,6 +90,13 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 			t.Fatal(err)
 		}
 	}
+	stress := *p.ExecutionModel
+	stress.FeeBPS++
+	plan := PaperEvaluationDeclarationCommand{ID: "attribution-plan", ReceiverID: owner, Recipe: PaperEvaluationRecipe, PolicyID: p.Policy.ID, PolicySHA256: policy.Record.SHA256, Plan: PaperEvaluationPlan{FamilyID: "attribution-family", Variants: []PaperEvaluationVariant{{ID: d.ID, SHA256: strategy.Record.SHA256}}, WindowStart: at.Add(time.Hour), WindowEnd: at.Add(2 * time.Hour), OutcomeDeadline: at.Add(4 * time.Hour), MinIndependentDecisions: 30, MaximumDrawdownCents: 1000, AdmissionTTLSeconds: 3600, Benchmarks: []string{"cash_no_action", "passive_same_symbol"}, StressModel: stress}}
+	declaration, err := s.(PaperEvaluationDeclarationStore).DeclarePaperEvaluation(ctx, plan, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
 	comparison, err := s.CompareOwnedAllocation(ctx, OwnedAllocationCommand{ID: "comparison", ReceiverID: owner, Decisions: []OwnedDecisionPin{{ID: decision.Record.Command.ID, SHA256: decision.Record.SHA256}}}, clock, de)
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +123,17 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	if a.AdmissionReadiness == nil || !reflect.DeepEqual(*a.AdmissionReadiness, comparison.Record.AdmissionChecks[0]) || a.AdmissionReadiness.Binding == nil || a.AdmissionReadiness.Binding.ComparisonID != a.ComparisonID {
 		t.Fatal("missing retained admission readiness", a)
 	}
+	if a.EvaluationContext == nil || a.EvaluationContext.SourceSHA256 != comparison.Record.EvaluationContext.SourceSHA256 || !reflect.DeepEqual(a.EvaluationContext.Binding, comparison.Record.EvaluationContext.Decisions[0]) || a.EvaluationContext.AdmissionAvailable || a.EvaluationContext.ExecutionAvailable || a.EvaluationContext.QualificationCredit || !reflect.DeepEqual(a.EvaluationContext.Binding.Declarations, []OwnedDecisionPin{{ID: declaration.Record.Command.ID, SHA256: declaration.Record.SHA256}}) {
+		t.Fatal("retained evaluation context", a.EvaluationContext)
+	}
+	plan.ID = "later-attribution-plan"
+	plan.Plan.FamilyID = "later-attribution-family"
+	if _, err := s.(PaperEvaluationDeclarationStore).DeclarePaperEvaluation(ctx, plan, func() time.Time { return at.Add(time.Second) }); err != nil {
+		t.Fatal(err)
+	}
+	if view, err := s.PaperAttribution(ctx, de, oe); err != nil || !reflect.DeepEqual(view, original) {
+		t.Fatal("later declaration rewrote attribution", err)
+	}
 	if original.Rows[0].Decision.Evaluation.Action != "abstain" || original.Rows[0].Observations[0].Evaluation.Status != "not_applicable" || len(original.Rows[0].Allocations) != 0 {
 		t.Fatal("valid abstention lost", original.Rows[0])
 	}
@@ -132,6 +151,7 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	changed := clone(original)
 	changed.Rows[1].Observations[0].Evaluation.PriceDeltaCents = 999
 	changed.Rows[1].Allocations[0].Reasons[0] = "forged"
+	changed.Rows[1].Allocations[0].EvaluationContext.Binding.Declarations[0].ID = "forged"
 	changed.Rows[1].Allocations[0].CostCeiling.FeeCeilingCents = 0
 	changed.Rows[1].Allocations[0].AdmissionReadiness.Binding.ComparisonID = "forged"
 	changed.Rows[1].Allocations[0].AdmissionReadiness.Gates[0].ReasonCode = "forged"

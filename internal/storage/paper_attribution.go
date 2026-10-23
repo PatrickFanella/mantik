@@ -17,17 +17,29 @@ const MaxPaperAttributionBytes = 8 << 20
 var ErrPaperAttributionInvalid = errors.New("invalid owned paper attribution")
 
 type PaperAllocationAttribution struct {
-	ComparisonID          string                   `json:"comparison_id"`
-	RecordSHA256          string                   `json:"record_sha256"`
-	PolicySHA256          string                   `json:"policy_sha256"`
-	AccountID             string                   `json:"account_id"`
-	At                    time.Time                `json:"at"`
-	Status                string                   `json:"status"`
-	Reasons               []string                 `json:"reasons"`
-	ReconsiderOn          []string                 `json:"reconsider_on"`
-	RequestedFundingCents int64                    `json:"requested_funding_cents"`
-	CostCeiling           *OwnedExecutionCost      `json:"cost_ceiling,omitempty"`
-	AdmissionReadiness    *OwnedAdmissionReadiness `json:"admission_readiness,omitempty"`
+	EvaluationContext     *PaperEvaluationPlanAttribution `json:"evaluation_context,omitempty"`
+	ComparisonID          string                          `json:"comparison_id"`
+	RecordSHA256          string                          `json:"record_sha256"`
+	PolicySHA256          string                          `json:"policy_sha256"`
+	AccountID             string                          `json:"account_id"`
+	At                    time.Time                       `json:"at"`
+	Status                string                          `json:"status"`
+	Reasons               []string                        `json:"reasons"`
+	ReconsiderOn          []string                        `json:"reconsider_on"`
+	RequestedFundingCents int64                           `json:"requested_funding_cents"`
+	CostCeiling           *OwnedExecutionCost             `json:"cost_ceiling,omitempty"`
+	AdmissionReadiness    *OwnedAdmissionReadiness        `json:"admission_readiness,omitempty"`
+}
+
+// This is a projection of retained comparison context, not a fresh plan lookup.
+type PaperEvaluationPlanAttribution struct {
+	Schema              string                     `json:"schema"`
+	SourceSHA256        string                     `json:"source_sha256"`
+	Binding             OwnedEvaluationPlanBinding `json:"binding"`
+	Authority           string                     `json:"authority"`
+	AdmissionAvailable  bool                       `json:"admission_available"`
+	ExecutionAvailable  bool                       `json:"execution_available"`
+	QualificationCredit bool                       `json:"qualification_credit"`
 }
 
 // Unknown economic values are null, not manufactured zero costs or PnL.
@@ -112,6 +124,17 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 					return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
 				}
 				item := PaperAllocationAttribution{ComparisonID: a.Command.ID, RecordSHA256: a.SHA256, PolicySHA256: a.PolicySHA256, AccountID: a.Entry.Plan.AccountID, At: a.At, Status: choice.Status, Reasons: choice.Reasons, ReconsiderOn: choice.ReconsiderOn, RequestedFundingCents: choice.Proposal.NotionalCents}
+				if a.EvaluationContext != nil {
+					for _, binding := range a.EvaluationContext.Decisions {
+						if binding.DecisionID == d.Command.ID {
+							item.EvaluationContext = &PaperEvaluationPlanAttribution{Schema: "mantik-paper-attribution-evaluation-context-v1", SourceSHA256: a.EvaluationContext.SourceSHA256, Binding: clone(binding), Authority: a.EvaluationContext.Authority, AdmissionAvailable: a.EvaluationContext.AdmissionAvailable, ExecutionAvailable: a.EvaluationContext.ExecutionAvailable, QualificationCredit: a.EvaluationContext.QualificationCredit}
+							break
+						}
+					}
+					if item.EvaluationContext == nil {
+						return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
+					}
+				}
 				for _, cost := range a.ExecutionCosts {
 					if cost.DecisionID == d.Command.ID {
 						v := cost

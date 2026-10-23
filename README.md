@@ -624,3 +624,10 @@ Allocation owner failures now return zero receipt/catalogue values, including
 when PostgreSQL rejects a write at commit time. A transport failure can still
 leave the commit outcome uncertain; inspect the owner journal before retrying
 an exact request. See [commit acknowledgment](docs/reference/owned-allocation-comparisons.md#commit-acknowledgment-and-failed-reads).
+
+
+Paper attribution and its terminal readback now expose the evaluation-declaration
+context retained by v6 allocation comparisons. Captured plan pins remain
+`declared_not_evaluated`; absence remains `declaration_unavailable`. This adds
+traceability without evaluation, admission, execution or qualification authority.
+See [paper attribution](docs/reference/paper-attribution.md).

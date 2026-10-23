@@ -47,7 +47,7 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Finalized no-action decision; not a workflow failure.", "waiting_horizon", "not_applicable", "quote_delta_cents=unavailable", "not trading P&L", "fees=unavailable", "realized_pnl=unavailable", "funding bound, not incurred expense", "admission_unavailable", "not_calibrated_forecast", "economic_baselines_unavailable", "no independent sample count", "ADMISSION_READINESS", "relevant_evaluation_receipt_unavailable", "owned_execution_evidence_unavailable"} {
+	for _, want := range []string{"Finalized no-action decision; not a workflow failure.", "waiting_horizon", "not_applicable", "quote_delta_cents=unavailable", "not trading P&L", "fees=unavailable", "realized_pnl=unavailable", "funding bound, not incurred expense", "admission_unavailable", "not_calibrated_forecast", "economic_baselines_unavailable", "no independent sample count", "ADMISSION_READINESS", "EVALUATION_PLANS", "declaration_unavailable", "qualification=false", "relevant_evaluation_receipt_unavailable", "owned_execution_evidence_unavailable"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
@@ -59,6 +59,7 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 	var legacy storage.PaperAttributionRow
 	_ = json.Unmarshal(legacyRaw, &legacy)
 	legacy.Allocations[0].AdmissionReadiness = nil
+	legacy.Allocations[0].EvaluationContext = nil
 	legacy.SHA256 = ""
 	legacy.SHA256 = workerplan.Hash(legacy)
 	if validateAttributionRow(legacy, all.ReceiverID) != nil {
@@ -67,7 +68,24 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 	// Rehashed malformed receipts must not turn unsupported economic assertions
 	// into a valid presentation, even if every envelope hash is recomputed.
 	for name, mutate := range map[string]func(*storage.PaperAttributionRow){
-		"readiness grant": func(r *storage.PaperAttributionRow) { r.Allocations[0].AdmissionReadiness.AdmissionAvailable = true },
+		"plan authority": func(r *storage.PaperAttributionRow) { r.Allocations[0].EvaluationContext.Authority = "admission_grant" },
+		"plan strategy": func(r *storage.PaperAttributionRow) {
+			r.Allocations[0].EvaluationContext.Binding.StrategySHA256 = strings.Repeat("0", 64)
+		},
+		"plan duplicate pins": func(r *storage.PaperAttributionRow) {
+			r.Allocations[0].EvaluationContext.Binding.Status = "declared_not_evaluated"
+			r.Allocations[0].EvaluationContext.Binding.Declarations = []storage.OwnedDecisionPin{{ID: "same", SHA256: strings.Repeat("0", 64)}, {ID: "same", SHA256: strings.Repeat("0", 64)}}
+		},
+		"plan grant":         func(r *storage.PaperAttributionRow) { r.Allocations[0].EvaluationContext.AdmissionAvailable = true },
+		"plan qualification": func(r *storage.PaperAttributionRow) { r.Allocations[0].EvaluationContext.QualificationCredit = true },
+		"plan source":        func(r *storage.PaperAttributionRow) { r.Allocations[0].EvaluationContext.SourceSHA256 = "invalid" },
+		"plan decision": func(r *storage.PaperAttributionRow) {
+			r.Allocations[0].EvaluationContext.Binding.DecisionSHA256 = strings.Repeat("0", 64)
+		},
+		"plan policy":       func(r *storage.PaperAttributionRow) { r.Allocations[0].EvaluationContext.Binding.PolicyID = "other" },
+		"plan status":       func(r *storage.PaperAttributionRow) { r.Allocations[0].EvaluationContext.Binding.Status = "evaluated" },
+		"plan missing pins": func(r *storage.PaperAttributionRow) { r.Allocations[0].EvaluationContext.Binding.Declarations = nil },
+		"readiness grant":   func(r *storage.PaperAttributionRow) { r.Allocations[0].AdmissionReadiness.AdmissionAvailable = true },
 		"readiness decision": func(r *storage.PaperAttributionRow) {
 			r.Allocations[0].AdmissionReadiness.DecisionSHA256 = strings.Repeat("0", 64)
 		},
