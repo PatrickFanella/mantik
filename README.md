@@ -555,6 +555,9 @@ watch policies, declare inactive bounded copy-follow intent, inspect source
 applicability, recheck exceptions and submit finalized-decision claim reviews
 through the existing owners. They make no model calls and grant no financial
 authority; conversation UI, prose interpretation and case triage remain open.
+The typed inspector also reads finalized decision explanations and retained
+market evidence through their existing owners, without a model request or
+admission/effect authority.
 `supervision-mcp` exposes these same owners through a bounded stdio MCP bridge
 for conversation clients; it requires the expected receiver and existing API token.
 

@@ -46,7 +46,7 @@ type supervisionTool struct {
 var supervisionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,159}$`)
 
 func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
-	tools := []supervisionTool{{"inspect_record", "{kind: decision|review_case|news_record|research_review|watch|copy_watch|social_applicability|copy_applicability, id: string}; owner availability applies", false}}
+	tools := []supervisionTool{{"inspect_record", "{kind: decision|decision_explanation|decision_market_evidence|review_case|news_record|research_review|watch|copy_watch|social_applicability|copy_applicability, id: string}; owner availability applies", false}}
 	if _, ok := store.(storage.ReviewStore); ok {
 		tools = append(tools, supervisionTool{"request_research", "news-review start command: receiver_id, request_id, case_id, version, optional type_id", true})
 	}
@@ -111,15 +111,20 @@ func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
 				invalid(w)
 				return
 			}
-			paths := map[string]string{"decision": "/v1/paper-decisions/", "review_case": "/v1/decision-review-cases/", "news_record": "/v1/news-recordings/", "research_review": "/v1/news-reviews/", "watch": "/v1/social-watches/", "copy_watch": "/v1/copy-watches/", "social_applicability": "/v1/social-recordings/", "copy_applicability": "/v1/copy-recordings/"}
+			paths := map[string]string{"decision": "/v1/paper-decisions/", "decision_explanation": "/v1/paper-decisions/", "decision_market_evidence": "/v1/paper-decisions/", "review_case": "/v1/decision-review-cases/", "news_record": "/v1/news-recordings/", "research_review": "/v1/news-reviews/", "watch": "/v1/social-watches/", "copy_watch": "/v1/copy-watches/", "social_applicability": "/v1/social-recordings/", "copy_applicability": "/v1/copy-recordings/"}
 			prefix, ok := paths[args.Kind]
 			if !ok {
 				invalid(w)
 				return
 			}
 			method, path = http.MethodGet, prefix+args.ID
-			if args.Kind == "social_applicability" || args.Kind == "copy_applicability" {
+			switch args.Kind {
+			case "social_applicability", "copy_applicability":
 				path += "/applicability"
+			case "decision_explanation":
+				path += "/explanation"
+			case "decision_market_evidence":
+				path += "/market-evidence"
 			}
 		case "request_research":
 			var args researchRequestArguments
@@ -161,10 +166,13 @@ func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
 			}
 			path, body = "/v1/paper-decision-reviews", args
 		}
-		payload, err := json.Marshal(body)
-		if err != nil {
-			invalid(w)
-			return
+		var payload []byte
+		if method != http.MethodGet {
+			payload, err = json.Marshal(body)
+			if err != nil {
+				invalid(w)
+				return
+			}
 		}
 		// Only this fixed in-process route is selected. Preserve cancellation and the
 		// owner's exact status/body; no outbound request, response rewriting or retry.
@@ -173,6 +181,7 @@ func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
 		target.RequestURI = path
 		target.Body = io.NopCloser(bytes.NewReader(payload))
 		target.ContentLength = int64(len(payload))
+		target.TransferEncoding, target.Trailer, target.GetBody = nil, nil, nil
 		target.Header = make(http.Header)
 		target.Header.Set("Content-Type", "application/json")
 		mux.ServeHTTP(w, target)
