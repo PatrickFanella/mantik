@@ -228,3 +228,44 @@ transaction. The execution owner must retain the actual order/position/protectio
 bindings, manage shared liquidity across its complete execution scope, and
 atomically commit books with the financial ledger. No public import, new CLI,
 storage writer, execution grant or qualification credit is added.
+
+## Fully closed position release binding
+
+`ApplyClosedPositionReleases` is an internal accounting reducer for a remaining
+entry/protective reservation after a position closes. It accepts the retained
+ledger, terminal entry book and exit book. It accepts no caller amount or clock.
+It fully replays both books and the ledger and requires all exact entry-debit
+and exit-close postings to be present already; requesting a release cannot
+silently post a missing fill or close.
+
+Only an exit that fills the entry's entire actual acquired quantity is eligible.
+Its ledger cost basis must be completely closed, and its outstanding effect
+state must be known. Working entries, incomplete exits, missing quotes and
+expired unfilled exits keep the hold. The amount is the original proposal's
+funding less its replayed entry debits. Zero remaining funding creates no effect.
+An exit with negative net proceeds must first have passed the existing funded
+close checks; a held reservation cannot retroactively fund that close.
+
+The release identity pins the full terminal entry book, the exit book root, the
+first exit entry that completes the position and the proposal/order ID. Appending
+unrelated exit observations does not relabel that first close. The release uses
+the actual closing fill's time. Exact retries retain their historical timestamp
+after unrelated ledger progress; altered roots, truncated closes, amount-only
+releases and backdated new postings fail. All stages are detached, and any
+failure, including capacity exhaustion after an earlier staged release, returns
+zero results without changing the inputs or evicting evidence.
+
+The existing zero-fill cancellation/expiry path is unchanged. In a mixed book,
+zero-fill orders can be released before a filled position closes; this reducer
+checks releases for its selected exit orders. The future owner must replay each
+retained transition against its actual prior state and commit its books, ledger,
+order and protective state atomically. These pure reducers are not a substitute
+for that durable transaction or for owner reconciliation of remaining protective
+obligations.
+
+Both book methods are covered by manufactured internal fixtures, alongside
+partial closes, terminal partial entries, negative exit costs, unknown effects,
+exact retries, immutable concurrent calls and capacity failures. These fixtures
+do not supply a service-owned admission or attest market/source ownership. No
+HTTP/CLI balance writer, deployment, economic recovery qualification or issue
+#19 completion is provided by this binding.
