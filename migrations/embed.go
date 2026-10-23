@@ -154,3 +154,6 @@ var PaperEvaluationDeclarations string
 
 //go:embed 0047_owned_admission_bindings.sql
 var OwnedAdmissionBindings string
+
+//go:embed 0048_owned_evaluation_context.sql
+var OwnedEvaluationContext string

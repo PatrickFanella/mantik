@@ -91,7 +91,7 @@ and positions, orders and commitments remain empty.
 
 Each comparison appends one hash-linked entry to its policy's allocation ledger.
 The owned record pins that entry, ledger head and policy. It has schema
-`mantik-owned-allocation-deferral-v5`, authority
+`mantik-owned-allocation-deferral-v6`, authority
 `service_owned_allocation_deferral_only`, and false execution/qualification
 flags. Returned core ledger values remain accounting evidence; they are not
 portable admission or execution grants.
@@ -262,7 +262,7 @@ dependency, not operational authority or completion of either issue.
 
 ## Owner-bound admission readiness
 
-New comparisons use `mantik-owned-allocation-deferral-v5` for policies with or
+The v5 comparison format uses `mantik-owned-allocation-deferral-v5` for policies with or
 without an execution model. Each readiness receipt uses
 `mantik-owned-admission-readiness-v2` and includes a `binding` derived during the
 same locked owner append or replay:
@@ -385,3 +385,34 @@ This is source identity validation for the existing deferral owner. It does not
 assert statistical independence, qualify a source, issue an admission or create
 an economic effect. No schema migration, source rewrite or balance change is
 performed.
+
+
+## Captured evaluation declaration context
+
+New comparisons use `mantik-owned-allocation-deferral-v6`. The allocation owner
+reads and validates the declaration catalogue in the same Memory aggregate lock
+or PostgreSQL transaction as the finalized decisions, strategies and policies.
+It retains that exact catalogue with the journal entry. Callers still supply only
+comparison identity, receiver and finalized-decision pins.
+
+The record's `evaluation_context` binds the captured catalogue hash and each
+selected decision/strategy to its owner-selected policy. Matching declarations
+require exact policy and strategy record pins. The sorted declaration pins are
+reported as `declared_not_evaluated`; no match is `declaration_unavailable`.
+A match does not establish temporal evaluation applicability, independent samples,
+passing economic/statistical results, admission, execution or qualification.
+All authority flags remain false and allocation continues to defer.
+
+Replay validates captured declarations against their actual current owner
+records and rejects declarations recorded after the comparison clock. Later
+catalogue additions do not change earlier contexts or exact retries. Portable
+hashes alone do not prove custody or completeness of a historical snapshot.
+Existing v1-v5 records retain their exact representation and retry behavior;
+they acquire no retrospective declaration context. Corrupt captured sources or
+rehashed context fields fail the complete read and exact retry.
+
+Schema 48 fences older binaries before startup. Its migration changes only the
+table comment and migration checksum record; it does not rewrite prior journals
+or activate an admission/effect writer. Upgrade and rollback checks run against
+new disposable PostgreSQL containers. Atomic funded execution and applicable
+positive evaluation/admission remain unfinished.
