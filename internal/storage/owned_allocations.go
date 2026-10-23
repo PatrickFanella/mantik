@@ -67,6 +67,7 @@ type OwnedAllocationReceipt struct {
 	Duplicate bool                  `json:"duplicate"`
 }
 type OwnedAllocationCatalog struct {
+	Capital    []OwnedCapitalReadback  `json:"capital"`
 	ReceiverID string                  `json:"receiver_id"`
 	Records    []OwnedAllocationRecord `json:"records"`
 	Ledgers    []allocation.Ledger     `json:"ledgers"`
@@ -252,6 +253,11 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 	slices.SortFunc(out.Ledgers, func(a, b allocation.Ledger) int {
 		return strings.Compare(a.Policy.Command.Policy.ID, b.Policy.Command.Policy.ID)
 	})
+	var err error
+	out.Capital, err = ownedCapitalReadbacks(ctx, owner, policies, out.Ledgers)
+	if err != nil {
+		return OwnedAllocationCatalog{}, err
+	}
 	return clone(out), nil
 }
 

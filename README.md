@@ -567,6 +567,11 @@ admission/effect authority.
 `supervision-mcp` exposes these same owners through a bounded stdio MCP bridge
 for conversation clients; it requires the expected receiver and existing API token.
 
+The existing allocation-comparison read also returns policy-bound capital
+readbacks from registered opening capital or replayed deferral journals. These
+are read-only projections of that owner's implemented state, with no funded
+execution or qualification authority.
+
 [Service-owned paper attribution](docs/reference/paper-attribution.md) joins
 finalized decisions, retained forward-price assessments and allocation choices
 in one consistent read, including retained admission-readiness gates and owner
