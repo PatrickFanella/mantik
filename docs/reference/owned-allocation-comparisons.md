@@ -424,3 +424,21 @@ table comment and migration checksum record; it does not rewrite prior journals
 or activate an admission/effect writer. Upgrade and rollback checks run against
 new disposable PostgreSQL containers. Atomic funded execution and applicable
 positive evaluation/admission remain unfinished.
+
+## Validated ledger prefix replay
+
+The owner validates every retained comparison command against its actual policy
+and finalized decision sources, then reconstructs each policy ledger in one
+validated walk. Every entry hash, chain link, derived plan, temporal transition
+and conservation check still runs. Entry time must exactly match its owner
+comparison time, even if a mismatched entry and its readiness are self-rehashed.
+The walk returns each prefix's ledger hash
+and detached accounting projection, so the owner can verify every historical
+comparison receipt without replaying all earlier transitions for each entry.
+
+An invalid later entry discards all prefix results. Source validation remains
+separate from accounting validation: the internal core cannot attest decision,
+admission or effect ownership, and this read path grants no financial authority.
+Historical wire bytes, schema versions, hashes and clock-free retries are
+unchanged. This does not implement issue #19's admission/effect issuer or an
+atomic durable financial execution transaction.

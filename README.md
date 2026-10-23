@@ -624,6 +624,9 @@ state read by their owner transaction. The same command can be retried at the
 source clock after rejection; historical receipts and exact retries retain their
 original time. This strengthens the existing deferral boundary without issuing
 admission or financial effects.
+Allocation reads validate owner-derived commands and replay each policy ledger
+once, retaining every historical prefix hash and accounting check. This removes
+repeated prefix evaluation without changing retained bytes or granting authority.
 
 
 Allocation owner failures now return zero receipt/catalogue values, including

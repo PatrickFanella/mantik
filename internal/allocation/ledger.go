@@ -261,6 +261,10 @@ func (s *ledgerState) refreshExposures() {
 	}
 }
 func replayLedger(ctx context.Context, l Ledger) (ledgerState, error) {
+	return walkLedger(ctx, l, nil)
+}
+
+func walkLedger(ctx context.Context, l Ledger, visit func(int, ledgerState)) (ledgerState, error) {
 	if err := ctx.Err(); err != nil {
 		return ledgerState{}, err
 	}
@@ -277,7 +281,7 @@ func replayLedger(ctx context.Context, l Ledger) (ledgerState, error) {
 	}
 	s := initialLedger(l.Policy, l.Schema)
 	seen := map[string]bool{}
-	for _, entry := range l.Entries {
+	for index, entry := range l.Entries {
 		if err := ctx.Err(); err != nil {
 			return ledgerState{}, err
 		}
@@ -295,6 +299,9 @@ func replayLedger(ctx context.Context, l Ledger) (ledgerState, error) {
 			return ledgerState{}, ErrInvalid
 		}
 		s.head = h
+		if visit != nil {
+			visit(index, s)
+		}
 	}
 	return s, nil
 }
@@ -308,6 +315,31 @@ func ReplayLedger(ctx context.Context, l Ledger) (LedgerProjection, error) {
 		return LedgerProjection{}, err
 	}
 	return s.project(), nil
+}
+
+// LedgerPrefix is accounting evidence for one validated prefix, not an
+// admission, execution receipt or attestation of source ownership.
+type LedgerPrefix struct {
+	LedgerSHA256 string
+	Projection   LedgerProjection
+}
+
+// ReplayLedgerPrefixes walks every entry once and returns detached prefix
+// projections and hashes. It accepts no balances or replacement snapshots.
+// Owners must still verify each command against their actual source records.
+// Any invalid entry discards all prefix results, including earlier valid ones.
+func ReplayLedgerPrefixes(ctx context.Context, l Ledger) ([]LedgerPrefix, error) {
+	prefixes := []LedgerPrefix{}
+	_, err := walkLedger(ctx, l, func(index int, state ledgerState) {
+		prefix := l
+		prefix.Entries = l.Entries[:index+1]
+		prefix.SHA256 = ""
+		prefixes = append(prefixes, LedgerPrefix{LedgerSHA256: workerplan.Hash(prefix), Projection: state.project()})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return prefixes, nil
 }
 
 // AppendLedger returns detached replacement values or no partial result. The

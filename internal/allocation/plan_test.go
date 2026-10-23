@@ -15,7 +15,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
-func fixture(t *testing.T) (Policy, Snapshot, time.Time) {
+func fixture(t testing.TB) (Policy, Snapshot, time.Time) {
 	t.Helper()
 	at := time.Date(2026, 1, 5, 15, 0, 0, 0, time.UTC)
 	a, err := paperaccount.Create("receiver-allocation_fixture_01", paperaccount.Config{ID: "paper", Currency: "USD", OpeningCashCents: 100000, CapitalLimitCents: 80000}, at.Add(-time.Hour))
