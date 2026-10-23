@@ -436,7 +436,11 @@ func (m *Memory) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluat
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
-	return replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, p, d, s, m.paperDecisions)
+	catalog, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, p, d, s, m.paperDecisions)
+	if err != nil {
+		return OwnedAllocationCatalog{}, err
+	}
+	return catalog, nil
 }
 
 func readOwnedAllocationJournal(ctx context.Context, tx pgx.Tx) (ownedAllocationJournal, error) {
@@ -509,26 +513,33 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, c Owne
 	if write {
 		next, r, e := appendOwnedAllocation(ctx, owner, journal, policies, decisions, strategies, retained, c, now)
 		if e != nil {
-			return OwnedAllocationCatalog{}, receipt, e
+			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}
 		journal = next
 		receipt = r
 		if !r.Duplicate {
 			raw, e = json.Marshal(journal)
 			if e != nil {
-				return OwnedAllocationCatalog{}, receipt, e
+				return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 			}
 			_, e = tx.Exec(ctx, "INSERT INTO mantik_owned_allocations(singleton,payload) VALUES(true,$1) ON CONFLICT(singleton) DO UPDATE SET payload=EXCLUDED.payload", raw)
 			if e != nil {
-				return OwnedAllocationCatalog{}, receipt, e
+				return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 			}
 		}
 	}
 	catalog, err := replayOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained)
 	if err != nil {
-		return catalog, receipt, err
+		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
 	}
-	return catalog, receipt, tx.Commit(ctx)
+	// A constructed projection or receipt is not a committed acknowledgment.
+	// Even a successful SQL write can fail at COMMIT (for example a deferred
+	// constraint). Transport errors can leave the outcome uncertain: read the
+	// owner journal before retrying the same command identity.
+	if err = tx.Commit(ctx); err != nil {
+		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
+	}
+	return catalog, receipt, nil
 }
 func (p *Postgres) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCommand, now func() time.Time, eval PaperDecisionEvaluator) (OwnedAllocationReceipt, error) {
 	if c.Validate() != nil {
