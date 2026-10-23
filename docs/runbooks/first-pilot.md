@@ -91,3 +91,39 @@ That establishes real-information operation. Account allocation, realistic
 costs and execution, prospective performance, and strategy admission still
 need the M5/M7 work. The first pilot does not claim those results or depend on
 finishing the entire roadmap before operator feedback begins.
+
+## Snapshot-bound backup data identity
+
+New `backup` receipts use `mantik-backup-v2`. A read-only repeatable-read
+transaction exports a PostgreSQL 17 snapshot and computes a sorted public-table
+inventory with row counts and SHA-256 hashes of canonical JSON row values. The
+custom-format `pg_dump` uses that exact exported snapshot. A concurrent write
+after snapshot export cannot enter either the recorded identity or archive. The
+receipt also retains the archive SHA-256 and original image/source manifest.
+A failed attempt preserves its files and does not create a successful receipt.
+
+For v2 archives, `restore` compares every public table's data identity before
+starting application workers. Missing or changed rows, extra tables and changed
+original byte values fail the comparison; the target database remains available
+for inspection with application workers unstarted. Invalid v2 metadata is rejected
+before resource preparation. Legacy receipts remain readable, but their restore
+receipt reports `legacy_receipt_unavailable` and
+`table_data_identity_verified:false`. They do not acquire the new proof.
+
+This method checks table data, including retained schema-version/checksum rows,
+source journals and allocation journals. It does not independently fingerprint
+DDL, indexes, roles, sequence state, physical storage layout, provider authority
+or pending protective behavior. Retain the matching image/source/schema and the
+complete archive. It is not permission to restore over an existing service.
+No existing pilot or curtailed observation window is restarted by this change.
+
+`make test-integration` now seeds actual storage-owner copy and allocation
+journals using explicitly unqualified fixtures in its new disposable database.
+It restores the archive into another fresh database on that disposable server,
+compares table data, verifies exclusion of a concurrent source write, and rejects
+changed restored bytes. No application workers or external providers run during
+this recovery check. An optional `MANTIK_RECOVERY_RECEIPT_DIR` outside Git retains
+the archive and JSON receipt; without it, the integration check uses temporary
+artifacts. This proves only the stated storage mechanics. Issue #25 still needs
+recovery of actual pending economic and protective obligations under their
+completed owners; #26/#27 release and natural qualification gates remain open.

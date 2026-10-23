@@ -14,6 +14,8 @@ import time
 import urllib.error
 import urllib.request
 
+from snapshot_identity import Snapshot, require_identity, validate_identity
+
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -39,12 +41,16 @@ def load(root):
     return manifest
 
 
-def compose(root, *args, **kwargs):
+def compose_command(root, *args):
     m = load(root)
     if hashlib.sha256((root / 'compose.json').read_bytes()).hexdigest() != m['config_sha256']:
         raise ValueError('Retained Compose configuration changed; refusing resource operation')
-    return run('docker', 'compose', '--project-name', m['project'],
-               '--file', str(root / 'compose.json'), *args, **kwargs)
+    return ['docker', 'compose', '--project-name', m['project'],
+            '--file', str(root / 'compose.json'), *args]
+
+
+def compose(root, *args, **kwargs):
+    return run(*compose_command(root, *args), **kwargs)
 
 
 def api(root, path, body=None, expected=200):
@@ -350,10 +356,14 @@ def delivery_smoke(root, scenario):
 def backup(root):
     path = root / f'backup-{time.time_ns()}.dump'
     # One pg_dump snapshot includes aggregate, audit, observations, migrations, effect ledger.
-    with path.open('xb') as stream:
-        compose(root, 'exec', '-T', 'postgres', 'pg_dump', '-U', 'mantik', '-d', 'mantik', '-Fc', stdout=stream)
-    save(path.with_suffix('.json'), {'at': now(), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
-         'source_manifest': load(root), 'dump': str(path)})
+    with Snapshot(compose_command(root, 'exec', '-T', 'postgres', 'psql', '-U', 'mantik', '-d', 'mantik')) as snapshot:
+        with path.open('xb') as stream:
+            compose(root, 'exec', '-T', 'postgres', 'pg_dump', '-U', 'mantik', '-d', 'mantik', '-Fc',
+                    '--snapshot=' + snapshot.snapshot_id, stdout=stream, timeout=600)
+        identity = snapshot.identity
+    save(path.with_suffix('.json'), {'schema': 'mantik-backup-v2', 'at': now(),
+         'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+         'source_manifest': load(root), 'dump': str(path), 'table_data_identity': identity})
     print(path)
     return path
 
@@ -362,17 +372,29 @@ def restore(root, target, port, dump):
     receipt = json.loads(dump.with_suffix('.json').read_text())
     if receipt['source_manifest'] != load(root) or receipt['sha256'] != hashlib.sha256(dump.read_bytes()).hexdigest():
         raise ValueError('Backup source or checksum mismatch')
+    identity = receipt.get('table_data_identity')
+    if receipt.get('schema') == 'mantik-backup-v2':
+        validate_identity(identity)
+    elif identity is not None or receipt.get('schema') is not None:
+        raise ValueError('Unsupported backup identity receipt')
     m = load(root)
     prepare(target, port, m['image'], m['source_sha'])
     compose(target, 'up', '-d', '--wait', 'postgres')
     with dump.open('rb') as stream:
         compose(target, 'exec', '-T', 'postgres', 'pg_restore', '-U', 'mantik', '-d', 'mantik', '--exit-on-error', stdin=stream)
+    # Compare all retained table data before any application worker can run.
+    if identity is not None:
+        with Snapshot(compose_command(target, 'exec', '-T', 'postgres', 'psql', '-U', 'mantik', '-d', 'mantik')) as restored:
+            require_identity(identity, restored.identity)
     # Capture restored database before workers can advance pending obligations.
     with (target / 'restored-before-workers.jsonl').open('w') as stream:
         compose(target, 'exec', '-T', 'postgres', 'psql', '-U', 'mantik', '-d', 'mantik', '-At', '-c',
                 'SELECT payload FROM mantik_state;', stdout=stream)
     save(target / 'restore-receipt.json', {'at': now(), 'backup': str(dump),
-        'sha256': receipt['sha256'], 'source_project': m['project'], 'target_project': load(target)['project']})
+        'sha256': receipt['sha256'], 'source_project': m['project'], 'target_project': load(target)['project'],
+        'table_data_identity_verified': identity is not None,
+        'table_data_identity_status': 'matched_before_workers' if identity is not None else 'legacy_receipt_unavailable',
+        'qualification_credit': False})
     compose(target, 'up', '-d', '--wait')
     wait_ready(target)
     snapshot(target)
