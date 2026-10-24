@@ -73,7 +73,7 @@ type PaperOutcomeRecord struct {
 }
 
 func (r PaperOutcomeRecord) Validate() error {
-	if r.Command.Validate() != nil || r.Schema != "mantik-owned-paper-outcome-v1" || r.Recipe != PaperOutcomeRecipe || r.EvaluatedAt.IsZero() || r.Authority != "service_owned_forward_quote_outcome_only" || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || !decisionPin.MatchString(r.BasisSHA256) {
+	if r.Command.Validate() != nil || (r.Schema != "mantik-owned-paper-outcome-v1" && r.Schema != "mantik-owned-paper-outcome-v2") || r.Recipe != PaperOutcomeRecipe || r.EvaluatedAt.IsZero() || r.Authority != "service_owned_forward_quote_outcome_only" || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || !decisionPin.MatchString(r.BasisSHA256) {
 		return ErrPaperOutcomeInvalid
 	}
 	switch r.Evaluation.Status {
@@ -110,6 +110,10 @@ type PaperOutcomeStore interface {
 }
 
 func newPaperOutcome(c PaperOutcomeCommand, b PaperOutcomeBasis, at time.Time, eval PaperOutcomeEvaluator) (PaperOutcomeRecord, error) {
+	return paperOutcomeForSchema("mantik-owned-paper-outcome-v2", c, b, at, eval)
+}
+
+func paperOutcomeForSchema(schema string, c PaperOutcomeCommand, b PaperOutcomeBasis, at time.Time, eval PaperOutcomeEvaluator) (PaperOutcomeRecord, error) {
 	if c.Validate() != nil || eval == nil || at.IsZero() || at.UTC().Year() < 1 || at.UTC().Year() > 9999 || b.Decision.Validate() != nil || b.Decision.Command.ReceiverID != c.ReceiverID || b.Decision.Command.ID != c.DecisionID || b.Decision.SHA256 != c.DecisionSHA256 || at.Before(b.Decision.FinalizedAt) || at.Before(b.Observation.Feed.Collectors.LastClock) {
 		return PaperOutcomeRecord{}, ErrPaperOutcomeInvalid
 	}
@@ -122,7 +126,7 @@ func newPaperOutcome(c PaperOutcomeCommand, b PaperOutcomeBasis, at time.Time, e
 	if err != nil {
 		return PaperOutcomeRecord{}, err
 	}
-	r := PaperOutcomeRecord{Schema: "mantik-owned-paper-outcome-v1", Command: c, EvaluatedAt: at.UTC(), Recipe: PaperOutcomeRecipe, Evaluation: v, BasisSHA256: workerplan.Hash(b), Authority: "service_owned_forward_quote_outcome_only"}
+	r := PaperOutcomeRecord{Schema: schema, Command: c, EvaluatedAt: at.UTC(), Recipe: PaperOutcomeRecipe, Evaluation: v, BasisSHA256: workerplan.Hash(b), Authority: "service_owned_forward_quote_outcome_only"}
 	r.SHA256 = workerplan.Hash(r)
 	if r.Validate() != nil {
 		return PaperOutcomeRecord{}, ErrPaperOutcomeInvalid
@@ -186,7 +190,14 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 		if err := verifyPaperDecisionBasis(d.Record.Command, b.Observation, r.EvaluatedAt, strategies, feed); err != nil {
 			return out, err
 		}
-		expected, err := newPaperOutcome(r.Command, b, r.EvaluatedAt, eval)
+		// Outcome observation has its own availability cut. The decision's
+		// schema does not prove membership of sources arriving afterwards.
+		if r.Schema == "mantik-owned-paper-outcome-v2" {
+			if err := paperDecisionSourceMembership(d.Record.Command, b.Observation, r.EvaluatedAt, feed); err != nil {
+				return out, err
+			}
+		}
+		expected, err := paperOutcomeForSchema(r.Schema, r.Command, b, r.EvaluatedAt, eval)
 		if err != nil || !reflect.DeepEqual(expected, r) {
 			return out, ErrPaperOutcomeInvalid
 		}

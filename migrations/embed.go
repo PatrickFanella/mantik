@@ -184,3 +184,6 @@ var SourceObservationClock string
 
 //go:embed 0057_decision_source_membership.sql
 var DecisionSourceMembership string
+
+//go:embed 0058_outcome_source_membership.sql
+var OutcomeSourceMembership string
