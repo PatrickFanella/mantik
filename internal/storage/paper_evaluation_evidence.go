@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"github.com/jackc/pgx/v5"
 )
@@ -258,21 +257,13 @@ func paperEvaluationEvidence(ctx context.Context, id string, declarations PaperE
 	return clone(out), nil
 }
 
-func (m *Memory) PaperEvaluationEvidence(ctx context.Context, id string, now func() time.Time, decisionEval PaperDecisionEvaluator, outcomeEval PaperOutcomeEvaluator) (PaperEvaluationEvidence, error) {
+func (m *Memory) PaperEvaluationEvidence(ctx context.Context, id string, now func() time.Time, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationEvidence, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return PaperEvaluationEvidence{}, err
 	}
-	policies, decisions, strategies, err := m.ownedAllocationSourcesLocked(decisionEval)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	declarations, err := paperEvaluationDeclarationCatalog(m.receiverID, m.paperEvaluationPlans, strategies, policies)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	outcomes, err := paperOutcomeCatalog(m.receiverID, m.paperOutcomes, m.paperDecisions, strategies, m.decisionFeedLocked(), decisionEval, outcomeEval)
+	s, err := m.paperEvaluationSourcesLocked(de, oe)
 	if err != nil {
 		return PaperEvaluationEvidence{}, err
 	}
@@ -280,58 +271,18 @@ func (m *Memory) PaperEvaluationEvidence(ctx context.Context, id string, now fun
 		return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
 	}
 	at := now()
-	if at.Before(m.collectors.LastClock) {
+	if at.Before(s.sourceClock) {
 		return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
 	}
-	return paperEvaluationEvidence(ctx, id, declarations, decisions, outcomes, m.paperDecisions, at)
+	return paperEvaluationEvidence(ctx, id, s.declarations, s.decisions, s.outcomes, s.retained, at)
 }
-func (p *Postgres) PaperEvaluationEvidence(ctx context.Context, id string, now func() time.Time, decisionEval PaperDecisionEvaluator, outcomeEval PaperOutcomeEvaluator) (PaperEvaluationEvidence, error) {
+func (p *Postgres) PaperEvaluationEvidence(ctx context.Context, id string, now func() time.Time, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationEvidence, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return PaperEvaluationEvidence{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	feed, err := readFeedEvidence(ctx, tx, false)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	strategies, err := readPaperStrategies(ctx, tx, feed.ReceiverID)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	retained, err := readPaperDecisions(ctx, tx)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	decisions, err := paperDecisionCatalog(feed.ReceiverID, retained, strategies, feed, decisionEval)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	all, err := readPaperOutcomes(ctx, tx)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	outcomes, err := paperOutcomeCatalog(feed.ReceiverID, all, retained, strategies, feed, decisionEval, outcomeEval)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	var raw []byte
-	var state domain.State
-	if err = tx.QueryRow(ctx, "SELECT payload FROM mantik_state WHERE id='demo'").Scan(&raw); err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	if json.Unmarshal(raw, &state) != nil {
-		return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
-	}
-	policies, err := readAllocationPolicies(ctx, tx, feed.ReceiverID, state)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	plans, err := readPaperEvaluationDeclarations(ctx, tx)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
-	declarations, err := paperEvaluationDeclarationCatalog(feed.ReceiverID, plans, strategies, policies)
+	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe)
 	if err != nil {
 		return PaperEvaluationEvidence{}, err
 	}
@@ -339,10 +290,10 @@ func (p *Postgres) PaperEvaluationEvidence(ctx context.Context, id string, now f
 		return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
 	}
 	at := now()
-	if at.Before(feed.Collectors.LastClock) {
+	if at.Before(s.sourceClock) {
 		return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
 	}
-	out, err := paperEvaluationEvidence(ctx, id, declarations, decisions, outcomes, retained, at)
+	out, err := paperEvaluationEvidence(ctx, id, s.declarations, s.decisions, s.outcomes, s.retained, at)
 	if err != nil {
 		return PaperEvaluationEvidence{}, err
 	}

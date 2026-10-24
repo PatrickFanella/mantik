@@ -640,3 +640,7 @@ context retained by v6/v7 allocation comparisons. Captured plan pins remain
 `declared_not_evaluated`; absence remains `declaration_unavailable`. This adds
 traceability without evaluation, admission, execution or qualification authority.
 See [paper attribution](docs/reference/paper-attribution.md).
+
+[Owned paper evaluation assessments](docs/reference/paper-evaluation-assessments.md)
+retain service-derived pending, failed and incomplete checks against actual
+predeclared owner evidence. They grant no admission, execution or qualification.

@@ -258,6 +258,9 @@ func (m *Memory) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand, 
 		return PaperOutcomeReceipt{}, err
 	}
 	if !dup {
+		if err := paperEvaluationSourceClock(m.receiverID, m.evaluationAssessments, v.Record.EvaluatedAt); err != nil {
+			return PaperOutcomeReceipt{}, err
+		}
 		m.paperOutcomes[c.ID] = clone(v)
 	}
 	return PaperOutcomeReceipt{clone(v.Record), dup}, nil
@@ -339,6 +342,13 @@ func (p *Postgres) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand
 		return PaperOutcomeReceipt{}, err
 	}
 	if !dup {
+		assessments, e := readPaperEvaluationAssessments(ctx, tx)
+		if e != nil {
+			return PaperOutcomeReceipt{}, e
+		}
+		if e = paperEvaluationSourceClock(owner, assessments, v.Record.EvaluatedAt); e != nil {
+			return PaperOutcomeReceipt{}, e
+		}
 		raw, err := json.Marshal(v)
 		if err != nil {
 			return PaperOutcomeReceipt{}, err

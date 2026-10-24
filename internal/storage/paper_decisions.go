@@ -306,6 +306,9 @@ func (m *Memory) FinalizePaperDecision(ctx context.Context, c PaperDecisionComma
 		return PaperDecisionReceipt{}, err
 	}
 	if !dup {
+		if err := paperEvaluationSourceClock(m.receiverID, m.evaluationAssessments, v.Record.FinalizedAt); err != nil {
+			return PaperDecisionReceipt{}, err
+		}
 		m.paperDecisions[c.ID] = clone(v)
 	}
 	return PaperDecisionReceipt{clone(v.Record), dup}, nil
@@ -383,6 +386,13 @@ func (p *Postgres) FinalizePaperDecision(ctx context.Context, c PaperDecisionCom
 		return PaperDecisionReceipt{}, err
 	}
 	if !dup {
+		assessments, e := readPaperEvaluationAssessments(ctx, tx)
+		if e != nil {
+			return PaperDecisionReceipt{}, e
+		}
+		if e = paperEvaluationSourceClock(owner, assessments, v.Record.FinalizedAt); e != nil {
+			return PaperDecisionReceipt{}, e
+		}
 		raw, err := json.Marshal(v)
 		if err != nil {
 			return PaperDecisionReceipt{}, err

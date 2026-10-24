@@ -160,3 +160,6 @@ var OwnedEvaluationContext string
 
 //go:embed 0049_complete_evaluation_captures.sql
 var CompleteEvaluationCaptures string
+
+//go:embed 0050_paper_evaluation_assessments.sql
+var PaperEvaluationAssessments string
