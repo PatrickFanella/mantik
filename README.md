@@ -613,7 +613,9 @@ reconciliation are still required.
 
 [Owned paper evaluation declarations](docs/reference/paper-evaluation-declarations.md)
 pin planned variant families, future observation windows, owner models, baselines
-and sensitivity/sample criteria before evaluation. Registration retains a plan;
+and sensitivity/sample criteria before evaluation. New declarations pin distinct
+native configurations from actual strategy owners; different IDs cannot turn
+identical configurations into parameter variants. Registration retains a plan;
 it supplies no result, admission or qualification credit.
 The evidence view also checks a necessary predeclared sample-count bound.
 Too few observed occurrences can establish insufficiency; meeting the count

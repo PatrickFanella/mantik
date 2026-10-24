@@ -24,6 +24,10 @@ type evaluationDeclarationBackend interface {
 }
 
 func declarationFixture(t *testing.T, s evaluationDeclarationBackend, evidenceClass ...string) (PaperEvaluationDeclarationCommand, time.Time) {
+	return declarationVariantsFixture(t, s, true, evidenceClass...)
+}
+
+func declarationVariantsFixture(t *testing.T, s evaluationDeclarationBackend, distinct bool, evidenceClass ...string) (PaperEvaluationDeclarationCommand, time.Time) {
 	t.Helper()
 	ctx := context.Background()
 	at := time.Now().UTC()
@@ -32,6 +36,9 @@ func declarationFixture(t *testing.T, s evaluationDeclarationBackend, evidenceCl
 	strategies := []paperstrategy.Record{}
 	for _, id := range []string{"baseline-v1", "variant-v1"} {
 		d := strategyDefinition(id)
+		if distinct && id == "variant-v1" {
+			d.Safety.StopCents--
+		}
 		if len(evidenceClass) > 0 {
 			d.InputEvidenceClass = evidenceClass[0]
 		}
@@ -296,7 +303,7 @@ func TestPostgresContractsPaperEvaluationDeclarationUpgrade(t *testing.T) {
 		t.Fatal("idempotent schema47 reopen", err)
 	}
 	var maximum int
-	if err = s.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 59 {
+	if err = s.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 60 {
 		t.Fatal(maximum, err)
 	}
 	after, err := s.Snapshot(ctx)

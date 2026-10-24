@@ -77,19 +77,20 @@ func (c PaperEvaluationDeclarationCommand) Validate() error {
 }
 
 type PaperEvaluationDeclaration struct {
-	Schema              string                            `json:"schema"`
-	Command             PaperEvaluationDeclarationCommand `json:"command"`
-	DeclaredAt          time.Time                         `json:"declared_at"`
-	SourceSHA256        string                            `json:"source_sha256"`
-	PlannedChecks       []string                          `json:"planned_checks"`
-	PlannedVariants     int                               `json:"planned_variants"`
-	Status              string                            `json:"status"`
-	Authority           string                            `json:"authority"`
-	EvaluationAvailable bool                              `json:"evaluation_available"`
-	AdmissionAvailable  bool                              `json:"admission_available"`
-	ExecutionAvailable  bool                              `json:"execution_available"`
-	QualificationCredit bool                              `json:"qualification_credit"`
-	SHA256              string                            `json:"sha256"`
+	VariantConfigurations []PaperEvaluationVariantConfiguration `json:"variant_configurations,omitempty"`
+	Schema                string                                `json:"schema"`
+	Command               PaperEvaluationDeclarationCommand     `json:"command"`
+	DeclaredAt            time.Time                             `json:"declared_at"`
+	SourceSHA256          string                                `json:"source_sha256"`
+	PlannedChecks         []string                              `json:"planned_checks"`
+	PlannedVariants       int                                   `json:"planned_variants"`
+	Status                string                                `json:"status"`
+	Authority             string                                `json:"authority"`
+	EvaluationAvailable   bool                                  `json:"evaluation_available"`
+	AdmissionAvailable    bool                                  `json:"admission_available"`
+	ExecutionAvailable    bool                                  `json:"execution_available"`
+	QualificationCredit   bool                                  `json:"qualification_credit"`
+	SHA256                string                                `json:"sha256"`
 }
 type PaperEvaluationDeclarationReceipt struct {
 	Record    PaperEvaluationDeclaration `json:"record"`
@@ -105,6 +106,15 @@ type PaperEvaluationDeclarationStore interface {
 }
 
 func newPaperEvaluationDeclaration(c PaperEvaluationDeclarationCommand, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, at time.Time) (PaperEvaluationDeclaration, error) {
+	return paperEvaluationDeclarationVersion(c, strategies, policies, at, "mantik-owned-paper-evaluation-declaration-v2")
+}
+
+// Legacy declarations keep their ID-count semantics and original bytes. New
+// declarations cannot label identical native configurations as distinct variants.
+func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, at time.Time, schema string) (PaperEvaluationDeclaration, error) {
+	if schema != "mantik-owned-paper-evaluation-declaration-v1" && schema != "mantik-owned-paper-evaluation-declaration-v2" {
+		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
+	}
 	if c.Validate() != nil || !declarationTime(at) || strategies.Validate() != nil || policies.Validate() != nil || strategies.ReceiverID != c.ReceiverID || policies.ReceiverID != c.ReceiverID || !c.Plan.WindowStart.After(at) || c.Plan.WindowStart.Sub(at) > 365*24*time.Hour {
 		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
 	}
@@ -123,6 +133,8 @@ func newPaperEvaluationDeclaration(c PaperEvaluationDeclarationCommand, strategi
 		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
 	}
 	variants := []paperstrategy.Record{}
+	var configurations []PaperEvaluationVariantConfiguration
+	seenConfigurations := map[string]bool{}
 	for _, v := range c.Plan.Variants {
 		strategy, err := paperstrategy.Select(strategies, v.ID)
 		if err != nil || strategy.SHA256 != v.SHA256 || at.Before(strategy.RegisteredAt) {
@@ -138,9 +150,17 @@ func newPaperEvaluationDeclaration(c PaperEvaluationDeclarationCommand, strategi
 		if !matched || d.Method != paperstrategy.Method || c.Plan.OutcomeDeadline.Before(c.Plan.WindowEnd.Add(time.Duration(d.Safety.MaxHoldingSeconds)*time.Second)) {
 			return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationConflict
 		}
+		if schema == "mantik-owned-paper-evaluation-declaration-v2" {
+			configuration := nativeVariantConfiguration(strategy)
+			if seenConfigurations[configuration.ConfigurationSHA256] {
+				return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationConflict
+			}
+			seenConfigurations[configuration.ConfigurationSHA256] = true
+			configurations = append(configurations, configuration)
+		}
 		variants = append(variants, strategy)
 	}
-	r := PaperEvaluationDeclaration{Schema: "mantik-owned-paper-evaluation-declaration-v1", Command: clone(c), DeclaredAt: at.UTC(), SourceSHA256: workerplan.Hash(struct {
+	r := PaperEvaluationDeclaration{VariantConfigurations: configurations, Schema: schema, Command: clone(c), DeclaredAt: at.UTC(), SourceSHA256: workerplan.Hash(struct {
 		Variants []paperstrategy.Record
 		Policy   allocation.PolicyRecord
 	}{variants, policy}), PlannedChecks: []string{"leakage", "warm_up", "out_of_sample", "parameter_and_cost_sensitivity", "benchmark_comparison", "forecast_calibration", "sample_sufficiency", "search_multiplicity"}, PlannedVariants: len(variants), Status: "declared_not_evaluated", Authority: "operator_predeclared_evaluation_plan_only"}
@@ -158,7 +178,7 @@ func paperEvaluationDeclarationCatalog(owner string, all map[string]PaperEvaluat
 	}
 	families := map[string]bool{}
 	for id, r := range all {
-		want, err := newPaperEvaluationDeclaration(r.Command, strategies, policies, r.DeclaredAt)
+		want, err := paperEvaluationDeclarationVersion(r.Command, strategies, policies, r.DeclaredAt, r.Schema)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || families[r.Command.Plan.FamilyID] || !reflect.DeepEqual(want, r) {
 			return out, ErrPaperEvaluationDeclarationInvalid
 		}
