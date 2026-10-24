@@ -194,7 +194,7 @@ func TestPostgresContractsAllocationPolicyUpgradeRollbackAndRestart(t *testing.T
 	}
 	defer up.Close()
 	var maximum int
-	if err = up.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 48 {
+	if err = up.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 49 {
 		t.Fatal(maximum, err)
 	}
 	after, _ := up.Snapshot(ctx)

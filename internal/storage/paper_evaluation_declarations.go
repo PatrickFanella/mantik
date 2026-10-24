@@ -168,7 +168,7 @@ func paperEvaluationDeclarationCatalog(owner string, all map[string]PaperEvaluat
 	slices.SortFunc(out.Records, func(a, b PaperEvaluationDeclaration) int { return strings.Compare(a.Command.ID, b.Command.ID) })
 	return out, nil
 }
-func appendPaperEvaluationDeclaration(owner string, all map[string]PaperEvaluationDeclaration, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, c PaperEvaluationDeclarationCommand, now func() time.Time) (PaperEvaluationDeclarationReceipt, error) {
+func appendPaperEvaluationDeclaration(owner string, all map[string]PaperEvaluationDeclaration, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, c PaperEvaluationDeclarationCommand, now func() time.Time, allocations ownedAllocationJournal) (PaperEvaluationDeclarationReceipt, error) {
 	catalog, err := paperEvaluationDeclarationCatalog(owner, all, strategies, policies)
 	if err != nil {
 		return PaperEvaluationDeclarationReceipt{}, err
@@ -197,6 +197,18 @@ func appendPaperEvaluationDeclaration(owner string, all map[string]PaperEvaluati
 		return PaperEvaluationDeclarationReceipt{}, ErrPaperEvaluationDeclarationInvalid
 	}
 	at := now()
+	// Allocation v7 captures the complete catalogue available at its clock.
+	// A later new plan must not enter that historical cut, including equality.
+	for _, item := range allocations.Records {
+		r := item.Record
+		if r.Schema == "mantik-owned-allocation-deferral-v7" {
+			unsigned := clone(r)
+			unsigned.SHA256 = ""
+			if r.Command.ReceiverID != owner || !declarationTime(r.At) || workerplan.Hash(unsigned) != r.SHA256 || !at.After(r.At) {
+				return PaperEvaluationDeclarationReceipt{}, ErrPaperEvaluationDeclarationInvalid
+			}
+		}
+	}
 	for _, r := range catalog.Records {
 		if at.Before(r.DeclaredAt) {
 			return PaperEvaluationDeclarationReceipt{}, ErrPaperEvaluationDeclarationInvalid
@@ -219,7 +231,7 @@ func (m *Memory) DeclarePaperEvaluation(ctx context.Context, c PaperEvaluationDe
 	if err != nil {
 		return PaperEvaluationDeclarationReceipt{}, err
 	}
-	r, err := appendPaperEvaluationDeclaration(m.receiverID, m.paperEvaluationPlans, strategies, policies, c, now)
+	r, err := appendPaperEvaluationDeclaration(m.receiverID, m.paperEvaluationPlans, strategies, policies, c, now, m.ownedAllocations)
 	if err != nil {
 		return r, err
 	}
@@ -315,7 +327,12 @@ func (p *Postgres) paperEvaluationDeclarationAccess(ctx context.Context, write b
 	}
 	var receipt PaperEvaluationDeclarationReceipt
 	if write {
-		receipt, err = appendPaperEvaluationDeclaration(owner, all, strategies, policies, c, now)
+		// State and receiver locks serialize this clock cut with comparison writes.
+		journal, e := readOwnedAllocationJournal(ctx, tx)
+		if e != nil {
+			return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, e
+		}
+		receipt, err = appendPaperEvaluationDeclaration(owner, all, strategies, policies, c, now, journal)
 		if err != nil {
 			return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, err
 		}

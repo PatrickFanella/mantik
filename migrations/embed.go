@@ -157,3 +157,6 @@ var OwnedAdmissionBindings string
 
 //go:embed 0048_owned_evaluation_context.sql
 var OwnedEvaluationContext string
+
+//go:embed 0049_complete_evaluation_captures.sql
+var CompleteEvaluationCaptures string

@@ -51,7 +51,12 @@ clock and no more than 365 days away. The observation window is at most 90 days.
 The outcome deadline is later than its end, no more than 48 hours afterward,
 and covers every variant's complete maximum holding horizon. All timestamps
 must be JSON-encodable. A new declaration cannot use an already-started window
-or move the declaration clock behind an earlier retained declaration.
+or move the declaration clock behind an earlier retained declaration. After a
+v7 allocation comparison, a new declaration must be strictly later than that
+comparison clock, including when the plan window is still in the future. This
+preserves the complete historical declaration cut used by allocation replay.
+Equal or earlier clocks return an error and an empty receipt without retaining
+the plan; the same ID remains available for a valid later attempt.
 
 One family ID has one immutable declaration. A second request ID cannot reset
 that same family, replace its variants or lower its thresholds. Exact historical
