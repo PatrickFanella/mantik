@@ -42,6 +42,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	paperDecisionRoutes(mux, store, clock)
 	paperDecisionMarketRoutes(mux, store)
 	paperOutcomeRoutes(mux, store, clock)
+	paperOutcomeMarketRoutes(mux, store)
 	paperAttributionRoutes(mux, store)
 	decisionReviewRoutes(mux, store, clock)
 	paperEvaluationDeclarationRoutes(mux, store, clock)

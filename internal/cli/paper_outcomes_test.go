@@ -39,7 +39,7 @@ func (s *interleavedOutcomeWorkerStore) AssessPaperOutcome(ctx context.Context, 
 }
 
 func TestOwnedPaperOutcomeHTTP(t *testing.T) { ownedPaperOutcomeHTTP(t, storage.NewMemory()) }
-func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
+func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) service.PaperOutcomeMarketEvidence {
 	ctx := context.Background()
 	clock := &ownedDecisionClock{at: time.Date(2026, 10, 21, 14, 0, 0, 0, time.UTC)}
 	server := httptest.NewServer(service.HandlerWithClock(s, "owned-decision-token", clock))
@@ -48,6 +48,9 @@ func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	request := func(method, path string, body any, want int) []byte {
 		t.Helper()
 		raw, _ := json.Marshal(body)
+		if body == nil {
+			raw = nil
+		}
 		if text, ok := body.(string); ok {
 			raw = []byte(text)
 		}
@@ -206,6 +209,7 @@ func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if observed.Record.Evaluation.EntryPriceCents != 10000 || observed.Record.Evaluation.ObservedPriceCents != 10200 || observed.Record.Evaluation.PriceDeltaCents != 200 || !observed.Record.Evaluation.AvailableAt.Equal(clock.at) || observed.Record.Evaluation.InputID == "" || observed.Record.Evaluation.CaptureSHA256 == "" {
 		t.Fatal(observed)
 	}
+	market := assertOutcomeMarketHTTP(t, request, server.URL, clock, observed.Record)
 	// A later missing capture does not rewrite an earlier timely observation.
 	clock.at = clock.at.Add(time.Second)
 	bad := quote("unusable", "102")
@@ -216,6 +220,20 @@ func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if !reflect.DeepEqual(observed.Record.Evaluation, again.Record.Evaluation) {
 		t.Fatal(again)
 	}
+	var gapReadback service.PaperOutcomeMarketEvidence
+	if e := json.Unmarshal(request("GET", "/v1/paper-outcomes/"+again.Record.Command.ID+"/market-evidence", nil, 200), &gapReadback); e != nil {
+		t.Fatal(e)
+	}
+	missingRetained := false
+	for _, row := range gapReadback.Rows {
+		if row.Quality == "missing" && row.Quote == nil && row.DimensionStatus == "quote_dimensions_unavailable" && row.OccurredAt.IsZero() && row.OccurrenceSHA256 == "" {
+			missingRetained = true
+		}
+	}
+	if !missingRetained {
+		t.Fatal("missing capture gap was omitted", gapReadback)
+	}
+
 	// Equal-receipt conflicting quotes are evaluated as one publication-time
 	// group. Capture identity cannot choose a winner by map order.
 	clock.at = clock.at.Add(time.Second)
@@ -244,10 +262,24 @@ func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 			t.Fatal(err)
 		}
 	}
-	assess("pending", "waiting_price")
+	pendingOutcome := assess("pending", "waiting_price")
+	var unpublished service.PaperOutcomeMarketEvidence
+	if e := json.Unmarshal(request("GET", "/v1/paper-outcomes/"+pendingOutcome.Record.Command.ID+"/market-evidence", nil, 200), &unpublished); e != nil {
+		t.Fatal(e)
+	}
+	rawMissing := false
+	for _, row := range unpublished.Rows {
+		if row.InputID == normalized.Inputs[0].ID && row.DimensionStatus == "raw_capture_unavailable" && row.Quote == nil && row.PublishedAt.IsZero() && row.AvailableAt.IsZero() && row.CaptureSHA256 == "" {
+			rawMissing = true
+		}
+	}
+	if !rawMissing {
+		t.Fatal("unpublished admitted input omitted", unpublished)
+	}
 	// Publishing the missing evidence allows a fresh assessment to observe it.
 	publish(pending)
-	assess("published", "observed")
+	publishedOutcome := assess("published", "observed")
+	assertOutcomeMarketHTTP(t, request, server.URL, clock, publishedOutcome.Record)
 	// Raw-publication pending is independently tested with an otherwise usable
 	// quote, rather than relying on the earlier conflicting pair to suppress it.
 	clock.at = clock.at.Add(time.Second)
@@ -350,6 +382,13 @@ func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if err != nil || after.State.Case.Status != before.State.Case.Status {
 		t.Fatal(after, err)
 	}
+	var historical service.PaperOutcomeMarketEvidence
+	clock.panicRead = true
+	if e := json.Unmarshal(request("GET", "/v1/paper-outcomes/observed/market-evidence", nil, 200), &historical); e != nil || !reflect.DeepEqual(historical, market) {
+		t.Fatal("later publication rewrote outcome market evidence", historical, e)
+	}
+	clock.panicRead = false
+	return market
 }
 
 func TestPostgresContractsOwnedPaperOutcomeHTTP(t *testing.T) {
@@ -383,6 +422,23 @@ func TestPostgresContractsOwnedPaperOutcomeHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	ownedPaperOutcomeHTTP(t, s)
-
+	expected := ownedPaperOutcomeHTTP(t, s)
+	reopened, e := storage.OpenPostgres(ctx, u.String())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer reopened.Close()
+	server := httptest.NewServer(service.HandlerWithClock(reopened, "restart-token", &ownedDecisionClock{panicRead: true}))
+	defer server.Close()
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/paper-outcomes/observed/market-evidence", nil)
+	req.Header.Set("Authorization", "Bearer restart-token")
+	response, e := http.DefaultClient.Do(req)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer response.Body.Close()
+	var got service.PaperOutcomeMarketEvidence
+	if e = json.NewDecoder(response.Body).Decode(&got); e != nil || response.StatusCode != 200 || !reflect.DeepEqual(got, expected) {
+		t.Fatal("restart changed outcome market evidence", got, e)
+	}
 }

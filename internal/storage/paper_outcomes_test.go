@@ -88,6 +88,10 @@ func ownedOutcomeContracts(t *testing.T, s outcomeBackend) {
 			if _, err := s.AssessPaperOutcome(ctx, c, clock, decisionEval, eval); err != nil {
 				t.Error(err)
 			}
+			if got, e := s.(PaperOutcomeSourceStore).PaperOutcomeSources(ctx, c.ID, decisionEval, eval); e != nil || got.Outcome.Command != c || got.Outcome.BasisSHA256 != workerplan.Hash(got.Basis) {
+				t.Error("source read racing owner retry", got, e)
+			}
+
 		})
 	}
 	wg.Wait()
@@ -99,6 +103,29 @@ func ownedOutcomeContracts(t *testing.T, s outcomeBackend) {
 		t.Fatal(all, err)
 	}
 	first := all.Records[0]
+	sourceStore := s.(PaperOutcomeSourceStore)
+	source, err := sourceStore.PaperOutcomeSources(ctx, c.ID, decisionEval, eval)
+	if err != nil || !reflect.DeepEqual(source.Outcome, all.Records[0]) || source.Outcome.BasisSHA256 != workerplan.Hash(source.Basis) {
+		t.Fatal("owner outcome sources", source, err)
+	}
+	detached := clone(source)
+	source.Basis.Observation.Feed.ReceiverID = "mutated"
+	restored, e := sourceStore.PaperOutcomeSources(ctx, c.ID, decisionEval, eval)
+	if e != nil || !reflect.DeepEqual(restored, detached) {
+		t.Fatal("outcome sources alias owner", restored, e)
+	}
+	for _, id := range []string{"missing", "invalid.id"} {
+		got, e := sourceStore.PaperOutcomeSources(ctx, id, decisionEval, eval)
+		if e == nil || !reflect.DeepEqual(got, PaperOutcomeSources{}) {
+			t.Fatal("invalid source selection", got, e)
+		}
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if got, e := sourceStore.PaperOutcomeSources(cancelled, c.ID, decisionEval, eval); !errors.Is(e, context.Canceled) || !reflect.DeepEqual(got, PaperOutcomeSources{}) {
+		t.Fatal("cancelled source read", got, e)
+	}
+
 	if first.AdmissionAvailable || first.ExecutionAvailable || first.QualificationCredit {
 		t.Fatal(first)
 	}
@@ -207,6 +234,13 @@ func ownedOutcomeContracts(t *testing.T, s outcomeBackend) {
 		if _, err := s.AssessPaperOutcome(ctx, c, noClock, decisionEval, eval); err == nil {
 			t.Fatal("retry hid forged outcome/source")
 		}
+		if got, e := sourceStore.PaperOutcomeSources(ctx, c.ID, decisionEval, eval); e == nil || !reflect.DeepEqual(got, PaperOutcomeSources{}) {
+			t.Fatal("source selection hid forged owner", got, e)
+		}
+		if got, e := sourceStore.PaperOutcomeSources(ctx, "decision-00", decisionEval, eval); e == nil || !reflect.DeepEqual(got, PaperOutcomeSources{}) {
+			t.Fatal("selection hid unrelated corrupt outcome", got, e)
+		}
+
 	}
 	set(original)
 	if pg, ok := s.(*Postgres); ok {
@@ -217,6 +251,10 @@ func ownedOutcomeContracts(t *testing.T, s outcomeBackend) {
 			t.Fatal(err)
 		}
 		defer next.Close()
+		gotSource, e := next.PaperOutcomeSources(ctx, c.ID, decisionEval, eval)
+		if e != nil || !reflect.DeepEqual(gotSource, detached) {
+			t.Fatal("restart changed source basis", gotSource, e)
+		}
 		got, err := next.PaperOutcomes(ctx, decisionEval, eval)
 		if err != nil || !reflect.DeepEqual(got, all) {
 			t.Fatal("restart changed decisions", err)

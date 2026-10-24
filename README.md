@@ -658,3 +658,8 @@ New allocation assessment context uses the [schema-51 startup fence](docs/refere
 retain non-grant outcomes and exact predecessor chains from actual finalized
 proposals and owner-replayed readiness. Schema 53 adds durable review retention;
 positive admission, retirement and financial effect authority remain unfinished.
+
+[Retained outcome market evidence](docs/reference/owned-outcome-market-evidence.md)
+exposes historical quote dimensions, publication/admission clocks and quality
+gaps from actual owner-replayed outcomes. It supplies no execution, continuous
+coverage or qualification authority.

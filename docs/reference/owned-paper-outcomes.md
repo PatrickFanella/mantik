@@ -169,3 +169,10 @@ Historical basis validation also checks that the embedded feed receiver matches
 the decision's receiver. Altering that receiver and recomputing record hashes
 cannot transfer source custody, including for an abstention whose evaluator
 does not inspect prices.
+
+## Retained quote observations
+
+The [outcome market-evidence read](owned-outcome-market-evidence.md) projects
+bid/ask dimensions and explicit quality gaps from an outcome's retained owner
+basis. It preserves separate occurrence and availability clocks without
+inferring share units, continuous coverage, fills, costs or qualification.
