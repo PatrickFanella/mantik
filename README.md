@@ -679,3 +679,8 @@ forecast to calibrate. This method applicability grants no performance result,
 admission, execution or qualification. Historical v1/v2 records keep their bytes
 and checks; schema 55 fences older writers. See
 [owned evaluation assessments](docs/reference/paper-evaluation-assessments.md#native-forecast-calibration-applicability).
+
+Collector source operations now return no receipt or snapshot on PostgreSQL
+COMMIT failure, including exact retries. Reconcile uncertain outcomes through
+the actual owner and the same immutable identity; see
+[collector submission recovery](docs/reference/collector-submission.md#transaction-acknowledgement-failures).

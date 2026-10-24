@@ -108,7 +108,10 @@ func (p *Postgres) SubmitCollectorResearch(ctx context.Context, receiver string,
 		if err != nil {
 			return receipt, err
 		}
-		return receipt, tx.Commit(ctx)
+		if err := tx.Commit(ctx); err != nil {
+			return domain.RoutingReceipt{}, err
+		}
+		return receipt, nil
 	}
 	if _, exists := collectors.Admissions[i.ID]; exists {
 		if _, err := collectorReplay(collectors, i, state.Routing); err != nil {
@@ -138,7 +141,10 @@ func (p *Postgres) SubmitCollectorResearch(ctx context.Context, receiver string,
 	if _, err := tx.Exec(ctx, "UPDATE mantik_feed_collectors SET payload=$1 WHERE singleton", raw); err != nil {
 		return domain.RoutingReceipt{}, err
 	}
-	return receipt, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return domain.RoutingReceipt{}, err
+	}
+	return receipt, nil
 }
 
 var _ CollectorSubmissionStore = (*Memory)(nil)
