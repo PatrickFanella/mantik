@@ -145,7 +145,10 @@ func (p *Postgres) CreatePaperAccount(ctx context.Context, receiver string, c pa
 			if a.Config != c {
 				return paperaccount.Receipt{}, paperaccount.ErrConflict
 			}
-			return paperaccount.Receipt{Account: a, Duplicate: true}, tx.Commit(ctx)
+			if err = tx.Commit(ctx); err != nil {
+				return paperaccount.Receipt{}, err
+			}
+			return paperaccount.Receipt{Account: a, Duplicate: true}, nil
 		}
 	}
 	if len(catalog.Accounts) >= paperaccount.MaxAccounts {

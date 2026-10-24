@@ -55,6 +55,12 @@ Malformed JSON/unknown fields use the existing 400 body contract. A failed
 creation does not create a partial funding record. Exact retries work even when
 the account catalogue is full.
 
+New writes, catalogue reads and exact retries return no account or funding
+receipt when PostgreSQL COMMIT fails. Exact retries remain clock-free and return
+the original receipt only after a successful transaction. A transport failure can
+leave the outcome uncertain; inspect the account owner before changing intent or
+assigning a replacement identity.
+
 PostgreSQL schema 27 adds `mantik_paper_accounts`. Creation locks the persistent
 receiver row before checking existing intent and capacity, so concurrent writers
 cannot duplicate opening funding or exceed the account limit. Reads use one
