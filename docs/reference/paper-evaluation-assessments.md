@@ -84,3 +84,30 @@ independence and search-multiplicity methods; legitimate qualification evidence;
 a versioned admission/expiry/reassessment/retirement issuer; and execution-owner
 reconciliation with atomic financial postings. Issues #19, #20 and #21 remain
 unfinished.
+
+## Allocation owner replay
+
+Allocation comparison writes, catalogue reads and exact retries validate the
+retained assessment owner before returning any result. PostgreSQL does this in
+the same transaction that selects comparison sources, under the existing write
+lock order or read snapshot. Memory uses the same aggregate mutex. Attribution
+validates assessments against its already replayed declaration, decision and
+outcome catalogues in that snapshot.
+
+The service supplies both compiled decision and outcome evaluators. Internal
+storage callers may omit the outcome evaluator only while the assessment
+registry is empty. An explicit nil callback, multiple callbacks, a missing
+callback with retained assessments, or an evaluator inconsistent with actual
+retained outcomes fails closed. Callbacks are trusted service wiring; they are
+not public API fields or caller-provided check results.
+
+Rehashed fabricated checks, omitted assessment evidence and other owner replay
+failures prevent comparison reads and historical retries as well as new writes.
+No comparison receipt is returned on those failures, and retry does not read a
+new clock. Restoring valid owner data restores the same original comparison
+receipt; adding legitimate later assessments does not change its bytes or hash.
+
+This is an owner-validation dependency for future assessment-to-proposal
+bindings. It does not add assessment pins to old comparison records, upgrade an
+incomplete assessment into an applicable full recipe, or issue admission or
+financial effects. Comparison wire schemas and database schema50 are unchanged.

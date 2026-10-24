@@ -194,6 +194,10 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
+	if _, err = paperEvaluationAssessmentCatalog(ctx, m.receiverID, m.evaluationAssessments, paperEvaluationSources{declarations, decisions, outcomes, m.paperDecisions, m.collectors.LastClock}); err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+
 	allocations, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, declarations)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
@@ -254,6 +258,14 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
+	assessments, err := readPaperEvaluationAssessments(ctx, tx)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	if _, err = paperEvaluationAssessmentCatalog(ctx, feed.ReceiverID, assessments, paperEvaluationSources{declarations, decisions, outcomes, retained, feed.Collectors.LastClock}); err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+
 	allocations, err := replayOwnedAllocations(ctx, feed.ReceiverID, journal, policies, decisions, strategies, retained, declarations)
 	if err != nil {
 		return PaperAttributionCatalog{}, err

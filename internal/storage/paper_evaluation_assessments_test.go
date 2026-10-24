@@ -89,6 +89,22 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 	if _, err = s.AssessPaperEvaluation(ctx, wrong, noClock, de, oe); !errors.Is(err, ErrPaperEvaluationAssessmentConflict) {
 		t.Fatal("changed retry", err)
 	}
+	comparisonCommand := OwnedAllocationCommand{ID: "assessment-comparison", ReceiverID: plan.ReceiverID, Decisions: []OwnedDecisionPin{{ID: first.Record.Command.ID, SHA256: first.Record.SHA256}}}
+	comparison, err := s.CompareOwnedAllocation(ctx, comparisonCommand, func() time.Time { return start.Add(2 * time.Second) }, de, oe)
+	if err != nil || comparison.Duplicate {
+		t.Fatal("owner-bound comparison", comparison, err)
+	}
+	for _, callbacks := range [][]PaperOutcomeEvaluator{nil, {nil}, {oe, oe}} {
+		got, e := s.CompareOwnedAllocation(ctx, comparisonCommand, noClock, de, callbacks...)
+		if e == nil || !reflect.DeepEqual(got, OwnedAllocationReceipt{}) {
+			t.Fatal("missing/invalid outcome owner returned retry", got, e)
+		}
+		all, e := s.OwnedAllocations(ctx, de, callbacks...)
+		if e == nil || !reflect.DeepEqual(all, OwnedAllocationCatalog{}) {
+			t.Fatal("missing/invalid outcome owner returned catalogue", all, e)
+		}
+	}
+
 	before, _ := s.Snapshot(ctx)
 	deadline := plan.Plan.OutcomeDeadline
 	c.ID = "closed"
@@ -230,8 +246,54 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 		if got, e := s.AssessPaperEvaluation(ctx, c, noClock, de, oe); e == nil || !reflect.DeepEqual(got, PaperEvaluationAssessmentReceipt{}) {
 			t.Fatal("corrupt retry accepted", got, e)
 		}
+		if got, e := s.CompareOwnedAllocation(ctx, comparisonCommand, noClock, de, oe); e == nil || !reflect.DeepEqual(got, OwnedAllocationReceipt{}) {
+			t.Fatal("corrupt assessment returned allocation retry", got, e)
+		}
+		if got, e := s.OwnedAllocations(ctx, de, oe); e == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
+			t.Fatal("corrupt assessment returned allocation catalogue", got, e)
+		}
+		if got, e := s.(PaperAttributionStore).PaperAttribution(ctx, de, oe); e == nil || !reflect.DeepEqual(got, PaperAttributionCatalog{}) {
+			t.Fatal("corrupt assessment returned attribution", got, e)
+		}
+
 		set(saved)
 	}
+	// Later legitimate assessments do not rewrite or reissue a past comparison.
+	retry, e := s.CompareOwnedAllocation(ctx, comparisonCommand, noClock, de, oe)
+	if e != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, comparison.Record) {
+		t.Fatal("owner replay rewrote comparison", retry, e)
+	}
+	wrongOutcome := func(b PaperOutcomeBasis, at time.Time) (PaperOutcomeEvaluation, error) {
+		v, e := oe(b, at)
+		v.ReasonCode = "different_compiled_recipe"
+		return v, e
+	}
+	if got, e := s.OwnedAllocations(ctx, de, wrongOutcome); e == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
+		t.Fatal("wrong outcome owner accepted", got, e)
+	}
+	var compareErr, assessmentErr error
+	var compared OwnedAllocationReceipt
+	concurrentCommand := comparisonCommand
+	concurrentCommand.ID = "assessment-race-comparison"
+	concurrentAssessment := c
+	concurrentAssessment.ID = "comparison-raced-assessment"
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		compared, compareErr = s.CompareOwnedAllocation(ctx, concurrentCommand, func() time.Time { return raceAt.Add(time.Second) }, de, oe)
+	}()
+	go func() {
+		defer wg.Done()
+		_, assessmentErr = s.AssessPaperEvaluation(ctx, concurrentAssessment, func() time.Time { return raceAt.Add(time.Second) }, de, oe)
+	}()
+	wg.Wait()
+	if compareErr != nil || assessmentErr != nil {
+		t.Fatal("comparison/assessment owner race", compareErr, assessmentErr)
+	}
+	if got, e := s.CompareOwnedAllocation(ctx, concurrentCommand, noClock, de, oe); e != nil || !got.Duplicate || !reflect.DeepEqual(got.Record, compared.Record) {
+		t.Fatal("raced comparison retry", got, e)
+	}
+
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
 	c.ID = "cancelled"
@@ -249,7 +311,7 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 		}
 		defer reopened.Close()
 		got, e := reopened.PaperEvaluationAssessments(ctx, de, oe)
-		if e != nil || len(got.Records) != 3 {
+		if e != nil || len(got.Records) != 4 {
 			t.Fatal("reopen lost assessments", got, e)
 		}
 		evaluationAssessmentMigrationContract(t, pg)

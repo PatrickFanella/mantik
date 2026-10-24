@@ -84,8 +84,8 @@ type ownedAllocationJournal struct {
 	Records []retainedOwnedAllocation `json:"records"`
 }
 type OwnedAllocationStore interface {
-	CompareOwnedAllocation(context.Context, OwnedAllocationCommand, func() time.Time, PaperDecisionEvaluator) (OwnedAllocationReceipt, error)
-	OwnedAllocations(context.Context, PaperDecisionEvaluator) (OwnedAllocationCatalog, error)
+	CompareOwnedAllocation(context.Context, OwnedAllocationCommand, func() time.Time, PaperDecisionEvaluator, ...PaperOutcomeEvaluator) (OwnedAllocationReceipt, error)
+	OwnedAllocations(context.Context, PaperDecisionEvaluator, ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, error)
 }
 
 // Resolve all selected decisions to one unambiguous owner policy. Mixed-account
@@ -498,7 +498,7 @@ func (m *Memory) ownedAllocationSourcesLocked(eval PaperDecisionEvaluator) (allo
 	decisions, err := paperDecisionCatalog(m.receiverID, m.paperDecisions, strategies, m.decisionFeedLocked(), eval)
 	return policies, decisions, strategies, err
 }
-func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCommand, now func() time.Time, eval PaperDecisionEvaluator) (OwnedAllocationReceipt, error) {
+func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCommand, now func() time.Time, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationReceipt, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -512,6 +512,14 @@ func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCo
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
+	oe, err := allocationOutcomeEvaluator(outcomeEvals)
+	if err != nil {
+		return OwnedAllocationReceipt{}, err
+	}
+	if err = validateAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, declarations, decisions, strategies, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), eval, oe); err != nil {
+		return OwnedAllocationReceipt{}, err
+	}
+
 	next, r, err := appendOwnedAllocation(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, c, now, m.collectors.LastClock, declarations)
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
@@ -524,7 +532,7 @@ func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCo
 	}
 	return r, nil
 }
-func (m *Memory) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluator) (OwnedAllocationCatalog, error) {
+func (m *Memory) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -538,6 +546,14 @@ func (m *Memory) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluat
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
+	oe, err := allocationOutcomeEvaluator(outcomeEvals)
+	if err != nil {
+		return OwnedAllocationCatalog{}, err
+	}
+	if err = validateAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, declarations, d, s, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), eval, oe); err != nil {
+		return OwnedAllocationCatalog{}, err
+	}
+
 	catalog, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, p, d, s, m.paperDecisions, declarations)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
@@ -560,7 +576,7 @@ func readOwnedAllocationJournal(ctx context.Context, tx pgx.Tx) (ownedAllocation
 	}
 	return j, nil
 }
-func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, c OwnedAllocationCommand, now func() time.Time, eval PaperDecisionEvaluator) (OwnedAllocationCatalog, OwnedAllocationReceipt, error) {
+func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, c OwnedAllocationCommand, now func() time.Time, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, OwnedAllocationReceipt, error) {
 	options := pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}
 	if write {
 		options = pgx.TxOptions{}
@@ -619,6 +635,26 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, c Owne
 	if err != nil {
 		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
 	}
+	oe, err := allocationOutcomeEvaluator(outcomeEvals)
+	if err != nil {
+		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
+	}
+	assessments, err := readPaperEvaluationAssessments(ctx, tx)
+	if err != nil {
+		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
+	}
+	if len(assessments) > 0 {
+		if oe == nil {
+			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, ErrPaperEvaluationAssessmentInvalid
+		}
+		outcomes, e := readPaperOutcomes(ctx, tx)
+		if e != nil {
+			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
+		}
+		if e = validateAllocationAssessmentOwner(ctx, owner, assessments, declarations, decisions, strategies, retained, outcomes, feed, eval, oe); e != nil {
+			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
+		}
+	}
 	var receipt OwnedAllocationReceipt
 	if write {
 		next, r, e := appendOwnedAllocation(ctx, owner, journal, policies, decisions, strategies, retained, c, now, feed.Collectors.LastClock, declarations)
@@ -651,14 +687,14 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, c Owne
 	}
 	return catalog, receipt, nil
 }
-func (p *Postgres) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCommand, now func() time.Time, eval PaperDecisionEvaluator) (OwnedAllocationReceipt, error) {
+func (p *Postgres) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCommand, now func() time.Time, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationReceipt, error) {
 	if c.Validate() != nil {
 		return OwnedAllocationReceipt{}, ErrOwnedAllocationInvalid
 	}
-	_, r, e := p.ownedAllocationAccess(ctx, true, c, now, eval)
+	_, r, e := p.ownedAllocationAccess(ctx, true, c, now, eval, outcomeEvals...)
 	return r, e
 }
-func (p *Postgres) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluator) (OwnedAllocationCatalog, error) {
-	c, _, e := p.ownedAllocationAccess(ctx, false, OwnedAllocationCommand{}, nil, eval)
+func (p *Postgres) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, error) {
+	c, _, e := p.ownedAllocationAccess(ctx, false, OwnedAllocationCommand{}, nil, eval, outcomeEvals...)
 	return c, e
 }

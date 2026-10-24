@@ -644,3 +644,8 @@ See [paper attribution](docs/reference/paper-attribution.md).
 [Owned paper evaluation assessments](docs/reference/paper-evaluation-assessments.md)
 retain service-derived pending, failed and incomplete checks against actual
 predeclared owner evidence. They grant no admission, execution or qualification.
+
+Allocation comparison operations also replay retained assessment owners against
+actual declaration, decision and outcome evidence in the same snapshot before
+returning a receipt. This preserves existing comparison hashes and grants no
+admission or financial authority.

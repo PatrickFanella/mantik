@@ -449,3 +449,11 @@ admission or effect ownership, and this read path grants no financial authority.
 Historical wire bytes, schema versions, hashes and clock-free retries are
 unchanged. This does not implement issue #19's admission/effect issuer or an
 atomic durable financial execution transaction.
+
+Before comparison creation, catalogue reads and exact retries, the service now
+replays any retained [evaluation assessments](paper-evaluation-assessments.md)
+against actual declaration, decision and outcome owners in the same transaction.
+A missing outcome evaluator or corrupt assessment prevents a receipt; even a
+fully rehashed assertion cannot bypass owner replay. Valid later assessments do
+not rewrite an earlier comparison. This prerequisite does not grant admission
+or add assessment pins to the retained comparison context.

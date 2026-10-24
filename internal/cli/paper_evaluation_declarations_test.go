@@ -116,6 +116,15 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 			t.Fatal(response.StatusCode)
 		}
 	}
+	var guardedComparisons storage.OwnedAllocationCatalog
+	if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &guardedComparisons); err != nil || len(guardedComparisons.Records) == 0 {
+		t.Fatal(guardedComparisons, err)
+	}
+	var guardedRetry storage.OwnedAllocationReceipt
+	if err := json.Unmarshal(request("POST", "/v1/allocation-comparisons", guardedComparisons.Records[0].Command, 200), &guardedRetry); err != nil || !guardedRetry.Duplicate || !reflect.DeepEqual(guardedRetry.Record, guardedComparisons.Records[0]) {
+		t.Fatal("assessment-owner HTTP retry", guardedRetry, err)
+	}
+	request("GET", "/v1/paper-attribution", nil, 200)
 	clock.panicRead = false
 
 	raw, _ := json.Marshal(c)
