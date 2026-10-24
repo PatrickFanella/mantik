@@ -47,6 +47,9 @@ func (m *Memory) SubmitCollectorResearch(ctx context.Context, receiver string, f
 		receipt, err := collectorReplay(m.collectors, i, m.state.Routing)
 		return clone(receipt), err
 	}
+	if err := m.sourceObservationClockLocked(at); err != nil {
+		return domain.RoutingReceipt{}, err
+	}
 	if _, exists := m.collectors.Admissions[i.ID]; exists {
 		if _, err := collectorReplay(m.collectors, i, m.state.Routing); err != nil {
 			return domain.RoutingReceipt{}, err
@@ -112,6 +115,9 @@ func (p *Postgres) SubmitCollectorResearch(ctx context.Context, receiver string,
 			return domain.RoutingReceipt{}, err
 		}
 		return receipt, nil
+	}
+	if err := readSourceObservationClock(ctx, tx, expected, at); err != nil {
+		return domain.RoutingReceipt{}, err
 	}
 	if _, exists := collectors.Admissions[i.ID]; exists {
 		if _, err := collectorReplay(collectors, i, state.Routing); err != nil {

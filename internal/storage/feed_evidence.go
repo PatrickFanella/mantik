@@ -110,6 +110,9 @@ func (m *Memory) PublishFeedEvidence(ctx context.Context, receiver, registration
 	if previous != nil {
 		return evidenceReceipt(*previous, true), nil
 	}
+	if err := m.sourceObservationClockLocked(at); err != nil {
+		return FeedEvidenceReceipt{}, err
+	}
 	if len(m.evidence) >= MaxFeedEvidence {
 		return FeedEvidenceReceipt{}, ErrEvidenceCapacity
 	}
@@ -222,6 +225,9 @@ func (p *Postgres) PublishFeedEvidence(ctx context.Context, receiver, registrati
 			return FeedEvidenceReceipt{}, err
 		}
 		return evidenceReceipt(*previous, true), nil
+	}
+	if err := readSourceObservationClock(ctx, tx, receiver, at); err != nil {
+		return FeedEvidenceReceipt{}, err
 	}
 	if len(snapshot.Records) >= MaxFeedEvidence {
 		return FeedEvidenceReceipt{}, ErrEvidenceCapacity

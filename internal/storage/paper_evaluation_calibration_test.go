@@ -70,7 +70,7 @@ func assertNativeCalibration(t *testing.T, r PaperEvaluationAssessment, plan Pap
 func nativeCalibrationMigrationContract(t *testing.T, p *Postgres) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version=55; CREATE FUNCTION reject_calibration_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=55 THEN RAISE EXCEPTION 'calibration migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_calibration_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_calibration_migration()`); err != nil {
+	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=55; CREATE FUNCTION reject_calibration_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=55 THEN RAISE EXCEPTION 'calibration migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_calibration_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_calibration_migration()`); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := OpenPostgres(ctx, p.pool.Config().ConnString()); err == nil {

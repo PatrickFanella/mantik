@@ -181,6 +181,8 @@ func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) service.Pap
 	late.ReceivedAt = first.Record.FinalizedAt.Add(11 * time.Second)
 	late.Original = fmt.Sprintf(`{"quotes":{"SPY":{"t":%q,"ap":102,"bp":101,"as":10,"bs":10}}}`, late.ReceivedAt.Format(time.RFC3339Nano))
 	late.SHA256 = alpaca.Digest(late.Original)
+	// Publication follows the retained assessment without changing provider time.
+	clock.at = clock.at.Add(time.Nanosecond)
 	publish(late)
 	assess("after-late", "price_unavailable")
 	// Historical assessments are immutable and do not read the current clock.
@@ -276,7 +278,8 @@ func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) service.Pap
 	if !rawMissing {
 		t.Fatal("unpublished admitted input omitted", unpublished)
 	}
-	// Publishing the missing evidence allows a fresh assessment to observe it.
+	// Publishing the missing evidence follows the pending assessment.
+	clock.at = clock.at.Add(time.Nanosecond)
 	publish(pending)
 	publishedOutcome := assess("published", "observed")
 	assertOutcomeMarketHTTP(t, request, server.URL, clock, publishedOutcome.Record)
@@ -361,14 +364,14 @@ func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) service.Pap
 	for i := len(catalog.Records); i < storage.MaxPaperOutcomes; i++ {
 		assess(fmt.Sprintf("capacity-%02d", i), "observed")
 	}
-	clock.at = first.Record.FinalizedAt.Add(171 * time.Second)
+	clock.at = first.Record.FinalizedAt.Add(172 * time.Second)
 	publish(quote("capacity-entry", "100"))
 	command.ID = "capacity-entry"
 	var capacityEntry storage.PaperDecisionReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-decisions", command, 201), &capacityEntry); err != nil || capacityEntry.Record.Evaluation.Action != "entry_candidate" {
 		t.Fatal(capacityEntry, err)
 	}
-	clock.at = first.Record.FinalizedAt.Add(242 * time.Second)
+	clock.at = first.Record.FinalizedAt.Add(243 * time.Second)
 	if err := service.RunPaperOutcomeCycle(ctx, s, clock); !errors.Is(err, storage.ErrPaperOutcomeCapacity) {
 		t.Fatal("worker hid capacity failure", err)
 	}
