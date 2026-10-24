@@ -172,3 +172,24 @@ original bytes and required fence. A rolled-back write leaves that identity
 available for a legitimate retry; a committed write returns its retained
 receipt. Do not create a replacement identity to resolve uncertainty. This rule
 does not extend a lease or grant strategy admission, execution or qualification.
+
+## Retained observation clock fence
+
+New collector commands, input admissions and raw publications must use a service
+time strictly after every retained finalized decision, outcome observation and
+evaluation assessment. Earlier and equal clocks return a clock conflict before
+any owner state or new identity is retained. A legitimate later retry can reuse
+the same immutable identity. Callers cannot supply the service clock.
+
+Exact historical retries retain their existing contract and do not create a new
+source event or move the clock fence. A successor-fence submission that updates
+source state remains subject to current ownership and the new-write clock rule.
+The source writer checks retained envelopes under the same ownership lock used
+by decision, outcome and assessment issuance. Actual source replay stays with
+those owners; a clock envelope is not a source or evaluation attestation.
+
+Schema 56 fences older writers that lack this rule. The migration changes no
+historical payload or receipt. A schema-55 binary must refuse the newer database;
+rollback requires a matching verified backup and binary. The rule constrains
+new writes. It does not retroactively establish completeness or ordering of
+legacy history, pass an evaluation or grant admission, execution or qualification.

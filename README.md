@@ -689,3 +689,9 @@ Finalized native decision bases now enforce service custody timestamps during
 creation and owner replay. Later collector clocks, registrations, input admissions
 or raw publications cannot enter an earlier decision through rehashed basis bytes.
 See [decision source custody](docs/reference/owned-paper-decisions.md#source-custody-times).
+
+New collector/source writes must occur strictly after retained decision, outcome
+and assessment clocks, under the shared owner lock. Earlier or equal clocks fail
+without consuming an identity; exact historical retries keep their meaning.
+Schema 56 fences older writers without rewriting history. See
+[the retained observation clock fence](docs/reference/collector-submission.md#retained-observation-clock-fence).

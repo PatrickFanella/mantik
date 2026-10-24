@@ -251,6 +251,8 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	// A new capture ID, raw pin and receipt time still describe one occurrence.
 	aliasInput := collectorInput(at, "alias-input")
 	aliasInput.ReceivedAt = at.Add(time.Millisecond)
+	// New custody follows the retained finalization; market occurrence is unchanged.
+	now = func() time.Time { calls.Add(1); return at.Add(time.Second + time.Nanosecond) }
 	if _, e = s.SubmitCollectorResearch(ctx, owner, feedcollector.Fence{RegistrationID: reg.ID, OwnerID: "worker-one", Generation: 1}, aliasInput, now); e != nil {
 		t.Fatal(e)
 	}
@@ -491,6 +493,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			prefix = append(prefix, clone(journal.Records[0]))
 		}
 		r := clone(first)
+		r.At = alias.Record.FinalizedAt
 		r.Command = OwnedAllocationCommand{ID: "forged-source-alias", ReceiverID: owner, Decisions: []OwnedDecisionPin{}}
 		comparison := allocation.Comparison{Proposals: []allocation.Proposal{}, Admissions: []allocation.Admission{}}
 		r.AdmissionChecks = []OwnedAdmissionReadiness{}
@@ -504,6 +507,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			proposal.DecisionSHA256 = d.SHA256
 			comparison.Proposals = append(comparison.Proposals, proposal)
 			check := clone(first.AdmissionChecks[0])
+			check.CheckedAt = r.At
 			check.DecisionID = d.Command.ID
 			check.DecisionSHA256 = d.SHA256
 			check.BasisSHA256 = d.BasisSHA256
@@ -971,7 +975,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.FeedCollectorCommand(ctx, owner, feedcollector.Command{RequestID: "comparison-clock-later-renewal", Operation: "renew", RegistrationID: reg.ID, OwnerID: "worker-one", Generation: 1}, func() time.Time { return at.Add(2 * time.Second) }); e != nil {
+	if _, e = s.FeedCollectorCommand(ctx, owner, feedcollector.Command{RequestID: "comparison-clock-later-renewal", Operation: "renew", RegistrationID: reg.ID, OwnerID: "worker-one", Generation: 1}, func() time.Time { return at.Add(3 * time.Second) }); e != nil {
 		t.Fatal(e)
 	}
 	historicalAfter, e := s.OwnedAllocations(ctx, eval)
@@ -1210,7 +1214,7 @@ func admissionBindingMigrationContract(t *testing.T, p *Postgres) {
 			t.Fatal(err)
 		}
 	}
-	if err = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 55 {
+	if err = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 56 {
 		t.Fatal(maximum, err)
 	}
 	var after []byte
@@ -1268,7 +1272,7 @@ func evaluationContextMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	reopened.Close()
-	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 55 {
+	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 56 {
 		t.Fatal("context migration missing", maximum, err)
 	}
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); err != nil || !reflect.DeepEqual(before, after) {
@@ -1322,7 +1326,7 @@ func completeEvaluationCaptureMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	reopened.Close()
-	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 55 {
+	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 56 {
 		t.Fatal("context migration missing", maximum, err)
 	}
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); err != nil || !reflect.DeepEqual(before, after) {
@@ -1343,14 +1347,14 @@ func completeEvaluationCaptureMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	// A supported reopen must not weaken the older/newer binary fence.
-	if _, err := p.pool.Exec(ctx, "INSERT INTO mantik_schema(version,sha256) VALUES(56,'future-schema-fixture')"); err != nil {
+	if _, err := p.pool.Exec(ctx, "INSERT INTO mantik_schema(version,sha256) VALUES(57,'future-schema-fixture')"); err != nil {
 		t.Fatal(err)
 	}
 	if broken, err := OpenPostgres(ctx, p.pool.Config().ConnString()); err == nil {
 		broken.Close()
 		t.Fatal("future schema accepted")
 	}
-	if _, err := p.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=56 AND sha256='future-schema-fixture'"); err != nil {
+	if _, err := p.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=57 AND sha256='future-schema-fixture'"); err != nil {
 		t.Fatal(err)
 	}
 }

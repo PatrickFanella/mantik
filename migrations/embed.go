@@ -178,3 +178,6 @@ var NativeWarmUpAssessments string
 
 //go:embed 0055_native_calibration_applicability.sql
 var NativeCalibrationApplicability string
+
+//go:embed 0056_source_observation_clock.sql
+var SourceObservationClock string

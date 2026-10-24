@@ -44,6 +44,11 @@ func (m *Memory) FeedCollectorCommand(ctx context.Context, receiver string, c fe
 	if err != nil {
 		return receipt, err
 	}
+	if _, retained := m.collectors.Commands[c.RequestID]; !retained {
+		if err := m.sourceObservationClockLocked(receipt.At); err != nil {
+			return feedcollector.Receipt{}, err
+		}
+	}
 	m.collectors = clone(next)
 	return clone(receipt), nil
 }
@@ -113,6 +118,9 @@ func (p *Postgres) FeedCollectorCommand(ctx context.Context, receiver string, c 
 			return feedcollector.Receipt{}, err
 		}
 		return receipt, nil
+	}
+	if err := readSourceObservationClock(ctx, tx, expected, receipt.At); err != nil {
+		return feedcollector.Receipt{}, err
 	}
 	raw, err = json.Marshal(next)
 	if err != nil {
