@@ -518,6 +518,9 @@ Typed [decision claim reviews](docs/reference/decision-review-cases.md) now reta
 contradictory or unsupported claims in an open review case per actual finalized
 decision. Original prose stays unverified; reviews do not revise decision or
 financial authority.
+New v2 finalized decisions also reject omission of selected-registration inputs
+and raw publications available at finalization. Retained v1 decisions keep their
+legacy replay contract; this is no qualification or financial-effect grant.
 
 Service-owned [social watches and recordings](docs/reference/owned-social-watches.md)
 bind versioned provider/account policies to exact, explicitly unqualified source

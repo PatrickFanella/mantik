@@ -180,7 +180,7 @@ func sourceObservationClockMigrationContract(t *testing.T, p *Postgres) {
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_feed_collectors WHERE singleton").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version=56; COMMENT ON TABLE mantik_feed_collectors IS 'schema55 source clock fixture'; CREATE FUNCTION reject_source_clock_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=56 THEN RAISE EXCEPTION 'source clock migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_source_clock_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_source_clock_migration()`); err != nil {
+	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=56; COMMENT ON TABLE mantik_feed_collectors IS 'schema55 source clock fixture'; CREATE FUNCTION reject_source_clock_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=56 THEN RAISE EXCEPTION 'source clock migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_source_clock_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_source_clock_migration()`); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := OpenPostgres(ctx, p.pool.Config().ConnString()); err == nil {

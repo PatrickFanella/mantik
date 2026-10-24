@@ -73,7 +73,7 @@ type PaperDecisionRecord struct {
 
 // Validate checks the public receipt envelope, not service ownership of its basis.
 func (r PaperDecisionRecord) Validate() error {
-	if r.Command.Validate() != nil || r.Schema != "mantik-owned-paper-decision-v1" || r.Status != "finalized" || r.FinalizedAt.IsZero() || r.Authority != "service_finalized_research_proposal_only" || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || !decisionPin.MatchString(r.BasisSHA256) || (r.Evaluation.Action != "abstain" && r.Evaluation.Action != "entry_candidate") || r.Evaluation.ReasonCode == "" {
+	if r.Command.Validate() != nil || (r.Schema != "mantik-owned-paper-decision-v1" && r.Schema != "mantik-owned-paper-decision-v2") || r.Status != "finalized" || r.FinalizedAt.IsZero() || r.Authority != "service_finalized_research_proposal_only" || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || !decisionPin.MatchString(r.BasisSHA256) || (r.Evaluation.Action != "abstain" && r.Evaluation.Action != "entry_candidate") || r.Evaluation.ReasonCode == "" {
 		return ErrPaperDecisionInvalid
 	}
 	want := r.SHA256
@@ -141,6 +141,15 @@ func decisionBasis(c PaperDecisionCommand, strategies paperstrategy.Catalog, fee
 	return clone(PaperDecisionBasis{Strategy: s, Feed: selected}), nil
 }
 func newPaperDecision(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time, eval PaperDecisionEvaluator) (PaperDecisionRecord, error) {
+	return paperDecisionForSchema("mantik-owned-paper-decision-v2", c, b, at, eval)
+}
+
+// Historical v1 records keep their exact envelopes and hashes. Only new v2
+// decisions assert the selected-registration immutable source membership cut.
+func paperDecisionForSchema(schema string, c PaperDecisionCommand, b PaperDecisionBasis, at time.Time, eval PaperDecisionEvaluator) (PaperDecisionRecord, error) {
+	if schema != "mantik-owned-paper-decision-v1" && schema != "mantik-owned-paper-decision-v2" {
+		return PaperDecisionRecord{}, ErrPaperDecisionInvalid
+	}
 	if c.Validate() != nil || eval == nil || at.IsZero() || at.UTC().Year() < 1 || at.UTC().Year() > 9999 || b.Strategy.Validate() != nil || b.Strategy.Command.ReceiverID != c.ReceiverID || b.Strategy.Command.Definition.ID != c.StrategyID || b.Strategy.SHA256 != c.StrategySHA256 || b.Feed.ReceiverID != c.ReceiverID || at.Before(b.Strategy.RegisteredAt) {
 		return PaperDecisionRecord{}, ErrPaperDecisionInvalid
 	}
@@ -154,7 +163,7 @@ func newPaperDecision(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time
 	if (v.Action != "entry_candidate" && v.Action != "abstain") || v.ReasonCode == "" {
 		return PaperDecisionRecord{}, ErrPaperDecisionInvalid
 	}
-	r := PaperDecisionRecord{Schema: "mantik-owned-paper-decision-v1", Command: c, FinalizedAt: at.UTC(), Status: "finalized", Evaluation: v, BasisSHA256: workerplan.Hash(b), Authority: "service_finalized_research_proposal_only"}
+	r := PaperDecisionRecord{Schema: schema, Command: c, FinalizedAt: at.UTC(), Status: "finalized", Evaluation: v, BasisSHA256: workerplan.Hash(b), Authority: "service_finalized_research_proposal_only"}
 	r.SHA256 = workerplan.Hash(r)
 	return r, nil
 }
@@ -189,9 +198,36 @@ func verifyPaperDecision(v retainedPaperDecision, strategies paperstrategy.Catal
 		return err
 	}
 	r, b, c := v.Record, v.Basis, v.Record.Command
-	expected, err := newPaperDecision(c, b, r.FinalizedAt, eval)
+	if r.Schema == "mantik-owned-paper-decision-v2" {
+		if err := paperDecisionSourceMembership(c, b, r.FinalizedAt, current); err != nil {
+			return err
+		}
+	}
+	expected, err := paperDecisionForSchema(r.Schema, c, b, r.FinalizedAt, eval)
 	if err != nil || !reflect.DeepEqual(expected, r) {
 		return ErrPaperDecisionInvalid
+	}
+	return nil
+}
+
+// Source writers cannot add a new custody event at or before a retained cut.
+// Reconstruct immutable membership from actual owner availability, never from
+// provider occurrence time. Lease chronology and legacy completeness are not
+// established by this check.
+func paperDecisionSourceMembership(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time, current FeedEvidenceSnapshot) error {
+	for id, admission := range current.Collectors.Admissions {
+		if admission.Fence.RegistrationID == c.RegistrationID && !admission.At.After(at) {
+			if _, ok := b.Feed.Collectors.Admissions[id]; !ok {
+				return ErrPaperDecisionConflict
+			}
+		}
+	}
+	for id, publication := range current.Records {
+		if publication.RegistrationID == c.RegistrationID && !publication.PublishedAt.After(at) {
+			if _, ok := b.Feed.Records[id]; !ok {
+				return ErrPaperDecisionConflict
+			}
+		}
 	}
 	return nil
 }
