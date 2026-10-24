@@ -59,7 +59,7 @@ func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
 		tools = append(tools, supervisionTool{"recheck_exception", "{exception_id: string, request_id: string}; fixed recheck operation", true})
 	}
 	if _, ok := store.(storage.DecisionReviewStore); ok {
-		tools = append(tools, supervisionTool{"review_decision_claims", "storage.DecisionReviewCommand; retained finalized decision and typed claims", true})
+		tools = append(tools, supervisionTool{"review_decision_claims", "storage.DecisionReviewCommand; retained finalized decision, typed claims, optional owned social/copy recording pin; no extraction attestation", true})
 	}
 	invalid := func(w http.ResponseWriter) { write(w, 422, map[string]string{"error": "invalid supervision call"}) }
 	mux.HandleFunc("GET /v1/supervision/tools", func(w http.ResponseWriter, r *http.Request) {

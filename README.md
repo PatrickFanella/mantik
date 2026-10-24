@@ -518,7 +518,10 @@ render retained reasons and evidence pins without a model request or changes to
 decision, admission, allocation or execution authority.
 Typed [decision claim reviews](docs/reference/decision-review-cases.md) now retain
 contradictory or unsupported claims in an open review case per actual finalized
-decision. Original prose stays unverified; reviews do not revise decision or
+decision. An optional retained social/copy recording pin binds the review to
+actual owner provenance and its enabled `decision_review` policy, with claim-group
+deduplication. Source authenticity and extraction remain unverified.
+Original prose stays unverified; reviews do not revise decision or
 financial authority.
 New v2 finalized decisions also reject omission of selected-registration inputs
 and raw publications available at finalization. Retained v1 decisions keep their

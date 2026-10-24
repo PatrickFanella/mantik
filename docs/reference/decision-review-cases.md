@@ -107,3 +107,60 @@ history, SQL rollback, restart and migration recovery. Reviews never mutate the
 original decision, fixture operations or allocation/execution records. Model
 availability is not consulted; this contract supplies no natural soak or
 qualification evidence.
+
+## Select a retained social or copy source
+
+The same authenticated POST accepts an optional source selector:
+
+```json
+"source": {
+  "capture_id": "retained-recording-id",
+  "capture_sha256": "<full retained recording hash>"
+}
+```
+
+With this selector, omit `explanation`. The operator still supplies explicit typed
+`claims`; selecting a source does not assert that its original text contains those
+claims. The original bytes remain in the recording owner and the returned binding
+links to their authenticated record path. Caller-provided originals, policy facts,
+provider assertions and extraction results are rejected.
+
+The storage owner selects the actual recording, current watch policy and historical
+source lineage in the same transaction as the finalized-decision review. The watch
+must be enabled with behavior `decision_review`, and its hash must match the policy
+captured by the source. Deleted, superseded, stale, unresolved or conflicting
+sources and changed policies cannot start a new review. Eligible social posts,
+edits and reposts can be reviewed. Copy activity remains mapping- and
+admission-unavailable; that status permits only this explicitly authorized fact
+comparison, with no follow or execution permission. Other unavailable structured
+extraction remains unavailable.
+
+New source-bound records use `mantik-finalized-decision-review-v2` and retain the
+source kind, recording/original/policy/claim-group hashes, journal cutoff and
+applicability hash. Their `claims_extraction_verified` and
+`provider_access_verified` flags remain false. Review and qualification authority
+flags remain false. The generic recording applicability and dispatch flags are not
+promoted by this operation. Manual v1 reviews retain their original bytes and
+semantics.
+
+One source claim group can produce at most one source-bound review for a finalized
+decision. A new request ID for that same group and decision conflicts; retry the
+original request ID to recover its receipt. Exact retries return the original
+record without a new clock or reevaluating a later policy. Historical readback
+reconstructs the original owner source cutoff; later source updates do not rewrite
+it. New social/copy writes must be strictly later than every retained source-bound
+review cutoff. Exact historical source retries remain unchanged.
+
+PostgreSQL uses the existing collector/state/receiver lock order; source updates
+serialize on the same receiver lock. No receipt or catalogue is returned on failed
+COMMIT. Failed transactions preserve review identity for retry after a confirmed
+rollback. Inspect owner history after an uncertain transport failure before
+assigning a replacement identity.
+
+Schema 59 fences older writers before v2 issuance or source-clock enforcement. It
+updates table comments and the schema marker without rewriting retained review or
+social journal payloads. Rollback requires a compatible pre-upgrade backup and
+binary on separate resources. The typed `review_decision_claims` supervision/MCP
+contract accepts the same selector and introduces no model or provider request.
+This is a bounded source-to-decision review path, not general research dispatch,
+provider authentication, complete copy-follow behavior or issue completion.
