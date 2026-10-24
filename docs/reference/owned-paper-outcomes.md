@@ -193,3 +193,8 @@ The [outcome market-evidence read](owned-outcome-market-evidence.md) projects
 bid/ask dimensions and explicit quality gaps from an outcome's retained owner
 basis. It preserves separate occurrence and availability clocks without
 inferring share units, continuous coverage, fills, costs or qualification.
+
+PostgreSQL outcome catalogue reads return records only after successful COMMIT.
+A failed read COMMIT returns an error and a zero catalogue, matching source reads
+and exact retries. Retained outcome history remains unchanged; this rule supplies
+no admission, execution or qualification authority.

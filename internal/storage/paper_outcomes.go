@@ -399,5 +399,8 @@ func (p *Postgres) PaperOutcomes(ctx context.Context, decisionEval PaperDecision
 	if err != nil {
 		return PaperOutcomeCatalog{}, err
 	}
-	return out, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return PaperOutcomeCatalog{}, err
+	}
+	return out, nil
 }
