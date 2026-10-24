@@ -175,3 +175,6 @@ var OwnedAdmissionReviews string
 
 //go:embed 0054_native_warmup_assessments.sql
 var NativeWarmUpAssessments string
+
+//go:embed 0055_native_calibration_applicability.sql
+var NativeCalibrationApplicability string

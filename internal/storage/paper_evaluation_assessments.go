@@ -47,20 +47,21 @@ type PaperEvaluationCheck struct {
 	ReasonCode string `json:"reason_code"`
 }
 type PaperEvaluationAssessment struct {
-	WarmUp              *PaperEvaluationWarmUp           `json:"warm_up,omitempty"`
-	Schema              string                           `json:"schema"`
-	Command             PaperEvaluationAssessmentCommand `json:"command"`
-	AssessedAt          time.Time                        `json:"assessed_at"`
-	Recipe              string                           `json:"recipe"`
-	Evidence            PaperEvaluationEvidence          `json:"evidence"`
-	Checks              []PaperEvaluationCheck           `json:"checks"`
-	Status              string                           `json:"status"`
-	Authority           string                           `json:"authority"`
-	EvaluationComplete  bool                             `json:"evaluation_complete"`
-	AdmissionAvailable  bool                             `json:"admission_available"`
-	ExecutionAvailable  bool                             `json:"execution_available"`
-	QualificationCredit bool                             `json:"qualification_credit"`
-	SHA256              string                           `json:"sha256"`
+	ForecastCalibration *PaperEvaluationForecastCalibration `json:"forecast_calibration,omitempty"`
+	WarmUp              *PaperEvaluationWarmUp              `json:"warm_up,omitempty"`
+	Schema              string                              `json:"schema"`
+	Command             PaperEvaluationAssessmentCommand    `json:"command"`
+	AssessedAt          time.Time                           `json:"assessed_at"`
+	Recipe              string                              `json:"recipe"`
+	Evidence            PaperEvaluationEvidence             `json:"evidence"`
+	Checks              []PaperEvaluationCheck              `json:"checks"`
+	Status              string                              `json:"status"`
+	Authority           string                              `json:"authority"`
+	EvaluationComplete  bool                                `json:"evaluation_complete"`
+	AdmissionAvailable  bool                                `json:"admission_available"`
+	ExecutionAvailable  bool                                `json:"execution_available"`
+	QualificationCredit bool                                `json:"qualification_credit"`
+	SHA256              string                              `json:"sha256"`
 }
 type PaperEvaluationAssessmentReceipt struct {
 	Record    PaperEvaluationAssessment `json:"record"`
@@ -224,7 +225,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
 		var warmup *PaperEvaluationWarmUp
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v2" {
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v2" || r.Schema == "mantik-owned-paper-evaluation-assessment-v3" {
 			value, e := ownedNativeWarmUp(e.Declaration, s.strategies)
 			if e != nil {
 				return PaperEvaluationAssessmentCatalog{}, e
@@ -317,7 +318,7 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}
-	record, err := paperEvaluationAssessmentRecipe(c, e, &warmup, "mantik-owned-paper-evaluation-assessment-v2")
+	record, err := paperEvaluationAssessmentRecipe(c, e, &warmup, "mantik-owned-paper-evaluation-assessment-v3")
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}

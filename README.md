@@ -672,3 +672,10 @@ requires no lookback; this does not complete the other evaluation checks or
 grant admission, execution or qualification. Recipe v2 preserves historical v1
 assessments, and schema 54 fences older writers. See
 [owned evaluation assessments](docs/reference/paper-evaluation-assessments.md).
+
+Native paper evaluation recipe v3 also derives forecast-calibration applicability
+from the exact registered threshold method. Its boolean signal has no probability
+forecast to calibrate. This method applicability grants no performance result,
+admission, execution or qualification. Historical v1/v2 records keep their bytes
+and checks; schema 55 fences older writers. See
+[owned evaluation assessments](docs/reference/paper-evaluation-assessments.md#native-forecast-calibration-applicability).
