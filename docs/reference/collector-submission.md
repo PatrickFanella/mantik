@@ -115,3 +115,18 @@ Process liveness, raw evidence validation, coverage freshness, provider access,
 and strategy qualification remain separate checks. Global `feed_coverage`
 requires a separate [startup policy](feed-readiness.md) and raw evidence validation. This implementation grants no profitability credit
 and enables no orders or live-money execution.
+
+## Transaction acknowledgement failures
+
+PostgreSQL ownership commands, normalized input admissions and raw publications
+return no receipt when COMMIT fails. Exact retries and collector/evidence
+snapshot reads also return no result if their transaction cannot commit. A
+staged result or `duplicate` flag is not an acknowledgement of a completed
+transaction.
+
+A transport failure at COMMIT can leave the outcome uncertain. Read the source
+owner and retry the same immutable command, input or capture identity with the
+original bytes and required fence. A rolled-back write leaves that identity
+available for a legitimate retry; a committed write returns its retained
+receipt. Do not create a replacement identity to resolve uncertainty. This rule
+does not extend a lease or grant strategy admission, execution or qualification.

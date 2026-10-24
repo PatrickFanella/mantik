@@ -63,16 +63,19 @@ func (p *Postgres) FeedCollectors(ctx context.Context) (FeedCollectorSnapshot, e
 	defer func() { _ = tx.Rollback(context.Background()) }()
 	var out FeedCollectorSnapshot
 	if err := tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton").Scan(&out.ReceiverID); err != nil {
-		return out, err
+		return FeedCollectorSnapshot{}, err
 	}
 	var raw []byte
 	if err := tx.QueryRow(ctx, "SELECT payload FROM mantik_feed_collectors WHERE singleton").Scan(&raw); err != nil {
-		return out, err
+		return FeedCollectorSnapshot{}, err
 	}
 	if err := json.Unmarshal(raw, &out.State); err != nil {
-		return out, err
+		return FeedCollectorSnapshot{}, err
 	}
-	return out, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return FeedCollectorSnapshot{}, err
+	}
+	return out, nil
 }
 
 func (p *Postgres) FeedCollectorCommand(ctx context.Context, receiver string, c feedcollector.Command, now func() time.Time) (feedcollector.Receipt, error) {
@@ -106,7 +109,10 @@ func (p *Postgres) FeedCollectorCommand(ctx context.Context, receiver string, c 
 		return receipt, err
 	}
 	if _, retained := state.Commands[c.RequestID]; retained {
-		return receipt, tx.Commit(ctx)
+		if err := tx.Commit(ctx); err != nil {
+			return feedcollector.Receipt{}, err
+		}
+		return receipt, nil
 	}
 	raw, err = json.Marshal(next)
 	if err != nil {
@@ -115,7 +121,10 @@ func (p *Postgres) FeedCollectorCommand(ctx context.Context, receiver string, c 
 	if _, err := tx.Exec(ctx, "UPDATE mantik_feed_collectors SET payload=$1 WHERE singleton", raw); err != nil {
 		return feedcollector.Receipt{}, err
 	}
-	return receipt, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return feedcollector.Receipt{}, err
+	}
+	return receipt, nil
 }
 
 var _ FeedCollectorStore = (*Memory)(nil)

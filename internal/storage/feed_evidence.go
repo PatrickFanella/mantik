@@ -183,9 +183,12 @@ func (p *Postgres) FeedEvidence(ctx context.Context) (FeedEvidenceSnapshot, erro
 	defer func() { _ = tx.Rollback(context.Background()) }()
 	out, err := readFeedEvidence(ctx, tx, false)
 	if err != nil {
-		return out, err
+		return FeedEvidenceSnapshot{}, err
 	}
-	return out, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return FeedEvidenceSnapshot{}, err
+	}
+	return out, nil
 }
 func (p *Postgres) PublishFeedEvidence(ctx context.Context, receiver, registration, key string, f feedcollector.Fence, raw json.RawMessage, now func() time.Time, check EvidenceCheck) (FeedEvidenceReceipt, error) {
 	if err := evidenceRequest(receiver, registration, key, f, raw); err != nil {
@@ -215,7 +218,10 @@ func (p *Postgres) PublishFeedEvidence(ctx context.Context, receiver, registrati
 		return FeedEvidenceReceipt{}, err
 	}
 	if previous != nil {
-		return evidenceReceipt(*previous, true), tx.Commit(ctx)
+		if err := tx.Commit(ctx); err != nil {
+			return FeedEvidenceReceipt{}, err
+		}
+		return evidenceReceipt(*previous, true), nil
 	}
 	if len(snapshot.Records) >= MaxFeedEvidence {
 		return FeedEvidenceReceipt{}, ErrEvidenceCapacity
@@ -236,5 +242,8 @@ func (p *Postgres) PublishFeedEvidence(ctx context.Context, receiver, registrati
 	if _, err := tx.Exec(ctx, "UPDATE mantik_feed_collectors SET payload=$1 WHERE singleton", encoded); err != nil {
 		return FeedEvidenceReceipt{}, err
 	}
-	return evidenceReceipt(record, false), tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return FeedEvidenceReceipt{}, err
+	}
+	return evidenceReceipt(record, false), nil
 }
