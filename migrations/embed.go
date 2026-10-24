@@ -169,3 +169,6 @@ var AllocationAssessmentContext string
 
 //go:embed 0052_assessment_decision_readiness.sql
 var AssessmentDecisionReadiness string
+
+//go:embed 0053_owned_admission_reviews.sql
+var OwnedAdmissionReviews string

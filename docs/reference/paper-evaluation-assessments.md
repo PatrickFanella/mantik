@@ -127,3 +127,8 @@ whether the assessment actually selected the finalized decision and its
 strategy's necessary sample check. A matching scope alone never supplies a
 positive evaluation. Schema 52 fences older writers; no admission or effect
 issuer is activated.
+
+[Owned admission reviews](owned-admission-reviews.md) can retain these readiness
+outcomes in a service-owned reassessment chain. They grant no admission,
+execution or qualification authority and do not turn blocked assessments into
+retirement events.

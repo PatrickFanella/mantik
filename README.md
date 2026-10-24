@@ -653,3 +653,8 @@ admission or financial authority.
 New allocation assessment context uses the [schema-51 startup fence](docs/reference/owned-allocation-comparisons.md#retained-assessment-context). Pending, incomplete and blocked assessment pins remain non-authoritative; they grant no admission, execution or qualification.
 
 [Readiness v3](docs/reference/owned-allocation-comparisons.md#exact-decision-evidence-in-readiness) distinguishes actual decision selection from matching assessment scope, with a schema-52 writer fence. It grants no admission or financial authority.
+
+[Service-owned admission reviews](docs/reference/owned-admission-reviews.md)
+retain non-grant outcomes and exact predecessor chains from actual finalized
+proposals and owner-replayed readiness. Schema 53 adds durable review retention;
+positive admission, retirement and financial effect authority remain unfinished.

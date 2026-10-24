@@ -144,6 +144,7 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	if readiness.Schema != "mantik-owned-admission-readiness-v3" || readiness.Binding == nil || readiness.Binding.EvaluationBindingSHA256 != workerplan.Hash(boundComparison.Record.EvaluationContext.Decisions[0]) || len(readiness.EvaluationEvidence) != 1 || readiness.EvaluationEvidence[0].AssessmentSHA256 != assessment.Record.SHA256 || readiness.EvaluationEvidence[0].DecisionEvidenceStatus != expectedDecisionStatus || readiness.AdmissionAvailable || readiness.ExecutionAvailable || readiness.QualificationCredit {
 		t.Fatal("HTTP exact assessment evidence readiness", readiness)
 	}
+	ownedAdmissionReviewHTTP(t, request, serverURL, clock, boundComparison.Record)
 	var attribution storage.PaperAttributionCatalog
 	if e := json.Unmarshal(request("GET", "/v1/paper-attribution", nil, 200), &attribution); e != nil {
 		t.Fatal(e)
