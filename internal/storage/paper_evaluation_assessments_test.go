@@ -25,7 +25,16 @@ func TestMemoryPaperEvaluationAssessments(t *testing.T) {
 func TestPostgresContractsPaperEvaluationAssessments(t *testing.T) {
 	evaluationAssessmentContracts(t, timerPostgres(t, "evaluationassessments"))
 }
+func TestMemoryPaperEvaluationAssessmentsSelected(t *testing.T) {
+	evaluationAssessmentSelectionContracts(t, NewMemory(), true)
+}
+func TestPostgresContractsPaperEvaluationAssessmentsSelected(t *testing.T) {
+	evaluationAssessmentSelectionContracts(t, timerPostgres(t, "assessmentselected"), true)
+}
 func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
+	evaluationAssessmentSelectionContracts(t, s, false)
+}
+func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, selectedFixture bool) {
 	ctx := context.Background()
 	plan, at := declarationFixture(t, s, "prospective_market_unqualified")
 	declaration, err := s.DeclarePaperEvaluation(ctx, plan, func() time.Time { return at.Add(time.Second) })
@@ -40,6 +49,9 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 		}
 	}
 	input := collectorInput(start, "assessment-quote")
+	if selectedFixture {
+		input.OccurredAt = start
+	}
 	input.EvidenceClass = reg.EvidenceClass
 	if _, err = s.SubmitCollectorResearch(ctx, plan.ReceiverID, feedcollector.Fence{RegistrationID: reg.ID, OwnerID: "worker", Generation: 1}, input, func() time.Time { return start }); err != nil {
 		t.Fatal(err)
@@ -50,10 +62,26 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 	oe := func(b PaperOutcomeBasis, _ time.Time) (PaperOutcomeEvaluation, error) {
 		return PaperOutcomeEvaluation{Status: "waiting_price", ReasonCode: "fixture_no_economic_result", DueAt: b.Decision.FinalizedAt.Add(time.Hour), WindowEnd: b.Decision.FinalizedAt.Add(2 * time.Hour)}, nil
 	}
-	dc := PaperDecisionCommand{ID: "first", ReceiverID: plan.ReceiverID, StrategyID: plan.Plan.Variants[0].ID, StrategySHA256: plan.Plan.Variants[0].SHA256, RegistrationID: reg.ID}
-	first, err := s.FinalizePaperDecision(ctx, dc, func() time.Time { return start }, de)
+	// A real owner assessment issued before finalization cannot select a later
+	// decision merely because it shares the declaration's strategy and policy.
+	earlyCommand := PaperEvaluationAssessmentCommand{ID: "early", ReceiverID: plan.ReceiverID, DeclarationID: plan.ID, DeclarationSHA256: declaration.Record.SHA256}
+	early, err := s.AssessPaperEvaluation(ctx, earlyCommand, func() time.Time { return start }, de, oe)
 	if err != nil {
 		t.Fatal(err)
+	}
+	dc := PaperDecisionCommand{ID: "first", ReceiverID: plan.ReceiverID, StrategyID: plan.Plan.Variants[0].ID, StrategySHA256: plan.Plan.Variants[0].SHA256, RegistrationID: reg.ID}
+	first, err := s.FinalizePaperDecision(ctx, dc, func() time.Time { return start.Add(time.Nanosecond) }, de)
+	if err != nil {
+		t.Fatal(err)
+	}
+	earlyComparisonCommand := OwnedAllocationCommand{ID: "before-assessment-decision-selection", ReceiverID: plan.ReceiverID, Decisions: []OwnedDecisionPin{{ID: first.Record.Command.ID, SHA256: first.Record.SHA256}}}
+	earlyComparison, e := s.CompareOwnedAllocation(ctx, earlyComparisonCommand, func() time.Time { return start.Add(2 * time.Nanosecond) }, de, oe)
+	if e != nil {
+		t.Fatal(e)
+	}
+	earlyReadiness := earlyComparison.Record.AdmissionChecks[0]
+	if len(earlyReadiness.EvaluationEvidence) != 1 || earlyReadiness.EvaluationEvidence[0].AssessmentSHA256 != early.Record.SHA256 || earlyReadiness.EvaluationEvidence[0].DecisionEvidenceStatus != "decision_not_retained" || earlyReadiness.Gates[2].Status != "unavailable" || earlyReadiness.AdmissionAvailable {
+		t.Fatal("same scope selected absent decision", earlyReadiness)
 	}
 	c := PaperEvaluationAssessmentCommand{ID: "pending", ReceiverID: plan.ReceiverID, DeclarationID: plan.ID, DeclarationSHA256: declaration.Record.SHA256}
 	clockReads := 0
@@ -67,7 +95,7 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 			t.Fatal("commit failure acknowledged", failed, e)
 		}
 		all, e := s.PaperEvaluationAssessments(ctx, de, oe)
-		if e != nil || len(all.Records) != 0 {
+		if e != nil || len(all.Records) != 1 {
 			t.Fatal("commit failure persisted", all, e)
 		}
 		if _, err = pg.pool.Exec(ctx, "DROP TRIGGER reject_assessment_commit ON mantik_paper_evaluation_assessments; DROP FUNCTION reject_assessment_commit()"); err != nil {
@@ -95,7 +123,7 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 		t.Fatal("owner-bound comparison", comparison, err)
 	}
 	evaluationContext := comparison.Record.EvaluationContext
-	if comparison.Record.Schema != "mantik-owned-allocation-deferral-v8" || evaluationContext.Schema != "mantik-owned-allocation-evaluation-context-v2" || evaluationContext.AssessmentSourceSHA256 == "" || len(evaluationContext.Decisions) != 1 || len(evaluationContext.Decisions[0].Assessments) != 1 || evaluationContext.Decisions[0].Assessments[0].SHA256 != pending.Record.SHA256 || evaluationContext.Decisions[0].Assessments[0].Status != "pending" || evaluationContext.AdmissionAvailable || evaluationContext.ExecutionAvailable || evaluationContext.QualificationCredit {
+	if comparison.Record.Schema != "mantik-owned-allocation-deferral-v9" || evaluationContext.Schema != "mantik-owned-allocation-evaluation-context-v2" || evaluationContext.AssessmentSourceSHA256 == "" || len(evaluationContext.Decisions) != 1 || len(evaluationContext.Decisions[0].Assessments) != 2 || evaluationContext.Decisions[0].Assessments[1].SHA256 != pending.Record.SHA256 || evaluationContext.Decisions[0].Assessments[1].Status != "pending" || evaluationContext.AdmissionAvailable || evaluationContext.ExecutionAvailable || evaluationContext.QualificationCredit {
 		t.Fatal("actual pending assessment context", evaluationContext)
 	}
 	// Neither equality nor a backdated new identity may enter a retained cut.
@@ -162,6 +190,43 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 		}
 		writeComparison(journal)
 	}
+	readiness := comparison.Record.AdmissionChecks[0]
+	expectedDecisionStatus, expectedGate := "quote_before_window", "unavailable"
+	if selectedFixture {
+		expectedDecisionStatus, expectedGate = "selected_research_evidence", "pending"
+	}
+	if readiness.Schema != "mantik-owned-admission-readiness-v3" || readiness.Binding.EvaluationBindingSHA256 != workerplan.Hash(evaluationContext.Decisions[0]) || len(readiness.EvaluationEvidence) != 1 || readiness.EvaluationEvidence[0].AssessmentSHA256 != pending.Record.SHA256 || readiness.EvaluationEvidence[0].DecisionEvidenceStatus != expectedDecisionStatus || readiness.Gates[2].Status != expectedGate {
+		t.Fatal("exact decision evidence readiness", readiness)
+	}
+	for _, mutate := range []func(*OwnedAdmissionReadiness){
+		func(v *OwnedAdmissionReadiness) {
+			v.EvaluationEvidence[0].DecisionEvidenceStatus = "quote_after_window"
+		},
+		func(v *OwnedAdmissionReadiness) { v.EvaluationEvidence[0].SampleStatus = "passed" },
+		func(v *OwnedAdmissionReadiness) { v.EvaluationEvidence[0].EvidenceSHA256 = strings.Repeat("f", 64) },
+		func(v *OwnedAdmissionReadiness) { v.EvaluationEvidence = nil },
+		func(v *OwnedAdmissionReadiness) { v.Binding.EvaluationBindingSHA256 = strings.Repeat("f", 64) },
+		func(v *OwnedAdmissionReadiness) { v.Gates[2].Status = "passed"; v.AdmissionAvailable = true },
+	} {
+		damaged := clone(journal)
+		v := &damaged.Records[0].Record
+		mutate(&v.AdmissionChecks[0])
+		v.AdmissionChecks[0].SHA256 = ""
+		v.AdmissionChecks[0].SHA256 = workerplan.Hash(v.AdmissionChecks[0])
+		v.SHA256 = ""
+		v.SHA256 = workerplan.Hash(*v)
+		writeComparison(damaged)
+		if got, e := s.CompareOwnedAllocation(ctx, comparisonCommand, noClock, de, oe); e == nil || !reflect.DeepEqual(got, OwnedAllocationReceipt{}) {
+			t.Fatal("rehashed decision readiness retry", got, e)
+		}
+		if got, e := s.OwnedAllocations(ctx, de, oe); e == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
+			t.Fatal("rehashed decision readiness catalogue", got, e)
+		}
+		if got, e := s.(PaperAttributionStore).PaperAttribution(ctx, de, oe); e == nil || !reflect.DeepEqual(got, PaperAttributionCatalog{}) {
+			t.Fatal("rehashed decision readiness attribution", got, e)
+		}
+		writeComparison(journal)
+	}
 	for _, callbacks := range [][]PaperOutcomeEvaluator{nil, {nil}, {oe, oe}} {
 		got, e := s.CompareOwnedAllocation(ctx, comparisonCommand, noClock, de, callbacks...)
 		if e == nil || !reflect.DeepEqual(got, OwnedAllocationReceipt{}) {
@@ -188,6 +253,28 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 		} else if check.Status != "unavailable" {
 			t.Fatal(check)
 		}
+	}
+	// Equal assessment clocks use the greatest immutable ID, independent of
+	// catalogue iteration order. Both receipts remain retained and inspectable.
+	tiedCommand := c
+	tiedCommand.ID = "z-closed"
+	tied, e := s.AssessPaperEvaluation(ctx, tiedCommand, func() time.Time { return deadline }, de, oe)
+	if e != nil {
+		t.Fatal(e)
+	}
+	closedComparisonCommand := comparisonCommand
+	closedComparisonCommand.ID = "closed-assessment-comparison"
+	closedComparison, e := s.CompareOwnedAllocation(ctx, closedComparisonCommand, func() time.Time { return deadline.Add(time.Nanosecond) }, de, oe)
+	if e != nil {
+		t.Fatal(e)
+	}
+	closedReadiness := closedComparison.Record.AdmissionChecks[0]
+	expectedClosedGate := "unavailable"
+	if selectedFixture {
+		expectedClosedGate = "failed"
+	}
+	if len(closedReadiness.EvaluationEvidence) != 1 || closedReadiness.EvaluationEvidence[0].AssessmentSHA256 != tied.Record.SHA256 || closedReadiness.Gates[2].Status != expectedClosedGate || closedReadiness.Status != "expired" || closedReadiness.AdmissionAvailable || closedReadiness.ExecutionAvailable || closedReadiness.QualificationCredit {
+		t.Fatal("latest assessment necessary failure", closedReadiness)
 	}
 	// Equal and earlier source writes fail before mutation and leave IDs reusable.
 	for _, when := range []time.Time{deadline.Add(-time.Nanosecond), deadline} {
@@ -218,7 +305,7 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 	np.Plan.WindowStart = deadline.Add(time.Hour)
 	np.Plan.WindowEnd = deadline.Add(2 * time.Hour)
 	np.Plan.OutcomeDeadline = deadline.Add(4 * time.Hour)
-	if _, err = s.DeclarePaperEvaluation(ctx, np, func() time.Time { return deadline }); !errors.Is(err, ErrPaperEvaluationAssessmentConflict) {
+	if _, err = s.DeclarePaperEvaluation(ctx, np, func() time.Time { return deadline }); !errors.Is(err, ErrPaperEvaluationDeclarationInvalid) {
 		t.Fatal("backdated declaration", err)
 	}
 	if _, err = s.DeclarePaperEvaluation(ctx, np, func() time.Time { return deadline.Add(3 * time.Nanosecond) }); err != nil {
@@ -231,13 +318,18 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 		t.Fatal("historical decision retry", err)
 	}
 	all, err := s.PaperEvaluationAssessments(ctx, de, oe)
-	if err != nil || len(all.Records) != 2 {
+	if err != nil || len(all.Records) != 4 {
 		t.Fatal(all, err)
 	}
 	for _, record := range all.Records {
 		want := closed.Record
-		if record.Command.ID == "pending" {
+		switch record.Command.ID {
+		case "pending":
 			want = pending.Record
+		case "early":
+			want = early.Record
+		case "z-closed":
+			want = tied.Record
 		}
 		if !reflect.DeepEqual(want, record) {
 			t.Fatal("later source rewrote assessment", record.Command.ID)
@@ -382,11 +474,12 @@ func evaluationAssessmentContracts(t *testing.T, s assessmentBackend) {
 		}
 		defer reopened.Close()
 		got, e := reopened.PaperEvaluationAssessments(ctx, de, oe)
-		if e != nil || len(got.Records) != 4 {
+		if e != nil || len(got.Records) != 6 {
 			t.Fatal("reopen lost assessments", got, e)
 		}
 		evaluationAssessmentMigrationContract(t, pg)
 		allocationAssessmentContextMigrationContract(t, pg)
+		assessmentDecisionReadinessMigrationContract(t, pg)
 	}
 }
 func TestPaperEvaluationAssessmentCountCannotGrant(t *testing.T) {
@@ -454,7 +547,7 @@ func allocationAssessmentContextMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(e)
 	}
 	upgrade := timerPostgres(t, "assessmentcontextupgrade")
-	if _, e := upgrade.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version=51; COMMENT ON TABLE mantik_owned_allocations IS 'schema50 fixture'; CREATE FUNCTION reject_assessment_context_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=51 THEN RAISE EXCEPTION 'assessment context migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_assessment_context_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_assessment_context_migration()`); e != nil {
+	if _, e := upgrade.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=51; COMMENT ON TABLE mantik_owned_allocations IS 'schema50 fixture'; CREATE FUNCTION reject_assessment_context_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=51 THEN RAISE EXCEPTION 'assessment context migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_assessment_context_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_assessment_context_migration()`); e != nil {
 		t.Fatal(e)
 	}
 	if e := upgrade.migrate(ctx); e == nil {
@@ -481,6 +574,48 @@ func allocationAssessmentContextMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal("context fence checksum ignored")
 	}
 	if _, e := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256=$1 WHERE version=51", digest); e != nil {
+		t.Fatal(e)
+	}
+	var after []byte
+	if e := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); e != nil || !reflect.DeepEqual(before, after) {
+		t.Fatal("migration rewrote allocation", e)
+	}
+}
+
+func assessmentDecisionReadinessMigrationContract(t *testing.T, p *Postgres) {
+	ctx := context.Background()
+	var before []byte
+	if e := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&before); e != nil {
+		t.Fatal(e)
+	}
+	upgrade := timerPostgres(t, "assessmentreadinessupgrade")
+	if _, e := upgrade.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=52; COMMENT ON TABLE mantik_owned_allocations IS 'schema51 fixture'; CREATE FUNCTION reject_assessment_readiness_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=52 THEN RAISE EXCEPTION 'assessment context migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_assessment_readiness_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_assessment_readiness_migration()`); e != nil {
+		t.Fatal(e)
+	}
+	if e := upgrade.migrate(ctx); e == nil {
+		t.Fatal("migration failure accepted")
+	}
+	var marker string
+	if e := upgrade.pool.QueryRow(ctx, "SELECT obj_description('mantik_owned_allocations'::regclass)").Scan(&marker); e != nil || marker != "schema51 fixture" {
+		t.Fatal("migration comment not rolled back", marker, e)
+	}
+	if _, e := upgrade.pool.Exec(ctx, "DROP TRIGGER reject_assessment_readiness_migration ON mantik_schema; DROP FUNCTION reject_assessment_readiness_migration()"); e != nil {
+		t.Fatal(e)
+	}
+	if e := upgrade.migrate(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var digest string
+	if e := p.pool.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=52").Scan(&digest); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256='damaged' WHERE version=52"); e != nil {
+		t.Fatal(e)
+	}
+	if e := p.migrate(ctx); e == nil {
+		t.Fatal("context fence checksum ignored")
+	}
+	if _, e := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256=$1 WHERE version=52", digest); e != nil {
 		t.Fatal(e)
 	}
 	var after []byte

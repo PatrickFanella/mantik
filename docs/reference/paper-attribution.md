@@ -147,3 +147,12 @@ from the retained comparison cut; later assessments do not rewrite it. Older
 comparisons preserve their original attribution context. These pins establish
 owner provenance only; economic results, admission and qualification remain
 unavailable.
+
+
+Readiness v3 additionally reports the exact decision's retained assessment
+selection and necessary sample status. It binds the projected evaluation
+binding hash, retains the latest assessment per declaration at the comparison
+clock, and distinguishes absent/excluded decisions from selected research
+rows. The CLI checks these portable shapes and pins before rendering; the
+service remains responsible for replaying actual sources. Pending or failed
+necessary checks never establish a passing full recipe or economic authority.

@@ -166,3 +166,6 @@ var PaperEvaluationAssessments string
 
 //go:embed 0051_allocation_assessment_context.sql
 var AllocationAssessmentContext string
+
+//go:embed 0052_assessment_decision_readiness.sql
+var AssessmentDecisionReadiness string

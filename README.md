@@ -613,7 +613,7 @@ available by the predeclared deadline contribute to the observed-decision count.
 
 Owned allocation comparisons now bind each admission-readiness receipt to its
 actual owner-selected account, policy, proposal, execution-cost receipt (when
-present) and resulting ledger head. New v8 comparisons retain v2 readiness, the complete owner declaration catalogue, and compact pins to actual replayed assessments at their comparison clock;
+present) and resulting ledger head. New v9 comparisons retain v3 readiness with exact assessment decision-selection evidence, the complete owner declaration catalogue, and compact pins to actual replayed assessments at their comparison clock;
 [the schema-49 fence and historical declaration context](docs/reference/owned-allocation-comparisons.md#captured-evaluation-declaration-context)
 preserve prior records without granting admission or financial execution. Issue
 #19's admission issuer, effect ownership and atomic durable financial execution
@@ -636,7 +636,7 @@ an exact request. See [commit acknowledgment](docs/reference/owned-allocation-co
 
 
 Paper attribution and its terminal readback now expose the evaluation-declaration
-context retained by v6-v8 allocation comparisons. Captured plan pins remain
+context retained by v6-v9 allocation comparisons. Captured plan pins remain
 `declared_not_evaluated`; absence remains `declaration_unavailable`. This adds
 traceability without evaluation, admission, execution or qualification authority.
 See [paper attribution](docs/reference/paper-attribution.md).
@@ -651,3 +651,5 @@ returning a receipt. This preserves existing comparison hashes and grants no
 admission or financial authority.
 
 New allocation assessment context uses the [schema-51 startup fence](docs/reference/owned-allocation-comparisons.md#retained-assessment-context). Pending, incomplete and blocked assessment pins remain non-authoritative; they grant no admission, execution or qualification.
+
+[Readiness v3](docs/reference/owned-allocation-comparisons.md#exact-decision-evidence-in-readiness) distinguishes actual decision selection from matching assessment scope, with a schema-52 writer fence. It grants no admission or financial authority.
