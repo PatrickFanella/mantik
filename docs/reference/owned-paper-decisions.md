@@ -184,3 +184,24 @@ quarantined quotes, foreign provider and capture identities, future publication
 or input admission, complete-catalogue corruption, detached reads, historical
 stability, authentication, rejected caller assertions and disposable PostgreSQL
 reconnect retention. These are fixture contracts, not live market observations.
+
+## Source custody times
+
+Finalization and historical replay enforce service custody times independently
+of the compiled evaluator. The captured collector clock, selected registration,
+every retained input admission and every retained raw publication must be no
+later than the finalized decision time. Zero custody timestamps fail closed.
+Equality is allowed; provider occurrence timestamps remain separate from service
+custody times.
+
+A source record's presence in the current owner catalogue cannot make it
+available to an earlier decision. Rehashing a captured basis containing later
+owner records fails catalogue reads, source reads and exact retries. The same
+guard protects the basis used by outcome evaluation. Legitimate later source
+appends remain available in their owner while the earlier decision keeps its
+original basis and receipt, including after restart.
+
+This is a custody check. It does not establish that the captured basis contains
+every historical source record, pass the full leakage recipe, attest provider
+quality, or grant admission, execution or qualification. Existing record schemas
+and valid historical bytes remain unchanged.
