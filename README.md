@@ -537,7 +537,9 @@ Service-owned [forward quote outcomes](docs/reference/owned-paper-outcomes.md)
 assess actual retained native proposals against a fixed later observation window.
 The service selects prices from its own publication history; callers select only
 a decision identity and hash. Waiting, missing and observed assessments are
-immutable. Quote deltas are decision observations, with no fill, PnL, admission
+immutable. New v2 outcomes reject omission of selected-registration inputs or
+raw publications available at assessment time; legacy v1 membership remains
+unproven. Quote deltas are decision observations, with no fill, PnL, admission
 or qualification grant.
 
 [Owned copy-source records and follow intent](docs/reference/owned-copy-sources.md)

@@ -1214,7 +1214,7 @@ func admissionBindingMigrationContract(t *testing.T, p *Postgres) {
 			t.Fatal(err)
 		}
 	}
-	if err = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 57 {
+	if err = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 58 {
 		t.Fatal(maximum, err)
 	}
 	var after []byte
@@ -1272,7 +1272,7 @@ func evaluationContextMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	reopened.Close()
-	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 57 {
+	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 58 {
 		t.Fatal("context migration missing", maximum, err)
 	}
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); err != nil || !reflect.DeepEqual(before, after) {
@@ -1326,7 +1326,7 @@ func completeEvaluationCaptureMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	reopened.Close()
-	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 57 {
+	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 58 {
 		t.Fatal("context migration missing", maximum, err)
 	}
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); err != nil || !reflect.DeepEqual(before, after) {
@@ -1347,14 +1347,14 @@ func completeEvaluationCaptureMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	// A supported reopen must not weaken the older/newer binary fence.
-	if _, err := p.pool.Exec(ctx, "INSERT INTO mantik_schema(version,sha256) VALUES(58,'future-schema-fixture')"); err != nil {
+	if _, err := p.pool.Exec(ctx, "INSERT INTO mantik_schema(version,sha256) VALUES(59,'future-schema-fixture')"); err != nil {
 		t.Fatal(err)
 	}
 	if broken, err := OpenPostgres(ctx, p.pool.Config().ConnString()); err == nil {
 		broken.Close()
 		t.Fatal("future schema accepted")
 	}
-	if _, err := p.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=58 AND sha256='future-schema-fixture'"); err != nil {
+	if _, err := p.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=59 AND sha256='future-schema-fixture'"); err != nil {
 		t.Fatal(err)
 	}
 }

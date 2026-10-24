@@ -52,6 +52,17 @@ every retained assessment at its original time. A self-hashed supplied envelope
 cannot establish service ownership. Corruption anywhere in the retained prefix
 prevents successful reads, new writes and retries.
 
+New `mantik-owned-paper-outcome-v2` assessments also require every input admission
+and raw publication for the selected registration that was available by
+`evaluated_at`. Replay compares this membership against the actual storage
+owners, including sources admitted after the original decision but before the
+assessment. Rehashing an envelope after omitting such a source cannot repair it.
+Later legitimate source writes do not enlarge the retained observation cut.
+This check covers source membership and custody times; it does not prove complete
+lease chronology, provider authenticity, continuous price paths or qualification.
+Legacy v1 assessments keep their original bytes, hashes and replay contract;
+their membership completeness remains unproven.
+
 Exact command retries return the original assessment without reading a new
 clock. To assess again after a waiting/missing result, submit a new ID; the
 previous result remains visible. Changed content under an existing ID conflicts.
@@ -73,6 +84,12 @@ state and receiver locks in that order, validate the full decision/outcome
 prefixes, select sources and commit one immutable assessment. Failed inserts
 roll back. Reads use repeatable read. Existing schema-39 data and allocation
 ledger semantics are preserved.
+
+Schema 58 fences older writers before v2 outcome issuance. Its transaction updates
+a table comment and the schema checksum marker without rewriting retained
+outcome payloads. Failed migration rolls both changes back; checksum corruption
+prevents startup. A rollback requires a compatible pre-upgrade backup and binary
+on separate resources.
 
 An older schema-39 writer refuses schema 40. Rollback restores a compatible
 pre-upgrade backup into separate resources with its matching binary. Do not drop
