@@ -134,7 +134,8 @@ competing proposals against owner-declared cash and exposure limits, with
 commitment deduplication and reasons for rejection or deferral. It produces a
 plan. [Owned policy registration](docs/reference/allocation-policies.md) now
 retains one immutable policy per funded account with reciprocal fixture ownership
-guards and pinned HTTP/CLI readback. The [allocation ledger core](docs/reference/allocation-ledger.md)
+guards and pinned HTTP/CLI readback. Account and policy writes, reads and exact
+retries return no result after a failed PostgreSQL COMMIT. The [allocation ledger core](docs/reference/allocation-ledger.md)
 now derives reservations, cash and position cost with retained comparison/effect
 history and replay checks. General service writes, authoritative decision/effect
 bindings and qualified admission remain pending. [Service-owned native paper

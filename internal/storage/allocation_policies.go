@@ -215,7 +215,10 @@ func (p *Postgres) AllocationPolicies(ctx context.Context) (allocation.PolicyCat
 	if err != nil {
 		return allocation.PolicyCatalog{}, err
 	}
-	return c, tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return allocation.PolicyCatalog{}, err
+	}
+	return c, nil
 }
 func (p *Postgres) RegisterAllocationPolicy(ctx context.Context, cmd allocation.PolicyCommand, now func() time.Time) (allocation.PolicyReceipt, error) {
 	if cmd.Validate() != nil {
@@ -253,7 +256,10 @@ func (p *Postgres) RegisterAllocationPolicy(ctx context.Context, cmd allocation.
 		return allocation.PolicyReceipt{}, err
 	}
 	if duplicate {
-		return allocation.PolicyReceipt{Record: r, Duplicate: true}, tx.Commit(ctx)
+		if err = tx.Commit(ctx); err != nil {
+			return allocation.PolicyReceipt{}, err
+		}
+		return allocation.PolicyReceipt{Record: r, Duplicate: true}, nil
 	}
 	accounts, err := readPaperAccounts(ctx, tx, receiver)
 	if err != nil {
@@ -280,7 +286,10 @@ func (p *Postgres) RegisterAllocationPolicy(ctx context.Context, cmd allocation.
 	if _, err = tx.Exec(ctx, "INSERT INTO mantik_allocation_policies(id,account_id,payload) VALUES($1,$2,$3)", cmd.Policy.ID, cmd.AccountID, payload); err != nil {
 		return allocation.PolicyReceipt{}, err
 	}
-	return allocation.PolicyReceipt{Record: r}, tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return allocation.PolicyReceipt{}, err
+	}
+	return allocation.PolicyReceipt{Record: r}, nil
 }
 
 var _ AllocationPolicyStore = (*Memory)(nil)

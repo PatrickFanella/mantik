@@ -79,6 +79,13 @@ then receiver row, matching fixture binding's order. Every read/retry validates
 the complete funding/policy prefix and existing fixture capital binding; reads
 use one repeatable-read snapshot. An insertion failure commits no policy.
 
+New registrations, catalogue reads and exact retries return zero records and
+receipts when COMMIT fails, including deferred constraints and cancellation.
+After a confirmed rollback, the same identity remains available for retry.
+Exact retries preserve the original time and digest without reading a new clock.
+A transport failure can leave the commit outcome uncertain; inspect the policy
+owner before replacing the intent or identity.
+
 Schema 35 upgrades with an empty policy table and preserves existing accounts,
 fixture state and candidate/research evidence. Older writers refuse schema 36.
 A rollback restores the pre-upgrade database with its matching binary. Do not
