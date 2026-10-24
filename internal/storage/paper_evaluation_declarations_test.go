@@ -286,7 +286,7 @@ func TestPostgresContractsPaperEvaluationDeclarationUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_paper_evaluation_declarations; DELETE FROM mantik_schema WHERE version>=46"); err != nil {
+	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_paper_evaluation_declarations; DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DELETE FROM mantik_schema WHERE version>=46"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.migrate(ctx); err != nil {
@@ -296,7 +296,7 @@ func TestPostgresContractsPaperEvaluationDeclarationUpgrade(t *testing.T) {
 		t.Fatal("idempotent schema47 reopen", err)
 	}
 	var maximum int
-	if err = s.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 49 {
+	if err = s.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 50 {
 		t.Fatal(maximum, err)
 	}
 	after, err := s.Snapshot(ctx)

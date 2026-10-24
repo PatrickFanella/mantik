@@ -79,6 +79,45 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	if response.StatusCode != 401 {
 		t.Fatal(response.StatusCode)
 	}
+	// Retention uses the real HTTP owner path; assertions and balances never enter
+	// this command. The immutable pending receipt is separate from the live read.
+	assessmentCommand := storage.PaperEvaluationAssessmentCommand{ID: "http-assessment", ReceiverID: c.ReceiverID, DeclarationID: c.ID, DeclarationSHA256: receipt.Record.SHA256}
+	var assessment storage.PaperEvaluationAssessmentReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-assessments", assessmentCommand, 201), &assessment); err != nil || assessment.Duplicate || assessment.Record.Status != "pending" || assessment.Record.AdmissionAvailable || assessment.Record.ExecutionAvailable || assessment.Record.QualificationCredit || assessment.Record.EvaluationComplete || !reflect.DeepEqual(assessment.Record.Evidence, evidence) {
+		t.Fatal(assessment, err)
+	}
+	clock.panicRead = true
+	var retried storage.PaperEvaluationAssessmentReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-assessments", assessmentCommand, 200), &retried); err != nil || !retried.Duplicate || !reflect.DeepEqual(retried.Record, assessment.Record) {
+		t.Fatal(retried, err)
+	}
+	var assessments storage.PaperEvaluationAssessmentCatalog
+	if err := json.Unmarshal(request("GET", "/v1/paper-evaluation-assessments", nil, 200), &assessments); err != nil || len(assessments.Records) != 1 || !reflect.DeepEqual(assessments.Records[0], assessment.Record) {
+		t.Fatal(assessments, err)
+	}
+	request("GET", "/v1/paper-evaluation-assessments/"+assessmentCommand.ID, nil, 200)
+	request("GET", "/v1/paper-evaluation-assessments/missing", nil, 404)
+	for _, path := range []string{"/v1/paper-evaluation-assessments?", "/v1/paper-evaluation-assessments?at=future", "/v1/paper-evaluation-assessments/invalid.id"} {
+		request("GET", path, nil, 422)
+	}
+	request("GET", "/v1/paper-evaluation-assessments", map[string]any{"at": "future"}, 422)
+	assessmentRaw, _ := json.Marshal(assessmentCommand)
+	for _, extra := range []string{`"checks":[],`, `"evidence":{},`, `"admission_available":true,`, `"balances":{},`, `"snapshot":{},`, `"effect":{},`, `"assessed_at":"2020-01-01T00:00:00Z",`} {
+		request("POST", "/v1/paper-evaluation-assessments", strings.Replace(string(assessmentRaw), `"id":`, extra+`"id":`, 1), 422)
+	}
+	request("POST", "/v1/paper-evaluation-assessments", strings.Replace(string(assessmentRaw), `"id":`, `"id":"duplicate-field","id":`, 1), 422)
+	for _, path := range []string{"/v1/paper-evaluation-assessments", "/v1/paper-evaluation-assessments/" + assessmentCommand.ID} {
+		response, e := http.Get(serverURL + path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		response.Body.Close()
+		if response.StatusCode != 401 {
+			t.Fatal(response.StatusCode)
+		}
+	}
+	clock.panicRead = false
+
 	raw, _ := json.Marshal(c)
 	for _, extra := range []string{`"admission_available":true,`, `"balances":{},`, `"evaluation_results":[],`, `"at":"2020-01-01T00:00:00Z",`, `"qualification_credit":true,`, `"effect":{},`} {
 		request("POST", "/v1/paper-evaluation-declarations", strings.Replace(string(raw), `"id":`, extra+`"id":`, 1), 422)

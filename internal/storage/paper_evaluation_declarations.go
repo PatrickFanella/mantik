@@ -239,6 +239,9 @@ func (m *Memory) DeclarePaperEvaluation(ctx context.Context, c PaperEvaluationDe
 		return PaperEvaluationDeclarationReceipt{}, err
 	}
 	if !r.Duplicate {
+		if err := paperEvaluationSourceClock(m.receiverID, m.evaluationAssessments, r.Record.DeclaredAt); err != nil {
+			return PaperEvaluationDeclarationReceipt{}, err
+		}
 		m.paperEvaluationPlans[c.ID] = clone(r.Record)
 	}
 	return r, nil
@@ -337,6 +340,13 @@ func (p *Postgres) paperEvaluationDeclarationAccess(ctx context.Context, write b
 			return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, err
 		}
 		if !receipt.Duplicate {
+			assessments, e := readPaperEvaluationAssessments(ctx, tx)
+			if e != nil {
+				return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, e
+			}
+			if e = paperEvaluationSourceClock(owner, assessments, receipt.Record.DeclaredAt); e != nil {
+				return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, e
+			}
 			raw, err = json.Marshal(receipt.Record)
 			if err != nil {
 				return PaperEvaluationDeclarationCatalog{}, PaperEvaluationDeclarationReceipt{}, err

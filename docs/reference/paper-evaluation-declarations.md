@@ -196,3 +196,9 @@ admission expiry or retirement event is manufactured from the count.
 The v3 response adds these derived bounds without changing stored declarations,
 decisions or outcomes. Report hashes change with the representation; no source
 or retained historical receipt is rewritten.
+
+Durable service-issued attempts are described in
+[owned paper evaluation assessments](paper-evaluation-assessments.md). They retain
+necessary sample failures and unavailable checks without issuing admission.
+Once an assessment is retained, a new declaration must be strictly later than
+every assessment clock; historical exact retries retain their original identity.
