@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
+	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"github.com/jackc/pgx/v5"
 )
@@ -33,16 +34,25 @@ type DecisionReviewClaim struct {
 	Field string `json:"field"`
 	Value string `json:"value"`
 }
+type DecisionReviewSourceCommand struct {
+	CaptureID     string `json:"capture_id"`
+	CaptureSHA256 string `json:"capture_sha256"`
+}
+
 type DecisionReviewCommand struct {
-	ID             string                `json:"id"`
-	ReceiverID     string                `json:"receiver_id"`
-	DecisionID     string                `json:"decision_id"`
-	DecisionSHA256 string                `json:"decision_sha256"`
-	Explanation    string                `json:"explanation,omitempty"`
-	Claims         []DecisionReviewClaim `json:"claims"`
+	Source         *DecisionReviewSourceCommand `json:"source,omitempty"`
+	ID             string                       `json:"id"`
+	ReceiverID     string                       `json:"receiver_id"`
+	DecisionID     string                       `json:"decision_id"`
+	DecisionSHA256 string                       `json:"decision_sha256"`
+	Explanation    string                       `json:"explanation,omitempty"`
+	Claims         []DecisionReviewClaim        `json:"claims"`
 }
 
 func (c DecisionReviewCommand) Validate() error {
+	if c.Source != nil && (!paperaccount.ID.MatchString(c.Source.CaptureID) || !decisionPin.MatchString(c.Source.CaptureSHA256) || c.Explanation != "") {
+		return ErrDecisionReviewInvalid
+	}
 	if !paperaccount.ID.MatchString(c.ID) || !ValidReceiverID(c.ReceiverID) || !paperaccount.ID.MatchString(c.DecisionID) || !decisionPin.MatchString(c.DecisionSHA256) || len(c.Explanation) > 8192 || !utf8.ValidString(c.Explanation) || strings.ContainsRune(c.Explanation, 0) || len(c.Claims) < 1 || len(c.Claims) > 16 {
 		return ErrDecisionReviewInvalid
 	}
@@ -60,22 +70,23 @@ type DecisionReviewFinding struct {
 	Expected *string             `json:"expected,omitempty"`
 }
 type DecisionReviewRecord struct {
-	Schema              string                  `json:"schema"`
-	Method              string                  `json:"method"`
-	Command             DecisionReviewCommand   `json:"command"`
-	ReviewedAt          time.Time               `json:"reviewed_at"`
-	BasisSHA256         string                  `json:"basis_sha256"`
-	Findings            []DecisionReviewFinding `json:"findings"`
-	Status              string                  `json:"status"`
-	CaseID              string                  `json:"case_id,omitempty"`
-	RecordPath          string                  `json:"record_path"`
-	Authority           string                  `json:"authority"`
-	ProseVerified       bool                    `json:"prose_verified"`
-	ModelUsed           bool                    `json:"model_used"`
-	AdmissionAvailable  bool                    `json:"admission_available"`
-	ExecutionAvailable  bool                    `json:"execution_available"`
-	QualificationCredit bool                    `json:"qualification_credit"`
-	SHA256              string                  `json:"sha256"`
+	Source              *DecisionReviewSourceBinding `json:"source,omitempty"`
+	Schema              string                       `json:"schema"`
+	Method              string                       `json:"method"`
+	Command             DecisionReviewCommand        `json:"command"`
+	ReviewedAt          time.Time                    `json:"reviewed_at"`
+	BasisSHA256         string                       `json:"basis_sha256"`
+	Findings            []DecisionReviewFinding      `json:"findings"`
+	Status              string                       `json:"status"`
+	CaseID              string                       `json:"case_id,omitempty"`
+	RecordPath          string                       `json:"record_path"`
+	Authority           string                       `json:"authority"`
+	ProseVerified       bool                         `json:"prose_verified"`
+	ModelUsed           bool                         `json:"model_used"`
+	AdmissionAvailable  bool                         `json:"admission_available"`
+	ExecutionAvailable  bool                         `json:"execution_available"`
+	QualificationCredit bool                         `json:"qualification_credit"`
+	SHA256              string                       `json:"sha256"`
 }
 type DecisionReviewReceipt struct {
 	Record    DecisionReviewRecord `json:"record"`
@@ -131,7 +142,7 @@ func newDecisionReview(c DecisionReviewCommand, d PaperDecisionRecord, at time.T
 	}
 	return r, nil
 }
-func decisionReviewCatalog(owner string, all map[string]DecisionReviewRecord, decisions PaperDecisionCatalog) (DecisionReviewCatalog, error) {
+func decisionReviewCatalog(owner string, all map[string]DecisionReviewRecord, decisions PaperDecisionCatalog, sources ...socialwatch.Journal) (DecisionReviewCatalog, error) {
 	out := DecisionReviewCatalog{ReceiverID: owner, Records: []DecisionReviewRecord{}, Cases: []DecisionReviewCase{}}
 	if !ValidReceiverID(owner) || decisions.ReceiverID != owner || len(all) > MaxDecisionReviews {
 		return out, ErrDecisionReviewInvalid
@@ -141,14 +152,22 @@ func decisionReviewCatalog(owner string, all map[string]DecisionReviewRecord, de
 		byID[d.Command.ID] = d
 	}
 	cases := map[string]DecisionReviewCase{}
+	sourceGroups := map[string]bool{}
 	for id, r := range all {
 		d, ok := byID[r.Command.DecisionID]
 		if !ok {
 			return out, ErrDecisionReviewConflict
 		}
-		want, err := newDecisionReview(r.Command, d, r.ReviewedAt)
+		want, err := sourceDecisionReview(r.Command, d, r.ReviewedAt, sources)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) {
 			return out, ErrDecisionReviewInvalid
+		}
+		if r.Source != nil {
+			key := r.Source.Kind + ":" + r.Source.ClaimGroupSHA256 + ":" + r.Command.DecisionSHA256
+			if sourceGroups[key] {
+				return out, ErrDecisionReviewConflict
+			}
+			sourceGroups[key] = true
 		}
 		out.Records = append(out.Records, clone(r))
 		if r.CaseID != "" {
@@ -171,8 +190,8 @@ func decisionReviewCatalog(owner string, all map[string]DecisionReviewRecord, de
 	slices.SortFunc(out.Cases, func(a, b DecisionReviewCase) int { return strings.Compare(a.ID, b.ID) })
 	return out, nil
 }
-func appendDecisionReview(owner string, all map[string]DecisionReviewRecord, decisions PaperDecisionCatalog, c DecisionReviewCommand, now func() time.Time) (DecisionReviewReceipt, error) {
-	catalog, err := decisionReviewCatalog(owner, all, decisions)
+func appendDecisionReview(owner string, all map[string]DecisionReviewRecord, decisions PaperDecisionCatalog, c DecisionReviewCommand, now func() time.Time, sources ...socialwatch.Journal) (DecisionReviewReceipt, error) {
+	catalog, err := decisionReviewCatalog(owner, all, decisions, sources...)
 	if err != nil {
 		return DecisionReviewReceipt{}, err
 	}
@@ -210,8 +229,21 @@ func appendDecisionReview(owner string, all map[string]DecisionReviewRecord, dec
 			return DecisionReviewReceipt{}, ErrDecisionReviewInvalid
 		}
 	}
-	r, err := newDecisionReview(c, *selected, at)
-	return DecisionReviewReceipt{r, false}, err
+	if c.Source != nil && len(sources) == 1 && len(sources[0].Entries) > 0 && sources[0].Entries[len(sources[0].Entries)-1].At.After(at) {
+		return DecisionReviewReceipt{}, ErrDecisionReviewInvalid
+	}
+	r, err := sourceDecisionReview(c, *selected, at, sources)
+	if err != nil {
+		return DecisionReviewReceipt{}, err
+	}
+	if r.Source != nil {
+		for _, old := range catalog.Records {
+			if old.Source != nil && old.Source.Kind == r.Source.Kind && old.Source.ClaimGroupSHA256 == r.Source.ClaimGroupSHA256 && old.Command.DecisionSHA256 == c.DecisionSHA256 {
+				return DecisionReviewReceipt{}, ErrDecisionReviewConflict
+			}
+		}
+	}
+	return DecisionReviewReceipt{r, false}, nil
 }
 func (m *Memory) ReviewPaperDecision(ctx context.Context, c DecisionReviewCommand, now func() time.Time, eval PaperDecisionEvaluator) (DecisionReviewReceipt, error) {
 	m.mu.Lock()
@@ -227,7 +259,11 @@ func (m *Memory) ReviewPaperDecision(ctx context.Context, c DecisionReviewComman
 	if err != nil {
 		return DecisionReviewReceipt{}, err
 	}
-	r, err := appendDecisionReview(m.receiverID, m.decisionReviews, decisions, c, now)
+	sources, err := m.decisionReviewSocialSourcesLocked(c, m.decisionReviews)
+	if err != nil {
+		return DecisionReviewReceipt{}, err
+	}
+	r, err := appendDecisionReview(m.receiverID, m.decisionReviews, decisions, c, now, sources...)
 	if err != nil {
 		return DecisionReviewReceipt{}, err
 	}
@@ -253,7 +289,15 @@ func (m *Memory) DecisionReviews(ctx context.Context, eval PaperDecisionEvaluato
 	if err != nil {
 		return DecisionReviewCatalog{}, err
 	}
-	return decisionReviewCatalog(m.receiverID, m.decisionReviews, d)
+	sources, err := m.decisionReviewSocialSourcesLocked(DecisionReviewCommand{}, m.decisionReviews)
+	if err != nil {
+		return DecisionReviewCatalog{}, err
+	}
+	result, err := decisionReviewCatalog(m.receiverID, m.decisionReviews, d, sources...)
+	if err != nil {
+		return DecisionReviewCatalog{}, err
+	}
+	return result, nil
 }
 func readDecisionReviews(ctx context.Context, tx pgx.Tx) (map[string]DecisionReviewRecord, error) {
 	rows, err := tx.Query(ctx, "SELECT id,payload FROM mantik_decision_reviews ORDER BY id LIMIT $1", MaxDecisionReviews+1)
@@ -321,28 +365,39 @@ func (p *Postgres) decisionReviewAccess(ctx context.Context, write bool, c Decis
 	if err != nil {
 		return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
 	}
+	var sources []socialwatch.Journal
+	if decisionReviewNeedsSources(c, all) {
+		j, e := readSocialJournal(ctx, tx, owner)
+		if e != nil {
+			return DecisionReviewCatalog{}, DecisionReviewReceipt{}, e
+		}
+		sources = []socialwatch.Journal{j}
+	}
 	var receipt DecisionReviewReceipt
 	if write {
-		receipt, err = appendDecisionReview(owner, all, decisions, c, now)
+		receipt, err = appendDecisionReview(owner, all, decisions, c, now, sources...)
 		if err != nil {
-			return DecisionReviewCatalog{}, receipt, err
+			return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
 		}
 		if !receipt.Duplicate {
 			raw, e := json.Marshal(receipt.Record)
 			if e != nil {
-				return DecisionReviewCatalog{}, receipt, e
+				return DecisionReviewCatalog{}, DecisionReviewReceipt{}, e
 			}
 			if _, err = tx.Exec(ctx, "INSERT INTO mantik_decision_reviews(id,payload) VALUES($1,$2)", c.ID, raw); err != nil {
-				return DecisionReviewCatalog{}, receipt, err
+				return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
 			}
 			all[c.ID] = receipt.Record
 		}
 	}
-	result, err := decisionReviewCatalog(owner, all, decisions)
+	result, err := decisionReviewCatalog(owner, all, decisions, sources...)
 	if err != nil {
-		return result, receipt, err
+		return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
 	}
-	return result, receipt, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
+	}
+	return result, receipt, nil
 }
 func (p *Postgres) ReviewPaperDecision(ctx context.Context, c DecisionReviewCommand, now func() time.Time, eval PaperDecisionEvaluator) (DecisionReviewReceipt, error) {
 	if c.Validate() != nil {

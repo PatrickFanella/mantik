@@ -187,3 +187,6 @@ var DecisionSourceMembership string
 
 //go:embed 0058_outcome_source_membership.sql
 var OutcomeSourceMembership string
+
+//go:embed 0059_decision_review_sources.sql
+var DecisionReviewSources string

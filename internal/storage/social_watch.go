@@ -41,6 +41,9 @@ func (m *Memory) ApplySocialCommand(ctx context.Context, c socialwatch.Command, 
 		return socialwatch.Receipt{}, err
 	}
 	if !r.Duplicate {
+		if err := socialDecisionReviewClock(m.receiverID, m.decisionReviews, r.Entry.At); err != nil {
+			return socialwatch.Receipt{}, err
+		}
 		m.socialJournal = &next
 	}
 	return r, nil
@@ -96,6 +99,13 @@ func (p *Postgres) ApplySocialCommand(ctx context.Context, c socialwatch.Command
 		return socialwatch.Receipt{}, err
 	}
 	if !r.Duplicate {
+		reviews, e := readDecisionReviews(ctx, tx)
+		if e != nil {
+			return socialwatch.Receipt{}, e
+		}
+		if e = socialDecisionReviewClock(owner, reviews, r.Entry.At); e != nil {
+			return socialwatch.Receipt{}, e
+		}
 		raw, err := json.Marshal(next)
 		if err != nil {
 			return socialwatch.Receipt{}, err

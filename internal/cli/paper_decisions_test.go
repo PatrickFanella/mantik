@@ -183,6 +183,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 		request("GET", "/v1/paper-decisions/"+command.ID+"/explanation"+q, nil, 422)
 	}
 	decisionReviewHTTP(t, request, server.URL, clock, first.Record)
+	sourceDecisionReviewHTTP(t, request, clock, first.Record)
 	request("GET", "/v1/paper-decisions/missing/explanation", nil, 404)
 	unauth, err := http.Get(server.URL + "/v1/paper-decisions/" + command.ID + "/explanation")
 	if err != nil {

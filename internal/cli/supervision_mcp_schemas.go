@@ -29,6 +29,6 @@ func supervisionMCPSchemas() map[string]any {
 		"change_watch_policy":      obj([]string{"id", "receiver_id", "previous_sha256", "policy"}, map[string]any{"id": str(), "receiver_id": str(), "previous_sha256": str(), "policy": policy}),
 		"change_copy_watch_policy": obj([]string{"id", "receiver_id", "previous_sha256", "policy"}, map[string]any{"id": str(), "receiver_id": str(), "previous_sha256": str(), "policy": copyPolicy}),
 		"recheck_exception":        obj([]string{"exception_id", "request_id"}, map[string]any{"exception_id": str(), "request_id": str()}),
-		"review_decision_claims":   obj([]string{"id", "receiver_id", "decision_id", "decision_sha256", "claims"}, map[string]any{"id": str(), "receiver_id": str(), "decision_id": str(), "decision_sha256": str(), "explanation": str(), "claims": map[string]any{"type": "array", "items": claim, "minItems": 1, "maxItems": 16}}),
+		"review_decision_claims":   obj([]string{"id", "receiver_id", "decision_id", "decision_sha256", "claims"}, map[string]any{"id": str(), "receiver_id": str(), "decision_id": str(), "decision_sha256": str(), "explanation": str(), "source": obj([]string{"capture_id", "capture_sha256"}, map[string]any{"capture_id": str(), "capture_sha256": str()}), "claims": map[string]any{"type": "array", "items": claim, "minItems": 1, "maxItems": 16}}),
 	}
 }
