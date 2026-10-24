@@ -188,7 +188,7 @@ func TestPostgresContractsFeedCollectorUpgrade(t *testing.T) {
 		t.Fatal("upgrade changed fixture aggregate", err)
 	}
 	var maximum int
-	if err := upgraded.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 59 {
+	if err := upgraded.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 60 {
 		t.Fatal(err)
 	}
 	if _, err := upgraded.pool.Exec(ctx, "UPDATE mantik_schema SET sha256='changed' WHERE version=8"); err != nil {

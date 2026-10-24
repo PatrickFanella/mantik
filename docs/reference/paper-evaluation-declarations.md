@@ -37,12 +37,34 @@ an execution model. Both source owners must predate the declaration. The source
 hash binds those complete records, including their immutable funding/model
 configuration. Input classes remain their original unqualified classes.
 
+New records use `mantik-owned-paper-evaluation-declaration-v2`. Their
+`variant_configurations` bind each actual strategy ID and record hash to the
+versioned `native-definition-without-id-v1` digest. This digest covers every
+native definition field except its ID: method, symbol, feed, evidence class,
+entry threshold, quantity and safety conditions. Two IDs with identical
+configuration digests conflict instead of increasing `planned_variants`.
+Changing a name or registration time cannot create a parameter variation.
+
+These are distinct configurations, not a completed parameter/cost sensitivity
+test, independent observations or a complete search inventory. A one-variant
+plan remains a one-variant plan and supplies no sensitivity result. Legacy v1
+records keep their original bytes, counts and clock-free retries, including
+records that pinned aliases; they do not gain a distinctness assertion.
+
 The stress model must be valid, differ from the base model and be no more
 favorable in any declared dimension: fees, commissions, slippage and latency do
 not decrease; displayed-liquidity participation and maximum quote age do not
 increase. These are declared sensitivity assumptions, not measured costs or a
 completed sensitivity test. Stop-gap and partial-fill behavior still belongs to
 the versioned fill method.
+
+Schema 60 fences older declaration writers before new v2 records are issued.
+It changes the declaration table comment and schema marker without rewriting
+retained plans or downstream evidence. Rollback uses a compatible pre-upgrade
+backup and binary on separate resources; do not remove migration rows from a
+running service. Verification covers actual Memory/PostgreSQL alias rejection,
+distinct configuration pins, concurrent retries, self-rehashed substitution,
+legacy bytes/reopen and migration rollback, checksum and payload preservation.
 
 ## Time, family and sample boundaries
 

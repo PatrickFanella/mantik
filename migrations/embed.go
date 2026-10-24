@@ -190,3 +190,6 @@ var OutcomeSourceMembership string
 
 //go:embed 0059_decision_review_sources.sql
 var DecisionReviewSources string
+
+//go:embed 0060_distinct_evaluation_variants.sql
+var DistinctEvaluationVariants string
