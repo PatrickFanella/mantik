@@ -684,3 +684,8 @@ Collector source operations now return no receipt or snapshot on PostgreSQL
 COMMIT failure, including exact retries. Reconcile uncertain outcomes through
 the actual owner and the same immutable identity; see
 [collector submission recovery](docs/reference/collector-submission.md#transaction-acknowledgement-failures).
+
+Finalized native decision bases now enforce service custody timestamps during
+creation and owner replay. Later collector clocks, registrations, input admissions
+or raw publications cannot enter an earlier decision through rehashed basis bytes.
+See [decision source custody](docs/reference/owned-paper-decisions.md#source-custody-times).

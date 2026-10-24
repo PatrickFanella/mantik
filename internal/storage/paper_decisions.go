@@ -144,6 +144,9 @@ func newPaperDecision(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time
 	if c.Validate() != nil || eval == nil || at.IsZero() || at.UTC().Year() < 1 || at.UTC().Year() > 9999 || b.Strategy.Validate() != nil || b.Strategy.Command.ReceiverID != c.ReceiverID || b.Strategy.Command.Definition.ID != c.StrategyID || b.Strategy.SHA256 != c.StrategySHA256 || b.Feed.ReceiverID != c.ReceiverID || at.Before(b.Strategy.RegisteredAt) {
 		return PaperDecisionRecord{}, ErrPaperDecisionInvalid
 	}
+	if err := paperDecisionSourceTimes(c, b, at); err != nil {
+		return PaperDecisionRecord{}, err
+	}
 	v, err := eval(c, clone(b), at.UTC())
 	if err != nil {
 		return PaperDecisionRecord{}, err
@@ -193,9 +196,34 @@ func verifyPaperDecision(v retainedPaperDecision, strategies paperstrategy.Catal
 	return nil
 }
 
+// Service custody timestamps belong to the storage owner, independently of
+// whether a compiled evaluator happens to inspect them. Membership in the
+// current catalogue cannot make a later owner record available in an earlier
+// decision basis. This does not attest a complete historical source prefix.
+func paperDecisionSourceTimes(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time) error {
+	entry, ok := b.Feed.Collectors.Entries[c.RegistrationID]
+	if at.IsZero() || at.UTC().Year() < 1 || at.UTC().Year() > 9999 || !ok || entry.RegisteredAt.IsZero() || entry.RegisteredAt.After(at) || b.Feed.Collectors.LastClock.IsZero() || b.Feed.Collectors.LastClock.After(at) {
+		return ErrPaperDecisionInvalid
+	}
+	for _, admission := range b.Feed.Collectors.Admissions {
+		if admission.At.IsZero() || admission.At.After(at) {
+			return ErrPaperDecisionInvalid
+		}
+	}
+	for _, publication := range b.Feed.Records {
+		if publication.PublishedAt.IsZero() || publication.PublishedAt.After(at) {
+			return ErrPaperDecisionInvalid
+		}
+	}
+	return nil
+}
+
 // verifyPaperDecisionBasis validates retained sources without manufacturing a
 // finalized decision. Outcome assessments share this custody check.
 func verifyPaperDecisionBasis(c PaperDecisionCommand, b PaperDecisionBasis, asof time.Time, strategies paperstrategy.Catalog, current FeedEvidenceSnapshot) error {
+	if err := paperDecisionSourceTimes(c, b, asof); err != nil {
+		return err
+	}
 	s, err := paperstrategy.Select(strategies, c.StrategyID)
 	if err != nil || !reflect.DeepEqual(s, b.Strategy) || current.ReceiverID != c.ReceiverID || b.Feed.ReceiverID != c.ReceiverID {
 		return ErrPaperDecisionConflict
