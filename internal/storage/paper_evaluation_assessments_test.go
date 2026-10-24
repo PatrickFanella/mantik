@@ -69,6 +69,8 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertNativeWarmUp(t, early.Record, plan)
+	early = legacyAssessmentFixture(t, s, early, de, oe)
 	dc := PaperDecisionCommand{ID: "first", ReceiverID: plan.ReceiverID, StrategyID: plan.Plan.Variants[0].ID, StrategySHA256: plan.Plan.Variants[0].SHA256, RegistrationID: reg.ID}
 	first, err := s.FinalizePaperDecision(ctx, dc, func() time.Time { return start.Add(time.Nanosecond) }, de)
 	if err != nil {
@@ -107,6 +109,7 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 	if err != nil || clockReads != 1 || pending.Duplicate || pending.Record.Status != "pending" {
 		t.Fatal(pending, clockReads, err)
 	}
+	assertNativeWarmUp(t, pending.Record, plan)
 	noClock := func() time.Time { t.Fatal("retry consulted clock"); return time.Time{} }
 	duplicate, err := s.AssessPaperEvaluation(ctx, c, noClock, de, oe)
 	if err != nil || !duplicate.Duplicate || !reflect.DeepEqual(duplicate.Record, pending.Record) {
@@ -251,6 +254,10 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 			if check.Status != "failed" {
 				t.Fatal(check)
 			}
+		} else if check.Name == "warm_up" {
+			if check.Status != "not_applicable" || check.ReasonCode != "compiled_threshold_predicate_has_no_lookback" {
+				t.Fatal(check)
+			}
 		} else if check.Status != "unavailable" {
 			t.Fatal(check)
 		}
@@ -385,6 +392,18 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 		}
 	}
 	for _, change := range []func(*PaperEvaluationAssessment){func(r *PaperEvaluationAssessment) {
+		r.WarmUp.RequiredLookbackObservations = 10
+		r.WarmUp.SHA256 = ""
+		r.WarmUp.SHA256 = workerplan.Hash(*r.WarmUp)
+		r.SHA256 = ""
+		r.SHA256 = workerplan.Hash(*r)
+	}, func(r *PaperEvaluationAssessment) {
+		r.WarmUp.Strategies[0].Command.Definition.EntryAtOrBelowCents--
+		r.WarmUp.SHA256 = ""
+		r.WarmUp.SHA256 = workerplan.Hash(*r.WarmUp)
+		r.SHA256 = ""
+		r.SHA256 = workerplan.Hash(*r)
+	}, func(r *PaperEvaluationAssessment) {
 		r.Checks[0].Status = "passed"
 		r.SHA256 = ""
 		r.SHA256 = workerplan.Hash(*r)
@@ -481,6 +500,7 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 		evaluationAssessmentMigrationContract(t, pg)
 		allocationAssessmentContextMigrationContract(t, pg)
 		assessmentDecisionReadinessMigrationContract(t, pg)
+		nativeWarmUpMigrationContract(t, pg)
 	}
 }
 func TestPaperEvaluationAssessmentCountCannotGrant(t *testing.T) {

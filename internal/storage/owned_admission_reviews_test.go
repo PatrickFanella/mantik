@@ -208,7 +208,7 @@ func admissionReviewContracts(t *testing.T, s assessmentBackend, comparison Owne
 func admissionReviewMigrationContract(t *testing.T, p *Postgres) {
 	ctx := context.Background()
 	upgrade := timerPostgres(t, "admissionreviewupgrade")
-	if _, e := upgrade.pool.Exec(ctx, `DROP TABLE mantik_owned_admission_reviews; DELETE FROM mantik_schema WHERE version=53; CREATE FUNCTION reject_review_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=53 THEN RAISE EXCEPTION 'review migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_review_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_review_migration()`); e != nil {
+	if _, e := upgrade.pool.Exec(ctx, `DROP TABLE mantik_owned_admission_reviews; DELETE FROM mantik_schema WHERE version>=53; CREATE FUNCTION reject_review_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=53 THEN RAISE EXCEPTION 'review migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_review_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_review_migration()`); e != nil {
 		t.Fatal(e)
 	}
 	if e := upgrade.migrate(ctx); e == nil {

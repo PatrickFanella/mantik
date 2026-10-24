@@ -11,6 +11,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
+	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"github.com/jackc/pgx/v5"
 )
@@ -46,6 +47,7 @@ type PaperEvaluationCheck struct {
 	ReasonCode string `json:"reason_code"`
 }
 type PaperEvaluationAssessment struct {
+	WarmUp              *PaperEvaluationWarmUp           `json:"warm_up,omitempty"`
 	Schema              string                           `json:"schema"`
 	Command             PaperEvaluationAssessmentCommand `json:"command"`
 	AssessedAt          time.Time                        `json:"assessed_at"`
@@ -124,6 +126,7 @@ type paperEvaluationSources struct {
 	outcomes     PaperOutcomeCatalog
 	retained     map[string]retainedPaperDecision
 	sourceClock  time.Time
+	strategies   paperstrategy.Catalog
 }
 
 func (s paperEvaluationSources) evidence(ctx context.Context, id string, at time.Time) (PaperEvaluationEvidence, error) {
@@ -148,7 +151,7 @@ func (m *Memory) paperEvaluationSourcesLocked(de PaperDecisionEvaluator, oe Pape
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	return paperEvaluationSources{declarations, decisions, outcomes, m.paperDecisions, m.collectors.LastClock}, nil
+	return paperEvaluationSources{declarations, decisions, outcomes, m.paperDecisions, m.collectors.LastClock, strategies}, nil
 }
 func readPaperEvaluationSources(ctx context.Context, tx pgx.Tx, write bool, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (paperEvaluationSources, error) {
 	feed, err := readFeedEvidence(ctx, tx, write)
@@ -204,7 +207,7 @@ func readPaperEvaluationSources(ctx context.Context, tx pgx.Tx, write bool, de P
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	return paperEvaluationSources{declarations, decisions, outcomes, retained, feed.Collectors.LastClock}, nil
+	return paperEvaluationSources{declarations, decisions, outcomes, retained, feed.Collectors.LastClock, strategies}, nil
 }
 func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, s paperEvaluationSources) (PaperEvaluationAssessmentCatalog, error) {
 	out := PaperEvaluationAssessmentCatalog{ReceiverID: owner, Records: []PaperEvaluationAssessment{}}
@@ -220,7 +223,15 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 		if err != nil {
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
-		want, err := newPaperEvaluationAssessment(r.Command, e)
+		var warmup *PaperEvaluationWarmUp
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v2" {
+			value, e := ownedNativeWarmUp(e.Declaration, s.strategies)
+			if e != nil {
+				return PaperEvaluationAssessmentCatalog{}, e
+			}
+			warmup = &value
+		}
+		want, err := paperEvaluationAssessmentRecipe(r.Command, e, warmup, r.Schema)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) {
 			return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentInvalid
 		}
@@ -241,7 +252,7 @@ func paperEvaluationSourceClock(owner string, all map[string]PaperEvaluationAsse
 		return ErrPaperEvaluationAssessmentInvalid
 	}
 	for id, r := range all {
-		want, err := newPaperEvaluationAssessment(r.Command, r.Evidence)
+		want, err := paperEvaluationAssessmentRecipe(r.Command, r.Evidence, r.WarmUp, r.Schema)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) {
 			return ErrPaperEvaluationAssessmentInvalid
 		}
@@ -302,7 +313,11 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}
-	record, err := newPaperEvaluationAssessment(c, e)
+	warmup, err := ownedNativeWarmUp(e.Declaration, s.strategies)
+	if err != nil {
+		return PaperEvaluationAssessmentReceipt{}, err
+	}
+	record, err := paperEvaluationAssessmentRecipe(c, e, &warmup, "mantik-owned-paper-evaluation-assessment-v2")
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}

@@ -665,3 +665,10 @@ with calendar custody pins and explicit pending-publication gaps. It
 exposes historical quote dimensions, publication/admission clocks and quality
 gaps from actual owner-replayed outcomes. It supplies no execution, continuous
 coverage or qualification authority.
+
+Native paper evaluation assessments now derive warm-up applicability from the
+actual predeclared strategy owner. The compiled stateless threshold predicate
+requires no lookback; this does not complete the other evaluation checks or
+grant admission, execution or qualification. Recipe v2 preserves historical v1
+assessments, and schema 54 fences older writers. See
+[owned evaluation assessments](docs/reference/paper-evaluation-assessments.md).
