@@ -181,3 +181,6 @@ var NativeCalibrationApplicability string
 
 //go:embed 0056_source_observation_clock.sql
 var SourceObservationClock string
+
+//go:embed 0057_decision_source_membership.sql
+var DecisionSourceMembership string

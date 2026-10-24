@@ -205,3 +205,25 @@ This is a custody check. It does not establish that the captured basis contains
 every historical source record, pass the full leakage recipe, attest provider
 quality, or grant admission, execution or qualification. Existing record schemas
 and valid historical bytes remain unchanged.
+
+## Versioned decision source membership
+
+New `mantik-owned-paper-decision-v2` records retain every admitted input and raw
+publication for their selected collector registration that was available to the
+service at finalization. Replay checks membership against the actual current
+owner using admission and publication custody times. Rehashing a basis after
+removing an available input or publication cannot pass v2 source readback,
+catalogue replay or an exact finalization retry. Later legitimate source writes
+remain outside the earlier cut, enforced by the shared source clock fence.
+
+Retained v1 records keep their original envelope, hashes and retry behavior.
+Their legacy membership completeness is unproven; reopening does not upgrade
+historical decisions. The v2 membership check does not establish complete lease
+chronology, provider authenticity, outcome-window coverage, leakage evaluation,
+admission, financial execution or qualification.
+
+Schema 57 fences older writers before v2 issuance. The migration updates a
+compatibility comment and marker, without rewriting decision payloads. Failed
+migration transactions preserve the previous marker/comment and source bytes;
+checksum mismatches fail startup. Rollback still requires a compatible reader or
+a private pre-upgrade backup restored into separate resources.
