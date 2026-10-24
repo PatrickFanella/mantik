@@ -118,3 +118,12 @@ These pins do not upgrade an incomplete assessment into an applicable full
 recipe or issue admission or financial effects. Older comparison records acquire
 no retrospective assessment pins. See [retained assessment context](owned-allocation-comparisons.md#retained-assessment-context)
 for the version and replay contract.
+
+
+Version 9 allocation comparisons also retain [exact decision evidence readiness](owned-allocation-comparisons.md#exact-decision-evidence-in-readiness).
+The latest assessment per matching declaration is selected at the historical
+comparison clock, with an explicit equal-clock ID tie-break. Readiness preserves
+whether the assessment actually selected the finalized decision and its
+strategy's necessary sample check. A matching scope alone never supplies a
+positive evaluation. Schema 52 fences older writers; no admission or effect
+issuer is activated.

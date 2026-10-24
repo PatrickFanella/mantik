@@ -91,7 +91,7 @@ and positions, orders and commitments remain empty.
 
 Each comparison appends one hash-linked entry to its policy's allocation ledger.
 The owned record pins that entry, ledger head and policy. It has schema
-`mantik-owned-allocation-deferral-v8`, authority
+`mantik-owned-allocation-deferral-v9`, authority
 `service_owned_allocation_deferral_only`, and false execution/qualification
 flags. Returned core ledger values remain accounting evidence; they are not
 portable admission or execution grants.
@@ -460,7 +460,7 @@ or add assessment pins to the retained comparison context.
 
 ## Retained assessment context
 
-New comparisons use `mantik-owned-allocation-deferral-v8` with
+Version 8 introduced `mantik-owned-allocation-deferral-v8` with
 `mantik-owned-allocation-evaluation-context-v2`. The owner resolves and replays
 its actual assessment catalogue once inside the existing Memory lock or
 PostgreSQL transaction, before returning a new comparison, catalogue, or exact
@@ -494,3 +494,32 @@ remain omitted. Schema 51 fences older writers before startup. Its migration
 changes a table comment and checksum marker only, with disposable PostgreSQL
 rollback and checksum checks; existing journals are not rewritten. Recovery
 requires the matching binary and backup rather than deleting a schema marker.
+
+
+## Exact decision evidence in readiness
+
+New `mantik-owned-allocation-deferral-v9` comparisons retain
+`mantik-owned-admission-readiness-v3`. Readiness binds the hash of its exact
+owner-derived decision/strategy/policy evaluation binding. For each matching
+declaration, the owner selects the latest actual assessment at the comparison
+clock; equal clocks choose the lexically greatest assessment ID. The retained
+selection includes assessment and declaration pins, assessment time, evidence
+hash, the exact decision row's selection status, and that strategy's necessary
+sample-check status. Assessments remain replayed once in the same transaction.
+
+A shared strategy or policy does not establish decision membership. An
+assessment issued before the decision reports `decision_not_retained`; an
+out-of-window, unavailable, synthetic or duplicate row preserves its actual
+exclusion status. These cases leave the recipe gate unavailable. An exact
+`selected_research_evidence` row can expose a pending outcome window or a proven
+necessary sample failure. Otherwise the recipe remains incomplete/unavailable.
+No branch reports a passing full recipe, grants admission, or creates an effect.
+Expiry, unqualified-source and execution-reconciliation gates remain in force.
+
+The owner reconstructs these fields during every read and exact retry. Rehashed
+row status, sample status, evidence hash, selection omission, binding hash or
+invented authority flags fail closed. Historical v1-v8 receipts keep their old
+wire shapes and hashes. Schema 52 adds a comment/checksum startup fence so older
+writers cannot bypass v9 declaration and assessment clock cuts. It does not
+rewrite journals. Attribution projects retained readiness; CLI shape validation
+is not independent source attestation or operational authority.

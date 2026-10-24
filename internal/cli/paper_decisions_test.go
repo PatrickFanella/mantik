@@ -212,7 +212,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if allocationFirst.Record.ExecutionAvailable || allocationFirst.Record.QualificationCredit || allocationFirst.Record.Entry.Plan == nil || allocationFirst.Record.Entry.Plan.Decisions[0].Status != "defer" || allocationFirst.Record.Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
 		t.Fatal(allocationFirst)
 	}
-	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v8" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
+	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v9" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
 		t.Fatal(allocationFirst)
 	}
 	evaluationContext := allocationFirst.Record.EvaluationContext
@@ -225,7 +225,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 		t.Fatal(checks)
 	}
 	binding := checks[0].Binding
-	if checks[0].Schema != "mantik-owned-admission-readiness-v2" || binding == nil || binding.ComparisonID != compare.ID || binding.AccountID != account.Account.Config.ID || binding.AccountSHA256 != account.Account.SHA256 || binding.PolicyID != policy.Policy.ID || binding.PolicySHA256 != policyReceipt.Record.SHA256 || binding.ProposalSHA256 != workerplan.Hash(allocationFirst.Record.Entry.Plan.Decisions[0].Proposal) || binding.ExecutionCostSHA256 != allocationFirst.Record.ExecutionCosts[0].SHA256 || binding.LedgerSHA256 != allocationFirst.Record.LedgerSHA256 {
+	if checks[0].Schema != "mantik-owned-admission-readiness-v3" || binding == nil || binding.ComparisonID != compare.ID || binding.AccountID != account.Account.Config.ID || binding.AccountSHA256 != account.Account.SHA256 || binding.PolicyID != policy.Policy.ID || binding.PolicySHA256 != policyReceipt.Record.SHA256 || binding.ProposalSHA256 != workerplan.Hash(allocationFirst.Record.Entry.Plan.Decisions[0].Proposal) || binding.ExecutionCostSHA256 != allocationFirst.Record.ExecutionCosts[0].SHA256 || binding.LedgerSHA256 != allocationFirst.Record.LedgerSHA256 {
 		t.Fatal("unbound owner readiness", binding)
 	}
 	clock.panicRead = true

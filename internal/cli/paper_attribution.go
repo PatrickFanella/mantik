@@ -182,6 +182,15 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 		{Name: "evaluation_recipe", Status: "unavailable", ReasonCode: "relevant_evaluation_receipt_unavailable"},
 		{Name: "execution_reconciliation", Status: "unavailable", ReasonCode: "owned_execution_evidence_unavailable"},
 	}
+	if c.Schema == "mantik-owned-admission-readiness-v3" {
+		gate, err := validateReadinessAssessmentSelection(c, a)
+		if err != nil {
+			return err
+		}
+		gates[2] = gate
+	} else if len(c.EvaluationEvidence) > 0 || c.Binding != nil && c.Binding.EvaluationBindingSHA256 != "" {
+		return storage.ErrPaperAttributionInvalid
+	}
 	if c.QuoteInputID != r.Decision.Evaluation.Coverage.Quote.InputID || c.ValidUntil.IsZero() || c.Status != expectedStatus || !reflect.DeepEqual(c.Gates, gates) || !reflect.DeepEqual(c.ReconsiderTriggers, triggers) {
 		return storage.ErrPaperAttributionInvalid
 	}
@@ -190,7 +199,7 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 		if c.Binding != nil {
 			return storage.ErrPaperAttributionInvalid
 		}
-	case "mantik-owned-admission-readiness-v2":
+	case "mantik-owned-admission-readiness-v2", "mantik-owned-admission-readiness-v3":
 		b := c.Binding
 		if b == nil || b.ComparisonID != a.ComparisonID || b.PolicySHA256 != a.PolicySHA256 || b.AccountID != a.AccountID || !paperaccount.ID.MatchString(b.PolicyID) || !paperStrategyPin.MatchString(b.AccountSHA256) || !paperStrategyPin.MatchString(b.ProposalSHA256) || !paperStrategyPin.MatchString(b.LedgerSHA256) {
 			return storage.ErrPaperAttributionInvalid
@@ -253,4 +262,50 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 	fmt.Fprintln(&b, "Assessments may repeat one decision; no independent sample count or performance rate is inferred. Use --format json for complete evidence and pins.")
 	_, err := io.WriteString(out, b.String())
 	return err
+}
+
+// Portable shape validation is not an owner attestation or admission grant.
+func validateReadinessAssessmentSelection(c storage.OwnedAdmissionReadiness, a storage.PaperAllocationAttribution) (storage.OwnedAdmissionGate, error) {
+	gate := storage.OwnedAdmissionGate{Name: "evaluation_recipe", Status: "unavailable", ReasonCode: "relevant_evaluation_receipt_unavailable"}
+	if c.Binding == nil || a.EvaluationContext == nil || c.Binding.EvaluationBindingSHA256 != workerplan.Hash(a.EvaluationContext.Binding) || len(c.EvaluationEvidence) > storage.MaxPaperEvaluationAssessments {
+		return gate, storage.ErrPaperAttributionInvalid
+	}
+	previous := ""
+	selected, pending, failed := false, false, false
+	for _, v := range c.EvaluationEvidence {
+		if !paperaccount.ID.MatchString(v.AssessmentID) || !paperaccount.ID.MatchString(v.DeclarationID) || v.DeclarationID <= previous || !paperStrategyPin.MatchString(v.AssessmentSHA256) || !paperStrategyPin.MatchString(v.DeclarationSHA256) || !paperStrategyPin.MatchString(v.EvidenceSHA256) || v.AssessedAt.IsZero() || v.AssessedAt.After(c.CheckedAt) || (v.SampleStatus != "pending" && v.SampleStatus != "failed" && v.SampleStatus != "unavailable") {
+			return gate, storage.ErrPaperAttributionInvalid
+		}
+		found := false
+		for _, pin := range a.EvaluationContext.Binding.Assessments {
+			if pin.ID == v.AssessmentID && pin.SHA256 == v.AssessmentSHA256 && pin.DeclarationID == v.DeclarationID && pin.DeclarationSHA256 == v.DeclarationSHA256 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return gate, storage.ErrPaperAttributionInvalid
+		}
+		switch v.DecisionEvidenceStatus {
+		case "selected_research_evidence":
+			selected = true
+			pending = pending || v.SampleStatus == "pending"
+			failed = failed || v.SampleStatus == "failed"
+		case "decision_not_retained", "decision_before_window", "decision_after_window", "abstention", "quote_before_window", "quote_after_window", "source_unavailable_at_decision", "synthetic_not_selected", "duplicate_strategy_occurrence":
+		default:
+			return gate, storage.ErrPaperAttributionInvalid
+		}
+		previous = v.DeclarationID
+	}
+	switch {
+	case failed:
+		gate.Status, gate.ReasonCode = "failed", "retained_necessary_sample_check_failed"
+	case pending:
+		gate.Status, gate.ReasonCode = "pending", "retained_evaluation_outcome_window_open"
+	case selected:
+		gate.ReasonCode = "retained_evaluation_recipe_incomplete"
+	case len(c.EvaluationEvidence) > 0:
+		gate.ReasonCode = "finalized_decision_not_selected_in_assessment"
+	}
+	return gate, nil
 }
