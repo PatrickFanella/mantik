@@ -524,6 +524,8 @@ bind versioned provider/account policies to exact, explicitly unqualified source
 recordings. Revisions, deletions, repost roots and repeated-claim groups remain
 inspectable. Connectors report unavailable per watch; no provider request,
 research dispatch, independent evidence, fill or trading grant is implied.
+PostgreSQL receipts and history catalogues are returned only after successful
+COMMIT; failed commits return zero results and preserve retryable identities.
 The authenticated applicability read reports current source revisions, causal
 repost lineage, deletions, policy changes, and staleness without granting dispatch
 or trading authority.
