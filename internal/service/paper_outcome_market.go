@@ -17,26 +17,27 @@ import (
 )
 
 type PaperOutcomeMarketRow struct {
-	InputSHA256          string                  `json:"input_sha256"`
-	QualityReason        string                  `json:"quality_reason"`
-	InputKind            string                  `json:"input_kind"`
-	SelectedForwardQuote bool                    `json:"selected_forward_quote"`
-	InputID              string                  `json:"input_id"`
-	CaptureKey           string                  `json:"capture_key"`
-	CaptureSHA256        string                  `json:"capture_sha256"`
-	OccurrenceSHA256     string                  `json:"occurrence_sha256"`
-	EvidenceClass        string                  `json:"evidence_class"`
-	Quality              string                  `json:"quality"`
-	OccurredAt           time.Time               `json:"occurred_at"`
-	ReceivedAt           time.Time               `json:"received_at"`
-	PublishedAt          time.Time               `json:"published_at"`
-	AdmittedAt           time.Time               `json:"admitted_at"`
-	AvailableAt          time.Time               `json:"available_at"`
-	TemporalStatus       string                  `json:"temporal_status"`
-	DimensionStatus      string                  `json:"dimension_status"`
-	Quote                *alpaca.QuoteDimensions `json:"quote"`
-	PublicationFence     feedcollector.Fence     `json:"publication_fence"`
-	AdmissionFence       feedcollector.Fence     `json:"admission_fence"`
+	SessionEvidence      *PaperOutcomeSessionEvidence `json:"session_evidence"`
+	InputSHA256          string                       `json:"input_sha256"`
+	QualityReason        string                       `json:"quality_reason"`
+	InputKind            string                       `json:"input_kind"`
+	SelectedForwardQuote bool                         `json:"selected_forward_quote"`
+	InputID              string                       `json:"input_id"`
+	CaptureKey           string                       `json:"capture_key"`
+	CaptureSHA256        string                       `json:"capture_sha256"`
+	OccurrenceSHA256     string                       `json:"occurrence_sha256"`
+	EvidenceClass        string                       `json:"evidence_class"`
+	Quality              string                       `json:"quality"`
+	OccurredAt           time.Time                    `json:"occurred_at"`
+	ReceivedAt           time.Time                    `json:"received_at"`
+	PublishedAt          time.Time                    `json:"published_at"`
+	AdmittedAt           time.Time                    `json:"admitted_at"`
+	AvailableAt          time.Time                    `json:"available_at"`
+	TemporalStatus       string                       `json:"temporal_status"`
+	DimensionStatus      string                       `json:"dimension_status"`
+	Quote                *alpaca.QuoteDimensions      `json:"quote"`
+	PublicationFence     feedcollector.Fence          `json:"publication_fence"`
+	AdmissionFence       feedcollector.Fence          `json:"admission_fence"`
 }
 type PaperOutcomeMarketEvidence struct {
 	SelectedObservationAvailableAt time.Time               `json:"selected_observation_available_at"`
@@ -87,7 +88,7 @@ func inspectPaperOutcomeMarket(ctx context.Context, s storage.PaperOutcomeSource
 	if d.Evaluation.Action == "entry_candidate" && (r.Evaluation.DueAt.IsZero() || !r.Evaluation.DueAt.After(d.FinalizedAt) || r.Evaluation.WindowEnd.Before(r.Evaluation.DueAt)) {
 		return PaperOutcomeMarketEvidence{}, storage.ErrPaperOutcomeInvalid
 	}
-	out := PaperOutcomeMarketEvidence{Schema: "mantik-owned-outcome-market-evidence-v1", ReceiverID: r.Command.ReceiverID, OutcomeID: r.Command.ID, OutcomeSHA256: r.SHA256, BasisSHA256: r.BasisSHA256, DecisionID: d.Command.ID, DecisionSHA256: d.SHA256, RegistrationID: d.Command.RegistrationID, Provider: entry.Registration.Provider, Feed: entry.Registration.Feed, FinalizedAt: d.FinalizedAt, HorizonAt: r.Evaluation.DueAt, ObservationWindowEnd: r.Evaluation.WindowEnd, EvaluatedAt: r.EvaluatedAt, OutcomeStatus: r.Evaluation.Status, SelectedObservationAvailableAt: r.Evaluation.AvailableAt, Status: "quote_observations_unavailable", CoverageStatus: "retained_observations_only", Rows: []PaperOutcomeMarketRow{}, Authority: "service_owned_retained_quote_observations_only"}
+	out := PaperOutcomeMarketEvidence{Schema: "mantik-owned-outcome-market-evidence-v2", ReceiverID: r.Command.ReceiverID, OutcomeID: r.Command.ID, OutcomeSHA256: r.SHA256, BasisSHA256: r.BasisSHA256, DecisionID: d.Command.ID, DecisionSHA256: d.SHA256, RegistrationID: d.Command.RegistrationID, Provider: entry.Registration.Provider, Feed: entry.Registration.Feed, FinalizedAt: d.FinalizedAt, HorizonAt: r.Evaluation.DueAt, ObservationWindowEnd: r.Evaluation.WindowEnd, EvaluatedAt: r.EvaluatedAt, OutcomeStatus: r.Evaluation.Status, SelectedObservationAvailableAt: r.Evaluation.AvailableAt, Status: "quote_observations_unavailable", CoverageStatus: "retained_observations_only", Rows: []PaperOutcomeMarketRow{}, Authority: "service_owned_retained_quote_observations_only"}
 	seen := map[string]bool{}
 	selected := 0
 	for key, published := range feed.Records {
@@ -106,6 +107,11 @@ func inspectPaperOutcomeMarket(ctx context.Context, s storage.PaperOutcomeSource
 			return PaperOutcomeMarketEvidence{}, err
 		}
 		for _, input := range normalized.Inputs {
+			admission, ok := feed.Collectors.Admissions[input.ID]
+			if !ok || admission.Fence.RegistrationID != d.Command.RegistrationID || feedcollector.ValidateFence(admission.Fence) != nil || admission.InputSHA256 != feedcollector.InputDigest(input) || admission.At.IsZero() || admission.At.Before(input.ReceivedAt) || admission.At.After(r.EvaluatedAt) {
+				return PaperOutcomeMarketEvidence{}, storage.ErrPaperOutcomeConflict
+			}
+
 			if recording.Capability != "latest_quotes" {
 				continue
 			}
@@ -113,10 +119,6 @@ func inspectPaperOutcomeMarket(ctx context.Context, s storage.PaperOutcomeSource
 				return PaperOutcomeMarketEvidence{}, storage.ErrPaperOutcomeConflict
 			}
 			seen[input.ID] = true
-			admission, ok := feed.Collectors.Admissions[input.ID]
-			if !ok || admission.Fence.RegistrationID != d.Command.RegistrationID || feedcollector.ValidateFence(admission.Fence) != nil || admission.InputSHA256 != feedcollector.InputDigest(input) || admission.At.IsZero() || admission.At.Before(input.ReceivedAt) || admission.At.After(r.EvaluatedAt) {
-				return PaperOutcomeMarketEvidence{}, storage.ErrPaperOutcomeConflict
-			}
 			quality := "unavailable"
 			if input.Provenance != nil {
 				quality = input.Provenance.Quality
@@ -193,6 +195,17 @@ func inspectPaperOutcomeMarket(ctx context.Context, s storage.PaperOutcomeSource
 			row.QualityReason = input.Provenance.Reason
 		}
 		out.Rows = append(out.Rows, row)
+	}
+	for i := range out.Rows {
+		row := &out.Rows[i]
+		if row.Quote == nil {
+			continue
+		}
+		session, err := inspectOutcomeQuoteSession(ctx, feed, d.Command.RegistrationID, *row)
+		if err != nil {
+			return PaperOutcomeMarketEvidence{}, err
+		}
+		row.SessionEvidence = &session
 	}
 	if r.Evaluation.Status == "observed" && selected != 1 {
 		return PaperOutcomeMarketEvidence{}, storage.ErrPaperOutcomeConflict
