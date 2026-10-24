@@ -41,7 +41,7 @@ func ownedAllocationRoutes(mux *http.ServeMux, store storage.Store, clock Clock)
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		result, err := backend.CompareOwnedAllocation(ctx, c, clock.Now, evaluateOwnedPaperDecision)
+		result, err := backend.CompareOwnedAllocation(ctx, c, clock.Now, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err != nil {
 			ownedAllocationError(w, err)
 			return
@@ -59,7 +59,7 @@ func ownedAllocationRoutes(mux *http.ServeMux, store storage.Store, clock Clock)
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		result, err := backend.OwnedAllocations(ctx, evaluateOwnedPaperDecision)
+		result, err := backend.OwnedAllocations(ctx, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err != nil {
 			ownedAllocationError(w, err)
 			return
