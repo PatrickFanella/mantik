@@ -91,7 +91,7 @@ and positions, orders and commitments remain empty.
 
 Each comparison appends one hash-linked entry to its policy's allocation ledger.
 The owned record pins that entry, ledger head and policy. It has schema
-`mantik-owned-allocation-deferral-v6`, authority
+`mantik-owned-allocation-deferral-v7`, authority
 `service_owned_allocation_deferral_only`, and false execution/qualification
 flags. Returned core ledger values remain accounting evidence; they are not
 portable admission or execution grants.
@@ -397,7 +397,7 @@ performed.
 
 ## Captured evaluation declaration context
 
-New comparisons use `mantik-owned-allocation-deferral-v6`. The allocation owner
+New comparisons use `mantik-owned-allocation-deferral-v7`. The allocation owner
 reads and validates the declaration catalogue in the same Memory aggregate lock
 or PostgreSQL transaction as the finalized decisions, strategies and policies.
 It retains that exact catalogue with the journal entry. Callers still supply only
@@ -413,13 +413,20 @@ All authority flags remain false and allocation continues to defer.
 
 Replay validates captured declarations against their actual current owner
 records and rejects declarations recorded after the comparison clock. Later
-catalogue additions do not change earlier contexts or exact retries. Portable
-hashes alone do not prove custody or completeness of a historical snapshot.
-Existing v1-v5 records retain their exact representation and retry behavior;
-they acquire no retrospective declaration context. Corrupt captured sources or
+catalogue additions do not change earlier contexts or exact retries. For v7, replay also requires that the capture exactly matches all current owner
+declarations recorded at or before the comparison clock. Omitting a plan and
+recomputing every portable context/record hash fails. To keep that historical cut
+stable, a new declaration must have a service clock strictly later than every
+retained v7 comparison. Equal or earlier clocks fail without consuming the plan
+ID; exact old declaration retries remain clock-free. PostgreSQL serializes both
+owners through the existing state and receiver locks; Memory uses its aggregate
+mutex. This is owner-history consistency, not independent source attestation.
+Existing v1-v6 records retain their exact representation and retry behavior;
+v1-v5 acquire no retrospective declaration context, and v6 retains its historical
+capture-subset validation. Corrupt captured sources or
 rehashed context fields fail the complete read and exact retry.
 
-Schema 48 fences older binaries before startup. Its migration changes only the
+Schema 49 fences older binaries before startup. Its migration changes only the
 table comment and migration checksum record; it does not rewrite prior journals
 or activate an admission/effect writer. Upgrade and rollback checks run against
 new disposable PostgreSQL containers. Atomic funded execution and applicable

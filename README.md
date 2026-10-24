@@ -613,8 +613,8 @@ available by the predeclared deadline contribute to the observed-decision count.
 
 Owned allocation comparisons now bind each admission-readiness receipt to its
 actual owner-selected account, policy, proposal, execution-cost receipt (when
-present) and resulting ledger head. New v6 comparisons retain v2 readiness and capture the owner declaration catalogue;
-[the schema-48 fence and historical declaration context](docs/reference/owned-allocation-comparisons.md#captured-evaluation-declaration-context)
+present) and resulting ledger head. New v7 comparisons retain v2 readiness and the complete owner declaration catalogue at their comparison clock;
+[the schema-49 fence and historical declaration context](docs/reference/owned-allocation-comparisons.md#captured-evaluation-declaration-context)
 preserve prior records without granting admission or financial execution. Issue
 #19's admission issuer, effect ownership and atomic durable financial execution
 remain unfinished.
@@ -636,7 +636,7 @@ an exact request. See [commit acknowledgment](docs/reference/owned-allocation-co
 
 
 Paper attribution and its terminal readback now expose the evaluation-declaration
-context retained by v6 allocation comparisons. Captured plan pins remain
+context retained by v6/v7 allocation comparisons. Captured plan pins remain
 `declared_not_evaluated`; absence remains `declaration_unavailable`. This adds
 traceability without evaluation, admission, execution or qualification authority.
 See [paper attribution](docs/reference/paper-attribution.md).
