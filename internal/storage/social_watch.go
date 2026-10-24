@@ -104,7 +104,10 @@ func (p *Postgres) ApplySocialCommand(ctx context.Context, c socialwatch.Command
 			return socialwatch.Receipt{}, err
 		}
 	}
-	return r, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return socialwatch.Receipt{}, err
+	}
+	return r, nil
 }
 func (p *Postgres) SocialHistory(ctx context.Context) (socialwatch.Catalog, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -124,7 +127,10 @@ func (p *Postgres) SocialHistory(ctx context.Context) (socialwatch.Catalog, erro
 	if err != nil {
 		return socialwatch.Catalog{}, err
 	}
-	return out, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return socialwatch.Catalog{}, err
+	}
+	return out, nil
 }
 
 var _ SocialWatchStore = (*Memory)(nil)

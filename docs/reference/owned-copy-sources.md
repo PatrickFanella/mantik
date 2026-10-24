@@ -111,7 +111,9 @@ does not prove that a post and trade describe the same economic event.
 
 The shared owner validates its entire journal before reads, writes and retries.
 Memory uses the aggregate mutex. PostgreSQL serializes journal writes with the
-receiver row lock and stores the bounded aggregate atomically. This change adds
+receiver row lock and stores the bounded aggregate atomically. Copy commands and history
+reads share the social owner's COMMIT acknowledgement boundary: failed COMMIT
+returns a zero result and an error, with no successful receipt or catalogue. This change adds
 no table or schema migration. Existing journal bytes and hashes remain unchanged
 when the optional copy/follow fields are absent, verified against a fixture hash
 captured from the pre-change source. Older readers cannot interpret new typed

@@ -118,7 +118,10 @@ receiver and writes no routing, operation, capital or effect state. Catalogue
 reads use repeatable read. Each entry links its predecessor; full replay checks
 commands, source/policy derivation, results, time, sequence and hashes before
 reads, writes or retries. Self-rehashing result flags does not grant authority.
-Failed insert/update transactions preserve the preceding journal.
+Failed insert/update transactions preserve the preceding journal. PostgreSQL returns a receipt or
+catalogue only after COMMIT succeeds. A deferred write failure or cancelled
+read/retry COMMIT returns an error and a zero result; a rolled-back request keeps
+its identity available for a later retry.
 
 Verification units cover source history/recovery, scope and authority guards,
 actual Memory/PostgreSQL ownership, concurrent exact retries, authenticated HTTP,
