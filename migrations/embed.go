@@ -172,3 +172,6 @@ var AssessmentDecisionReadiness string
 
 //go:embed 0053_owned_admission_reviews.sql
 var OwnedAdmissionReviews string
+
+//go:embed 0054_native_warmup_assessments.sql
+var NativeWarmUpAssessments string

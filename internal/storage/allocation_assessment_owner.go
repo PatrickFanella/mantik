@@ -33,5 +33,5 @@ func resolveAllocationAssessmentOwner(ctx context.Context, owner string, all map
 	if err != nil {
 		return PaperEvaluationAssessmentCatalog{}, err
 	}
-	return paperEvaluationAssessmentCatalog(ctx, owner, all, paperEvaluationSources{declarations, decisions, actual, retained, feed.Collectors.LastClock})
+	return paperEvaluationAssessmentCatalog(ctx, owner, all, paperEvaluationSources{declarations, decisions, actual, retained, feed.Collectors.LastClock, strategies})
 }

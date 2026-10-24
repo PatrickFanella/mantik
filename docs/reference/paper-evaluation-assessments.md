@@ -21,19 +21,21 @@ are rejected. There is no new offline command or financial write route.
 The service replays the actual strategy, policy, declaration, finalized-decision
 and outcome owners in one consistent snapshot. Issuance takes the existing
 collector → state → receiver lock order in PostgreSQL; Memory uses its aggregate
-mutex. The resulting `mantik-owned-paper-evaluation-assessment-v1` record retains
-its command, service clock, recipe, complete selected evidence, individual check
-states and a SHA256 digest. Its recipe is
-`native-predeclared-necessary-checks-v1`.
+mutex. New records use `mantik-owned-paper-evaluation-assessment-v2` and
+`native-predeclared-necessary-checks-v2`. They retain the command, service clock,
+complete selected evidence, individual check states, native warm-up applicability
+and a SHA256 digest. Existing v1 records keep their original recipe, bytes and
+hashes; replay does not attach retrospective warm-up results.
 
 Each predeclared variant receives all eight planned checks. Before the outcome
 deadline, sample sufficiency remains `pending`. At or after that deadline, an
 observed occurrence upper bound below the predeclared minimum proves the
 necessary sample condition has failed. That check is `failed`, and the assessment
 is `blocked`. Reaching the count minimum leaves sample sufficiency `unavailable`:
-occurrence counts do not establish statistical independence. The remaining
-checks are `unavailable` until their applicable evidence and validated methods
-exist. An assessment without a proven failure after the deadline is `incomplete`.
+occurrence counts do not establish statistical independence. The compiled native
+threshold method's warm-up check is `not_applicable`, as described below. The
+remaining six checks are `unavailable` until their applicable evidence and
+validated methods exist. An assessment without a proven failure after the deadline is `incomplete`.
 Failed and unavailable checks remain inspectable alongside pending attempts.
 
 `evaluation_complete`, `admission_available`, `execution_available` and
@@ -41,6 +43,37 @@ Failed and unavailable checks remain inspectable alongside pending attempts.
 unqualified. Forward-quote outcomes do not become fills, economic returns,
 benchmark results or realized PnL. A blocked assessment is not a retirement
 event, and an incomplete assessment cannot authorize an allocation.
+
+## Native warm-up applicability
+
+The current `native-paper-threshold-v1` predicate compares one eligible quote's
+price to the registered fixed threshold. It has no rolling history, indicator
+state or learned model. Recipe v2 therefore derives `warm_up: not_applicable`
+with reason `compiled_threshold_predicate_has_no_lookback`. This is a method
+input requirement, not a measured performance result or a passing full recipe.
+It does not depend on having already observed a decision or reaching a sample
+minimum, so pending and empty-sample assessments retain the same applicability.
+
+The `warm_up` field records method `native-threshold-stateless-warmup-v1`, zero
+required lookback observations, status `not_required`, and the actual registered
+strategy records selected by the predeclaration's exact variant IDs and hashes.
+Definitions must belong to the receiver, use that compiled method, and have
+been registered no later than the declaration. Its own digest and the outer
+assessment hash cover these records. An unknown or stateful method cannot
+inherit the zero-lookback rule.
+
+Public commands still contain identities only. Callers cannot submit warm-up
+results, strategy records or lookback assertions. Catalogue reads and exact
+retries rederive applicability from the actual strategy owner under the same
+lock or database snapshot. Source-writer clock floors validate the captured
+recipe envelope; that envelope is not a substitute for actual owner replay.
+Rehashed altered requirements, methods, status, or strategy records fail closed.
+
+Schema 54 is a writer fence for the new recipe. It adds no table and rewrites no
+old assessment. A schema-53 binary must refuse the newer database. Historical
+v1 assessments remain v1 even when read alongside v2 assessments after restart.
+The existing backup/binary rollback contract applies; removing the schema marker
+is not a downgrade.
 
 ## Retention and source ordering
 
@@ -78,8 +111,8 @@ The owner retains at most 16 assessments, each at most 8 MiB plus 64 KiB, with a
 16 MiB aggregate payload cap. Capacity exhaustion fails closed and does not
 evict failed or incomplete attempts. There is no deletion or reset endpoint.
 
-The remaining admission work still includes applicable leakage, warm-up,
-out-of-sample, parameter and cost sensitivity, benchmark, calibration,
+The remaining admission work still includes applicable leakage, warm-up for any
+future stateful method, out-of-sample, parameter and cost sensitivity, benchmark, calibration,
 independence and search-multiplicity methods; legitimate qualification evidence;
 a versioned admission/expiry/reassessment/retirement issuer; and execution-owner
 reconciliation with atomic financial postings. Issues #19, #20 and #21 remain
