@@ -151,6 +151,7 @@ func inspectFeedCoverage(s storage.FeedEvidenceSnapshot, id string, at time.Time
 			if input.Source == "alpaca-regular-session" && !input.ReceivedAt.Before(report.Session.ReceivedAt) {
 				report.Session.Status = "unknown"
 				report.Session.Code = "calendar_publication_pending"
+				report.Quote.RegularSessionEligible = false
 				report.RequiredEvidenceSatisfied = false
 				report.PriceRequired = false
 			}

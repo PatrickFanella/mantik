@@ -12,7 +12,7 @@ transaction and returns no source result if COMMIT fails. The inspector uses
 the retained outcome timestamp; it never consults wall time or acquires data.
 There is no new table, journal, write command or offline CLI.
 
-The `mantik-owned-outcome-market-evidence-v1` response pins the receiver,
+The `mantik-owned-outcome-market-evidence-v2` response pins the receiver,
 outcome, basis, finalized decision and collector registration. It retains the
 decision finalization, outcome horizon, observation-window end and assessment
 timestamp alongside the outcome's existing status.
@@ -53,8 +53,9 @@ Usable quotes retain one temporal classification:
   temporal window, including the exact horizon boundary.
 - `decision_abstained`: the finalized decision has no entry candidate.
 
-These classifications describe time only. They do not establish regular-session
-eligibility, execution eligibility or complete coverage. Rows are ordered by
+These classifications describe time only. The separate session evidence below
+provides point-in-time regular-session context; neither establishes execution
+eligibility or complete coverage. Rows are ordered by
 known availability, then occurrence, input ID and capture key. Unpublished
 rows follow known availability and are ordered by admission time and input ID. Repeated captures of the
 same provider/feed/symbol occurrence retain the same occurrence hash and remain
@@ -67,6 +68,41 @@ than `selected_observation_available_at`, which preserves the outcome
 evaluator's availability of all required evidence, including calendar/session
 evidence. A calendar can arrive after the quote; these clocks are not merged. This flag identifies the existing
 quote-level outcome; it does not identify a fill or an economic return.
+
+## Quote session evidence
+
+Version 2 adds `session_evidence` for each usable quote row. Missing,
+quarantined and unpublished quote rows keep this field null. The method
+`owned-quote-session-at-availability-v1` reconstructs the service evidence cut
+at the row's `available_at`, without consulting wall time. It applies the same
+regular-session calculation and fixed age limits used by the service's feed
+coverage inspector: 60 seconds for quote occurrence, 300 seconds for quote
+receipt, and 86,400 seconds for calendar receipt. The recording's stricter
+quote age limit still applies. The response pins these limits in `evidence.spec`.
+
+A calendar enters the cut only after its raw publication and every normalized
+input's admission. Later publication or admission cannot retrospectively make
+an earlier quote eligible. The selected calendar source retains its capture
+key/hash, receipt/publication/availability timestamps, publication fence, and
+each normalized input's ID/hash, receipt/admission timestamps and admission
+fence. `pending_calendar_admissions` retains admitted calendar inputs whose
+original is unavailable at that cut. A newer or equal-receipt unpublished
+calendar suppresses an older published calendar and clears quote session
+eligibility. Conflicting latest-receipt calendars remain unknown.
+
+The nested report distinguishes unknown, stale, closed, pre-open and open
+session evidence, including early closes and dates with no session. A quote's
+occurrence must fall within the selected regular session, with an inclusive
+open and exclusive close. Its availability must also be inside that session.
+A closed-session report can satisfy the shared method's no-price-required
+condition; it cannot make a quote session-eligible. The report concerns this
+specific quote, rather than replacing it with another latest quote.
+
+This is one observed quote's session context. It does not establish continuous
+holding-window coverage, collector liveness, liquidity, verified share units,
+cost-bearing execution, admission or qualification. The outer authority flags
+remain false. Existing outcome records and source hashes are unchanged; the
+readback's version and hash include the new projection.
 
 ## Boundaries and historical readback
 

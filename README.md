@@ -660,6 +660,8 @@ proposals and owner-replayed readiness. Schema 53 adds durable review retention;
 positive admission, retirement and financial effect authority remain unfinished.
 
 [Retained outcome market evidence](docs/reference/owned-outcome-market-evidence.md)
+includes quote-specific regular-session context at the service availability cut,
+with calendar custody pins and explicit pending-publication gaps. It
 exposes historical quote dimensions, publication/admission clocks and quality
 gaps from actual owner-replayed outcomes. It supplies no execution, continuous
 coverage or qualification authority.
