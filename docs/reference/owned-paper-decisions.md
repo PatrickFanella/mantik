@@ -227,3 +227,9 @@ compatibility comment and marker, without rewriting decision payloads. Failed
 migration transactions preserve the previous marker/comment and source bytes;
 checksum mismatches fail startup. Rollback still requires a compatible reader or
 a private pre-upgrade backup restored into separate resources.
+
+PostgreSQL catalogue reads return records only after their read transaction
+commits successfully. A failed COMMIT returns an error and a zero catalogue,
+matching the source-read and exact-retry acknowledgment contracts. Cancellation
+at this boundary does not change retained decisions or confer allocation
+authority.

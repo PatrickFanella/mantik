@@ -539,7 +539,8 @@ The service selects prices from its own publication history; callers select only
 a decision identity and hash. Waiting, missing and observed assessments are
 immutable. New v2 outcomes reject omission of selected-registration inputs or
 raw publications available at assessment time; legacy v1 membership remains
-unproven. Quote deltas are decision observations, with no fill, PnL, admission
+unproven. PostgreSQL decision/outcome catalogue reads return zero results on
+failed COMMIT. Quote deltas are decision observations, with no fill, PnL, admission
 or qualification grant.
 
 [Owned copy-source records and follow intent](docs/reference/owned-copy-sources.md)
