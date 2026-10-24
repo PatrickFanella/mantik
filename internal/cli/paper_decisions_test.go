@@ -212,7 +212,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if allocationFirst.Record.ExecutionAvailable || allocationFirst.Record.QualificationCredit || allocationFirst.Record.Entry.Plan == nil || allocationFirst.Record.Entry.Plan.Decisions[0].Status != "defer" || allocationFirst.Record.Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
 		t.Fatal(allocationFirst)
 	}
-	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v7" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
+	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v8" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
 		t.Fatal(allocationFirst)
 	}
 	evaluationContext := allocationFirst.Record.EvaluationContext
@@ -428,7 +428,12 @@ func TestPostgresContractsOwnedDecisionAllocationHTTP(t *testing.T) {
 	}
 	defer response.Body.Close()
 	var got storage.OwnedAllocationCatalog
-	if err = json.NewDecoder(response.Body).Decode(&got); err != nil || response.StatusCode != 200 || len(got.Records) != 1 || len(got.Ledgers) != 1 || len(got.Capital) != 1 || got.Capital[0].LedgerSHA256 != got.Ledgers[0].SHA256 || got.Capital[0].AvailableCashCents != got.Ledgers[0].Policy.Account.Config.OpeningCashCents || got.Records[0].Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
+	if err = json.NewDecoder(response.Body).Decode(&got); err != nil || response.StatusCode != 200 || len(got.Records) != 2 || len(got.Ledgers) != 1 || len(got.Capital) != 1 || got.Capital[0].LedgerSHA256 != got.Ledgers[0].SHA256 || got.Capital[0].AvailableCashCents != got.Ledgers[0].Policy.Account.Config.OpeningCashCents || got.Records[0].Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
 		t.Fatal(got, err, response.StatusCode)
 	}
+	captured := got.Records[1].EvaluationContext
+	if got.Records[1].Command.ID != "http-assessment-bound-comparison" || captured == nil || captured.Schema != "mantik-owned-allocation-evaluation-context-v2" || len(captured.Decisions) != 1 || len(captured.Decisions[0].Assessments) != 1 || captured.Decisions[0].Assessments[0].ID != "http-assessment" || captured.Decisions[0].Assessments[0].Status != "pending" || captured.AdmissionAvailable || captured.ExecutionAvailable || captured.QualificationCredit {
+		t.Fatal("reopen lost retained assessment context", captured)
+	}
+
 }

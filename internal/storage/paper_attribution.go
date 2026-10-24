@@ -33,13 +33,14 @@ type PaperAllocationAttribution struct {
 
 // This is a projection of retained comparison context, not a fresh plan lookup.
 type PaperEvaluationPlanAttribution struct {
-	Schema              string                     `json:"schema"`
-	SourceSHA256        string                     `json:"source_sha256"`
-	Binding             OwnedEvaluationPlanBinding `json:"binding"`
-	Authority           string                     `json:"authority"`
-	AdmissionAvailable  bool                       `json:"admission_available"`
-	ExecutionAvailable  bool                       `json:"execution_available"`
-	QualificationCredit bool                       `json:"qualification_credit"`
+	AssessmentSourceSHA256 string                     `json:"assessment_source_sha256,omitempty"`
+	Schema                 string                     `json:"schema"`
+	SourceSHA256           string                     `json:"source_sha256"`
+	Binding                OwnedEvaluationPlanBinding `json:"binding"`
+	Authority              string                     `json:"authority"`
+	AdmissionAvailable     bool                       `json:"admission_available"`
+	ExecutionAvailable     bool                       `json:"execution_available"`
+	QualificationCredit    bool                       `json:"qualification_credit"`
 }
 
 // Unknown economic values are null, not manufactured zero costs or PnL.
@@ -128,6 +129,10 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 					for _, binding := range a.EvaluationContext.Decisions {
 						if binding.DecisionID == d.Command.ID {
 							item.EvaluationContext = &PaperEvaluationPlanAttribution{Schema: "mantik-paper-attribution-evaluation-context-v1", SourceSHA256: a.EvaluationContext.SourceSHA256, Binding: clone(binding), Authority: a.EvaluationContext.Authority, AdmissionAvailable: a.EvaluationContext.AdmissionAvailable, ExecutionAvailable: a.EvaluationContext.ExecutionAvailable, QualificationCredit: a.EvaluationContext.QualificationCredit}
+							if a.EvaluationContext.Schema == "mantik-owned-allocation-evaluation-context-v2" {
+								item.EvaluationContext.Schema = "mantik-paper-attribution-evaluation-context-v2"
+								item.EvaluationContext.AssessmentSourceSHA256 = a.EvaluationContext.AssessmentSourceSHA256
+							}
 							break
 						}
 					}
@@ -194,11 +199,12 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	if _, err = paperEvaluationAssessmentCatalog(ctx, m.receiverID, m.evaluationAssessments, paperEvaluationSources{declarations, decisions, outcomes, m.paperDecisions, m.collectors.LastClock}); err != nil {
+	assessmentCatalog, err := paperEvaluationAssessmentCatalog(ctx, m.receiverID, m.evaluationAssessments, paperEvaluationSources{declarations, decisions, outcomes, m.paperDecisions, m.collectors.LastClock})
+	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
 
-	allocations, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, declarations)
+	allocations, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, declarations, assessmentCatalog)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
@@ -262,11 +268,12 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	if _, err = paperEvaluationAssessmentCatalog(ctx, feed.ReceiverID, assessments, paperEvaluationSources{declarations, decisions, outcomes, retained, feed.Collectors.LastClock}); err != nil {
+	assessmentCatalog, err := paperEvaluationAssessmentCatalog(ctx, feed.ReceiverID, assessments, paperEvaluationSources{declarations, decisions, outcomes, retained, feed.Collectors.LastClock})
+	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
 
-	allocations, err := replayOwnedAllocations(ctx, feed.ReceiverID, journal, policies, decisions, strategies, retained, declarations)
+	allocations, err := replayOwnedAllocations(ctx, feed.ReceiverID, journal, policies, decisions, strategies, retained, declarations, assessmentCatalog)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}

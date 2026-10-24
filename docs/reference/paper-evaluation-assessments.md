@@ -107,7 +107,14 @@ No comparison receipt is returned on those failures, and retry does not read a
 new clock. Restoring valid owner data restores the same original comparison
 receipt; adding legitimate later assessments does not change its bytes or hash.
 
-This is an owner-validation dependency for future assessment-to-proposal
-bindings. It does not add assessment pins to old comparison records, upgrade an
-incomplete assessment into an applicable full recipe, or issue admission or
-financial effects. Comparison wire schemas and database schema50 are unchanged.
+New v8 allocation comparisons now retain compact assessment pins and the complete
+assessment-source cut in their versioned proposal context. New assessment clocks
+must be strictly later than every retained v8 comparison; new comparisons cannot
+predate any actual assessment. Exact retries remain clock-free, and later
+assessments do not change historical contexts. The schema-51 startup fence
+prevents older binaries from writing across those retained cuts.
+
+These pins do not upgrade an incomplete assessment into an applicable full
+recipe or issue admission or financial effects. Older comparison records acquire
+no retrospective assessment pins. See [retained assessment context](owned-allocation-comparisons.md#retained-assessment-context)
+for the version and replay contract.

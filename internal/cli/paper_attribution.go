@@ -107,12 +107,37 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 		}
 		if c := a.EvaluationContext; c != nil {
 			b := c.Binding
-			if c.Schema != "mantik-paper-attribution-evaluation-context-v1" || c.Authority != "service_owned_predeclarations_only" || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit || !paperStrategyPin.MatchString(c.SourceSHA256) || b.DecisionID != r.Decision.Command.ID || b.DecisionSHA256 != r.Decision.SHA256 || b.StrategyID != r.Decision.Command.StrategyID || b.StrategySHA256 != r.Decision.Command.StrategySHA256 || b.PolicySHA256 != a.PolicySHA256 || a.AdmissionReadiness == nil || a.AdmissionReadiness.Binding == nil || b.PolicyID != a.AdmissionReadiness.Binding.PolicyID || b.Declarations == nil || len(b.Declarations) > storage.MaxPaperEvaluationDeclarations {
+			legacy := c.Schema == "mantik-paper-attribution-evaluation-context-v1" && c.Authority == "service_owned_predeclarations_only" && c.AssessmentSourceSHA256 == "" && len(b.Assessments) == 0
+			current := c.Schema == "mantik-paper-attribution-evaluation-context-v2" && c.Authority == "service_owned_incomplete_assessments_and_predeclarations_only" && paperStrategyPin.MatchString(c.AssessmentSourceSHA256)
+			if (!legacy && !current) || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit || !paperStrategyPin.MatchString(c.SourceSHA256) || b.DecisionID != r.Decision.Command.ID || b.DecisionSHA256 != r.Decision.SHA256 || b.StrategyID != r.Decision.Command.StrategyID || b.StrategySHA256 != r.Decision.Command.StrategySHA256 || b.PolicySHA256 != a.PolicySHA256 || a.AdmissionReadiness == nil || a.AdmissionReadiness.Binding == nil || b.PolicyID != a.AdmissionReadiness.Binding.PolicyID || b.Declarations == nil || len(b.Declarations) > storage.MaxPaperEvaluationDeclarations {
 				return storage.ErrPaperAttributionInvalid
 			}
 			status := "declaration_unavailable"
 			if len(b.Declarations) > 0 {
 				status = "declared_not_evaluated"
+			}
+			if len(b.Assessments) > 0 {
+				if !current || len(b.Assessments) > storage.MaxPaperEvaluationAssessments {
+					return storage.ErrPaperAttributionInvalid
+				}
+				status = "assessed_not_admitted"
+				previous := ""
+				for _, pin := range b.Assessments {
+					if !paperaccount.ID.MatchString(pin.ID) || pin.ID <= previous || !paperStrategyPin.MatchString(pin.SHA256) || (pin.Status != "pending" && pin.Status != "blocked" && pin.Status != "incomplete") {
+						return storage.ErrPaperAttributionInvalid
+					}
+					found := false
+					for _, d := range b.Declarations {
+						if d.ID == pin.DeclarationID && d.SHA256 == pin.DeclarationSHA256 {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return storage.ErrPaperAttributionInvalid
+					}
+					previous = pin.ID
+				}
 			}
 			if b.Status != status {
 				return storage.ErrPaperAttributionInvalid
