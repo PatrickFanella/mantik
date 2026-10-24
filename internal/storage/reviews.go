@@ -186,7 +186,10 @@ func (p *Postgres) reviewMutation(ctx context.Context, receiver string, apply fu
 	if err != nil {
 		return review.View{}, err
 	}
-	return review.Inspect(a, state), tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return review.View{}, err
+	}
+	return review.Inspect(a, state), nil
 }
 func loadReview(ctx context.Context, tx pgx.Tx, id string) (review.Attempt, error) {
 	var raw []byte

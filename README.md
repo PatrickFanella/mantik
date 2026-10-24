@@ -240,6 +240,8 @@ results to its hash; older unpinned reviews continue to use v1.
 The local `news-reuse-review-v1` recorded profile can inspect a validated
 `hypotheses` export and propose reusing an exact declared question. It binds the
 catalogue/inventory hashes and checks current evidence and inspected methods.
+PostgreSQL review starts, completions and exact retries return zero views on
+failed COMMIT.
 Retained service reviews capture their own catalogue inventory at start and
 independently recheck the exact declaration when publishing reuse.
 `news-reviews --case ID` exposes the complete retained review history for an

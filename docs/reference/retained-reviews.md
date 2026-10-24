@@ -290,3 +290,15 @@ exhaustive. Use publication links and the separate combined hypothesis/trial
 history for research outcomes. Rejected commands that never created an attempt,
 unregistered experiments and provider activity are outside this report. No
 automatic dispatch, publication, trial, migration or operation is triggered.
+
+## Transaction acknowledgments
+
+PostgreSQL review starts and completions return a review view only after their
+transaction commits successfully. Deferred constraints and cancellation at COMMIT
+return an error and a zero view, including on exact retries. A confirmed rollback
+preserves the previous review history and leaves a new request identity reusable.
+A transport error may leave the commit outcome uncertain: inspect retained history
+or retry the exact same request; do not infer rollback from a missing response.
+Successful exact retries preserve the original attempt without reading a new clock.
+These rules do not authenticate social/copy sources, issue research dispatch, grant
+admission or create financial effects.
