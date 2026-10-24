@@ -41,7 +41,7 @@ func legacyAssessmentFixture(t *testing.T, s assessmentBackend, r PaperEvaluatio
 }
 func assertNativeWarmUp(t *testing.T, r PaperEvaluationAssessment, plan PaperEvaluationDeclarationCommand) {
 	t.Helper()
-	if r.Schema != "mantik-owned-paper-evaluation-assessment-v2" || r.Recipe != "native-predeclared-necessary-checks-v2" || r.WarmUp == nil || r.WarmUp.Method != "native-threshold-stateless-warmup-v1" || r.WarmUp.RequiredLookbackObservations != 0 || r.WarmUp.Status != "not_required" || len(r.WarmUp.Strategies) != len(plan.Plan.Variants) || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
+	if r.Schema != "mantik-owned-paper-evaluation-assessment-v3" || r.Recipe != "native-predeclared-necessary-checks-v3" || r.WarmUp == nil || r.WarmUp.Method != "native-threshold-stateless-warmup-v1" || r.WarmUp.RequiredLookbackObservations != 0 || r.WarmUp.Status != "not_required" || len(r.WarmUp.Strategies) != len(plan.Plan.Variants) || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 		t.Fatal("invalid native applicability", r)
 	}
 	for i, s := range r.WarmUp.Strategies {
@@ -65,7 +65,7 @@ func assertNativeWarmUp(t *testing.T, r PaperEvaluationAssessment, plan PaperEva
 func nativeWarmUpMigrationContract(t *testing.T, p *Postgres) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version=54; CREATE FUNCTION reject_warmup_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=54 THEN RAISE EXCEPTION 'warmup migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_warmup_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_warmup_migration()`); err != nil {
+	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=54; CREATE FUNCTION reject_warmup_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=54 THEN RAISE EXCEPTION 'warmup migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_warmup_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_warmup_migration()`); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := OpenPostgres(ctx, p.pool.Config().ConnString()); err == nil {
@@ -122,6 +122,7 @@ func TestNativeWarmUpEnvelopeCannotInventRequirementsOrMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertNativeWarmUp(t, receipt.Record, plan)
+	assertNativeCalibration(t, receipt.Record, plan)
 	for name, change := range map[string]func(*PaperEvaluationWarmUp){
 		"lookback":       func(v *PaperEvaluationWarmUp) { v.RequiredLookbackObservations = 10 },
 		"method":         func(v *PaperEvaluationWarmUp) { v.Method = "rolling_model_warmup" },

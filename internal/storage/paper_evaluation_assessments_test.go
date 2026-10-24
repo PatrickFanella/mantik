@@ -70,6 +70,7 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 		t.Fatal(err)
 	}
 	assertNativeWarmUp(t, early.Record, plan)
+	assertNativeCalibration(t, early.Record, plan)
 	early = legacyAssessmentFixture(t, s, early, de, oe)
 	dc := PaperDecisionCommand{ID: "first", ReceiverID: plan.ReceiverID, StrategyID: plan.Plan.Variants[0].ID, StrategySHA256: plan.Plan.Variants[0].SHA256, RegistrationID: reg.ID}
 	first, err := s.FinalizePaperDecision(ctx, dc, func() time.Time { return start.Add(time.Nanosecond) }, de)
@@ -110,6 +111,8 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 		t.Fatal(pending, clockReads, err)
 	}
 	assertNativeWarmUp(t, pending.Record, plan)
+	assertNativeCalibration(t, pending.Record, plan)
+	pending = legacyCalibrationFixture(t, s, pending, de, oe)
 	noClock := func() time.Time { t.Fatal("retry consulted clock"); return time.Time{} }
 	duplicate, err := s.AssessPaperEvaluation(ctx, c, noClock, de, oe)
 	if err != nil || !duplicate.Duplicate || !reflect.DeepEqual(duplicate.Record, pending.Record) {
@@ -254,6 +257,10 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 			if check.Status != "failed" {
 				t.Fatal(check)
 			}
+		} else if check.Name == "forecast_calibration" {
+			if check.Status != "not_applicable" || check.ReasonCode != "compiled_threshold_predicate_has_no_probability_forecast" {
+				t.Fatal(check)
+			}
 		} else if check.Name == "warm_up" {
 			if check.Status != "not_applicable" || check.ReasonCode != "compiled_threshold_predicate_has_no_lookback" {
 				t.Fatal(check)
@@ -392,6 +399,23 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 		}
 	}
 	for _, change := range []func(*PaperEvaluationAssessment){func(r *PaperEvaluationAssessment) {
+		r.ForecastCalibration.OutputKind = "probability_forecast"
+		r.ForecastCalibration.Strategies[0].SHA256 = strings.Repeat("f", 64)
+		r.ForecastCalibration.SHA256 = ""
+		r.ForecastCalibration.SHA256 = workerplan.Hash(*r.ForecastCalibration)
+		r.SHA256 = ""
+		r.SHA256 = workerplan.Hash(*r)
+	}, func(r *PaperEvaluationAssessment) {
+		r.ForecastCalibration.Status = "passed"
+		r.ForecastCalibration.SHA256 = ""
+		r.ForecastCalibration.SHA256 = workerplan.Hash(*r.ForecastCalibration)
+		r.SHA256 = ""
+		r.SHA256 = workerplan.Hash(*r)
+	}, func(r *PaperEvaluationAssessment) {
+		r.ForecastCalibration = nil
+		r.SHA256 = ""
+		r.SHA256 = workerplan.Hash(*r)
+	}, func(r *PaperEvaluationAssessment) {
 		r.WarmUp.RequiredLookbackObservations = 10
 		r.WarmUp.SHA256 = ""
 		r.WarmUp.SHA256 = workerplan.Hash(*r.WarmUp)
@@ -501,6 +525,7 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 		allocationAssessmentContextMigrationContract(t, pg)
 		assessmentDecisionReadinessMigrationContract(t, pg)
 		nativeWarmUpMigrationContract(t, pg)
+		nativeCalibrationMigrationContract(t, pg)
 	}
 }
 func TestPaperEvaluationAssessmentCountCannotGrant(t *testing.T) {

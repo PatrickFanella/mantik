@@ -86,11 +86,22 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-assessments", assessmentCommand, 201), &assessment); err != nil || assessment.Duplicate || assessment.Record.Status != "pending" || assessment.Record.AdmissionAvailable || assessment.Record.ExecutionAvailable || assessment.Record.QualificationCredit || assessment.Record.EvaluationComplete || !reflect.DeepEqual(assessment.Record.Evidence, evidence) {
 		t.Fatal(assessment, err)
 	}
-	if assessment.Record.Schema != "mantik-owned-paper-evaluation-assessment-v2" || assessment.Record.Recipe != "native-predeclared-necessary-checks-v2" || assessment.Record.WarmUp == nil || assessment.Record.WarmUp.Status != "not_required" || assessment.Record.WarmUp.RequiredLookbackObservations != 0 || len(assessment.Record.WarmUp.Strategies) != 1 || !reflect.DeepEqual(assessment.Record.WarmUp.Strategies[0], strategy) {
+	if assessment.Record.Schema != "mantik-owned-paper-evaluation-assessment-v3" || assessment.Record.Recipe != "native-predeclared-necessary-checks-v3" || assessment.Record.WarmUp == nil || assessment.Record.WarmUp.Status != "not_required" || assessment.Record.WarmUp.RequiredLookbackObservations != 0 || len(assessment.Record.WarmUp.Strategies) != 1 || !reflect.DeepEqual(assessment.Record.WarmUp.Strategies[0], strategy) {
 		t.Fatal("HTTP warm-up source binding", assessment)
 	}
+	calibration := assessment.Record.ForecastCalibration
+	if calibration == nil || calibration.Method != "native-threshold-no-probability-forecast-v1" || calibration.OutputKind != "boolean_threshold_signal" || calibration.Status != "not_applicable" || len(calibration.Strategies) != 1 || calibration.Strategies[0].ID != strategy.Command.Definition.ID || calibration.Strategies[0].SHA256 != strategy.SHA256 {
+		t.Fatal("HTTP calibration source binding", assessment)
+	}
+	foundCalibration := false
 	foundWarmup := false
 	for _, check := range assessment.Record.Checks {
+		if check.Name == "forecast_calibration" {
+			foundCalibration = true
+			if check.Status != "not_applicable" || check.ReasonCode != calibration.ReasonCode {
+				t.Fatal(check)
+			}
+		}
 		if check.Name == "warm_up" {
 			foundWarmup = true
 			if check.Status != "not_applicable" {
@@ -98,7 +109,7 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 			}
 		}
 	}
-	if !foundWarmup {
+	if !foundWarmup || !foundCalibration {
 		t.Fatal("HTTP warm-up check missing")
 	}
 	clock.panicRead = true
@@ -117,7 +128,7 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	}
 	request("GET", "/v1/paper-evaluation-assessments", map[string]any{"at": "future"}, 422)
 	assessmentRaw, _ := json.Marshal(assessmentCommand)
-	for _, extra := range []string{`"warm_up":{"status":"qualified"},`, `"strategies":[],`, `"checks":[],`, `"evidence":{},`, `"admission_available":true,`, `"balances":{},`, `"snapshot":{},`, `"effect":{},`, `"assessed_at":"2020-01-01T00:00:00Z",`} {
+	for _, extra := range []string{`"forecast_calibration":{"status":"passed"},`, `"warm_up":{"status":"qualified"},`, `"strategies":[],`, `"checks":[],`, `"evidence":{},`, `"admission_available":true,`, `"balances":{},`, `"snapshot":{},`, `"effect":{},`, `"assessed_at":"2020-01-01T00:00:00Z",`} {
 		request("POST", "/v1/paper-evaluation-assessments", strings.Replace(string(assessmentRaw), `"id":`, extra+`"id":`, 1), 422)
 	}
 	request("POST", "/v1/paper-evaluation-assessments", strings.Replace(string(assessmentRaw), `"id":`, `"id":"duplicate-field","id":`, 1), 422)

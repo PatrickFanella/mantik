@@ -54,7 +54,7 @@ func paperEvaluationAssessmentRecipe(c PaperEvaluationAssessmentCommand, e Paper
 			return PaperEvaluationAssessment{}, ErrPaperEvaluationAssessmentInvalid
 		}
 		return r, nil
-	case "mantik-owned-paper-evaluation-assessment-v2":
+	case "mantik-owned-paper-evaluation-assessment-v2", "mantik-owned-paper-evaluation-assessment-v3":
 		if warmup == nil {
 			return PaperEvaluationAssessment{}, ErrPaperEvaluationAssessmentInvalid
 		}
@@ -74,6 +74,17 @@ func paperEvaluationAssessmentRecipe(c PaperEvaluationAssessmentCommand, e Paper
 			if r.Checks[i].Name == "warm_up" {
 				r.Checks[i].Status = "not_applicable"
 				r.Checks[i].ReasonCode = expected.ReasonCode
+			}
+		}
+		if schema == "mantik-owned-paper-evaluation-assessment-v3" {
+			r.Recipe = "native-predeclared-necessary-checks-v3"
+			calibration := nativeThresholdCalibration(expected)
+			r.ForecastCalibration = &calibration
+			for i := range r.Checks {
+				if r.Checks[i].Name == "forecast_calibration" {
+					r.Checks[i].Status = calibration.Status
+					r.Checks[i].ReasonCode = calibration.ReasonCode
+				}
 			}
 		}
 		r.SHA256 = ""

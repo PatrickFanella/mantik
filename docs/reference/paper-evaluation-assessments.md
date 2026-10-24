@@ -21,11 +21,11 @@ are rejected. There is no new offline command or financial write route.
 The service replays the actual strategy, policy, declaration, finalized-decision
 and outcome owners in one consistent snapshot. Issuance takes the existing
 collector → state → receiver lock order in PostgreSQL; Memory uses its aggregate
-mutex. New records use `mantik-owned-paper-evaluation-assessment-v2` and
-`native-predeclared-necessary-checks-v2`. They retain the command, service clock,
-complete selected evidence, individual check states, native warm-up applicability
-and a SHA256 digest. Existing v1 records keep their original recipe, bytes and
-hashes; replay does not attach retrospective warm-up results.
+mutex. New records use `mantik-owned-paper-evaluation-assessment-v3` and
+`native-predeclared-necessary-checks-v3`. They retain the command, service clock,
+complete selected evidence, individual check states, native warm-up and forecast-calibration applicability,
+and a SHA256 digest. Existing v1 and v2 records keep their original recipes,
+bytes and hashes; replay does not attach later applicability results.
 
 Each predeclared variant receives all eight planned checks. Before the outcome
 deadline, sample sufficiency remains `pending`. At or after that deadline, an
@@ -33,8 +33,8 @@ observed occurrence upper bound below the predeclared minimum proves the
 necessary sample condition has failed. That check is `failed`, and the assessment
 is `blocked`. Reaching the count minimum leaves sample sufficiency `unavailable`:
 occurrence counts do not establish statistical independence. The compiled native
-threshold method's warm-up check is `not_applicable`, as described below. The
-remaining six checks are `unavailable` until their applicable evidence and
+threshold method's warm-up and forecast-calibration checks are `not_applicable`,
+as described below. The remaining five checks are `unavailable` until their applicable evidence and
 validated methods exist. An assessment without a proven failure after the deadline is `incomplete`.
 Failed and unavailable checks remain inspectable alongside pending attempts.
 
@@ -75,6 +75,35 @@ v1 assessments remain v1 even when read alongside v2 assessments after restart.
 The existing backup/binary rollback contract applies; removing the schema marker
 is not a downgrade.
 
+## Native forecast-calibration applicability
+
+The exact `native-paper-threshold-v1` method returns a boolean threshold signal.
+It does not emit a probability forecast. Recipe v3 derives
+`forecast_calibration: not_applicable` with reason
+`compiled_threshold_predicate_has_no_probability_forecast`. This describes the
+method's output contract; it is not a measured calibration result, a forecast
+quality claim or a passing full evaluation. It does not remove the other
+applicable checks or change source classes, sample gates or authority flags.
+
+The retained `forecast_calibration` field uses method
+`native-threshold-no-probability-forecast-v1`, output kind
+`boolean_threshold_signal`, status `not_applicable`, and each predeclared
+strategy ID and exact registered-record hash. The same actual registry replay
+that binds the warm-up definition validates these pins before deriving this
+result. The nested and outer digests cover the applicability record. Empty and
+pending samples do not change the compiled method's output contract.
+
+The service derives this field; callers cannot submit it or assert a forecast
+kind. Rehashed output kinds, statuses and strategy pins fail catalogue reads,
+exact retries, allocation owner replay and attribution. A future probabilistic
+method cannot inherit this exemption and must supply its own calibration method
+and evidence.
+
+Schema 55 fences writers that cannot replay v3. It adds no table and rewrites no
+historical record. Schema-54 binaries must refuse the newer database. V1 and v2
+records retain their original checks and hashes alongside v3 after restart.
+Rollback requires a matching verified backup and binary.
+
 ## Retention and source ordering
 
 The live [evaluation evidence read](paper-evaluation-declarations.md) can change
@@ -112,7 +141,7 @@ The owner retains at most 16 assessments, each at most 8 MiB plus 64 KiB, with a
 evict failed or incomplete attempts. There is no deletion or reset endpoint.
 
 The remaining admission work still includes applicable leakage, warm-up for any
-future stateful method, out-of-sample, parameter and cost sensitivity, benchmark, calibration,
+future stateful method, out-of-sample, parameter and cost sensitivity, benchmark, calibration for methods that emit probability forecasts,
 independence and search-multiplicity methods; legitimate qualification evidence;
 a versioned admission/expiry/reassessment/retirement issuer; and execution-owner
 reconciliation with atomic financial postings. Issues #19, #20 and #21 remain
