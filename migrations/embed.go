@@ -163,3 +163,6 @@ var CompleteEvaluationCaptures string
 
 //go:embed 0050_paper_evaluation_assessments.sql
 var PaperEvaluationAssessments string
+
+//go:embed 0051_allocation_assessment_context.sql
+var AllocationAssessmentContext string

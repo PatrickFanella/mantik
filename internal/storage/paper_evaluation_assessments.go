@@ -251,7 +251,7 @@ func paperEvaluationSourceClock(owner string, all map[string]PaperEvaluationAsse
 	}
 	return nil
 }
-func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, s paperEvaluationSources, c PaperEvaluationAssessmentCommand, now func() time.Time) (PaperEvaluationAssessmentReceipt, error) {
+func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, s paperEvaluationSources, c PaperEvaluationAssessmentCommand, now func() time.Time, allocations ownedAllocationJournal) (PaperEvaluationAssessmentReceipt, error) {
 	catalog, err := paperEvaluationAssessmentCatalog(ctx, owner, all, s)
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
@@ -275,6 +275,19 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 		return PaperEvaluationAssessmentReceipt{}, ErrPaperEvaluationAssessmentInvalid
 	}
 	at := now()
+	// v8 comparisons retain the complete assessment cut. New issuance must
+	// stay strictly outside every retained cut; exact retries return above.
+	for _, item := range allocations.Records {
+		r := item.Record
+		if r.Schema != "mantik-owned-allocation-deferral-v8" {
+			continue
+		}
+		unsigned := clone(r)
+		unsigned.SHA256 = ""
+		if r.Command.ReceiverID != owner || !declarationTime(r.At) || workerplan.Hash(unsigned) != r.SHA256 || !at.After(r.At) {
+			return PaperEvaluationAssessmentReceipt{}, ErrPaperEvaluationAssessmentInvalid
+		}
+	}
 	if !declarationTime(at) || at.Before(s.sourceClock) {
 		return PaperEvaluationAssessmentReceipt{}, ErrPaperEvaluationAssessmentInvalid
 	}
@@ -310,7 +323,7 @@ func (m *Memory) AssessPaperEvaluation(ctx context.Context, c PaperEvaluationAss
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}
-	r, err := appendPaperEvaluationAssessment(ctx, m.receiverID, m.evaluationAssessments, s, c, now)
+	r, err := appendPaperEvaluationAssessment(ctx, m.receiverID, m.evaluationAssessments, s, c, now, m.ownedAllocations)
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}
@@ -380,7 +393,11 @@ func (p *Postgres) paperEvaluationAssessmentAccess(ctx context.Context, write bo
 	}
 	var receipt PaperEvaluationAssessmentReceipt
 	if write {
-		receipt, err = appendPaperEvaluationAssessment(ctx, s.declarations.ReceiverID, all, s, c, now)
+		allocations, e := readOwnedAllocationJournal(ctx, tx)
+		if e != nil {
+			return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, e
+		}
+		receipt, err = appendPaperEvaluationAssessment(ctx, s.declarations.ReceiverID, all, s, c, now, allocations)
 		if err != nil {
 			return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, err
 		}

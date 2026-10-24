@@ -91,7 +91,7 @@ and positions, orders and commitments remain empty.
 
 Each comparison appends one hash-linked entry to its policy's allocation ledger.
 The owned record pins that entry, ledger head and policy. It has schema
-`mantik-owned-allocation-deferral-v7`, authority
+`mantik-owned-allocation-deferral-v8`, authority
 `service_owned_allocation_deferral_only`, and false execution/qualification
 flags. Returned core ledger values remain accounting evidence; they are not
 portable admission or execution grants.
@@ -397,7 +397,7 @@ performed.
 
 ## Captured evaluation declaration context
 
-New comparisons use `mantik-owned-allocation-deferral-v7`. The allocation owner
+Version 7 introduced `mantik-owned-allocation-deferral-v7`; version 8 preserves its complete declaration capture. The allocation owner
 reads and validates the declaration catalogue in the same Memory aggregate lock
 or PostgreSQL transaction as the finalized decisions, strategies and policies.
 It retains that exact catalogue with the journal entry. Callers still supply only
@@ -457,3 +457,40 @@ A missing outcome evaluator or corrupt assessment prevents a receipt; even a
 fully rehashed assertion cannot bypass owner replay. Valid later assessments do
 not rewrite an earlier comparison. This prerequisite does not grant admission
 or add assessment pins to the retained comparison context.
+
+## Retained assessment context
+
+New comparisons use `mantik-owned-allocation-deferral-v8` with
+`mantik-owned-allocation-evaluation-context-v2`. The owner resolves and replays
+its actual assessment catalogue once inside the existing Memory lock or
+PostgreSQL transaction, before returning a new comparison, catalogue, or exact
+retry. Each decision binding retains assessment ID/hash, declaration ID/hash,
+and the actual assessment status for declarations matching its strategy and
+owner-selected policy. The context also retains a hash of the complete sorted
+assessment ID/hash cut at the comparison clock, including assessments outside
+that decision's scope. Full assessment evidence remains in its original owner.
+
+A matching assessment sets the binding status to `assessed_not_admitted`.
+Individual pins preserve `pending`, `incomplete`, or `blocked`; none proves full
+evaluation applicability or an admission. The evaluation-recipe readiness gate
+remains unavailable. Admission, execution and qualification flags stay false.
+The public command still accepts only comparison identity, receiver and actual
+finalized-decision pins.
+
+Replay derives the context again from actual owner assessments at or before the
+retained comparison clock. Omitted pins, changed statuses, scope mismatches and
+fabricated catalogue hashes fail even after the comparison is rehashed. A new
+comparison cannot predate any current assessment. A new assessment must be
+strictly later than every retained v8 comparison, under the same owner locks;
+equal or earlier issuance fails without consuming its ID. Exact assessment and
+comparison retries retain their original bytes without reading a new clock.
+Later legitimate assessments remain outside historical cuts.
+
+Attribution projects the retained binding and assessment-source hash as
+`mantik-paper-attribution-evaluation-context-v2`. It does not substitute the
+latest assessment for the historical comparison. Existing v1-v7 comparison
+receipts retain their representation and retry behavior; older context fields
+remain omitted. Schema 51 fences older writers before startup. Its migration
+changes a table comment and checksum marker only, with disposable PostgreSQL
+rollback and checksum checks; existing journals are not rewritten. Recovery
+requires the matching binary and backup rather than deleting a schema marker.

@@ -12,24 +12,26 @@ import (
 // A declaration is a planned evaluation, never an evaluated result or grant.
 // Only the allocation owner derives this context from its captured catalogue.
 type OwnedAllocationEvaluationContext struct {
-	Schema              string                       `json:"schema"`
-	SourceSHA256        string                       `json:"source_sha256"`
-	Decisions           []OwnedEvaluationPlanBinding `json:"decisions"`
-	Authority           string                       `json:"authority"`
-	AdmissionAvailable  bool                         `json:"admission_available"`
-	ExecutionAvailable  bool                         `json:"execution_available"`
-	QualificationCredit bool                         `json:"qualification_credit"`
+	AssessmentSourceSHA256 string                       `json:"assessment_source_sha256,omitempty"`
+	Schema                 string                       `json:"schema"`
+	SourceSHA256           string                       `json:"source_sha256"`
+	Decisions              []OwnedEvaluationPlanBinding `json:"decisions"`
+	Authority              string                       `json:"authority"`
+	AdmissionAvailable     bool                         `json:"admission_available"`
+	ExecutionAvailable     bool                         `json:"execution_available"`
+	QualificationCredit    bool                         `json:"qualification_credit"`
 }
 
 type OwnedEvaluationPlanBinding struct {
-	DecisionID     string             `json:"decision_id"`
-	DecisionSHA256 string             `json:"decision_sha256"`
-	StrategyID     string             `json:"strategy_id"`
-	StrategySHA256 string             `json:"strategy_sha256"`
-	PolicyID       string             `json:"policy_id"`
-	PolicySHA256   string             `json:"policy_sha256"`
-	Declarations   []OwnedDecisionPin `json:"declarations"`
-	Status         string             `json:"status"`
+	Assessments    []OwnedEvaluationAssessmentPin `json:"assessments,omitempty"`
+	DecisionID     string                         `json:"decision_id"`
+	DecisionSHA256 string                         `json:"decision_sha256"`
+	StrategyID     string                         `json:"strategy_id"`
+	StrategySHA256 string                         `json:"strategy_sha256"`
+	PolicyID       string                         `json:"policy_id"`
+	PolicySHA256   string                         `json:"policy_sha256"`
+	Declarations   []OwnedDecisionPin             `json:"declarations"`
+	Status         string                         `json:"status"`
 }
 
 func ownedEvaluationDeclarationSource(owner string, policies allocation.PolicyCatalog, strategies paperstrategy.Catalog, source PaperEvaluationDeclarationCatalog) (PaperEvaluationDeclarationCatalog, error) {
@@ -88,5 +90,61 @@ func ownedAllocationEvaluationContext(r OwnedAllocationRecord, policy allocation
 		}
 		out.Decisions = append(out.Decisions, b)
 	}
+	return out
+}
+
+// Pins carry the actual retained assessment identity and status. They are not
+// sufficient evaluation results, applicability decisions, or admission grants.
+type OwnedEvaluationAssessmentPin struct {
+	ID                string `json:"id"`
+	SHA256            string `json:"sha256"`
+	DeclarationID     string `json:"declaration_id"`
+	DeclarationSHA256 string `json:"declaration_sha256"`
+	Status            string `json:"status"`
+}
+
+// This is internal owner input, resolved once under the same aggregate lock or
+// transaction as comparison replay. Public allocation commands contain no such
+// catalogue. The empty default preserves internal legacy replay fixtures.
+func allocationAssessmentSource(owner string, sources []PaperEvaluationAssessmentCatalog) (PaperEvaluationAssessmentCatalog, error) {
+	out := PaperEvaluationAssessmentCatalog{ReceiverID: owner, Records: []PaperEvaluationAssessment{}}
+	if len(sources) > 1 {
+		return out, ErrOwnedAllocationInvalid
+	}
+	if len(sources) == 0 {
+		return out, nil
+	}
+	out = sources[0]
+	if out.ReceiverID != owner || out.Records == nil {
+		return PaperEvaluationAssessmentCatalog{}, ErrOwnedAllocationInvalid
+	}
+	return out, nil
+}
+
+func ownedAllocationAssessmentContext(r OwnedAllocationRecord, policy allocation.PolicyRecord, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) *OwnedAllocationEvaluationContext {
+	out := ownedAllocationEvaluationContext(r, policy, declarations)
+	out.Schema = "mantik-owned-allocation-evaluation-context-v2"
+	out.Authority = "service_owned_incomplete_assessments_and_predeclarations_only"
+	pins := struct {
+		ReceiverID string             `json:"receiver_id"`
+		Records    []OwnedDecisionPin `json:"records"`
+	}{assessments.ReceiverID, []OwnedDecisionPin{}}
+	for _, a := range assessments.Records {
+		if a.AssessedAt.After(r.At) {
+			continue
+		}
+		pins.Records = append(pins.Records, OwnedDecisionPin{ID: a.Command.ID, SHA256: a.SHA256})
+		for i := range out.Decisions {
+			b := &out.Decisions[i]
+			for _, d := range b.Declarations {
+				if d.ID == a.Command.DeclarationID && d.SHA256 == a.Command.DeclarationSHA256 {
+					b.Assessments = append(b.Assessments, OwnedEvaluationAssessmentPin{ID: a.Command.ID, SHA256: a.SHA256, DeclarationID: d.ID, DeclarationSHA256: d.SHA256, Status: a.Status})
+					b.Status = "assessed_not_admitted"
+					break
+				}
+			}
+		}
+	}
+	out.AssessmentSourceSHA256 = workerplan.Hash(pins)
 	return out
 }

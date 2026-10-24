@@ -137,3 +137,13 @@ These integrity checks do not independently attest source custody or historical
 snapshot completeness. The field is derived from the replayed comparison, not a
 fresh lookup of the current declaration catalogue. No stored record, command,
 schema migration, economic metric or authority changes.
+
+
+Version 8 allocation comparisons project their captured assessment pins and
+assessment-source hash as `mantik-paper-attribution-evaluation-context-v2`.
+The CLI validates identity, declaration scope and the explicit pending,
+incomplete or blocked status before printing the record. This context comes
+from the retained comparison cut; later assessments do not rewrite it. Older
+comparisons preserve their original attribution context. These pins establish
+owner provenance only; economic results, admission and qualification remain
+unavailable.

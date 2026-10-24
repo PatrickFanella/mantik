@@ -126,6 +126,22 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	}
 	request("GET", "/v1/paper-attribution", nil, 200)
 	clock.panicRead = false
+	clock.at = assessment.Record.AssessedAt.Add(time.Nanosecond)
+	newComparison := guardedComparisons.Records[0].Command
+	newComparison.ID = "http-assessment-bound-comparison"
+	var boundComparison storage.OwnedAllocationReceipt
+	if e := json.Unmarshal(request("POST", "/v1/allocation-comparisons", newComparison, 201), &boundComparison); e != nil || boundComparison.Record.Schema != "mantik-owned-allocation-deferral-v8" || boundComparison.Record.EvaluationContext.Schema != "mantik-owned-allocation-evaluation-context-v2" || len(boundComparison.Record.EvaluationContext.Decisions[0].Assessments) != 1 || boundComparison.Record.EvaluationContext.Decisions[0].Assessments[0].SHA256 != assessment.Record.SHA256 {
+		t.Fatal("HTTP assessment context", boundComparison, e)
+	}
+	var attribution storage.PaperAttributionCatalog
+	if e := json.Unmarshal(request("GET", "/v1/paper-attribution", nil, 200), &attribution); e != nil {
+		t.Fatal(e)
+	}
+	for _, row := range attribution.Rows {
+		if e := validateAttributionRow(row, c.ReceiverID); e != nil {
+			t.Fatal("CLI rejected actual assessment attribution", e)
+		}
+	}
 
 	raw, _ := json.Marshal(c)
 	for _, extra := range []string{`"admission_available":true,`, `"balances":{},`, `"evaluation_results":[],`, `"at":"2020-01-01T00:00:00Z",`, `"qualification_credit":true,`, `"effect":{},`} {
