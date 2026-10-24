@@ -1099,7 +1099,7 @@ func TestPostgresContractsOwnedAllocationUpgradeRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	url := s.pool.Config().ConnString()
-	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_paper_evaluation_declarations; DROP TABLE mantik_decision_reviews; DROP TABLE mantik_social_watch_journal; DROP TABLE mantik_paper_outcomes; DROP TABLE mantik_owned_allocations; DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DELETE FROM mantik_schema WHERE version>=39"); err != nil {
+	if _, err = s.pool.Exec(ctx, "DROP TABLE mantik_paper_evaluation_declarations; DROP TABLE mantik_decision_reviews; DROP TABLE mantik_social_watch_journal; DROP TABLE mantik_paper_outcomes; DROP TABLE mantik_owned_allocations; DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DROP TABLE IF EXISTS mantik_owned_admission_reviews; DELETE FROM mantik_schema WHERE version>=39"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -1185,7 +1185,7 @@ func admissionBindingMigrationContract(t *testing.T, p *Postgres) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = p.pool.Exec(ctx, `DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DELETE FROM mantik_schema WHERE version>=47;
+	if _, err = p.pool.Exec(ctx, `DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DROP TABLE IF EXISTS mantik_owned_admission_reviews; DELETE FROM mantik_schema WHERE version>=47;
  COMMENT ON TABLE mantik_owned_allocations IS 'schema46 migration fixture';
  CREATE FUNCTION reject_binding_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=47 THEN RAISE EXCEPTION 'test migration rollback'; END IF; RETURN NEW; END $$;
  CREATE TRIGGER reject_binding_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_binding_migration()`); err != nil {
@@ -1210,7 +1210,7 @@ func admissionBindingMigrationContract(t *testing.T, p *Postgres) {
 			t.Fatal(err)
 		}
 	}
-	if err = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 52 {
+	if err = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 53 {
 		t.Fatal(maximum, err)
 	}
 	var after []byte
@@ -1243,7 +1243,7 @@ func evaluationContextMigrationContract(t *testing.T, p *Postgres) {
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, `DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DELETE FROM mantik_schema WHERE version>=48;
+	if _, err := p.pool.Exec(ctx, `DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DROP TABLE IF EXISTS mantik_owned_admission_reviews; DELETE FROM mantik_schema WHERE version>=48;
  CREATE FUNCTION reject_context_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=48 THEN RAISE EXCEPTION 'test context migration rollback'; END IF; RETURN NEW; END $$;
  CREATE TRIGGER reject_context_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_context_migration()`); err != nil {
 		t.Fatal(err)
@@ -1268,7 +1268,7 @@ func evaluationContextMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	reopened.Close()
-	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 52 {
+	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 53 {
 		t.Fatal("context migration missing", maximum, err)
 	}
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); err != nil || !reflect.DeepEqual(before, after) {
@@ -1297,7 +1297,7 @@ func completeEvaluationCaptureMigrationContract(t *testing.T, p *Postgres) {
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, `DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DELETE FROM mantik_schema WHERE version>=49;
+	if _, err := p.pool.Exec(ctx, `DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DROP TABLE IF EXISTS mantik_owned_admission_reviews; DELETE FROM mantik_schema WHERE version>=49;
  CREATE FUNCTION reject_complete_capture_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=49 THEN RAISE EXCEPTION 'test context migration rollback'; END IF; RETURN NEW; END $$;
  CREATE TRIGGER reject_complete_capture_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_complete_capture_migration()`); err != nil {
 		t.Fatal(err)
@@ -1322,7 +1322,7 @@ func completeEvaluationCaptureMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	reopened.Close()
-	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 52 {
+	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 53 {
 		t.Fatal("context migration missing", maximum, err)
 	}
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); err != nil || !reflect.DeepEqual(before, after) {
@@ -1343,14 +1343,14 @@ func completeEvaluationCaptureMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	// A supported reopen must not weaken the older/newer binary fence.
-	if _, err := p.pool.Exec(ctx, "INSERT INTO mantik_schema(version,sha256) VALUES(53,'future-schema-fixture')"); err != nil {
+	if _, err := p.pool.Exec(ctx, "INSERT INTO mantik_schema(version,sha256) VALUES(54,'future-schema-fixture')"); err != nil {
 		t.Fatal(err)
 	}
 	if broken, err := OpenPostgres(ctx, p.pool.Config().ConnString()); err == nil {
 		broken.Close()
 		t.Fatal("future schema accepted")
 	}
-	if _, err := p.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=53 AND sha256='future-schema-fixture'"); err != nil {
+	if _, err := p.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=54 AND sha256='future-schema-fixture'"); err != nil {
 		t.Fatal(err)
 	}
 }

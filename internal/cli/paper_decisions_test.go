@@ -432,6 +432,18 @@ func TestPostgresContractsOwnedDecisionAllocationHTTP(t *testing.T) {
 		t.Fatal(got, err, response.StatusCode)
 	}
 	captured := got.Records[1].EvaluationContext
+	reviewRequest, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/admission-reviews", nil)
+	reviewRequest.Header.Set("Authorization", "Bearer restart-token")
+	reviewResponse, e := http.DefaultClient.Do(reviewRequest)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var reviews storage.OwnedAdmissionReviewCatalog
+	e = json.NewDecoder(reviewResponse.Body).Decode(&reviews)
+	reviewResponse.Body.Close()
+	if e != nil || reviewResponse.StatusCode != 200 || len(reviews.Records) != 1 || reviews.Records[0].Command.ID != "http-admission-review" || reviews.Records[0].AdmissionAvailable || reviews.Records[0].ExecutionAvailable {
+		t.Fatal("restart lost admission review", reviews, e)
+	}
 	if got.Records[1].Command.ID != "http-assessment-bound-comparison" || captured == nil || captured.Schema != "mantik-owned-allocation-evaluation-context-v2" || len(captured.Decisions) != 1 || len(captured.Decisions[0].Assessments) != 1 || captured.Decisions[0].Assessments[0].ID != "http-assessment" || captured.Decisions[0].Assessments[0].Status != "pending" || captured.AdmissionAvailable || captured.ExecutionAvailable || captured.QualificationCredit {
 		t.Fatal("reopen lost retained assessment context", captured)
 	}

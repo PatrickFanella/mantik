@@ -240,7 +240,7 @@ func TestPostgresContractsOwnedOutcomeUpgradeRollback(t *testing.T) {
 	accounts, _ := s.PaperAccounts(ctx)
 	policies, _ := s.AllocationPolicies(ctx)
 	cfg := s.pool.Config().ConnString()
-	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_paper_evaluation_declarations; DROP TABLE mantik_decision_reviews; DROP TABLE mantik_social_watch_journal; DROP TABLE mantik_paper_outcomes; DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DELETE FROM mantik_schema WHERE version>=40"); err != nil {
+	if _, err := s.pool.Exec(ctx, "DROP TABLE mantik_paper_evaluation_declarations; DROP TABLE mantik_decision_reviews; DROP TABLE mantik_social_watch_journal; DROP TABLE mantik_paper_outcomes; DROP TABLE IF EXISTS mantik_paper_evaluation_assessments; DROP TABLE IF EXISTS mantik_owned_admission_reviews; DELETE FROM mantik_schema WHERE version>=40"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

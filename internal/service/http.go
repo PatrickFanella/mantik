@@ -47,6 +47,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	paperEvaluationDeclarationRoutes(mux, store, clock)
 	paperEvaluationEvidenceRoutes(mux, store, clock)
 	paperEvaluationAssessmentRoutes(mux, store, clock)
+	ownedAdmissionReviewRoutes(mux, store, clock)
 	socialWatchRoutes(mux, store, clock)
 	ownedAllocationRoutes(mux, store, clock)
 	fixtureCapitalRoutes(mux, store)
