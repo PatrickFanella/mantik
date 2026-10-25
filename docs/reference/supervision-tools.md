@@ -18,7 +18,7 @@ unavailable write owners return 422 before dispatch.
 
 | Tool | Arguments | Owner |
 | --- | --- | --- |
-| `inspect_record` | `kind` and `id`; kinds `decision`, `decision_explanation`, `decision_market_evidence`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
+| `inspect_record` | `kind` and `id`; kinds `decision`, `decision_explanation`, `decision_market_evidence`, `decision_attribution`, `allocation_comparison`, `admission_review`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
 | `request_research` | `receiver_id`, `request_id`, `case_id`, `version`, optional `type_id` | `POST /v1/news-reviews` |
 | `change_watch_policy` | Existing policy command: `id`, `receiver_id`, optional `previous_sha256`, `policy` | `POST /v1/social-watches` |
 | `change_copy_watch_policy` | Same policy command; research, review or inactive bounded follow intent | `POST /v1/copy-watches` |
@@ -59,7 +59,7 @@ visible; a raw size is not asserted to be shares or execution liquidity.
 These inspections forward empty-body GETs with no inherited chunked framing.
 They accept only `kind` and `id`, preserve owner errors, and neither finalize a
 decision nor change admissions, account balances or operations. The stdio MCP
-schema exposes the same two read-only selections. An unavailable source owner
+schema exposes the same read-only selections. An unavailable source owner
 returns its error; an absent optional owner retains its 404 response.
 
 Tool calls return the owner's status and JSON body directly, including duplicate
@@ -188,3 +188,17 @@ The attribution cases also retain actual admission reviews across service reopen
 checks also cover stale reads, receiver changes, page restrictions, evidence
 substitution, authority flags and cancellation. They do not restart or qualify
 the curtailed terminal scenarios or establish conversational model behavior.
+
+The `allocation_comparison`, `admission_review`, and `decision_attribution`
+inspection kinds read the targeted owner routes
+`/v1/allocation-comparisons/{id}`, `/v1/admission-reviews/{id}`, and
+`/v1/paper-attribution/{id}`. They return the retained comparison, non-grant
+review, or per-decision attribution from actual owner replay. They accept no
+account choice, balance, admission, effect, replacement evidence or caller clock.
+The comparison route rejects query parameters and GET bodies. Reads do not
+append records or sample a service clock.
+
+The stdio bridge keeps its existing 2 MiB response limit. An oversized owner
+response fails rather than becoming a truncated success. These tools establish
+no new admission or economic authority and do not qualify conversational model
+behavior.

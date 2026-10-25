@@ -46,7 +46,7 @@ type supervisionTool struct {
 var supervisionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,159}$`)
 
 func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
-	tools := []supervisionTool{{"inspect_record", "{kind: decision|decision_explanation|decision_market_evidence|review_case|news_record|research_review|watch|copy_watch|social_applicability|copy_applicability, id: string}; owner availability applies", false}}
+	tools := []supervisionTool{{"inspect_record", "{kind: decision|decision_explanation|decision_market_evidence|decision_attribution|allocation_comparison|admission_review|review_case|news_record|research_review|watch|copy_watch|social_applicability|copy_applicability, id: string}; owner availability applies", false}}
 	if _, ok := store.(storage.ReviewStore); ok {
 		tools = append(tools, supervisionTool{"request_research", "news-review start command: receiver_id, request_id, case_id, version, optional type_id", true})
 	}
@@ -111,7 +111,7 @@ func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
 				invalid(w)
 				return
 			}
-			paths := map[string]string{"decision": "/v1/paper-decisions/", "decision_explanation": "/v1/paper-decisions/", "decision_market_evidence": "/v1/paper-decisions/", "review_case": "/v1/decision-review-cases/", "news_record": "/v1/news-recordings/", "research_review": "/v1/news-reviews/", "watch": "/v1/social-watches/", "copy_watch": "/v1/copy-watches/", "social_applicability": "/v1/social-recordings/", "copy_applicability": "/v1/copy-recordings/"}
+			paths := map[string]string{"decision_attribution": "/v1/paper-attribution/", "allocation_comparison": "/v1/allocation-comparisons/", "admission_review": "/v1/admission-reviews/", "decision": "/v1/paper-decisions/", "decision_explanation": "/v1/paper-decisions/", "decision_market_evidence": "/v1/paper-decisions/", "review_case": "/v1/decision-review-cases/", "news_record": "/v1/news-recordings/", "research_review": "/v1/news-reviews/", "watch": "/v1/social-watches/", "copy_watch": "/v1/copy-watches/", "social_applicability": "/v1/social-recordings/", "copy_applicability": "/v1/copy-recordings/"}
 			prefix, ok := paths[args.Kind]
 			if !ok {
 				invalid(w)

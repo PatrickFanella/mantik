@@ -745,3 +745,8 @@ New allocation comparisons bind owner-derived execution-safety requirements
 inside admission readiness, alongside account, policy, cost, evaluation and
 ledger pins. See [owned allocation comparisons](docs/reference/owned-allocation-comparisons.md).
 This is a requirements binding; admission and economic execution remain unavailable.
+
+Typed supervision can inspect retained allocation comparisons, non-grant
+admission reviews, and decision attribution through fixed owner GET routes.
+See [supervision tools](docs/reference/supervision-tools.md) for the read-only
+contracts and response limits.

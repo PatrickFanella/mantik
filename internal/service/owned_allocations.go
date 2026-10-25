@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
@@ -52,8 +53,9 @@ func ownedAllocationRoutes(mux *http.ServeMux, store storage.Store, clock Clock)
 		}
 		write(w, code, result)
 	})
-	mux.HandleFunc("GET /v1/allocation-comparisons", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.RawQuery != "" || r.URL.ForceQuery {
+	read := func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if id != "" && !paperaccount.ID.MatchString(id) || r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
 			ownedAllocationError(w, storage.ErrOwnedAllocationInvalid)
 			return
 		}
@@ -64,6 +66,18 @@ func ownedAllocationRoutes(mux *http.ServeMux, store storage.Store, clock Clock)
 			ownedAllocationError(w, err)
 			return
 		}
+		if id != "" {
+			for _, record := range result.Records {
+				if record.Command.ID == id {
+					write(w, 200, record)
+					return
+				}
+			}
+			write(w, 404, map[string]string{"error": "owned allocation comparison not found"})
+			return
+		}
 		write(w, 200, result)
-	})
+	}
+	mux.HandleFunc("GET /v1/allocation-comparisons", read)
+	mux.HandleFunc("GET /v1/allocation-comparisons/{id}", read)
 }
