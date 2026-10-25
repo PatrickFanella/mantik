@@ -4,7 +4,7 @@ Issue #26 requires an exact source/image/schema identity, configured capabilitie
 fresh Mantik-owned data, verified backups, deployment authorization and rollback
 evidence. The source/image preflight below implements only the build portion.
 It does not inspect a running service or database, read credentials, deploy,
-start a container, qualify a strategy or authorize a natural soak.
+run an application service, qualify a strategy or authorize a natural soak.
 
 ## Capture one build attempt
 
