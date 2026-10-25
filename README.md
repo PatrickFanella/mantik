@@ -559,7 +559,8 @@ attribution and independent follow limits. Provider observations and instrument
 mapping remain unverified; these records grant no dispatch or execution.
 
 Authenticated [retained market dimensions](docs/reference/owned-paper-decisions.md#retained-market-dimensions)
-bind finalized decisions to original bid/ask recordings and raw provider sizes.
+bind finalized decisions to original bid/ask recordings, raw provider sizes,
+and retained calendar evidence available at finalization.
 Share-unit normalization remains unavailable; these readbacks grant no admission
 or financial execution authority.
 

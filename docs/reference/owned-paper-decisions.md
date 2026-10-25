@@ -163,6 +163,19 @@ must have been admitted and published by finalization. The bid and ask are
 whole cents rederived from original recording bytes. The provider size values
 are preserved exactly as `provider_bid_size` and `provider_ask_size`.
 
+New `mantik-owned-decision-market-evidence-v2` responses also retain
+`session_evidence` for candidates. The service derives it from the exact quote
+and owner-retained calendar sources at the immutable finalization clock, using
+method `owned-decision-quote-session-at-finalization-v1`. Calendar captures pin
+original digests, publication/admission clocks and fences. A calendar available
+after quote availability but by finalization can contribute; a later calendar
+cannot. A newer admitted calendar with no published original suppresses an older
+calendar. Missing, stale, conflicting, holiday and preopen evidence retains the
+shared session selector's result; no caller-supplied market-open flag is accepted.
+Abstentions omit session evidence. The report does not establish continuous
+market coverage, normalized share quantities, admission or execution authority.
+Existing outcome readbacks keep their quote-availability clock and representation.
+
 The recording schema does not pin a provider size-unit contract. Consequently,
 `size_unit` is `provider_native_unverified` and `share_quantities_available` is
 false. The service does not guess a multiplier, label the values as shares, or
