@@ -722,3 +722,11 @@ Schema 56 fences older writers without rewriting history. See
 Owned evaluation recipe v4 also retains known temporal-source leakage failures;
 [assessment semantics](docs/reference/paper-evaluation-assessments.md#known-source-unavailability-leakage)
 remain failure-only and grant no admission or economic authority.
+
+New v10 comparison records retain v4 admission readiness with the exact failed
+checks of each latest owner-replayed assessment for the selected variant. For
+selected decision evidence, any retained necessary failure dominates pending
+sample status; absence of failures still grants nothing. The review consumes
+that readiness and preserves expiry precedence. Historical v9/v3 records retain
+their original bytes and clock-free retries. Schema 62 fences older writers
+without rewriting payloads; rollback requires the matching backup and binary.

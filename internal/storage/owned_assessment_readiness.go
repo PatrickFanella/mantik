@@ -12,14 +12,15 @@ import (
 // This records what the actual assessment selected, not evaluation applicability
 // or an admission. A shared strategy/policy alone cannot select a decision.
 type OwnedAssessmentReadiness struct {
-	AssessmentID           string    `json:"assessment_id"`
-	AssessmentSHA256       string    `json:"assessment_sha256"`
-	DeclarationID          string    `json:"declaration_id"`
-	DeclarationSHA256      string    `json:"declaration_sha256"`
-	AssessedAt             time.Time `json:"assessed_at"`
-	EvidenceSHA256         string    `json:"evidence_sha256"`
-	DecisionEvidenceStatus string    `json:"decision_evidence_status"`
-	SampleStatus           string    `json:"sample_status"`
+	FailedChecks           []PaperEvaluationCheck `json:"failed_checks,omitempty"`
+	AssessmentID           string                 `json:"assessment_id"`
+	AssessmentSHA256       string                 `json:"assessment_sha256"`
+	DeclarationID          string                 `json:"declaration_id"`
+	DeclarationSHA256      string                 `json:"declaration_sha256"`
+	AssessedAt             time.Time              `json:"assessed_at"`
+	EvidenceSHA256         string                 `json:"evidence_sha256"`
+	DecisionEvidenceStatus string                 `json:"decision_evidence_status"`
+	SampleStatus           string                 `json:"sample_status"`
 }
 
 // The catalogue was replayed once by the owner in the same lock/transaction.
@@ -63,6 +64,9 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 			}
 		}
 		c.Schema = "mantik-owned-admission-readiness-v3"
+		if r.Schema == "mantik-owned-allocation-deferral-v10" {
+			c.Schema = "mantik-owned-admission-readiness-v4"
+		}
 		c.Binding.EvaluationBindingSHA256 = workerplan.Hash(*binding)
 		c.EvaluationEvidence = nil
 		for _, a := range latest {
@@ -76,7 +80,9 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 			for _, check := range a.Checks {
 				if check.StrategyID == c.StrategyID && check.Name == "sample_sufficiency" {
 					v.SampleStatus = check.Status
-					break
+				}
+				if r.Schema == "mantik-owned-allocation-deferral-v10" && check.StrategyID == c.StrategyID && check.Status == "failed" {
+					v.FailedChecks = append(v.FailedChecks, clone(check))
 				}
 			}
 			if v.SampleStatus != "pending" && v.SampleStatus != "failed" && v.SampleStatus != "unavailable" {
@@ -93,11 +99,14 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 			}
 			selected = true
 			pending = pending || v.SampleStatus == "pending"
-			failed = failed || v.SampleStatus == "failed"
+			failed = failed || v.SampleStatus == "failed" || len(v.FailedChecks) > 0
 		}
 		switch {
 		case failed:
 			gate.Status, gate.ReasonCode = "failed", "retained_necessary_sample_check_failed"
+			if c.Schema == "mantik-owned-admission-readiness-v4" {
+				gate.ReasonCode = "retained_necessary_evaluation_check_failed"
+			}
 		case pending:
 			gate.Status, gate.ReasonCode = "pending", "retained_evaluation_outcome_window_open"
 		case selected:
