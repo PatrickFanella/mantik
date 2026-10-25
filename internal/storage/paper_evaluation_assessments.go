@@ -225,7 +225,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
 		var warmup *PaperEvaluationWarmUp
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v2" || r.Schema == "mantik-owned-paper-evaluation-assessment-v3" {
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v2" || r.Schema == "mantik-owned-paper-evaluation-assessment-v3" || r.Schema == "mantik-owned-paper-evaluation-assessment-v4" {
 			value, e := ownedNativeWarmUp(e.Declaration, s.strategies)
 			if e != nil {
 				return PaperEvaluationAssessmentCatalog{}, e
@@ -318,7 +318,7 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}
-	record, err := paperEvaluationAssessmentRecipe(c, e, &warmup, "mantik-owned-paper-evaluation-assessment-v3")
+	record, err := paperEvaluationAssessmentRecipe(c, e, &warmup, "mantik-owned-paper-evaluation-assessment-v4")
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}

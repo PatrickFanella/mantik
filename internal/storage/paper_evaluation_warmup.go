@@ -54,7 +54,7 @@ func paperEvaluationAssessmentRecipe(c PaperEvaluationAssessmentCommand, e Paper
 			return PaperEvaluationAssessment{}, ErrPaperEvaluationAssessmentInvalid
 		}
 		return r, nil
-	case "mantik-owned-paper-evaluation-assessment-v2", "mantik-owned-paper-evaluation-assessment-v3":
+	case "mantik-owned-paper-evaluation-assessment-v2", "mantik-owned-paper-evaluation-assessment-v3", "mantik-owned-paper-evaluation-assessment-v4":
 		if warmup == nil {
 			return PaperEvaluationAssessment{}, ErrPaperEvaluationAssessmentInvalid
 		}
@@ -76,7 +76,7 @@ func paperEvaluationAssessmentRecipe(c PaperEvaluationAssessmentCommand, e Paper
 				r.Checks[i].ReasonCode = expected.ReasonCode
 			}
 		}
-		if schema == "mantik-owned-paper-evaluation-assessment-v3" {
+		if schema == "mantik-owned-paper-evaluation-assessment-v3" || schema == "mantik-owned-paper-evaluation-assessment-v4" {
 			r.Recipe = "native-predeclared-necessary-checks-v3"
 			calibration := nativeThresholdCalibration(expected)
 			r.ForecastCalibration = &calibration
@@ -86,6 +86,10 @@ func paperEvaluationAssessmentRecipe(c PaperEvaluationAssessmentCommand, e Paper
 					r.Checks[i].ReasonCode = calibration.ReasonCode
 				}
 			}
+		}
+		if schema == "mantik-owned-paper-evaluation-assessment-v4" {
+			r.Recipe = "native-predeclared-necessary-checks-v4"
+			applyKnownSourceLeakage(&r)
 		}
 		r.SHA256 = ""
 		r.SHA256 = workerplan.Hash(r)

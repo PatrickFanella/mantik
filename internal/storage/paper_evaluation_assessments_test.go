@@ -71,6 +71,7 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 	}
 	assertNativeWarmUp(t, early.Record, plan)
 	assertNativeCalibration(t, early.Record, plan)
+	legacyLeakageReplay(t, s, early, de, oe)
 	early = legacyAssessmentFixture(t, s, early, de, oe)
 	dc := PaperDecisionCommand{ID: "first", ReceiverID: plan.ReceiverID, StrategyID: plan.Plan.Variants[0].ID, StrategySHA256: plan.Plan.Variants[0].SHA256, RegistrationID: reg.ID}
 	first, err := s.FinalizePaperDecision(ctx, dc, func() time.Time { return start.Add(time.Nanosecond) }, de)
@@ -526,6 +527,7 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 		assessmentDecisionReadinessMigrationContract(t, pg)
 		nativeWarmUpMigrationContract(t, pg)
 		nativeCalibrationMigrationContract(t, pg)
+		knownLeakageMigration(t, pg)
 	}
 }
 func TestPaperEvaluationAssessmentCountCannotGrant(t *testing.T) {

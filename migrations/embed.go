@@ -193,3 +193,6 @@ var DecisionReviewSources string
 
 //go:embed 0060_distinct_evaluation_variants.sql
 var DistinctEvaluationVariants string
+
+//go:embed 0061_known_source_leakage_assessments.sql
+var KnownSourceLeakageAssessments string

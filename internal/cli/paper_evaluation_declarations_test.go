@@ -87,7 +87,7 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-assessments", assessmentCommand, 201), &assessment); err != nil || assessment.Duplicate || assessment.Record.Status != "pending" || assessment.Record.AdmissionAvailable || assessment.Record.ExecutionAvailable || assessment.Record.QualificationCredit || assessment.Record.EvaluationComplete || !reflect.DeepEqual(assessment.Record.Evidence, evidence) {
 		t.Fatal(assessment, err)
 	}
-	if assessment.Record.Schema != "mantik-owned-paper-evaluation-assessment-v3" || assessment.Record.Recipe != "native-predeclared-necessary-checks-v3" || assessment.Record.WarmUp == nil || assessment.Record.WarmUp.Status != "not_required" || assessment.Record.WarmUp.RequiredLookbackObservations != 0 || len(assessment.Record.WarmUp.Strategies) != 1 || !reflect.DeepEqual(assessment.Record.WarmUp.Strategies[0], strategy) {
+	if assessment.Record.Schema != "mantik-owned-paper-evaluation-assessment-v4" || assessment.Record.Recipe != "native-predeclared-necessary-checks-v4" || assessment.Record.WarmUp == nil || assessment.Record.WarmUp.Status != "not_required" || assessment.Record.WarmUp.RequiredLookbackObservations != 0 || len(assessment.Record.WarmUp.Strategies) != 1 || !reflect.DeepEqual(assessment.Record.WarmUp.Strategies[0], strategy) {
 		t.Fatal("HTTP warm-up source binding", assessment)
 	}
 	calibration := assessment.Record.ForecastCalibration

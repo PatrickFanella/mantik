@@ -718,3 +718,7 @@ and assessment clocks, under the shared owner lock. Earlier or equal clocks fail
 without consuming an identity; exact historical retries keep their meaning.
 Schema 56 fences older writers without rewriting history. See
 [the retained observation clock fence](docs/reference/collector-submission.md#retained-observation-clock-fence).
+
+Owned evaluation recipe v4 also retains known temporal-source leakage failures;
+[assessment semantics](docs/reference/paper-evaluation-assessments.md#known-source-unavailability-leakage)
+remain failure-only and grant no admission or economic authority.
