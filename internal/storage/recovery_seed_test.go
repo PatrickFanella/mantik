@@ -2,7 +2,12 @@ package storage
 
 import (
 	"context"
+	"errors"
+	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
+	"net/url"
 	"os"
+	"reflect"
+	"regexp"
 	"testing"
 	"time"
 
@@ -52,9 +57,7 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A pure storage fixture evaluator, not the service's economic admission issuer.
-	eval := func(c PaperDecisionCommand, b PaperDecisionBasis, _ time.Time) (PaperDecisionEvaluation, error) {
-		return PaperDecisionEvaluation{Action: "entry_candidate", ReasonCode: "storage_recovery_fixture_only", PriceCents: b.Feed.Routing.Inputs[input.ID].Input.PriceCents, Signal: true, Coverage: domain.MarketCoverageReport{Quote: domain.MarketQuoteCoverage{InputID: input.ID}}}, nil
-	}
+	eval := recoveryFixtureDecisionEvaluator
 	decision, err := s.FinalizePaperDecision(ctx, PaperDecisionCommand{ID: "recovery-decision", ReceiverID: account.ReceiverID, StrategyID: d.ID, StrategySHA256: strategy.Record.SHA256, RegistrationID: reg.ID}, clock, eval)
 	if err != nil {
 		t.Fatal(err)
@@ -71,4 +74,54 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	if _, err = s.SocialHistory(ctx); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Shared by source seeding and restore replay. This compiled storage fixture
+// evaluator is not an application admission issuer or economic evaluator.
+func recoveryFixtureDecisionEvaluator(c PaperDecisionCommand, b PaperDecisionBasis, _ time.Time) (PaperDecisionEvaluation, error) {
+	input, ok := b.Feed.Routing.Inputs[collectorInput(b.Strategy.RegisteredAt, "recovery-quote").ID]
+	if !ok {
+		return PaperDecisionEvaluation{}, ErrPaperDecisionInvalid
+	}
+	return PaperDecisionEvaluation{Action: "entry_candidate", ReasonCode: "storage_recovery_fixture_only", PriceCents: input.Input.PriceCents, Signal: true, Coverage: domain.MarketCoverageReport{Quote: domain.MarketQuoteCoverage{InputID: input.Input.ID}}}, nil
+}
+
+func TestPostgresContractsRecoveryReplay(t *testing.T) {
+	if os.Getenv("MANTIK_RECOVERY_REPLAY") != "1" {
+		t.Skip("explicit disposable restored owner replay only")
+	}
+	raw := os.Getenv("MANTIK_TEST_DATABASE_URL")
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "postgres" || u.Host != "127.0.0.1:5432" || u.User == nil || u.User.Username() != "mantik" || !regexp.MustCompile(`^/mantik_test_[a-f0-9]{12}_restore$`).MatchString(u.Path) {
+		t.Fatal("recovery replay requires runner-owned restored database")
+	}
+	ctx := context.Background()
+	s, err := OpenPostgres(ctx, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	got, err := s.OwnedAllocations(ctx, recoveryFixtureDecisionEvaluator)
+	if os.Getenv("MANTIK_RECOVERY_EXPECT_REJECTION") == "1" {
+		if !errors.Is(err, ErrOwnedAllocationInvalid) || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
+			t.Fatal("corrupt restored owner binding not rejected", err)
+		}
+		return
+	}
+	if err != nil || len(got.Records) != 1 || len(got.Ledgers) != 1 || len(got.Capital) != 1 {
+		t.Fatal("restored owner replay", err)
+	}
+	r := got.Records[0]
+	if r.Command.ID != "recovery-comparison" || len(r.ExecutionSafety) != 1 || len(r.AdmissionChecks) != 1 || r.AdmissionChecks[0].AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || got.Capital[0].AvailableCashCents != got.Capital[0].Account.Config.OpeningCashCents || len(got.Capital[0].Positions) != 0 || len(got.Capital[0].Orders) != 0 {
+		t.Fatal("restored owner altered deferral-only capital", got)
+	}
+	retry, err := s.CompareOwnedAllocation(ctx, r.Command, func() time.Time { t.Fatal("restore retry sampled a clock"); return time.Time{} }, recoveryFixtureDecisionEvaluator)
+	if err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, r) {
+		t.Fatal("restored retry changed retained receipt", err)
+	}
+	history, err := s.SocialHistory(ctx)
+	if err != nil || history.ReceiverID != got.ReceiverID {
+		t.Fatal("restored social owner", err)
+	}
+	t.Logf("owner replay preserved allocation=%s safety=%s ledger=%s social=%s", r.SHA256, r.ExecutionSafety[0].SHA256, r.LedgerSHA256, workerplan.Hash(history))
 }
