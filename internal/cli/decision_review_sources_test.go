@@ -21,7 +21,7 @@ func sourceDecisionReviewHTTP(t *testing.T, request func(string, string, any, in
 		if err := json.Unmarshal(request("POST", "/v1/"+kind+"-watches", policy, 201), &registered); err != nil {
 			t.Fatal(err)
 		}
-		original := socialwatch.Original{Schema: "mantik-social-recording-v1", Source: socialwatch.SourceRef{Provider: "recorded", AccountID: policy.Policy.AccountID, PostID: "http-" + kind + "-post"}, Revision: 1, Kind: "post", OccurredAt: clock.at, ObservedAt: clock.at, Text: "Opaque unverified source statement", Symbols: []string{"SPY"}}
+		original := socialwatch.Original{Schema: "mantik-social-recording-v1", Source: socialwatch.SourceRef{Provider: "recorded", AccountID: policy.Policy.AccountID, PostID: "http-" + kind + "-post"}, Revision: 1, Kind: "post", OccurredAt: clock.at.Add(-2 * time.Second), ObservedAt: clock.at.Add(-time.Second), Text: "Opaque unverified source statement", Symbols: []string{"SPY"}}
 		class := "recorded_social_unqualified"
 		if kind == "copy" {
 			class = "recorded_copy_unqualified"
@@ -64,6 +64,54 @@ func sourceDecisionReviewHTTP(t *testing.T, request func(string, string, any, in
 		var actual storage.DecisionReviewRecord
 		if err := json.Unmarshal(request("GET", "/v1/paper-decision-reviews/"+c.ID, nil, 200), &actual); err != nil || !reflect.DeepEqual(actual, issued.Record) {
 			t.Fatal("readback changed source binding", err)
+		}
+		var row storage.PaperAttributionRow
+		if err := json.Unmarshal(request("GET", "/v1/paper-attribution/"+d.Command.ID, nil, 200), &row); err != nil || validateAttributionRow(row, d.Command.ReceiverID) != nil || row.ClaimReviewHistory == nil {
+			t.Fatal("missing actual claim-source attribution", row, err)
+		}
+		found := false
+		for _, timing := range row.ClaimReviewHistory.SourceTimings {
+			if timing.ReviewID == c.ID {
+				if timing.ObservationDelaySeconds != 1 || timing.AvailabilityDelaySeconds != 2 || timing.ClockRelation != "retained_after_decision_clock" || timing.DecisionInputVerified {
+					t.Fatal("source delay or decision role", timing)
+				}
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("review timing omitted")
+		}
+		var supervised storage.PaperAttributionRow
+		if err := json.Unmarshal(request("POST", "/v1/supervision/calls", map[string]any{"tool": "inspect_record", "arguments": map[string]string{"kind": "decision_attribution", "id": d.Command.ID}}, 200), &supervised); err != nil || !reflect.DeepEqual(supervised, row) {
+			t.Fatal("supervision changed claim-source attribution", err)
+		}
+		for name, mutate := range map[string]func(*storage.PaperClaimReviewHistory){
+			"invented decision input": func(h *storage.PaperClaimReviewHistory) { h.SourceTimings[0].DecisionInputVerified = true },
+			"clock relation": func(h *storage.PaperClaimReviewHistory) {
+				h.SourceTimings[0].ClockRelation = "retained_before_decision_clock"
+			},
+			"delay":                func(h *storage.PaperClaimReviewHistory) { h.SourceTimings[0].AvailabilityDelaySeconds++ },
+			"capture substitution": func(h *storage.PaperClaimReviewHistory) { h.SourceTimings[0].CaptureSHA256 = strings.Repeat("f", 64) },
+			"missing timing":       func(h *storage.PaperClaimReviewHistory) { h.SourceTimings = nil },
+			"grant":                func(h *storage.PaperClaimReviewHistory) { h.Records[0].AdmissionAvailable = true },
+		} {
+			raw, _ := json.Marshal(row)
+			var forged storage.PaperAttributionRow
+			if err := json.Unmarshal(raw, &forged); err != nil {
+				t.Fatal(err)
+			}
+			mutate(forged.ClaimReviewHistory)
+			forged.ClaimReviewHistory.SHA256 = ""
+			forged.ClaimReviewHistory.SHA256 = workerplan.Hash(forged.ClaimReviewHistory)
+			forged.SHA256 = ""
+			forged.SHA256 = workerplan.Hash(forged)
+			if validateAttributionRow(forged, d.Command.ReceiverID) == nil {
+				t.Fatal("self-rehashed forged claim attribution accepted", name)
+			}
+		}
+		var display strings.Builder
+		if err := renderPaperAttribution(&display, d.Command.ReceiverID, []storage.PaperAttributionRow{row}); err != nil || !strings.Contains(display.String(), "decision_input_verified=false") || !strings.Contains(display.String(), c.ID) {
+			t.Fatal("claim timing not presented", display.String(), err)
 		}
 	}
 }

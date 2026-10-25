@@ -29,7 +29,7 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	clock.panicRead = true
 	defer func() { clock.panicRead = false }()
 	var all storage.PaperAttributionCatalog
-	if err := json.Unmarshal(request("GET", "/v1/paper-attribution", nil, 200), &all); err != nil || all.Schema != "mantik-owned-paper-attribution-v2" || len(all.Rows) != 5 || all.ReceiverID != candidate.Command.ReceiverID || all.ExecutionAvailable || all.QualificationCredit || all.Authority != "service_owned_phase_attribution_only" {
+	if err := json.Unmarshal(request("GET", "/v1/paper-attribution", nil, 200), &all); err != nil || all.Schema != "mantik-owned-paper-attribution-v3" || len(all.Rows) != 5 || all.ReceiverID != candidate.Command.ReceiverID || all.ExecutionAvailable || all.QualificationCredit || all.Authority != "service_owned_phase_attribution_only" {
 		t.Fatal(all, err)
 	}
 	hash := all.SHA256

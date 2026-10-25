@@ -54,15 +54,24 @@ func runPaperAttribution(ctx context.Context, args []string, out, errOut io.Writ
 	}
 	hash := c.SHA256
 	c.SHA256 = ""
-	if (c.Schema != "mantik-owned-paper-attribution-v1" && c.Schema != "mantik-owned-paper-attribution-v2") || c.ReceiverID != *receiver || !paperStrategyPin.MatchString(c.SourceSHA256) || c.Authority != "service_owned_phase_attribution_only" || c.ExecutionAvailable || c.QualificationCredit || c.Rows == nil || len(c.Rows) > storage.MaxPaperDecisions || !paperStrategyPin.MatchString(hash) || workerplan.Hash(c) != hash {
+	if (c.Schema != "mantik-owned-paper-attribution-v1" && c.Schema != "mantik-owned-paper-attribution-v2" && c.Schema != "mantik-owned-paper-attribution-v3") || c.ReceiverID != *receiver || !paperStrategyPin.MatchString(c.SourceSHA256) || c.Authority != "service_owned_phase_attribution_only" || c.ExecutionAvailable || c.QualificationCredit || c.Rows == nil || len(c.Rows) > storage.MaxPaperDecisions || !paperStrategyPin.MatchString(hash) || workerplan.Hash(c) != hash {
 		return storage.ErrPaperAttributionInvalid
 	}
 	previous := ""
+	claimReviews := map[string]bool{}
 	for _, row := range c.Rows {
-		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID <= previous || c.Schema == "mantik-owned-paper-attribution-v2" && row.AdmissionReviewHistory == nil {
+		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID <= previous || c.Schema != "mantik-owned-paper-attribution-v1" && row.AdmissionReviewHistory == nil || (c.Schema == "mantik-owned-paper-attribution-v3") != (row.ClaimReviewHistory != nil) {
 			return storage.ErrPaperAttributionInvalid
 		}
 		previous = row.Decision.Command.ID
+		if h := row.ClaimReviewHistory; h != nil {
+			for _, review := range h.Records {
+				if claimReviews[review.Command.ID] || len(claimReviews) >= storage.MaxDecisionReviews {
+					return storage.ErrPaperAttributionInvalid
+				}
+				claimReviews[review.Command.ID] = true
+			}
+		}
 	}
 	c.SHA256 = hash
 	if *format == "json" {
@@ -172,6 +181,9 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 				return storage.ErrPaperAttributionInvalid
 			}
 		}
+	}
+	if r.ClaimReviewHistory != nil && r.ClaimReviewHistory.Validate(r.Decision) != nil {
+		return storage.ErrPaperAttributionInvalid
 	}
 	return validateAttributionReviews(r, receiver)
 }
@@ -284,6 +296,14 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 			}
 			if a.CostCeiling != nil {
 				fmt.Fprintf(&b, "    debit_ceiling_cents=%d (funding bound, not incurred expense)\n", a.CostCeiling.MaxDebitCents)
+			}
+		}
+		if h := r.ClaimReviewHistory; h != nil {
+			for _, review := range h.Records {
+				fmt.Fprintf(&b, "  CLAIM_REVIEW %s status=%s case=%s (post-decision review; no admission)\n", strconv.Quote(review.Command.ID), strconv.Quote(review.Status), strconv.Quote(review.CaseID))
+			}
+			for _, timing := range h.SourceTimings {
+				fmt.Fprintf(&b, "    SOURCE_TIMING review=%s capture=%s observed_delay_seconds=%d retained_delay_seconds=%d relation=%s decision_input_verified=false\n", strconv.Quote(timing.ReviewID), strconv.Quote(timing.CaptureID), timing.ObservationDelaySeconds, timing.AvailabilityDelaySeconds, strconv.Quote(timing.ClockRelation))
 			}
 		}
 		fmt.Fprintf(&b, "  ECONOMICS %s executed_quantity=unavailable fees=unavailable realized_pnl=unavailable\n  BASELINES %s\n  ROW SHA256 %s\n", strconv.Quote(r.Economics.Status), strconv.Quote(r.Economics.BaselineStatus), r.SHA256)
