@@ -91,7 +91,7 @@ and positions, orders and commitments remain empty.
 
 Each comparison appends one hash-linked entry to its policy's allocation ledger.
 The owned record pins that entry, ledger head and policy. New records have schema
-`mantik-owned-allocation-deferral-v10`, authority
+`mantik-owned-allocation-deferral-v11`, authority
 `service_owned_allocation_deferral_only`, and false execution/qualification
 flags. Returned core ledger values remain accounting evidence; they are not
 portable admission or execution grants.
@@ -531,3 +531,34 @@ sample status; absence of failures still grants nothing. The review consumes
 that readiness and preserves expiry precedence. Historical v9/v3 records retain
 their original bytes and clock-free retries. Schema 62 fences older writers
 without rewriting payloads; rollback requires the matching backup and binary.
+
+## Finalized strategy execution requirements
+
+New v11 comparisons with an execution model also retain `execution_safety`, one
+`mantik-owned-execution-safety-v1` record per proposal. The owner derives it from
+the same validated policy, finalized decision, registered strategy and cost
+ceiling used by the comparison. It pins the comparison, decision, strategy,
+definition, basis, policy, account, model and cost hashes, exact quote input,
+finalization clock, proposal validity, quantity and entry limit. Its `safety`
+contains the registered stop, target, notional, holding-time and quote-age limits.
+Policies without an execution model have no execution requirements record.
+
+These are requirements for a future financial owner, not placed orders or
+asserted effects. Holding time starts with an actual fill; this record invents
+neither a fill clock nor a holding deadline. Admission, execution and
+qualification flags remain false, with authority
+`service_owned_execution_requirements_only`. Unknown market size units remain
+unverified and cannot supply whole-share liquidity.
+
+Append and replay reconstruct every requirement from actual owner records in the
+existing aggregate lock/transaction. The comparison payload and ledger binding
+commit together. Rehashing a changed stop, target, holding time, quote age, source
+pin or authority flag cannot manufacture a matching owner record. Attribution
+projects the retained per-decision record, and the CLI checks its hash and cross
+pins; portable validation is not independent source attestation.
+
+Historical v1-v10 comparisons keep their original omitted field, hashes and
+clock-free retries, including PostgreSQL reopen. Schema 63 adds a comment and
+checksum writer fence without rewriting journal payloads. Rollback requires the
+matching verified backup and binary. Applicable admission, atomic order/fill and
+ledger effects, protection and recovery remain unfinished for issues #19/#20.

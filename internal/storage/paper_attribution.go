@@ -17,6 +17,7 @@ const MaxPaperAttributionBytes = 8 << 20
 var ErrPaperAttributionInvalid = errors.New("invalid owned paper attribution")
 
 type PaperAllocationAttribution struct {
+	ExecutionSafety       *OwnedExecutionSafety           `json:"execution_safety,omitempty"`
 	EvaluationContext     *PaperEvaluationPlanAttribution `json:"evaluation_context,omitempty"`
 	ComparisonID          string                          `json:"comparison_id"`
 	RecordSHA256          string                          `json:"record_sha256"`
@@ -162,6 +163,13 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 					if cost.DecisionID == d.Command.ID {
 						v := cost
 						item.CostCeiling = &v
+						break
+					}
+				}
+				for _, safety := range a.ExecutionSafety {
+					if safety.DecisionID == d.Command.ID {
+						v := clone(safety)
+						item.ExecutionSafety = &v
 						break
 					}
 				}

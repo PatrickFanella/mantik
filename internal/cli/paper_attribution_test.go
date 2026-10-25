@@ -45,6 +45,25 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &comparisons); err != nil || len(comparisons.Records) != 1 || len(comparisons.Records[0].AdmissionChecks) != 1 || !reflect.DeepEqual(*row.Allocations[0].AdmissionReadiness, comparisons.Records[0].AdmissionChecks[0]) {
 		t.Fatal("attribution changed retained readiness", comparisons, err)
 	}
+	if len(comparisons.Records[0].ExecutionSafety) != 1 || row.Allocations[0].ExecutionSafety == nil || !reflect.DeepEqual(*row.Allocations[0].ExecutionSafety, comparisons.Records[0].ExecutionSafety[0]) {
+		t.Fatal("HTTP safety binding changed", row.Allocations[0])
+	}
+	for _, mutate := range []func(*storage.OwnedExecutionSafety){
+		func(v *storage.OwnedExecutionSafety) { v.CostCeilingSHA256 = workerplan.Hash("foreign") }, func(v *storage.OwnedExecutionSafety) { v.PolicySHA256 = workerplan.Hash("foreign") }, func(v *storage.OwnedExecutionSafety) { v.DefinitionSHA256 = workerplan.Hash("foreign") }, func(v *storage.OwnedExecutionSafety) { v.ExecutionAvailable = true }, func(v *storage.OwnedExecutionSafety) { v.Safety.StopCents = v.EntryLimitCents },
+	} {
+		raw, _ := json.Marshal(row)
+		var bad storage.PaperAttributionRow
+		_ = json.Unmarshal(raw, &bad)
+		v := bad.Allocations[0].ExecutionSafety
+		mutate(v)
+		v.SHA256 = ""
+		v.SHA256 = workerplan.Hash(*v)
+		bad.SHA256 = ""
+		bad.SHA256 = workerplan.Hash(bad)
+		if validateAttributionRow(bad, candidate.Command.ReceiverID) == nil {
+			t.Fatal("portable safety substitution accepted")
+		}
+	}
 	var reviews storage.OwnedAdmissionReviewCatalog
 	if err := json.Unmarshal(request("GET", "/v1/admission-reviews", nil, 200), &reviews); err != nil || len(reviews.Records) != 0 || row.AdmissionReviewHistory == nil || !reflect.DeepEqual(row.AdmissionReviewHistory.Records, reviews.Records) || row.AdmissionReviewHistory.CurrentID != "" || row.AdmissionReviewHistory.SourceSHA256 != workerplan.Hash(reviews) {
 		t.Fatal("HTTP lost actual review history", reviews, row.AdmissionReviewHistory, err)

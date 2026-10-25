@@ -35,6 +35,7 @@ func legacyAssessmentFailureBindingReplay(t *testing.T, s assessmentBackend, cur
 	}
 	old := clone(current)
 	old.Schema = "mantik-owned-allocation-deferral-v9"
+	old.ExecutionSafety = nil
 	found := false
 	for i := range journal.Records {
 		item := &journal.Records[i]
