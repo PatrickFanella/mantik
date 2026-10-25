@@ -21,10 +21,10 @@ are rejected. There is no new offline command or financial write route.
 The service replays the actual strategy, policy, declaration, finalized-decision
 and outcome owners in one consistent snapshot. Issuance takes the existing
 collector → state → receiver lock order in PostgreSQL; Memory uses its aggregate
-mutex. New records use `mantik-owned-paper-evaluation-assessment-v3` and
-`native-predeclared-necessary-checks-v3`. They retain the command, service clock,
+mutex. New records use `mantik-owned-paper-evaluation-assessment-v4` and
+`native-predeclared-necessary-checks-v4`. They retain the command, service clock,
 complete selected evidence, individual check states, native warm-up and forecast-calibration applicability,
-and a SHA256 digest. Existing v1 and v2 records keep their original recipes,
+and a SHA256 digest. Existing v1, v2 and v3 records keep their original recipes,
 bytes and hashes; replay does not attach later applicability results.
 
 Each predeclared variant receives all eight planned checks. Before the outcome
@@ -43,6 +43,27 @@ Failed and unavailable checks remain inspectable alongside pending attempts.
 unqualified. Forward-quote outcomes do not become fills, economic returns,
 benchmark results or realized PnL. A blocked assessment is not a retirement
 event, and an incomplete assessment cannot authorize an allocation.
+
+## Known source-unavailability leakage
+
+Recipe v4 also fails the necessary temporal-source condition for a variant when
+its owner-replayed evidence contains a candidate marked
+`source_unavailable_at_decision`. The selector already excludes that row from
+sample counts. The assessment now retains `leakage: failed` with reason
+`retained_candidate_source_unavailable_at_finalization`, and becomes `blocked`
+even before the outcome deadline. An excluded row cannot silently erase a known
+failure. Other variants keep their own check results.
+
+This is a failure-only check. An empty sample, excluded abstentions or rows outside
+the declaration window, and absence of a known temporal-source failure leave
+leakage `unavailable`. They do not establish complete leakage control, training
+lineage, independence, or an admission. The existing admission-readiness projection
+still reports necessary sample evidence only; this change does not add a grant,
+retirement event or financial effect.
+
+Schema 61 fences older writers without rewriting earlier assessments. v1-v3
+replay and exact retries keep their original check states, bytes and hashes.
+Rollback requires the matching verified backup and binary, not marker deletion.
 
 ## Native warm-up applicability
 
