@@ -1,5 +1,8 @@
 # Reference
 
+- [Isolated paper release preflight](paper-release.md) — exact source/image build
+  receipts, deployment gates and rollback prerequisites; no service changes.
+
 - [Dataset and replay contracts](datasets.md)
 - [Synthetic baseline experiments](experiments.md)
 - [Persistent triggers and routing cases](triggers.md)
