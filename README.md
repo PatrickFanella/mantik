@@ -769,3 +769,11 @@ Typed supervision can inspect retained allocation comparisons, non-grant
 admission reviews, and decision attribution through fixed owner GET routes.
 See [supervision tools](docs/reference/supervision-tools.md) for the read-only
 contracts and response limits.
+
+
+Owner comparison readiness retains known failed assessment checks even when
+that exact candidate was excluded because its source was unavailable at
+finalization. New v14 comparisons/readiness v6 bind the failure to the owner
+assessment and block admission review; historical records keep their original
+replay behavior. This does not issue admission or financial effects. See the
+[owned allocation contract](docs/reference/owned-allocation-comparisons.md#known-failures-for-excluded-candidates).

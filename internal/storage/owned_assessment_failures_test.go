@@ -14,82 +14,93 @@ import (
 // representation, then exercise actual owner replay/retry and PostgreSQL reopen.
 func legacyAssessmentFailureBindingReplay(t *testing.T, s assessmentBackend, current OwnedAllocationRecord, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) {
 	t.Helper()
-	ctx := context.Background()
-	var journal ownedAllocationJournal
-	switch b := s.(type) {
-	case *Memory:
-		journal = clone(b.ownedAllocations)
-	case *Postgres:
-		var raw []byte
-		if err := b.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&raw); err != nil {
-			t.Fatal(err)
-		}
-		if err := json.Unmarshal(raw, &journal); err != nil {
-			t.Fatal(err)
-		}
-	}
-	original := clone(journal)
-	actual, err := s.PaperEvaluationAssessments(ctx, de, oe)
-	if err != nil {
-		t.Fatal(err)
-	}
-	old := clone(current)
-	old.Schema = "mantik-owned-allocation-deferral-v9"
-	old.ExecutionSafety = nil
-	found := false
-	for i := range journal.Records {
-		item := &journal.Records[i]
-		if item.Record.Command.ID != current.Command.ID {
-			continue
-		}
-		var policy allocation.PolicyRecord
-		for _, p := range item.Policies.Records {
-			if p.SHA256 == current.PolicySHA256 {
-				policy = p
+	for _, schema := range []string{"mantik-owned-allocation-deferral-v9", "mantik-owned-allocation-deferral-v13"} {
+		t.Run(schema, func(t *testing.T) {
+			ctx := context.Background()
+			var journal ownedAllocationJournal
+			switch b := s.(type) {
+			case *Memory:
+				journal = clone(b.ownedAllocations)
+			case *Postgres:
+				var raw []byte
+				if err := b.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&raw); err != nil {
+					t.Fatal(err)
+				}
+				if err := json.Unmarshal(raw, &journal); err != nil {
+					t.Fatal(err)
+				}
 			}
-		}
-		old.AdmissionChecks, err = bindOwnedAssessmentReadiness(old, policy, actual)
-		if err != nil {
-			t.Fatal(err)
-		}
-		old.SHA256 = ""
-		old.SHA256 = workerplan.Hash(old)
-		item.Record = old
-		found = true
-	}
-	if !found || old.AdmissionChecks[0].Schema != "mantik-owned-admission-readiness-v3" {
-		t.Fatal("missing legacy comparison")
-	}
-	set := func(j ownedAllocationJournal) {
-		switch b := s.(type) {
-		case *Memory:
-			b.ownedAllocations = clone(j)
-		case *Postgres:
-			raw, e := json.Marshal(j)
-			if e != nil {
-				t.Fatal(e)
+			original := clone(journal)
+			actual, err := s.PaperEvaluationAssessments(ctx, de, oe)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if _, e = b.pool.Exec(ctx, "UPDATE mantik_owned_allocations SET payload=$1 WHERE singleton", raw); e != nil {
-				t.Fatal(e)
+			old := clone(current)
+			old.Schema = schema
+			if schema == "mantik-owned-allocation-deferral-v9" {
+				old.ExecutionSafety = nil
 			}
-		}
-	}
-	set(journal)
-	defer set(original)
-	check := func(b OwnedAllocationStore) {
-		got, e := b.CompareOwnedAllocation(ctx, old.Command, func() time.Time { t.Fatal("legacy v9 retry read clock"); return time.Time{} }, de, oe)
-		if e != nil || !got.Duplicate || !reflect.DeepEqual(got.Record, old) {
-			t.Fatal("legacy v9 replay changed", got, e)
-		}
-	}
-	check(s)
-	if b, ok := s.(*Postgres); ok {
-		reopened, e := OpenPostgres(ctx, b.pool.Config().ConnString())
-		if e != nil {
-			t.Fatal(e)
-		}
-		defer reopened.Close()
-		check(reopened)
+			found := false
+			for i := range journal.Records {
+				item := &journal.Records[i]
+				if item.Record.Command.ID != current.Command.ID {
+					continue
+				}
+				var policy allocation.PolicyRecord
+				for _, p := range item.Policies.Records {
+					if p.SHA256 == current.PolicySHA256 {
+						policy = p
+					}
+				}
+				old.AdmissionChecks, err = bindOwnedAssessmentReadiness(old, policy, actual)
+				if err != nil {
+					t.Fatal(err)
+				}
+				old.SHA256 = ""
+				old.SHA256 = workerplan.Hash(old)
+				item.Record = old
+				found = true
+			}
+			expectedReadiness := "mantik-owned-admission-readiness-v3"
+			if schema == "mantik-owned-allocation-deferral-v13" {
+				expectedReadiness = "mantik-owned-admission-readiness-v5"
+			}
+			if !found || old.AdmissionChecks[0].Schema != expectedReadiness {
+				t.Fatal("missing legacy comparison")
+			}
+			set := func(j ownedAllocationJournal) {
+				switch b := s.(type) {
+				case *Memory:
+					b.ownedAllocations = clone(j)
+				case *Postgres:
+					raw, e := json.Marshal(j)
+					if e != nil {
+						t.Fatal(e)
+					}
+					if _, e = b.pool.Exec(ctx, "UPDATE mantik_owned_allocations SET payload=$1 WHERE singleton", raw); e != nil {
+						t.Fatal(e)
+					}
+				}
+			}
+			set(journal)
+			defer set(original)
+			check := func(b OwnedAllocationStore) {
+				got, e := b.CompareOwnedAllocation(ctx, old.Command, func() time.Time { t.Fatal("legacy v9 retry read clock"); return time.Time{} }, de, oe)
+				if e != nil || !got.Duplicate || !reflect.DeepEqual(got.Record, old) {
+					t.Fatal("legacy v9 replay changed", got, e)
+				}
+			}
+			check(s)
+			if b, ok := s.(*Postgres); ok {
+				reopened, e := OpenPostgres(ctx, b.pool.Config().ConnString())
+				if e != nil {
+					t.Fatal(e)
+				}
+				defer reopened.Close()
+				check(reopened)
+			}
+
+		})
 	}
 }
 
@@ -145,7 +156,7 @@ func TestOwnedAssessmentFailuresDominatePending(t *testing.T) {
 		actual.Records = append(actual.Records, a)
 	}
 	got, err := bindOwnedAssessmentReadiness(r, policy, actual)
-	if err != nil || len(got) != 1 || got[0].Schema != "mantik-owned-admission-readiness-v5" || got[0].Gates[2].Status != "failed" || got[0].Gates[2].ReasonCode != "retained_necessary_evaluation_check_failed" || got[0].EvaluationEvidence[0].SampleStatus != "pending" || len(got[0].EvaluationEvidence[0].FailedChecks) != 1 || got[0].AdmissionAvailable || got[0].ExecutionAvailable || got[0].QualificationCredit {
+	if err != nil || len(got) != 1 || got[0].Schema != "mantik-owned-admission-readiness-v6" || got[0].Gates[2].Status != "failed" || got[0].Gates[2].ReasonCode != "retained_necessary_evaluation_check_failed" || got[0].EvaluationEvidence[0].SampleStatus != "pending" || len(got[0].EvaluationEvidence[0].FailedChecks) != 1 || got[0].AdmissionAvailable || got[0].ExecutionAvailable || got[0].QualificationCredit {
 		t.Fatal(got, err)
 	}
 	legacy := clone(r)

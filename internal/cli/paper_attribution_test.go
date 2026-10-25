@@ -83,7 +83,7 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 			t.Fatal("safety requirements without owner account binding accepted")
 		}
 	}
-	if row.Allocations[0].AdmissionReadiness.Schema != "mantik-owned-admission-readiness-v5" || row.Allocations[0].AdmissionReadiness.Binding.ExecutionSafetySHA256 != row.Allocations[0].ExecutionSafety.SHA256 {
+	if row.Allocations[0].AdmissionReadiness.Schema != "mantik-owned-admission-readiness-v6" || row.Allocations[0].AdmissionReadiness.Binding.ExecutionSafetySHA256 != row.Allocations[0].ExecutionSafety.SHA256 {
 		t.Fatal("HTTP readiness safety pin missing")
 	}
 	for _, pin := range []string{"", workerplan.Hash("other-safety")} {
