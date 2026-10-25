@@ -90,6 +90,13 @@ head checking and the new ledger payload commit in one transaction. Memory uses
 its existing mutex and detached values. Reads use a repeatable-read snapshot of
 the receiver, account and rehearsal.
 
+PostgreSQL reads and append acknowledgements, including exact retries, are
+returned only after their transaction commits. A failed COMMIT returns an error
+and a zero result. This does not erase an entry retained by an earlier successful
+append: inspect the owner history before retrying an uncertain operation. Exact
+retries still return the original receipt without sampling a clock or appending
+another entry once their transaction succeeds.
+
 There is one rehearsal per account, at most 256 unique accepted entries and 64
 reservation IDs, including closed reservations. Stored payloads and full readbacks
 are bounded to 1 MiB. At most 16 accounts exist; no unbounded event history or
