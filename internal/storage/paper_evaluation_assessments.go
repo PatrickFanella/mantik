@@ -291,7 +291,7 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 	// stay strictly outside every retained cut; exact retries return above.
 	for _, item := range allocations.Records {
 		r := item.Record
-		if r.Schema != "mantik-owned-allocation-deferral-v8" && r.Schema != "mantik-owned-allocation-deferral-v9" && r.Schema != "mantik-owned-allocation-deferral-v10" && r.Schema != "mantik-owned-allocation-deferral-v11" && r.Schema != "mantik-owned-allocation-deferral-v12" {
+		if r.Schema != "mantik-owned-allocation-deferral-v8" && r.Schema != "mantik-owned-allocation-deferral-v9" && r.Schema != "mantik-owned-allocation-deferral-v10" && r.Schema != "mantik-owned-allocation-deferral-v11" && r.Schema != "mantik-owned-allocation-deferral-v12" && r.Schema != "mantik-owned-allocation-deferral-v13" {
 			continue
 		}
 		unsigned := clone(r)
