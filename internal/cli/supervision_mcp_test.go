@@ -383,6 +383,44 @@ func copySupervisionMCP(t *testing.T, store socialHTTPBackend) {
 	if _, err := store.ApplySocialCommand(ctx, socialwatch.Command{Capture: &capture}, clock.Now); err != nil {
 		t.Fatal(err)
 	}
+	// Fixed source selectors return actual retained records without asking the clock.
+	original.Schema = "mantik-social-recording-v1"
+	original.Source.PostID = "social-one"
+	original.Activity = nil
+	socialRaw, _ := json.Marshal(original)
+	socialCapture := capture
+	socialCapture.ID, socialCapture.EvidenceClass = "mcp-social-source", "recorded_social_unqualified"
+	socialCapture.Original, socialCapture.OriginalSHA256 = string(socialRaw), workerplan.Digest(socialRaw)
+	if _, err := store.ApplySocialCommand(ctx, socialwatch.Command{Capture: &socialCapture}, clock.Now); err != nil {
+		t.Fatal(err)
+	}
+	sourceBefore, err := store.SocialHistory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock.panicRead = true
+	var sourceReads [][]byte
+	for _, pair := range []struct{ kind, id, path string }{
+		{"copy_record", capture.ID, "/v1/copy-recordings/" + capture.ID},
+		{"social_record", socialCapture.ID, "/v1/social-recordings/" + socialCapture.ID},
+	} {
+		via := call("inspect_record", map[string]string{"kind": pair.kind, "id": pair.id}, 200)
+		if !bytes.Equal(bytes.TrimSpace(via), bytes.TrimSpace(direct(pair.path))) {
+			t.Fatal("MCP source owner read diverged")
+		}
+		sourceReads = append(sourceReads, append([]byte(nil), via...))
+		call("inspect_record", map[string]string{"kind": pair.kind, "id": "missing"}, 404)
+		call("inspect_record", map[string]string{"kind": pair.kind, "id": "../operations"}, 422)
+		call("inspect_record", map[string]string{"kind": pair.kind, "id": pair.id, "path": "/v1/operations"}, 422)
+		call("inspect_record", map[string]any{"kind": pair.kind, "id": pair.id, "execution_available": true}, 422)
+	}
+	call("inspect_record", map[string]string{"kind": "social_record", "id": capture.ID}, 404)
+	call("inspect_record", map[string]string{"kind": "copy_record", "id": socialCapture.ID}, 404)
+	clock.panicRead = false
+	sourceAfter, err := store.SocialHistory(ctx)
+	if err != nil || !reflect.DeepEqual(sourceBefore, sourceAfter) {
+		t.Fatal("MCP inspection mutated owner", err)
+	}
 	read = call("inspect_record", map[string]string{"kind": "copy_applicability", "id": capture.ID}, 200)
 	if !bytes.Equal(bytes.TrimSpace(read), bytes.TrimSpace(direct("/v1/copy-recordings/"+capture.ID+"/applicability"))) {
 		t.Fatal("applicability owner read diverged")
@@ -434,6 +472,13 @@ func copySupervisionMCP(t *testing.T, store socialHTTPBackend) {
 	command.PreviousSHA256 = first.Entry.Policy.SHA256
 	command.Policy.Enabled = false
 	call("change_copy_watch_policy", command, 201)
+	clock.panicRead = true
+	for i, pair := range []struct{ kind, id string }{{"copy_record", capture.ID}, {"social_record", socialCapture.ID}} {
+		if !bytes.Equal(sourceReads[i], call("inspect_record", map[string]string{"kind": pair.kind, "id": pair.id}, 200)) {
+			t.Fatal("watch change rewrote original source")
+		}
+	}
+	clock.panicRead = false
 	read = call("inspect_record", map[string]string{"kind": "copy_applicability", "id": capture.ID}, 200)
 	if json.Unmarshal(read, &applicability) != nil || applicability.Status != "watch_policy_changed" {
 		t.Fatal(string(read))

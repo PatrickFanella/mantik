@@ -24,7 +24,7 @@ func supervisionMCPSchemas() map[string]any {
 	copyPolicy := map[string]any{"oneOf": []any{policy, obj(boundedRequired, bounded)}}
 	claim := obj([]string{"field", "value"}, map[string]any{"field": str(), "value": str()})
 	return map[string]any{
-		"inspect_record":           obj([]string{"kind", "id"}, map[string]any{"kind": enum("decision", "decision_explanation", "decision_market_evidence", "decision_attribution", "allocation_comparison", "admission_review", "review_case", "news_record", "research_review", "watch", "copy_watch", "social_applicability", "copy_applicability"), "id": str()}),
+		"inspect_record":           obj([]string{"kind", "id"}, map[string]any{"kind": enum("decision", "decision_explanation", "decision_market_evidence", "decision_attribution", "allocation_comparison", "admission_review", "review_case", "news_record", "research_review", "watch", "copy_watch", "social_record", "copy_record", "social_applicability", "copy_applicability"), "id": str()}),
 		"request_research":         obj([]string{"receiver_id", "request_id", "case_id", "version"}, map[string]any{"receiver_id": str(), "request_id": str(), "case_id": str(), "version": map[string]any{"type": "integer", "minimum": 1}, "type_id": str()}),
 		"change_watch_policy":      obj([]string{"id", "receiver_id", "previous_sha256", "policy"}, map[string]any{"id": str(), "receiver_id": str(), "previous_sha256": str(), "policy": policy}),
 		"change_copy_watch_policy": obj([]string{"id", "receiver_id", "previous_sha256", "policy"}, map[string]any{"id": str(), "receiver_id": str(), "previous_sha256": str(), "policy": copyPolicy}),
