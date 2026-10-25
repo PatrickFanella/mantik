@@ -210,6 +210,20 @@ func ownedSocialHTTP(t *testing.T, s socialHTTPBackend) {
 	request("GET", "/v1/social-recordings/copy-source", "", 404)
 	request("GET", "/v1/social-recordings/missing", "", 404)
 	request("GET", "/v1/copy-recordings/missing", "", 404)
+	for _, pair := range []struct{ kind, id, path string }{
+		{"social_record", "recording", "/v1/social-recordings/recording"},
+		{"copy_record", "copy-source", "/v1/copy-recordings/copy-source"},
+	} {
+		call := map[string]any{"tool": "inspect_record", "arguments": map[string]string{"kind": pair.kind, "id": pair.id}}
+		via := request("POST", "/v1/supervision/calls", call, 200)
+		direct := request("GET", pair.path, "", 200)
+		if !bytes.Equal(bytes.TrimSpace(via), bytes.TrimSpace(direct)) {
+			t.Fatal("supervised source differs from owner")
+		}
+	}
+	request("POST", "/v1/supervision/calls", map[string]any{"tool": "inspect_record", "arguments": map[string]string{"kind": "copy_record", "id": "recording"}}, 404)
+	request("POST", "/v1/supervision/calls", map[string]any{"tool": "inspect_record", "arguments": map[string]string{"kind": "social_record", "id": "recording", "path": "/v1/operations"}}, 422)
+
 	clock.panicRead = false
 	sourceAfter, err := s.SocialHistory(ctx)
 	if err != nil || !reflect.DeepEqual(sourceBefore, sourceAfter) {

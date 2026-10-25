@@ -18,7 +18,7 @@ unavailable write owners return 422 before dispatch.
 
 | Tool | Arguments | Owner |
 | --- | --- | --- |
-| `inspect_record` | `kind` and `id`; kinds `decision`, `decision_explanation`, `decision_market_evidence`, `decision_attribution`, `allocation_comparison`, `admission_review`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
+| `inspect_record` | `kind` and `id`; kinds `decision`, `decision_explanation`, `decision_market_evidence`, `decision_attribution`, `allocation_comparison`, `admission_review`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_record`, `copy_record`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
 | `request_research` | `receiver_id`, `request_id`, `case_id`, `version`, optional `type_id` | `POST /v1/news-reviews` |
 | `change_watch_policy` | Existing policy command: `id`, `receiver_id`, optional `previous_sha256`, `policy` | `POST /v1/social-watches` |
 | `change_copy_watch_policy` | Same policy command; research, review or inactive bounded follow intent | `POST /v1/copy-watches` |
@@ -202,3 +202,13 @@ The stdio bridge keeps its existing 2 MiB response limit. An oversized owner
 response fails rather than becoming a truncated success. These tools establish
 no new admission or economic authority and do not qualify conversational model
 behavior.
+
+`inspect_record` kinds `social_record` and `copy_record` select the authenticated
+original-capture GET routes. They return the same retained record as direct HTTP,
+with complete source-owner replay and strict manifest-kind selection. These
+clock-free reads preserve originals after watch changes. They accept only the
+fixed kind and capture ID: no path, cutoff, admission or effect assertions.
+Missing captures or absent owners retain HTTP 404; owner failures retain 503.
+Original text and activity fields remain unverified source claims. Applicability
+selectors continue to use their separate clock-dependent contract. No model call,
+extraction attestation, economic effect or qualification follows from inspection.

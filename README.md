@@ -540,6 +540,8 @@ legacy replay contract; this is no qualification or financial-effect grant.
 Individual retained sources are available through authenticated, clock-free
 `GET /v1/social-recordings/{capture-id}` and `GET /v1/copy-recordings/{capture-id}`;
 these resolve claim-review source links without granting applicability or execution.
+Typed supervision and MCP expose the same originals through fixed `inspect_record`
+kinds `social_record` and `copy_record`, with no caller path or cutoff.
 
 Service-owned [social watches and recordings](docs/reference/owned-social-watches.md)
 bind versioned provider/account policies to exact, explicitly unqualified source
