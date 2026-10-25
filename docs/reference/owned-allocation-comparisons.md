@@ -90,8 +90,8 @@ notional or proposal is accepted. Cash remains at the owner's opening funding,
 and positions, orders and commitments remain empty.
 
 Each comparison appends one hash-linked entry to its policy's allocation ledger.
-The owned record pins that entry, ledger head and policy. It has schema
-`mantik-owned-allocation-deferral-v9`, authority
+The owned record pins that entry, ledger head and policy. New records have schema
+`mantik-owned-allocation-deferral-v10`, authority
 `service_owned_allocation_deferral_only`, and false execution/qualification
 flags. Returned core ledger values remain accounting evidence; they are not
 portable admission or execution grants.
@@ -498,7 +498,7 @@ requires the matching binary and backup rather than deleting a schema marker.
 
 ## Exact decision evidence in readiness
 
-New `mantik-owned-allocation-deferral-v9` comparisons retain
+Historical `mantik-owned-allocation-deferral-v9` comparisons retain
 `mantik-owned-admission-readiness-v3`. Readiness binds the hash of its exact
 owner-derived decision/strategy/policy evaluation binding. For each matching
 declaration, the owner selects the latest actual assessment at the comparison
