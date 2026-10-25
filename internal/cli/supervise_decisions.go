@@ -27,6 +27,15 @@ func fetchDecisionInspection(ctx context.Context, base string, d storage.PaperDe
 	}
 	path := "/v1/paper-decisions/" + d.Command.ID
 	switch kind {
+	case "a":
+		var row storage.PaperAttributionRow
+		if err := requestBounded(ctx, base, "/v1/paper-attribution/"+d.Command.ID, nil, &row, nil, storage.MaxPaperAttributionBytes, true); err != nil {
+			return nil, err
+		}
+		if validateAttributionRow(row, d.Command.ReceiverID) != nil || !reflect.DeepEqual(row.Decision, d) {
+			return nil, errDecisionReadback
+		}
+		return row, nil
 	case "e":
 		var v service.DecisionExplanation
 		if err := requestBounded(ctx, base, path+"/explanation", nil, &v, nil, 1<<20, true); err != nil {
@@ -55,7 +64,7 @@ func fetchDecisionInspection(ctx context.Context, base string, d storage.PaperDe
 	return nil, errDecisionReadback
 }
 
-const decisionSupervisionHelp = "Commands (then Enter): n next | p previous | r refresh | d ID finalized decision | e ID explanation | m ID market evidence | q quit"
+const decisionSupervisionHelp = "Commands (then Enter): n next | p previous | r refresh | d ID finalized decision | e ID explanation | m ID market evidence | a ID attribution | q quit"
 
 // No natural-language inference or mutation is performed. IDs must belong to
 // the displayed page; stale catalogues cannot authorize follow-up reads.
@@ -152,7 +161,7 @@ func superviseDecisions(ctx context.Context, in io.ReadCloser, out io.Writer, li
 			}
 		case len(fields) == 1 && fields[0] == "p":
 			offset = max(0, offset-limit)
-		case len(fields) == 2 && (fields[0] == "d" || fields[0] == "e" || fields[0] == "m"):
+		case len(fields) == 2 && (fields[0] == "d" || fields[0] == "e" || fields[0] == "m" || fields[0] == "a"):
 			found := false
 			for _, d := range page.Records[offset:min(offset+limit, len(page.Records))] {
 				if fields[1] != d.Command.ID {

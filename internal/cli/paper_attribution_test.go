@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"reflect"
@@ -69,6 +70,12 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	}
 	row.SHA256 = hash
 	all.SHA256 = workerplan.Hash(all)
+	for _, actual := range []storage.PaperAttributionRow{row, noAction} {
+		inspected, err := fetchDecisionInspection(context.Background(), serverURL, actual.Decision, "a")
+		if err != nil || !reflect.DeepEqual(inspected, actual) {
+			t.Fatal("interactive attribution differs from actual owner", inspected, err)
+		}
+	}
 	paperAttributionCLIContract(t, serverURL, all, row, noAction)
 	request("GET", "/v1/paper-attribution/missing", nil, 404)
 	for _, path := range []string{"/v1/paper-attribution?", "/v1/paper-attribution?account_id=caller", "/v1/paper-attribution/" + candidate.Command.ID + "?model=unavailable", "/v1/paper-attribution/" + candidate.Command.ID + "?at=future", "/v1/paper-attribution/invalid.id"} {

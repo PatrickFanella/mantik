@@ -179,6 +179,10 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	for _, row := range attribution.Rows {
 		if row.AdmissionReviewHistory != nil && len(row.AdmissionReviewHistory.Records) > 0 {
 			assertAttributionReviewPresentation(t, c.ReceiverID, row)
+			inspected, err := fetchDecisionInspection(context.Background(), serverURL, row.Decision, "a")
+			if err != nil || !reflect.DeepEqual(inspected, row) {
+				t.Fatal("interactive attribution lost retained admission review", inspected, err)
+			}
 			var out, diag strings.Builder
 			if err := Run(context.Background(), []string{"paper-attribution", "--api-url", serverURL, "--receiver-id", c.ReceiverID, "--id", row.Decision.Command.ID, "--record-sha256", row.SHA256}, &out, &diag); err != nil || !strings.Contains(out.String(), "ADMISSION_REVIEW \"http-admission-review\" current=true") || !strings.Contains(out.String(), "admission=false execution=false qualification=false") {
 				t.Fatal("actual review CLI presentation", err, out.String(), diag.String())

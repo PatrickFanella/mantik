@@ -154,14 +154,21 @@ model interpretation remain unfinished.
 The view lists finalized research decisions in bounded pages. Use `n` and `p` to
 navigate locally, `r` to refresh the catalogue, and `q` to quit. On the displayed
 page, `d ID` prints the retained finalized record, `e ID` reads its deterministic
-post-decision explanation, and `m ID` reads the retained market dimensions and
-source fences. The latter two commands use the existing service endpoints;
+post-decision explanation, `m ID` reads the retained market dimensions and
+source fences, and `a ID` reads the decision's complete retained
+[phase attribution](paper-attribution.md), including allocation choices and
+non-grant admission-review history. These inspections use existing service endpoints;
 original source bytes remain available through their existing inspection paths.
 
 Inspection responses must match the displayed receiver, decision hash, historical
 basis, finalization time and registration. Explanations also match the retained
 strategy and evaluation facts. Response hashes, schema and authority flags are
-checked before display. JSON output escapes source strings instead of printing
+checked before display. Attribution also passes the existing bounded row validator
+and must contain the exact displayed finalized decision, including its evidence
+basis and stored evaluation. Later outcomes or reviews can change the attribution
+row while that immutable decision stays the same; this is a current read, not a
+claim that downstream history was present at finalization. Funding ceilings remain
+bounds, economics remain unavailable, and reviews never become grants. JSON output escapes source strings instead of printing
 source text as terminal commands. These checks bind the service readback; they
 do not independently attest imported records or replace the service's owner
 replay.
@@ -176,7 +183,8 @@ no mutation, admission, allocation, execution or qualification action in this
 view.
 
 Memory and disposable PostgreSQL owner contracts compare terminal inspection
-responses with the existing explanation and market-evidence responses. Local
+responses with the existing explanation, market-evidence and attribution responses.
+The attribution cases also retain actual admission reviews across service reopen. Local
 checks also cover stale reads, receiver changes, page restrictions, evidence
 substitution, authority flags and cancellation. They do not restart or qualify
 the curtailed terminal scenarios or establish conversational model behavior.
