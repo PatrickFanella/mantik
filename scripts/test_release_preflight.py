@@ -108,5 +108,63 @@ class ReleasePreflightTests(unittest.TestCase):
             self.assertFalse(receipt["database_inspected"])
 
 
+class ExecutableCheckTests(unittest.TestCase):
+    def exercise(self, directory, failure=None):
+        image, cid = "sha256:" + "a" * 64, "b" * 64
+        state = {"id": cid, "image": image, "user": "65532:65532", "entrypoint": ["/app/mantik"],
+                 "cmd": ["--help"], "network": "none", "readonly": True, "cap_drop": ["ALL"],
+                 "security": ["no-new-privileges:true"], "mounts": [], "ports": {},
+                 "pids_limit": 64, "memory": 128 * 1024 * 1024, "nano_cpus": 1000000000,
+                 "exit": 0, "oom": False, "running": False, "started": "2026-10-25T00:00:00Z"}
+        commands = []
+        def output(args, cwd):
+            commands.append(args)
+            if args[:2] == ["docker", "create"]:
+                self.assertEqual(args[-2:], [image, "--help"])
+                self.assertIn("none", args)
+                self.assertNotIn("-e", args)
+                self.assertNotIn("-v", args)
+                return cid
+            return json.dumps(state | ({"network": "bridge"} if failure == "isolation" else {}))
+        def run(args, **kwargs):
+            commands.append(args)
+            if args[:2] == ["docker", "start"]:
+                if failure == "timeout":
+                    raise subprocess.TimeoutExpired(args, 60)
+                kwargs["stdout"].write("wrong binary\n" if failure == "output" else
+                                         "Mantik — autonomous paper research bootstrap\nCommands:\nAll execution is synthetic paper.\n")
+            if args[:2] == ["docker", "inspect"]:
+                return subprocess.CompletedProcess(args, 1, "", "Error: No such object: " + cid)
+            return subprocess.CompletedProcess(args, 0, "", "")
+        with patch.object(release, "output", side_effect=output), patch.object(release.subprocess, "run", side_effect=run):
+            if failure:
+                with self.assertRaises((ValueError, subprocess.TimeoutExpired)):
+                    release.executable_check(Path(directory), Path(directory) / "attempt", image)
+            else:
+                release.executable_check(Path(directory), Path(directory) / "attempt", image)
+        receipt = json.loads((Path(directory) / "attempt/receipt.json").read_text())
+        self.assertTrue(receipt["cleanup_verified"])
+        self.assertEqual(receipt["passed"], failure is None)
+        self.assertFalse(receipt["services_started"])
+        self.assertFalse(receipt["qualification_credit"])
+        self.assertIn(["docker", "rm", "-f", cid], commands)
+        if failure == "isolation":
+            self.assertFalse(any(c[:2] == ["docker", "start"] for c in commands))
+        return receipt
+
+    def test_actual_exit_is_required_and_exact_sandbox_is_removed(self):
+        for failure in [None, "timeout", "output", "isolation"]:
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
+                self.exercise(tmp, failure)
+
+    def test_mutable_image_is_rejected_before_creating_attempt(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(release, "output") as output:
+            dest = Path(tmp) / "attempt"
+            with self.assertRaisesRegex(ValueError, "immutable"):
+                release.executable_check(Path(tmp), dest, "mantik:latest")
+            self.assertFalse(dest.exists())
+            output.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
