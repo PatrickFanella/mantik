@@ -93,7 +93,7 @@ class ReleasePreflightTests(unittest.TestCase):
                 if args[:2] == ["git", "archive"]:
                     source_tar(dest / "source.tar")
                     return
-                self.assertEqual(args[:3], ["docker", "build", "--network=none"])
+                self.assertEqual(args[:3], ["docker", "build", "--network=default"])
                 kwargs["stdout"].write("actual failed build output\n")
                 raise subprocess.CalledProcessError(1, args)
             with patch.object(release, "output", side_effect=[str(repo), "", "b" * 40, "c" * 40]), patch.object(release.subprocess, "run", side_effect=run):

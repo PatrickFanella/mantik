@@ -27,10 +27,11 @@ attempts, including failures, are never overwritten. The command:
   `.env` files and uncommitted changes are not build inputs.
 - Records the archive SHA-256 and every source SQL migration's SHA-256. A missing
   migration in the numbered sequence fails the preflight.
-- Sends that archive directly to `docker build --network=none`, with labels
-  derived from the selected revision and archive digest. Build steps cannot use
-  a network; Docker may still resolve base-image metadata. No application
-  provider or model is called.
+- Sends that archive directly to `docker build --network=default`, with labels
+  derived from the selected revision and archive digest. The existing Dockerfile
+  downloads Go modules and Docker resolves base images through the normal build
+  network. This is a dependency build, with no service or application provider
+  or model call. An offline dependency cache is not assumed.
 - Retains `build-command.json`, `build.log` and `image.id`, then inspects that
   exact local image ID and checks its source labels, non-root user and Mantik
   entrypoint. It does not inspect container environments.

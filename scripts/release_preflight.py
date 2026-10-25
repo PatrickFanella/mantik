@@ -82,7 +82,7 @@ def build_preflight(repo, destination):
         subprocess.run(["git", "archive", "--format=tar", "--output", str(source), revision],
                        cwd=repo, check=True, timeout=60)
         receipt.update(archive_identity(source))
-        command = ["docker", "build", "--network=none", "--iidfile", str(destination / "image.id"),
+        command = ["docker", "build", "--network=default", "--iidfile", str(destination / "image.id"),
                    "--label", "org.opencontainers.image.revision=" + revision,
                    "--label", "io.mantik.source-archive-sha256=" + receipt["archive_sha256"], "-"]
         (destination / "build-command.json").write_text(json.dumps(command, indent=2) + "\n")
