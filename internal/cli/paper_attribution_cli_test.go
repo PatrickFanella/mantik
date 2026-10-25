@@ -58,6 +58,7 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 	legacyRaw, _ := json.Marshal(candidate)
 	var legacy storage.PaperAttributionRow
 	_ = json.Unmarshal(legacyRaw, &legacy)
+	legacy.AdmissionReviewHistory = nil
 	legacy.Allocations[0].AdmissionReadiness = nil
 	legacy.Allocations[0].EvaluationContext = nil
 	legacy.SHA256 = ""
@@ -175,5 +176,59 @@ func TestPaperAttributionCLIEmptyAndFailures(t *testing.T) {
 	}
 	if err := Run(context.Background(), []string{"paper-attribution", "--help"}, io.Discard, &diag); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func assertAttributionReviewPresentation(t *testing.T, owner string, candidate storage.PaperAttributionRow) {
+	t.Helper()
+	for name, mutate := range map[string]func(*storage.PaperAdmissionReviewHistory){
+		"current":   func(h *storage.PaperAdmissionReviewHistory) { h.CurrentID = "other" },
+		"grant":     func(h *storage.PaperAdmissionReviewHistory) { h.Records[0].AdmissionAvailable = true },
+		"authority": func(h *storage.PaperAdmissionReviewHistory) { h.Authority = "admitted" },
+		"comparison": func(h *storage.PaperAdmissionReviewHistory) {
+			h.Records[0].Command.ComparisonSHA256 = strings.Repeat("0", 64)
+		},
+		"decision": func(h *storage.PaperAdmissionReviewHistory) {
+			h.Records[0].Command.DecisionSHA256 = strings.Repeat("0", 64)
+		},
+		"readiness": func(h *storage.PaperAdmissionReviewHistory) { h.Records[0].Readiness.Gates[0].ReasonCode = "other" },
+		"status":    func(h *storage.PaperAdmissionReviewHistory) { h.Records[0].Status = "admitted" },
+		"reason":    func(h *storage.PaperAdmissionReviewHistory) { h.Records[0].ReasonCode = "qualified" },
+		"triggers":  func(h *storage.PaperAdmissionReviewHistory) { h.Records[0].ReconsiderTriggers = []string{} },
+		"clock": func(h *storage.PaperAdmissionReviewHistory) {
+			h.Records[0].ReviewedAt = h.Records[0].ComparisonAt.Add(-1)
+		},
+		"predecessor": func(h *storage.PaperAdmissionReviewHistory) {
+			h.Records[0].Command.PreviousID = "other"
+			h.Records[0].Command.PreviousSHA256 = strings.Repeat("0", 64)
+		},
+		"duplicate":   func(h *storage.PaperAdmissionReviewHistory) { h.Records = append(h.Records, h.Records[0]) },
+		"nil history": func(h *storage.PaperAdmissionReviewHistory) { h.Records = nil },
+	} {
+		t.Run("review presentation "+name, func(t *testing.T) {
+			raw, _ := json.Marshal(candidate)
+			var bad storage.PaperAttributionRow
+			_ = json.Unmarshal(raw, &bad)
+			h := bad.AdmissionReviewHistory
+			mutate(h)
+			for i := range h.Records {
+				h.Records[i].SHA256 = ""
+				h.Records[i].SHA256 = workerplan.Hash(h.Records[i])
+			}
+			ids := []string{}
+			if h.CurrentID != "" {
+				ids = []string{h.CurrentID}
+			}
+			h.SourceSHA256 = workerplan.Hash(storage.OwnedAdmissionReviewCatalog{ReceiverID: owner, Records: h.Records, CurrentIDs: ids})
+			bad.SHA256 = ""
+			bad.SHA256 = workerplan.Hash(bad)
+			stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(bad) }))
+			defer stub.Close()
+			var out, diag bytes.Buffer
+			err := Run(context.Background(), []string{"paper-attribution", "--api-url", stub.URL, "--receiver-id", owner, "--id", bad.Decision.Command.ID, "--record-sha256", bad.SHA256}, &out, &diag)
+			if err == nil || out.Len() != 0 {
+				t.Fatal("rehashed invalid review printed output", err, out.String())
+			}
+		})
 	}
 }

@@ -54,12 +54,12 @@ func runPaperAttribution(ctx context.Context, args []string, out, errOut io.Writ
 	}
 	hash := c.SHA256
 	c.SHA256 = ""
-	if c.Schema != "mantik-owned-paper-attribution-v1" || c.ReceiverID != *receiver || !paperStrategyPin.MatchString(c.SourceSHA256) || c.Authority != "service_owned_phase_attribution_only" || c.ExecutionAvailable || c.QualificationCredit || c.Rows == nil || len(c.Rows) > storage.MaxPaperDecisions || !paperStrategyPin.MatchString(hash) || workerplan.Hash(c) != hash {
+	if (c.Schema != "mantik-owned-paper-attribution-v1" && c.Schema != "mantik-owned-paper-attribution-v2") || c.ReceiverID != *receiver || !paperStrategyPin.MatchString(c.SourceSHA256) || c.Authority != "service_owned_phase_attribution_only" || c.ExecutionAvailable || c.QualificationCredit || c.Rows == nil || len(c.Rows) > storage.MaxPaperDecisions || !paperStrategyPin.MatchString(hash) || workerplan.Hash(c) != hash {
 		return storage.ErrPaperAttributionInvalid
 	}
 	previous := ""
 	for _, row := range c.Rows {
-		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID <= previous {
+		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID <= previous || c.Schema == "mantik-owned-paper-attribution-v2" && row.AdmissionReviewHistory == nil {
 			return storage.ErrPaperAttributionInvalid
 		}
 		previous = row.Decision.Command.ID
@@ -159,7 +159,7 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 			}
 		}
 	}
-	return nil
+	return validateAttributionReviews(r, receiver)
 }
 
 // Optional for older retained comparisons. A portable readiness hash does not
@@ -247,6 +247,14 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 					fmt.Fprintf(&b, "      GATE %s status=%s reason=%s\n", strconv.Quote(gate.Name), strconv.Quote(gate.Status), strconv.Quote(gate.ReasonCode))
 				}
 			}
+			if h := r.AdmissionReviewHistory; h != nil {
+				for _, review := range h.Records {
+					if review.Command.ComparisonID != a.ComparisonID {
+						continue
+					}
+					fmt.Fprintf(&b, "    ADMISSION_REVIEW %s current=%t status=%s reason=%s reconsider=%q admission=false execution=false qualification=false\n", strconv.Quote(review.Command.ID), review.Command.ID == h.CurrentID, strconv.Quote(review.Status), strconv.Quote(review.ReasonCode), review.ReconsiderTriggers)
+				}
+			}
 			if c := a.EvaluationContext; c != nil {
 				fmt.Fprintf(&b, "    EVALUATION_PLANS status=%s source=%s admission=false execution=false qualification=false\n", strconv.Quote(c.Binding.Status), strconv.Quote(c.SourceSHA256))
 				for _, pin := range c.Binding.Declarations {
@@ -308,4 +316,71 @@ func validateReadinessAssessmentSelection(c storage.OwnedAdmissionReadiness, a s
 		gate.ReasonCode = "finalized_decision_not_selected_in_assessment"
 	}
 	return gate, nil
+}
+
+// Presentation validation checks the complete decision chain against the retained
+// comparison projection. It cannot attest storage ownership or grant admission.
+func validateAttributionReviews(row storage.PaperAttributionRow, receiver string) error {
+	h := row.AdmissionReviewHistory
+	if h == nil {
+		return nil
+	} // Legacy v1 response.
+	if h.Records == nil || len(h.Records) > storage.MaxOwnedAdmissionReviews || h.Authority != "service_owned_non_grant_admission_review_history_only" || h.AdmissionAvailable || h.ExecutionAvailable || h.QualificationCredit || !paperStrategyPin.MatchString(h.SourceSHA256) {
+		return storage.ErrPaperAttributionInvalid
+	}
+	scoped := storage.OwnedAdmissionReviewCatalog{ReceiverID: receiver, Records: h.Records, CurrentIDs: []string{}}
+	var previous storage.OwnedAdmissionReview
+	seen := map[string]bool{}
+	for _, review := range h.Records {
+		c := review.Command
+		raw := review
+		raw.SHA256 = ""
+		if c.Validate() != nil || c.ReceiverID != receiver || c.DecisionID != row.Decision.Command.ID || c.DecisionSHA256 != row.Decision.SHA256 || review.Schema != "mantik-owned-admission-review-v1" || review.Method != "retained-non-grant-admission-review-v1" || review.Authority != "service_owned_non_grant_admission_review_only" || review.AdmissionAvailable || review.ExecutionAvailable || review.QualificationCredit || !paperStrategyPin.MatchString(review.SHA256) || workerplan.Hash(raw) != review.SHA256 || seen[c.ID] || review.Sequence <= previous.Sequence || review.Sequence > storage.MaxOwnedAdmissionReviews || review.ReviewedAt.IsZero() || review.ReviewedAt.Before(previous.ReviewedAt) || review.ComparisonAt.Before(previous.ComparisonAt) || review.ReviewedAt.Before(review.ComparisonAt) || c.PreviousID != previous.Command.ID || c.PreviousSHA256 != previous.SHA256 {
+			return storage.ErrPaperAttributionInvalid
+		}
+		seen[c.ID] = true
+		found := false
+		for _, a := range row.Allocations {
+			if a.ComparisonID != c.ComparisonID {
+				continue
+			}
+			if found || a.RecordSHA256 != c.ComparisonSHA256 || !a.At.Equal(review.ComparisonAt) || a.AdmissionReadiness == nil || !reflect.DeepEqual(*a.AdmissionReadiness, review.Readiness) {
+				return storage.ErrPaperAttributionInvalid
+			}
+			found = true
+		}
+		readiness := review.Readiness
+		if !found || readiness.Schema != "mantik-owned-admission-readiness-v3" || readiness.Binding == nil {
+			return storage.ErrPaperAttributionInvalid
+		}
+		status, reason := "deferred", "required_admission_gates_unavailable"
+		triggers := readiness.ReconsiderTriggers
+		failed, pending := false, false
+		for _, gate := range readiness.Gates {
+			failed = failed || gate.Status == "failed"
+			pending = pending || gate.Status == "pending"
+		}
+		switch {
+		case !review.ReviewedAt.Before(readiness.ValidUntil):
+			status, reason, triggers = "expired", "finalized_proposal_expired", []string{"new_finalized_decision"}
+		case failed:
+			status, reason = "blocked", "retained_necessary_evaluation_check_failed"
+		case pending:
+			status, reason = "pending", "retained_evaluation_window_open"
+		}
+		if review.Status != status || review.ReasonCode != reason || !reflect.DeepEqual(review.ReconsiderTriggers, triggers) {
+			return storage.ErrPaperAttributionInvalid
+		}
+		previous = review
+	}
+	if h.CurrentID != previous.Command.ID {
+		return storage.ErrPaperAttributionInvalid
+	}
+	if h.CurrentID != "" {
+		scoped.CurrentIDs = []string{h.CurrentID}
+	}
+	if workerplan.Hash(scoped) != h.SourceSHA256 {
+		return storage.ErrPaperAttributionInvalid
+	}
+	return nil
 }
