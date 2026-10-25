@@ -181,3 +181,9 @@ Rehashing a safety record for another account or removing that binding is
 rejected before rendering. Historical rows without safety requirements retain
 their existing compatibility. These checks verify relationships within the
 projection; the service still owns source replay and economic authority.
+
+For readiness v5, the CLI additionally requires `execution_safety_sha256` to
+match the projected safety record, or to be absent when there is no such record.
+Older readiness versions retain the omitted pin. Owner replay supplies the
+actual requirement record; portable consistency remains separate from custody
+and economic authority.

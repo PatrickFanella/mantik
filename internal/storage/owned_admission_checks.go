@@ -44,6 +44,7 @@ type OwnedAdmissionReadiness struct {
 // OwnedAdmissionBinding identifies the owner-selected comparison context. It is
 // not an admission or an effect command; the bound readiness remains deferred.
 type OwnedAdmissionBinding struct {
+	ExecutionSafetySHA256   string `json:"execution_safety_sha256,omitempty"`
 	EvaluationBindingSHA256 string `json:"evaluation_binding_sha256,omitempty"`
 	ComparisonID            string `json:"comparison_id"`
 	PolicyID                string `json:"policy_id"`
@@ -79,6 +80,19 @@ func bindOwnedAdmissionReadiness(r OwnedAllocationRecord, policy allocation.Poli
 	if policy.Command.ExecutionModel != nil && len(costs) != len(proposals) || policy.Command.ExecutionModel == nil && len(costs) != 0 {
 		return nil, ErrOwnedAllocationInvalid
 	}
+	safety := map[string]OwnedExecutionSafety{}
+	if r.Schema == "mantik-owned-allocation-deferral-v12" {
+		for _, v := range r.ExecutionSafety {
+			cost, ok := costs[v.DecisionID]
+			if _, duplicate := safety[v.DecisionID]; duplicate || !ok || v.DecisionSHA256 != cost.DecisionSHA256 || v.CostCeilingSHA256 != cost.SHA256 || v.AccountSHA256 != policy.Account.SHA256 || v.PolicySHA256 != policy.SHA256 {
+				return nil, ErrOwnedAllocationInvalid
+			}
+			safety[v.DecisionID] = v
+		}
+		if len(safety) != len(costs) {
+			return nil, ErrOwnedAllocationInvalid
+		}
+	}
 	checks := clone(r.AdmissionChecks)
 	seen := map[string]bool{}
 	for i := range checks {
@@ -93,6 +107,9 @@ func bindOwnedAdmissionReadiness(r OwnedAllocationRecord, policy allocation.Poli
 		c.Binding = &OwnedAdmissionBinding{ComparisonID: r.Command.ID, PolicyID: policy.Command.Policy.ID, PolicySHA256: policy.SHA256, AccountID: policy.Account.Config.ID, AccountSHA256: policy.Account.SHA256, ProposalSHA256: workerplan.Hash(p), LedgerSHA256: r.LedgerSHA256}
 		if cost, ok := costs[c.DecisionID]; ok {
 			c.Binding.ExecutionCostSHA256 = cost.SHA256
+		}
+		if v, ok := safety[c.DecisionID]; ok {
+			c.Binding.ExecutionSafetySHA256 = v.SHA256
 		}
 		c.SHA256 = ""
 		c.SHA256 = workerplan.Hash(*c)

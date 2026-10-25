@@ -740,3 +740,8 @@ The disposable integration suite checks [restored storage-owner replay](docs/ref
 including deferred allocation requirements, clock-free retries, corrupted-owner
 rejection and restoration of the original payload. These are storage-fixture
 recovery checks, with no financial recovery or qualification claim.
+
+New allocation comparisons bind owner-derived execution-safety requirements
+inside admission readiness, alongside account, policy, cost, evaluation and
+ledger pins. See [owned allocation comparisons](docs/reference/owned-allocation-comparisons.md).
+This is a requirements binding; admission and economic execution remain unavailable.

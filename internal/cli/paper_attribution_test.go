@@ -83,6 +83,23 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 			t.Fatal("safety requirements without owner account binding accepted")
 		}
 	}
+	if row.Allocations[0].AdmissionReadiness.Schema != "mantik-owned-admission-readiness-v5" || row.Allocations[0].AdmissionReadiness.Binding.ExecutionSafetySHA256 != row.Allocations[0].ExecutionSafety.SHA256 {
+		t.Fatal("HTTP readiness safety pin missing")
+	}
+	for _, pin := range []string{"", workerplan.Hash("other-safety")} {
+		raw, _ := json.Marshal(row)
+		var bad storage.PaperAttributionRow
+		_ = json.Unmarshal(raw, &bad)
+		c := bad.Allocations[0].AdmissionReadiness
+		c.Binding.ExecutionSafetySHA256 = pin
+		c.SHA256 = ""
+		c.SHA256 = workerplan.Hash(*c)
+		bad.SHA256 = ""
+		bad.SHA256 = workerplan.Hash(bad)
+		if validateAttributionRow(bad, candidate.Command.ReceiverID) == nil {
+			t.Fatal("portable readiness safety substitution accepted")
+		}
+	}
 	var reviews storage.OwnedAdmissionReviewCatalog
 	if err := json.Unmarshal(request("GET", "/v1/admission-reviews", nil, 200), &reviews); err != nil || len(reviews.Records) != 0 || row.AdmissionReviewHistory == nil || !reflect.DeepEqual(row.AdmissionReviewHistory.Records, reviews.Records) || row.AdmissionReviewHistory.CurrentID != "" || row.AdmissionReviewHistory.SourceSHA256 != workerplan.Hash(reviews) {
 		t.Fatal("HTTP lost actual review history", reviews, row.AdmissionReviewHistory, err)
