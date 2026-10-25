@@ -151,6 +151,11 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 			}
 		}
 		if a.ExecutionSafety != nil {
+			// Safety requirements and admission readiness describe the same
+			// owner-selected account. A self-consistent hash alone is insufficient.
+			if a.AdmissionReadiness == nil || a.AdmissionReadiness.Binding == nil || a.ExecutionSafety.AccountSHA256 != a.AdmissionReadiness.Binding.AccountSHA256 {
+				return storage.ErrPaperAttributionInvalid
+			}
 			v := *a.ExecutionSafety
 			h := v.SHA256
 			v.SHA256 = ""

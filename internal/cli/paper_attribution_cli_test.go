@@ -60,6 +60,7 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 	_ = json.Unmarshal(legacyRaw, &legacy)
 	legacy.AdmissionReviewHistory = nil
 	legacy.Allocations[0].AdmissionReadiness = nil
+	legacy.Allocations[0].ExecutionSafety = nil
 	legacy.Allocations[0].EvaluationContext = nil
 	legacy.SHA256 = ""
 	legacy.SHA256 = workerplan.Hash(legacy)
