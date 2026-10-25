@@ -208,3 +208,6 @@ var AdmissionSafetyBindings string
 
 //go:embed 0065_owned_proposal_model_expiry.sql
 var OwnedProposalModelExpiry string
+
+//go:embed 0066_owned_excluded_assessment_failure.sql
+var OwnedExcludedAssessmentFailure string

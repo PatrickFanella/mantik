@@ -64,11 +64,14 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 			}
 		}
 		c.Schema = "mantik-owned-admission-readiness-v3"
-		if r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || r.Schema == "mantik-owned-allocation-deferral-v13")) {
+		if r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || r.Schema == "mantik-owned-allocation-deferral-v14"))) {
 			c.Schema = "mantik-owned-admission-readiness-v4"
 		}
-		if r.Schema == "mantik-owned-allocation-deferral-v12" || r.Schema == "mantik-owned-allocation-deferral-v13" {
+		if r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || r.Schema == "mantik-owned-allocation-deferral-v14") {
 			c.Schema = "mantik-owned-admission-readiness-v5"
+		}
+		if r.Schema == "mantik-owned-allocation-deferral-v14" {
+			c.Schema = "mantik-owned-admission-readiness-v6"
 		}
 		c.Binding.EvaluationBindingSHA256 = workerplan.Hash(*binding)
 		c.EvaluationEvidence = nil
@@ -84,7 +87,7 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 				if check.StrategyID == c.StrategyID && check.Name == "sample_sufficiency" {
 					v.SampleStatus = check.Status
 				}
-				if (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || r.Schema == "mantik-owned-allocation-deferral-v13"))) && check.StrategyID == c.StrategyID && check.Status == "failed" {
+				if (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || r.Schema == "mantik-owned-allocation-deferral-v14")))) && check.StrategyID == c.StrategyID && check.Status == "failed" {
 					v.FailedChecks = append(v.FailedChecks, clone(check))
 				}
 			}
@@ -97,6 +100,12 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 		gate := OwnedAdmissionGate{Name: "evaluation_recipe", Status: "unavailable", ReasonCode: "relevant_evaluation_receipt_unavailable"}
 		selected, pending, failed := false, false, false
 		for _, v := range c.EvaluationEvidence {
+			// This exact candidate's known source failure is evidence against
+			// admission even though the recipe correctly excluded it from scoring.
+			// Absent/out-of-window decisions still cannot inherit other failures.
+			if c.Schema == "mantik-owned-admission-readiness-v6" && v.DecisionEvidenceStatus == "source_unavailable_at_decision" && len(v.FailedChecks) > 0 {
+				failed = true
+			}
 			if v.DecisionEvidenceStatus != "selected_research_evidence" {
 				continue
 			}
@@ -107,7 +116,7 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 		switch {
 		case failed:
 			gate.Status, gate.ReasonCode = "failed", "retained_necessary_sample_check_failed"
-			if c.Schema == "mantik-owned-admission-readiness-v4" || c.Schema == "mantik-owned-admission-readiness-v5" {
+			if c.Schema == "mantik-owned-admission-readiness-v4" || (c.Schema == "mantik-owned-admission-readiness-v5" || c.Schema == "mantik-owned-admission-readiness-v6") {
 				gate.ReasonCode = "retained_necessary_evaluation_check_failed"
 			}
 		case pending:

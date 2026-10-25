@@ -131,7 +131,7 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 		t.Fatal("owner-bound comparison", comparison, err)
 	}
 	evaluationContext := comparison.Record.EvaluationContext
-	if comparison.Record.Schema != "mantik-owned-allocation-deferral-v13" || evaluationContext.Schema != "mantik-owned-allocation-evaluation-context-v2" || evaluationContext.AssessmentSourceSHA256 == "" || len(evaluationContext.Decisions) != 1 || len(evaluationContext.Decisions[0].Assessments) != 2 || evaluationContext.Decisions[0].Assessments[1].SHA256 != pending.Record.SHA256 || evaluationContext.Decisions[0].Assessments[1].Status != "pending" || evaluationContext.AdmissionAvailable || evaluationContext.ExecutionAvailable || evaluationContext.QualificationCredit {
+	if comparison.Record.Schema != "mantik-owned-allocation-deferral-v14" || evaluationContext.Schema != "mantik-owned-allocation-evaluation-context-v2" || evaluationContext.AssessmentSourceSHA256 == "" || len(evaluationContext.Decisions) != 1 || len(evaluationContext.Decisions[0].Assessments) != 2 || evaluationContext.Decisions[0].Assessments[1].SHA256 != pending.Record.SHA256 || evaluationContext.Decisions[0].Assessments[1].Status != "pending" || evaluationContext.AdmissionAvailable || evaluationContext.ExecutionAvailable || evaluationContext.QualificationCredit {
 		t.Fatal("actual pending assessment context", evaluationContext)
 	}
 	// Neither equality nor a backdated new identity may enter a retained cut.
@@ -203,7 +203,7 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 	if selectedFixture {
 		expectedDecisionStatus, expectedGate = "selected_research_evidence", "pending"
 	}
-	if readiness.Schema != "mantik-owned-admission-readiness-v5" || readiness.Binding.EvaluationBindingSHA256 != workerplan.Hash(evaluationContext.Decisions[0]) || len(readiness.EvaluationEvidence) != 1 || readiness.EvaluationEvidence[0].AssessmentSHA256 != pending.Record.SHA256 || readiness.EvaluationEvidence[0].DecisionEvidenceStatus != expectedDecisionStatus || readiness.Gates[2].Status != expectedGate {
+	if readiness.Schema != "mantik-owned-admission-readiness-v6" || readiness.Binding.EvaluationBindingSHA256 != workerplan.Hash(evaluationContext.Decisions[0]) || len(readiness.EvaluationEvidence) != 1 || readiness.EvaluationEvidence[0].AssessmentSHA256 != pending.Record.SHA256 || readiness.EvaluationEvidence[0].DecisionEvidenceStatus != expectedDecisionStatus || readiness.Gates[2].Status != expectedGate {
 		t.Fatal("exact decision evidence readiness", readiness)
 	}
 	admissionReviewContracts(t, s, comparison.Record, de, oe, selectedFixture)

@@ -91,7 +91,7 @@ and positions, orders and commitments remain empty.
 
 Each comparison appends one hash-linked entry to its policy's allocation ledger.
 The owned record pins that entry, ledger head and policy. New records have schema
-`mantik-owned-allocation-deferral-v12`, authority
+`mantik-owned-allocation-deferral-v14`, authority
 `service_owned_allocation_deferral_only`, and false execution/qualification
 flags. Returned core ledger values remain accounting evidence; they are not
 portable admission or execution grants.
@@ -611,3 +611,23 @@ historical quote-age behavior. Readback never treats such a historical record as
 new execution authority. Positive admission, account reservations, financial
 effects and atomic execution remain unfinished; this correction supplies no
 grant, fill, balance change or qualification credit.
+
+
+## Known failures for excluded candidates
+
+New v14 comparisons issue readiness v6. When the exact finalized candidate is
+retained by its pinned assessment as `source_unavailable_at_decision`, a failed
+check for that strategy still makes the evaluation gate `failed`. Excluding a
+candidate from scored research evidence does not erase the known failure.
+The admission review records `blocked` while the proposal is current; its
+existing expiry rule still takes precedence at the deadline.
+
+An absent decision, abstention, synthetic exclusion, or decision/quote outside
+the declared window cannot inherit this failure merely by sharing a strategy
+or policy. The owner still replays the actual assessment and complete source
+cut before binding it; caller-supplied checks or hashes are not evidence.
+
+Schema 66 fences older writers without rewriting existing journals. Historical
+v1-v13 comparisons retain their original readiness, hashes and clock-free
+retries. This change adds no positive admission, retirement, reservation,
+order, fill, capital posting, provider request or qualification credit.
