@@ -127,3 +127,11 @@ concurrent clock-free retries, authenticated HTTP, PostgreSQL reconnect retentio
 and unchanged operations/capital. These are local/disposable fixture contracts.
 They do not complete #13, #14 or #19, supply provider access, perform model work,
 create financial effects or qualify #27's natural soak.
+
+`GET /v1/copy-recordings/{capture-id}` reads the exact historical copy
+`CaptureRecord` through complete social-owner replay. Later cancellation,
+reversal or policy changes preserve this original. It is authenticated,
+clock-free and read-only; it rejects query/body assertions and does not return
+social manifests. See [retained recording readback](owned-social-watches.md#retained-recording-readback)
+for status codes and source-custody limits. Reading an unqualified copy claim
+provides no provider verification, mapping, admission, fill or economic effect.

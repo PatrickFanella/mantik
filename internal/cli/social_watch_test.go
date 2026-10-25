@@ -90,6 +90,12 @@ func ownedSocialHTTP(t *testing.T, s socialHTTPBackend) {
 	if record.PolicyStatus != "structured_extraction_unavailable" || record.Command.Original != string(raw) || record.Source.Kind != "declared_position" || record.ExecutionAvailable || record.DispatchAvailable || record.IndependentEvidenceCredit || record.QualificationCredit || record.ProviderAccessVerified || record.InstrumentMappingVerified {
 		t.Fatal(record)
 	}
+	clock.panicRead = true
+	var retained socialwatch.CaptureRecord
+	if err := json.Unmarshal(request("GET", "/v1/social-recordings/recording", "", 200), &retained); err != nil || !reflect.DeepEqual(*record, retained) {
+		t.Fatal("retained original differs", retained, err)
+	}
+	clock.panicRead = false
 	var applicability socialwatch.Applicability
 	if err := json.Unmarshal(request("GET", "/v1/social-recordings/recording/applicability", nil, 200), &applicability); err != nil || applicability.Status != "structured_extraction_unavailable" || applicability.CaptureSHA256 != record.SHA256 || applicability.Selected.OriginalSHA256 != record.Command.OriginalSHA256 || applicability.AsOf != clock.at {
 		t.Fatal(applicability, err)
@@ -188,6 +194,28 @@ func ownedSocialHTTP(t *testing.T, s socialHTTPBackend) {
 		t.Fatal(all, err)
 	}
 	copySourceHTTP(t, request, server.URL, clock, owner, disabled.Entry.Policy)
+	sourceBefore, err := s.SocialHistory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock.panicRead = true
+	if err := json.Unmarshal(request("GET", "/v1/social-recordings/recording", "", 200), &retained); err != nil || !reflect.DeepEqual(*record, retained) {
+		t.Fatal("watch revisions changed the retained original", retained, err)
+	}
+	for _, path := range []string{"/v1/social-recordings/recording?", "/v1/social-recordings/recording?at=future", "/v1/social-recordings/recording?execution_available=true"} {
+		request("GET", path, "", 422)
+	}
+	request("GET", "/v1/social-recordings/recording", "{}", 422)
+	request("GET", "/v1/copy-recordings/recording", "", 404)
+	request("GET", "/v1/social-recordings/copy-source", "", 404)
+	request("GET", "/v1/social-recordings/missing", "", 404)
+	request("GET", "/v1/copy-recordings/missing", "", 404)
+	clock.panicRead = false
+	sourceAfter, err := s.SocialHistory(ctx)
+	if err != nil || !reflect.DeepEqual(sourceBefore, sourceAfter) {
+		t.Fatal("source reads mutated owner", err)
+	}
+
 	after, _ := s.Snapshot(ctx)
 	accountAfter, _ := s.PaperAccounts(ctx)
 	if !reflect.DeepEqual(before, after) || !reflect.DeepEqual(accounts, accountAfter) {
@@ -297,6 +325,12 @@ func copySourceHTTP(t *testing.T, request func(string, string, any, int) []byte,
 	if err := json.Unmarshal(request("GET", "/v1/copy-recordings/copy-source/applicability", nil, 200), &applicability); err != nil || applicability.Status != "source_superseded" {
 		t.Fatal(applicability, err)
 	}
+	clock.panicRead = true
+	var retained socialwatch.CaptureRecord
+	if err := json.Unmarshal(request("GET", "/v1/copy-recordings/copy-source", "", 200), &retained); err != nil || !reflect.DeepEqual(*first.Entry.Capture, retained) {
+		t.Fatal("cancellation rewrote historical copy source", retained, err)
+	}
+	clock.panicRead = false
 }
 func mustCopyJSON(t *testing.T, v any) []byte {
 	t.Helper()

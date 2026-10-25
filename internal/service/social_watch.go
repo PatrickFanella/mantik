@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
@@ -135,6 +136,34 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		write(w, http.StatusOK, result)
 	}
+	// A retained recording is immutable source material, not current applicability.
+	// SocialHistory replays the complete owner and returns only after COMMIT.
+	recording := func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if !paperaccount.ID.MatchString(id) || r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
+			socialWatchError(w, socialwatch.ErrInvalid)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		all, err := backend.SocialHistory(ctx)
+		if err != nil {
+			// Invalid durable source data is an owner failure, not a bad GET.
+			write(w, http.StatusServiceUnavailable, map[string]string{"error": "social watch storage unavailable"})
+			return
+		}
+		copyOnly := r.Pattern == "GET /v1/copy-recordings/{id}"
+		for _, entry := range all.History {
+			c := entry.Capture
+			if c != nil && c.Command.ID == id && (c.Source.Schema == socialwatch.CopyRecordingSchema) == copyOnly {
+				write(w, http.StatusOK, c)
+				return
+			}
+		}
+		socialWatchError(w, socialwatch.ErrNotFound)
+	}
+	mux.HandleFunc("GET /v1/social-recordings/{id}", recording)
+	mux.HandleFunc("GET /v1/copy-recordings/{id}", recording)
 	mux.HandleFunc("GET /v1/social-recordings/{id}/applicability", applicability)
 	mux.HandleFunc("GET /v1/copy-recordings/{id}/applicability", applicability)
 	mux.HandleFunc("GET /v1/social-history", read)
