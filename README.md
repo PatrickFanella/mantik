@@ -120,7 +120,9 @@ partial debit, release and unresolved-hold conservation; its results cannot be
 imported into service accounts. The separate
 [durable rehearsal commands](docs/reference/paper-ledger-rehearsals.md) retain
 explicit account-bound synthetic assertions with head and retry guards; they
-leave funding, operational balances and execution unchanged.
+leave funding, operational balances and execution unchanged. PostgreSQL
+readbacks and exact-retry acknowledgements return zero results when COMMIT fails;
+a previously retained original entry remains available for inspection.
 The [fixture capital worker bridge](docs/reference/fixture-capital.md) now
 enforces an explicit account binding in queued-memory and PostgreSQL stores,
 reserving before submission and settling with action acknowledgment. The durable

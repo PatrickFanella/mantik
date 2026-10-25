@@ -169,7 +169,11 @@ func (p *Postgres) AppendPaperLedgerRehearsal(ctx context.Context, id string, c 
 		return paperledger.AppendReceipt{}, err
 	}
 	if receipt.Duplicate {
-		return receipt, tx.Commit(ctx)
+		// A retained original entry does not acknowledge this retry transaction.
+		if err = tx.Commit(ctx); err != nil {
+			return paperledger.AppendReceipt{}, err
+		}
+		return receipt, nil
 	}
 	raw, err := json.Marshal(next)
 	if err != nil || len(raw) > paperledger.MaxRehearsalBytes {
