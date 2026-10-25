@@ -1,5 +1,44 @@
 # Service-owned paper attribution readbacks
 
+## Post-decision claim reviews and source delays
+
+Current service catalogues use `mantik-owned-paper-attribution-v3`. Every row
+includes `claim_review_history` with the actual retained typed decision reviews,
+their contradictions/unsupported-field cases, and a digest. The service replays
+the complete decision-review owner and any bound social/copy journal under the
+same Memory lock or PostgreSQL read snapshot as decisions, outcomes, allocations
+and admission reviews. Corrupt or orphaned review provenance fails the whole
+read; a failed COMMIT returns no catalogue. No historical review is rewritten,
+and this read creates no review, case, admission or financial effect.
+
+For a source-bound review, `source_timings` identifies the exact capture and
+records its claimed occurrence/observation times, service retention time,
+decision finalization time, and whole-second observation/retention delays from
+occurrence. These values come from the actual source prefix pinned by the
+review, even after a later watch change, source edit or deletion. Observation
+times remain recording claims, not provider attestations.
+
+`clock_relation` distinguishes `retained_before_decision_clock`,
+`retained_at_decision_clock_order_unproven` and `retained_after_decision_clock`.
+The relation compares owner timestamps. Equal clocks do not establish ordering
+between independent owners; an earlier clock does not prove that the source was
+used by the decision. `decision_input_verified` remains false. These are sources
+of a post-decision claim review, not newly discovered inputs to the finalized
+market-data decision, independent evidence, observed financial fills or economic
+performance. No fees, realized PnL or qualification are inferred.
+
+The CLI and interactive attribution view show claim-review status, case IDs and
+source delay/clock relation. They check the portable history hash, exact decision
+and capture cross-pins, typed findings and timing arithmetic before display;
+those checks do not attest service custody of imported JSON. Opaque source prose
+is not printed as an explanation or used to revise authority. Typed supervision
+returns the same owner readback. The existing 8 MiB catalogue and 2 MiB MCP bridge
+bounds remain in force; oversized results fail rather than become partial
+success. Older v1/v2 catalogue presentations remain accepted with their original
+row contracts, and durable review v1/v2 records keep their bytes and hashes.
+
+## Read routes and retained phase data
+
 `GET /v1/paper-attribution` joins the service's retained native paper decisions,
 forward-price assessments, allocation comparisons and retained non-grant admission
 reviews. The authenticated targeted
@@ -74,7 +113,8 @@ corrupt histories fail the complete read without a partial response.
 
 The catalogue's `source_sha256` binds the replayed decision, outcome and allocation
 catalogues and the complete admission-review catalogue, including the allocation
-ledger histories. The response schema is `mantik-owned-paper-attribution-v2`;
+ledger histories. Current v3 catalogues also bind the owner-replayed claim-review
+catalogue. The response schema is `mantik-owned-paper-attribution-v3`;
 every row has `admission_review_history`, including an explicit empty history.
 Review chains are scoped by decision, so a review of another decision changes
 the complete source hash without rewriting unrelated row hashes. Global review

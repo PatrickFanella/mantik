@@ -21,6 +21,7 @@ type sourceReviewBackend interface {
 	decisionTimeBackend
 	SocialWatchStore
 	PaperAccountStore
+	PaperAttributionStore
 }
 
 func TestMemorySourceBoundDecisionReviews(t *testing.T) { sourceBoundDecisionReviews(t, NewMemory()) }
@@ -89,6 +90,9 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 		t.Fatal(legacy, err)
 	}
 	legacyBytes, _ := json.Marshal(legacy.Record)
+	oe := func(PaperOutcomeBasis, time.Time) (PaperOutcomeEvaluation, error) {
+		return PaperOutcomeEvaluation{}, ErrPaperOutcomeInvalid // no outcomes in this fixture
+	}
 	for _, kind := range []string{"social", "copy"} {
 		policy := socialPolicy(owner)
 		policy.ID = kind + "-policy"
@@ -186,6 +190,11 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 					t.Error(e)
 				}
 			})
+			wg.Go(func() {
+				if _, e := s.PaperAttribution(ctx, eval, oe); e != nil {
+					t.Error("concurrent claim attribution snapshot", e)
+				}
+			})
 		}
 		wg.Wait()
 		if clocks.Load() != 1 {
@@ -198,6 +207,41 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 		b := issued.Record.Source
 		if issued.Record.Schema != "mantik-finalized-decision-review-v2" || b.Kind != kind || b.CaptureSHA256 != captured.Entry.Capture.SHA256 || b.OriginalSHA256 != capture.OriginalSHA256 || b.PolicySHA256 != capture.PolicySHA256 || b.ClaimGroupSHA256 != captured.Entry.Capture.ClaimGroupSHA256 || b.ClaimsExtractionVerified || b.ProviderAccessVerified || issued.Record.ProseVerified || issued.Record.ModelUsed || issued.Record.AdmissionAvailable || issued.Record.ExecutionAvailable || issued.Record.QualificationCredit || issued.Record.CaseID == "" {
 			t.Fatal("invalid source-bound review", issued)
+		}
+		if kind == "social" {
+			// The same actual retained source is reviewed against separately
+			// finalized decisions. Equal clocks prove no cross-owner ordering.
+			for i, relation := range []string{"retained_at_decision_clock_order_unproven", "retained_before_decision_clock"} {
+				next := command
+				next.ID = []string{"equal-clock-decision", "later-clock-decision"}[i]
+				finalized := captured.Entry.Capture.RetainedAt.Add(time.Duration(i) * time.Second)
+				dec, e := s.FinalizePaperDecision(ctx, next, func() time.Time { return finalized }, eval)
+				if e != nil {
+					t.Fatal(e)
+				}
+				review := clone(c)
+				review.ID, review.DecisionID, review.DecisionSHA256 = next.ID+"-review", next.ID, dec.Record.SHA256
+				if _, e = s.ReviewPaperDecision(ctx, review, clock, eval); e != nil {
+					t.Fatal(e)
+				}
+				catalog, e := s.PaperAttribution(ctx, eval, oe)
+				if e != nil {
+					t.Fatal(e)
+				}
+				found := false
+				for _, row := range catalog.Rows {
+					if row.Decision.Command.ID == next.ID {
+						h := row.ClaimReviewHistory
+						if h == nil || h.Validate(row.Decision) != nil || len(h.SourceTimings) != 1 || h.SourceTimings[0].ClockRelation != relation || h.SourceTimings[0].DecisionInputVerified {
+							t.Fatal("clock relation invented ordering/causality", h)
+						}
+						found = true
+					}
+				}
+				if !found {
+					t.Fatal("missing claim attribution")
+				}
+			}
 		}
 		duplicate := clone(c)
 		duplicate.ID = kind + "-echo"
@@ -247,6 +291,9 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 		if _, e = s.DecisionReviews(ctx, eval); e == nil {
 			t.Error("self-hashed source substitution accepted")
 		}
+		if got, e := s.PaperAttribution(ctx, eval, oe); e == nil || !reflect.DeepEqual(got, PaperAttributionCatalog{}) {
+			t.Error("claim owner corruption returned attribution", got, e)
+		}
 		set(issued.Record)
 		if pg, ok := s.(*Postgres); ok {
 			request, cancel := context.WithCancel(ctx)
@@ -266,8 +313,28 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 		}
 	}
 	final, err := s.DecisionReviews(ctx, eval)
-	if err != nil || len(final.Records) != 3 {
+	if err != nil || len(final.Records) != 5 {
 		t.Fatal(final, err)
+	}
+	attribution, err := s.PaperAttribution(ctx, eval, oe)
+	if err != nil || attribution.Schema != "mantik-owned-paper-attribution-v3" {
+		t.Fatal(attribution, err)
+	}
+	for _, row := range attribution.Rows {
+		h := row.ClaimReviewHistory
+		if h == nil || h.Validate(row.Decision) != nil {
+			t.Fatal("invalid claim history", h)
+		}
+		if row.Decision.Command.ID == command.ID {
+			if len(h.Records) != 3 || len(h.SourceTimings) != 2 {
+				t.Fatal("source reviews omitted", h)
+			}
+			for _, timing := range h.SourceTimings {
+				if timing.ClockRelation != "retained_after_decision_clock" || timing.DecisionInputVerified {
+					t.Fatal("late review source treated as decision input", timing)
+				}
+			}
+		}
 	}
 	old, err := s.ReviewPaperDecision(ctx, legacyCommand, noClock, eval)
 	raw, _ := json.Marshal(old.Record)
@@ -291,6 +358,10 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 		actual, e := reopened.DecisionReviews(ctx, eval)
 		if e != nil || !reflect.DeepEqual(actual, final) {
 			t.Fatal("reopen changed source reviews", e)
+		}
+		actualAttribution, e := reopened.PaperAttribution(ctx, eval, oe)
+		if e != nil || !reflect.DeepEqual(actualAttribution, attribution) {
+			t.Fatal("reopen changed claim attribution", e)
 		}
 		sourceReviewMigrationContract(t, pg, final.Records[0].Command.ID)
 	}

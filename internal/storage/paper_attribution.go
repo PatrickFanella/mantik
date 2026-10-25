@@ -8,6 +8,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
+	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"github.com/jackc/pgx/v5"
 )
@@ -66,6 +67,7 @@ type PaperAdmissionReviewHistory struct {
 	QualificationCredit bool                   `json:"qualification_credit"`
 }
 type PaperAttributionRow struct {
+	ClaimReviewHistory     *PaperClaimReviewHistory     `json:"claim_review_history,omitempty"`
 	AdmissionReviewHistory *PaperAdmissionReviewHistory `json:"admission_review_history,omitempty"`
 	Decision               PaperDecisionRecord          `json:"decision"`
 	Method                 string                       `json:"method"`
@@ -255,7 +257,15 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	return paperAttribution(ctx, decisions, strategies, outcomes, allocations, m.admissionReviews)
+	out, err := paperAttribution(ctx, decisions, strategies, outcomes, allocations, m.admissionReviews)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	sources, err := m.decisionReviewSocialSourcesLocked(DecisionReviewCommand{}, m.decisionReviews)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	return withClaimReviewAttribution(ctx, out, decisions, m.decisionReviews, sources)
 }
 func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecisionEvaluator, outcomeEval PaperOutcomeEvaluator) (PaperAttributionCatalog, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -329,6 +339,22 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 		return PaperAttributionCatalog{}, err
 	}
 	out, err := paperAttribution(ctx, decisions, strategies, outcomes, allocations, allReviews)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	claims, err := readDecisionReviews(ctx, tx)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	var sources []socialwatch.Journal
+	if decisionReviewNeedsSources(DecisionReviewCommand{}, claims) {
+		j, err := readSocialJournal(ctx, tx, feed.ReceiverID)
+		if err != nil {
+			return PaperAttributionCatalog{}, err
+		}
+		sources = []socialwatch.Journal{j}
+	}
+	out, err = withClaimReviewAttribution(ctx, out, decisions, claims, sources)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}

@@ -606,10 +606,13 @@ in one consistent read, including retained admission-readiness gates and owner
 bindings for allocation deferrals. Cost ceilings remain separate from expenses; unavailable
 execution, PnL and economic baselines remain explicit. The `paper-attribution`
 CLI reads this service view as a table or complete JSON; selected rows require
-their attribution hash and the expected receiver identity. The v2
-readback also includes each decision's complete retained non-grant admission-review
+their attribution hash and the expected receiver identity. The current v3
+readback includes each decision's complete retained non-grant admission-review
 chain and current review ID. Review status and comparison pins remain visible;
 admission, execution and economic effects remain unavailable.
+It also joins actual post-decision claim reviews and social/copy source delays.
+Earlier, equal and later source clocks are distinguished without claiming that
+the source was a decision input, an independent sample or a financial fill.
 
 The internal [entry-fill binding](docs/reference/allocation-ledger.md#replayed-entry-fill-binding)
 derives allocation debits from replayed shared paper fills under existing
