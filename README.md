@@ -62,6 +62,11 @@ parameter and benchmark pins, failure retention, and the synthetic cost model.
 
 ## Run the persistent service
 
+For a future isolated paper release, use the
+[source/image preflight and release gates](docs/reference/paper-release.md).
+Its receipt identifies one local build; deployment, recovery and qualification
+remain separate requirements.
+
 Docker Compose uses project `mantik-dev`, its own named volume, and loopback
 ports 45432 for PostgreSQL and 40880 for the service. Check that these ports are
 available; change `.env` if needed.
