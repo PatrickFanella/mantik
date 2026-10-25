@@ -43,18 +43,23 @@ type PaperOutcomeSessionEvidence struct {
 // cut. Newer admitted calendars without available originals still suppress older
 // calendars. Other quotes cannot replace the exact row being inspected.
 func inspectOutcomeQuoteSession(ctx context.Context, feed storage.FeedEvidenceSnapshot, registration string, row PaperOutcomeMarketRow) (PaperOutcomeSessionEvidence, error) {
+	return inspectQuoteSessionAt(ctx, feed, registration, row, row.AvailableAt)
+}
+
+// cutAt is an owner-selected historical clock, never a caller assertion.
+func inspectQuoteSessionAt(ctx context.Context, feed storage.FeedEvidenceSnapshot, registration string, row PaperOutcomeMarketRow, cutAt time.Time) (PaperOutcomeSessionEvidence, error) {
 	out := PaperOutcomeSessionEvidence{Method: "owned-quote-session-at-availability-v1", CalendarSources: []PaperOutcomeCalendarSource{}, PendingCalendarAdmissions: []PaperOutcomeCalendarAdmission{}}
 	if err := ctx.Err(); err != nil {
 		return PaperOutcomeSessionEvidence{}, err
 	}
-	if row.Quote == nil || row.AvailableAt.IsZero() {
+	if row.Quote == nil || row.AvailableAt.IsZero() || cutAt.Before(row.AvailableAt) {
 		return PaperOutcomeSessionEvidence{}, storage.ErrPaperOutcomeInvalid
 	}
 	cut := feed
 	cut.Records = map[string]storage.FeedEvidenceRecord{}
 	cut.Collectors.Admissions = map[string]feedcollector.Admission{}
 	for id, a := range feed.Collectors.Admissions {
-		if a.Fence.RegistrationID != registration || a.At.After(row.AvailableAt) {
+		if a.Fence.RegistrationID != registration || a.At.After(cutAt) {
 			continue
 		}
 		retained, ok := feed.Routing.Inputs[id]
@@ -78,7 +83,7 @@ func inspectOutcomeQuoteSession(ctx context.Context, feed storage.FeedEvidenceSn
 		if r.Capability != "market_calendar" && key != row.CaptureKey {
 			continue
 		}
-		if p.PublishedAt.After(row.AvailableAt) {
+		if p.PublishedAt.After(cutAt) {
 			continue
 		}
 		n, err := alpaca.Normalize(r)
@@ -116,7 +121,7 @@ func inspectOutcomeQuoteSession(ctx context.Context, feed storage.FeedEvidenceSn
 		}
 	}
 	slices.SortFunc(out.PendingCalendarAdmissions, func(a, b PaperOutcomeCalendarAdmission) int { return strings.Compare(a.InputID, b.InputID) })
-	report, err := inspectFeedCoverage(cut, registration, row.AvailableAt)
+	report, err := inspectFeedCoverage(cut, registration, cutAt)
 	if err != nil {
 		return PaperOutcomeSessionEvidence{}, err
 	}

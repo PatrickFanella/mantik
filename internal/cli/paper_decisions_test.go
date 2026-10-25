@@ -144,6 +144,12 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if err := json.Unmarshal(rawMarket, &market); err != nil || market.DecisionSHA256 != first.Record.SHA256 || market.BasisSHA256 != first.Record.BasisSHA256 || market.Quote == nil || market.Quote.AskCents != 10000 || market.Quote.BidCents != 9900 || market.Quote.ProviderBidSize != 10 || market.Quote.ProviderAskSize != 10 || market.Quote.ShareQuantitiesAvailable || market.Quote.SizeUnit != "provider_native_unverified" || market.AdmissionAvailable || market.ExecutionAvailable || market.QualificationCredit {
 		t.Fatal(market, err)
 	}
+	if market.Schema != "mantik-owned-decision-market-evidence-v2" || market.SessionEvidence == nil || market.SessionEvidence.Method != "owned-decision-quote-session-at-finalization-v1" || !market.SessionEvidence.Evidence.At.Equal(first.Record.FinalizedAt) || market.SessionEvidence.Evidence.Quote.InputID != market.Quote.InputID || len(market.SessionEvidence.CalendarSources) != 1 || market.SessionEvidence.CalendarSources[0].CaptureSHA256 != calendar.SHA256 {
+		t.Fatal("missing owner-selected calendar binding", market.SessionEvidence)
+	}
+	if _, err := fetchDecisionInspection(ctx, server.URL, first.Record, "m"); err != nil {
+		t.Fatal("terminal rejected actual v2 session binding", err)
+	}
 	if market.Status != "dimensions_retained_share_units_unverified" || market.CaptureKey != reg.ID+":quote-r1" || market.Provider != "alpaca" || market.Feed != "iex" || market.Quote.InputID != first.Record.Evaluation.Coverage.Quote.InputID || market.Quote.CaptureSHA256 != quote("quote", "100").SHA256 || !market.FinalizedAt.Equal(first.Record.FinalizedAt) || !market.PublishedAt.Equal(clock.at) || market.PublicationFence != fence || market.AdmissionFence != fence {
 		t.Fatal(market)
 	}

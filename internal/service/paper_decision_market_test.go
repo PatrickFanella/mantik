@@ -41,7 +41,7 @@ func marketInspectorFixture(t *testing.T) storage.PaperDecisionSources {
 }
 func TestDecisionMarketInspectorRejectsInconsistentDimensions(t *testing.T) {
 	s := marketInspectorFixture(t)
-	got, err := inspectPaperDecisionMarket(s)
+	got, err := inspectPaperDecisionMarket(context.Background(), s)
 	if err != nil || got.Quote == nil || got.Quote.ProviderBidSize != 7 || got.Quote.ShareQuantitiesAvailable || got.ExecutionAvailable {
 		t.Fatal(got, err)
 	}
@@ -84,7 +84,7 @@ func TestDecisionMarketInspectorRejectsInconsistentDimensions(t *testing.T) {
 			s.Decision.BasisSHA256 = workerplan.Hash(s.Basis)
 			s.Decision.SHA256 = ""
 			s.Decision.SHA256 = workerplan.Hash(s.Decision)
-			if _, err := inspectPaperDecisionMarket(s); err == nil {
+			if _, err := inspectPaperDecisionMarket(context.Background(), s); err == nil {
 				t.Fatal("inconsistent dimensions accepted")
 			}
 		})
