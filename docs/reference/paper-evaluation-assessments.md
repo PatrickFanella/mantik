@@ -57,9 +57,14 @@ failure. Other variants keep their own check results.
 This is a failure-only check. An empty sample, excluded abstentions or rows outside
 the declaration window, and absence of a known temporal-source failure leave
 leakage `unavailable`. They do not establish complete leakage control, training
-lineage, independence, or an admission. The existing admission-readiness projection
-still reports necessary sample evidence only; this change does not add a grant,
-retirement event or financial effect.
+lineage, independence, or an admission. New v10 allocation comparisons retain
+v4 admission readiness with the selected variant's exact failed checks from each
+latest owner-replayed assessment at the comparison cut. For selected decision
+evidence, a retained necessary failure takes precedence over pending sample
+status. Historical v9/v3 comparison/readiness records keep their sample-only
+projection and original hashes. Neither format adds a grant, retirement event or
+financial effect. See [owned allocation comparisons](owned-allocation-comparisons.md#exact-decision-evidence-in-readiness)
+for the selection, replay and schema 62 writer fence.
 
 Schema 61 fences older writers without rewriting earlier assessments. v1-v3
 replay and exact retries keep their original check states, bytes and hashes.
