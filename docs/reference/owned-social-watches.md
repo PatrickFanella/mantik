@@ -180,3 +180,21 @@ explicit claimed-trade/order/fill/holdings kinds and bounded follow-policy inten
 Copy and social routes share watch identity, revision history and capacity. The
 new fields are optional for existing records; source observations, unit/mapping
 claims and announcement references retain no dispatch or trading authority.
+
+### Retained recording readback
+
+`GET /v1/social-recordings/{capture-id}` returns the exact original retained
+`CaptureRecord`, including source bytes, hashes, policy pin, retention time,
+delay and inactive authority flags. It replays the complete actual social owner
+before selecting the capture. This authenticated read consumes no clock and
+performs no write. Later policy changes, source edits or deletions do not replace
+the selected historical capture. A copy manifest is available only through
+`GET /v1/copy-recordings/{capture-id}`.
+
+These paths resolve the source links retained in decision claim reviews. They
+are historical source inspection, not an applicability check or evidence that a
+source was a decision input. Queries (including a bare `?`), GET bodies, unknown
+body lengths, transfer encodings and malformed IDs return 422. Missing captures
+and captures of the other manifest kind return 404; owner replay, receiver or
+storage failures return 503 without a partial source. An absent social owner has
+no recording route. Existing applicability reads retain their separate contract.
