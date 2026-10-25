@@ -97,7 +97,9 @@ details, and explicit stale/retry behavior using short commands followed by
 Enter. The [case inspection commands](docs/reference/cases.md) expose the current
 fixture/routing catalogue and one case's latest retained references.
 `supervise --view decisions` adds authenticated, read-only navigation of finalized
-research decisions, their grounded explanations and retained market evidence.
+research decisions, their grounded explanations, retained market evidence and
+phase attribution. On the displayed page, `a ID` reads allocation choices and
+non-grant admission-review history bound to that exact finalized decision.
 It pins each inspection to the displayed decision and receiver. See
 [decision inspection](docs/reference/supervision-tools.md#terminal-decision-inspection).
 
