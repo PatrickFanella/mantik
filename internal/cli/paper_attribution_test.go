@@ -49,6 +49,7 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 		t.Fatal("HTTP safety binding changed", row.Allocations[0])
 	}
 	for _, mutate := range []func(*storage.OwnedExecutionSafety){
+		func(v *storage.OwnedExecutionSafety) { v.AccountSHA256 = workerplan.Hash("foreign-account") },
 		func(v *storage.OwnedExecutionSafety) { v.CostCeilingSHA256 = workerplan.Hash("foreign") }, func(v *storage.OwnedExecutionSafety) { v.PolicySHA256 = workerplan.Hash("foreign") }, func(v *storage.OwnedExecutionSafety) { v.DefinitionSHA256 = workerplan.Hash("foreign") }, func(v *storage.OwnedExecutionSafety) { v.ExecutionAvailable = true }, func(v *storage.OwnedExecutionSafety) { v.Safety.StopCents = v.EntryLimitCents },
 	} {
 		raw, _ := json.Marshal(row)
@@ -62,6 +63,24 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 		bad.SHA256 = workerplan.Hash(bad)
 		if validateAttributionRow(bad, candidate.Command.ReceiverID) == nil {
 			t.Fatal("portable safety substitution accepted")
+		}
+	}
+	for _, strip := range []func(*storage.PaperAllocationAttribution){
+		func(a *storage.PaperAllocationAttribution) { a.AdmissionReadiness = nil },
+		func(a *storage.PaperAllocationAttribution) {
+			a.AdmissionReadiness.Binding = nil
+			a.AdmissionReadiness.SHA256 = ""
+			a.AdmissionReadiness.SHA256 = workerplan.Hash(*a.AdmissionReadiness)
+		},
+	} {
+		raw, _ := json.Marshal(row)
+		var bad storage.PaperAttributionRow
+		_ = json.Unmarshal(raw, &bad)
+		strip(&bad.Allocations[0])
+		bad.SHA256 = ""
+		bad.SHA256 = workerplan.Hash(bad)
+		if validateAttributionRow(bad, candidate.Command.ReceiverID) == nil {
+			t.Fatal("safety requirements without owner account binding accepted")
 		}
 	}
 	var reviews storage.OwnedAdmissionReviewCatalog

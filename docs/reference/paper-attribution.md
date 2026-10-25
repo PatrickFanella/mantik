@@ -174,3 +174,10 @@ clock, and distinguishes absent/excluded decisions from selected research
 rows. The CLI checks these portable shapes and pins before rendering; the
 service remains responsible for replaying actual sources. Pending or failed
 necessary checks never establish a passing full recipe or economic authority.
+
+When execution-safety requirements are present, the CLI also requires admission
+readiness with an account binding and checks that both account hashes match.
+Rehashing a safety record for another account or removing that binding is
+rejected before rendering. Historical rows without safety requirements retain
+their existing compatibility. These checks verify relationships within the
+projection; the service still owns source replay and economic authority.
