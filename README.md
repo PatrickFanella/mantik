@@ -731,3 +731,7 @@ sample status; absence of failures still grants nothing. The review consumes
 that readiness and preserves expiry precedence. Historical v9/v3 records retain
 their original bytes and clock-free retries. Schema 62 fences older writers
 without rewriting payloads; rollback requires the matching backup and binary.
+
+Owned allocation comparisons also bind [finalized strategy execution requirements](docs/reference/owned-allocation-comparisons.md#finalized-strategy-execution-requirements)
+to the retained decision, policy and cost ceiling. The stop, target and timing
+limits remain requirements only; they grant no admission or financial effect.

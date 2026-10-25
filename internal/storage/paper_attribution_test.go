@@ -119,6 +119,9 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 		t.Fatal("price change became economic outcome", row)
 	}
 	a := row.Allocations[0]
+	if a.ExecutionSafety == nil || !reflect.DeepEqual(*a.ExecutionSafety, comparison.Record.ExecutionSafety[0]) {
+		t.Fatal("missing retained execution safety attribution", a)
+	}
 	if a.Status != "defer" || a.Reasons[0] != "admission_unavailable" || a.RecordSHA256 != comparison.Record.SHA256 || a.PolicySHA256 != comparison.Record.PolicySHA256 || a.AccountID != account.Config.ID || a.CostCeiling == nil || a.CostCeiling.FeeCeilingCents == 0 || a.RequestedFundingCents != comparison.Record.ExecutionCosts[0].ProtectiveFunding.TotalFundingCents {
 		t.Fatal(a)
 	}

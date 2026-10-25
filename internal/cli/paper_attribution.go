@@ -150,6 +150,15 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 				previous = pin.ID
 			}
 		}
+		if a.ExecutionSafety != nil {
+			v := *a.ExecutionSafety
+			h := v.SHA256
+			v.SHA256 = ""
+			c := a.CostCeiling
+			if h != workerplan.Hash(v) || !paperStrategyPin.MatchString(h) || v.Schema != "mantik-owned-execution-safety-v1" || v.Authority != "service_owned_execution_requirements_only" || v.AdmissionAvailable || v.ExecutionAvailable || v.QualificationCredit || c == nil || v.ComparisonID != a.ComparisonID || v.DecisionID != r.Decision.Command.ID || v.DecisionSHA256 != r.Decision.SHA256 || v.StrategySHA256 != r.Decision.Command.StrategySHA256 || v.DefinitionSHA256 != r.DefinitionSHA256 || v.BasisSHA256 != r.Decision.BasisSHA256 || v.PolicySHA256 != a.PolicySHA256 || !paperStrategyPin.MatchString(v.AccountSHA256) || v.CostCeilingSHA256 != c.SHA256 || v.ModelSHA256 != c.ModelSHA256 || v.QuoteInputID != c.QuoteInputID || !v.FinalizedAt.Equal(r.Decision.FinalizedAt) || !v.ProposalValidUntil.Equal(c.ValidUntil) || v.Quantity != c.Quantity || v.EntryLimitCents != c.LimitCents || v.Safety.StopCents < 1 || v.Safety.StopCents >= c.ReferencePriceCents || v.Safety.TargetCents <= c.ReferencePriceCents || v.Safety.MaxHoldingSeconds < 1 || v.Safety.MaxHoldingSeconds > 86400 || v.Safety.MaxQuoteAgeSeconds < 1 || v.Safety.MaxQuoteAgeSeconds > 3600 || v.Safety.MaxNotionalCents < c.GrossCeilingCents {
+				return storage.ErrPaperAttributionInvalid
+			}
+		}
 		if a.CostCeiling != nil {
 			cost := *a.CostCeiling
 			h := cost.SHA256

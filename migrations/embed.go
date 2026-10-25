@@ -199,3 +199,6 @@ var KnownSourceLeakageAssessments string
 
 //go:embed 0062_assessment_failure_bindings.sql
 var AssessmentFailureBindings string
+
+//go:embed 0063_execution_safety_bindings.sql
+var ExecutionSafetyBindings string

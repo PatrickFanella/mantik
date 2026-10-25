@@ -219,7 +219,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if allocationFirst.Record.ExecutionAvailable || allocationFirst.Record.QualificationCredit || allocationFirst.Record.Entry.Plan == nil || allocationFirst.Record.Entry.Plan.Decisions[0].Status != "defer" || allocationFirst.Record.Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
 		t.Fatal(allocationFirst)
 	}
-	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v10" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
+	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v11" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
 		t.Fatal(allocationFirst)
 	}
 	evaluationContext := allocationFirst.Record.EvaluationContext
