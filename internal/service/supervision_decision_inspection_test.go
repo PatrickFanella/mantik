@@ -17,9 +17,18 @@ func (*unavailableDecisionInspectionStore) PaperDecisions(context.Context, stora
 func (*unavailableDecisionInspectionStore) PaperDecisionSources(context.Context, string, storage.PaperDecisionEvaluator) (storage.PaperDecisionSources, error) {
 	return storage.PaperDecisionSources{}, errors.New("fixture source owner unavailable")
 }
+func (*unavailableDecisionInspectionStore) OwnedAllocations(context.Context, storage.PaperDecisionEvaluator, ...storage.PaperOutcomeEvaluator) (storage.OwnedAllocationCatalog, error) {
+	return storage.OwnedAllocationCatalog{}, errors.New("fixture allocation owner unavailable")
+}
+func (*unavailableDecisionInspectionStore) OwnedAdmissionReviews(context.Context, storage.PaperDecisionEvaluator, storage.PaperOutcomeEvaluator) (storage.OwnedAdmissionReviewCatalog, error) {
+	return storage.OwnedAdmissionReviewCatalog{}, errors.New("fixture admission owner unavailable")
+}
+func (*unavailableDecisionInspectionStore) PaperAttribution(context.Context, storage.PaperDecisionEvaluator, storage.PaperOutcomeEvaluator) (storage.PaperAttributionCatalog, error) {
+	return storage.PaperAttributionCatalog{}, errors.New("fixture attribution owner unavailable")
+}
 func TestSupervisionDecisionInspectionOwnerOutageAndAuthentication(t *testing.T) {
 	h := Handler(&unavailableDecisionInspectionStore{storage.NewMemory()}, "operator")
-	for _, spec := range []struct{ kind, path string }{{"decision_explanation", "/v1/paper-decisions/one/explanation"}, {"decision_market_evidence", "/v1/paper-decisions/one/market-evidence"}} {
+	for _, spec := range []struct{ kind, path string }{{"decision_explanation", "/v1/paper-decisions/one/explanation"}, {"decision_market_evidence", "/v1/paper-decisions/one/market-evidence"}, {"decision_attribution", "/v1/paper-attribution/one"}, {"allocation_comparison", "/v1/allocation-comparisons/one"}, {"admission_review", "/v1/admission-reviews/one"}} {
 		body := toolBody("inspect_record", inspectArguments{Kind: spec.kind, ID: "one"})
 		if w := supervisionRequest(h, "POST", "/v1/supervision/calls", body, ""); w.Code != http.StatusUnauthorized {
 			t.Fatal(w.Code)

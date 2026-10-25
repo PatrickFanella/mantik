@@ -27,6 +27,7 @@ func ownedAdmissionReviewHTTP(t *testing.T, request func(string, string, any, in
 		t.Fatal("HTTP review catalog", all, e)
 	}
 	request("GET", "/v1/admission-reviews/"+c.ID, nil, 200)
+	supervisionAllocationInspections(t, request, serverURL, c.ReceiverID, comparison.Command.ID, c.ID, c.DecisionID)
 	request("GET", "/v1/admission-reviews/missing", nil, 404)
 	raw, _ := json.Marshal(c)
 	for _, extra := range []string{`"admission_available":true,`, `"balances":{},`, `"snapshot":{},`, `"effect":{},`, `"at":"2026-01-01T00:00:00Z",`, `"result":"passed",`, `"account_id":"chosen",`, `"id":"duplicate",`} {

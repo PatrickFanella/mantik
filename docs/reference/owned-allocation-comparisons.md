@@ -582,3 +582,10 @@ This binds requirements to the admission context. It issues no admission, order,
 fill, holding deadline, economic effect or permission to write balances. Positive
 evaluation, execution reconciliation and atomic operational ledger ownership
 remain separate unfinished gates.
+
+A targeted `GET /v1/allocation-comparisons/{id}` returns the exact retained
+comparison after complete owner replay. It requires authentication, accepts no
+query parameters or GET body, returns 404 for a missing ID, and preserves owner
+unavailability errors. The supervision `inspect_record` tool exposes this read
+as `allocation_comparison`, alongside `admission_review` and
+`decision_attribution`; none is an economic writer.
