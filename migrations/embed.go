@@ -202,3 +202,6 @@ var AssessmentFailureBindings string
 
 //go:embed 0063_execution_safety_bindings.sql
 var ExecutionSafetyBindings string
+
+//go:embed 0064_admission_safety_bindings.sql
+var AdmissionSafetyBindings string

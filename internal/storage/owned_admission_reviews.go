@@ -106,7 +106,7 @@ func newOwnedAdmissionReview(c OwnedAdmissionReviewCommand, source OwnedAllocati
 	if readiness == nil {
 		return OwnedAdmissionReview{}, ErrOwnedAdmissionReviewNotFound
 	}
-	if (readiness.Schema != "mantik-owned-admission-readiness-v3" && readiness.Schema != "mantik-owned-admission-readiness-v4") || readiness.Binding == nil || readiness.AdmissionAvailable || readiness.ExecutionAvailable || readiness.QualificationCredit {
+	if (readiness.Schema != "mantik-owned-admission-readiness-v3" && readiness.Schema != "mantik-owned-admission-readiness-v4" && readiness.Schema != "mantik-owned-admission-readiness-v5") || readiness.Binding == nil || readiness.AdmissionAvailable || readiness.ExecutionAvailable || readiness.QualificationCredit {
 		return OwnedAdmissionReview{}, ErrOwnedAdmissionReviewInvalid
 	}
 	r := OwnedAdmissionReview{Schema: "mantik-owned-admission-review-v1", Method: "retained-non-grant-admission-review-v1", Command: c, Sequence: sequence, ReviewedAt: at.UTC(), ComparisonAt: comparison.At, Readiness: clone(*readiness), Status: "deferred", ReasonCode: "required_admission_gates_unavailable", ReconsiderTriggers: clone(readiness.ReconsiderTriggers), Authority: "service_owned_non_grant_admission_review_only"}

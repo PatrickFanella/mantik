@@ -145,7 +145,7 @@ func TestOwnedAssessmentFailuresDominatePending(t *testing.T) {
 		actual.Records = append(actual.Records, a)
 	}
 	got, err := bindOwnedAssessmentReadiness(r, policy, actual)
-	if err != nil || len(got) != 1 || got[0].Schema != "mantik-owned-admission-readiness-v4" || got[0].Gates[2].Status != "failed" || got[0].Gates[2].ReasonCode != "retained_necessary_evaluation_check_failed" || got[0].EvaluationEvidence[0].SampleStatus != "pending" || len(got[0].EvaluationEvidence[0].FailedChecks) != 1 || got[0].AdmissionAvailable || got[0].ExecutionAvailable || got[0].QualificationCredit {
+	if err != nil || len(got) != 1 || got[0].Schema != "mantik-owned-admission-readiness-v5" || got[0].Gates[2].Status != "failed" || got[0].Gates[2].ReasonCode != "retained_necessary_evaluation_check_failed" || got[0].EvaluationEvidence[0].SampleStatus != "pending" || len(got[0].EvaluationEvidence[0].FailedChecks) != 1 || got[0].AdmissionAvailable || got[0].ExecutionAvailable || got[0].QualificationCredit {
 		t.Fatal(got, err)
 	}
 	legacy := clone(r)

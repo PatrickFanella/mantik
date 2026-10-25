@@ -82,7 +82,9 @@ mise exec -- make build
 Use a second terminal with the same token for `status` and the current-time
 fixture ingestion example below. Change credentials and ports to match
 `.env` if customized. `serve` applies embedded migrations through schema version
-38 at startup. Schema 38 adds the [owned paper proposal registry](../reference/owned-paper-decisions.md). Schema 37 adds the [native paper strategy configuration
+64 at startup. Schema 64 fences admission-readiness writers that cannot retain
+the actual execution-safety requirement pin; it rewrites no journal payload.
+Schema 38 introduced the [owned paper proposal registry](../reference/owned-paper-decisions.md). Schema 37 adds the [native paper strategy configuration
 registry](../reference/paper-strategies.md) without activating strategies.
 It rejects an unsupported database name or changed migration
 checksum. Version 2 preserves retained events and derives protection for an

@@ -221,7 +221,7 @@ func appendPaperEvaluationDeclaration(owner string, all map[string]PaperEvaluati
 	// A later new plan must not enter that historical cut, including equality.
 	for _, item := range allocations.Records {
 		r := item.Record
-		if r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || r.Schema == "mantik-owned-allocation-deferral-v11"))) {
+		if r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || r.Schema == "mantik-owned-allocation-deferral-v12")))) {
 			unsigned := clone(r)
 			unsigned.SHA256 = ""
 			if r.Command.ReceiverID != owner || !declarationTime(r.At) || workerplan.Hash(unsigned) != r.SHA256 || !at.After(r.At) {

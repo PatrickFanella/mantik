@@ -91,7 +91,7 @@ and positions, orders and commitments remain empty.
 
 Each comparison appends one hash-linked entry to its policy's allocation ledger.
 The owned record pins that entry, ledger head and policy. New records have schema
-`mantik-owned-allocation-deferral-v11`, authority
+`mantik-owned-allocation-deferral-v12`, authority
 `service_owned_allocation_deferral_only`, and false execution/qualification
 flags. Returned core ledger values remain accounting evidence; they are not
 portable admission or execution grants.
@@ -562,3 +562,23 @@ clock-free retries, including PostgreSQL reopen. Schema 63 adds a comment and
 checksum writer fence without rewriting journal payloads. Rollback requires the
 matching verified backup and binary. Applicable admission, atomic order/fill and
 ledger effects, protection and recovery remain unfinished for issues #19/#20.
+
+### Safety requirements in admission readiness
+
+New v12 comparisons issue readiness v5. Its binding adds
+`execution_safety_sha256`, derived from the exact proposal's owner-replayed
+execution-safety record alongside the existing account, policy, cost, evaluation
+and ledger pins. Requirements are reconstructed before readiness in the same
+owner lock or transaction. A policy without an execution model has no safety
+record or safety pin. Callers supply neither the record nor its hash.
+
+Owner reads and retries reject omitted or substituted pins even after portable
+hashes are recomputed. Retained admission reviews carry that exact readiness;
+attribution validates the projected pin before rendering. Earlier v1-v11
+comparisons preserve their original shapes, hashes and clock-free retries.
+Schema 64 adds a checksum-protected writer fence without rewriting journals.
+
+This binds requirements to the admission context. It issues no admission, order,
+fill, holding deadline, economic effect or permission to write balances. Positive
+evaluation, execution reconciliation and atomic operational ledger ownership
+remain separate unfinished gates.

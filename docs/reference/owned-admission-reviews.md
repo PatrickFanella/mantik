@@ -101,3 +101,9 @@ sample status; absence of failures still grants nothing. The review consumes
 that readiness and preserves expiry precedence. Historical v9/v3 records retain
 their original bytes and clock-free retries. Schema 62 fences older writers
 without rewriting payloads; rollback requires the matching backup and binary.
+
+Readiness v5 on a new v12 comparison also retains the owner-derived
+`execution_safety_sha256` pin. A review preserves that binding to the finalized
+proposal's actual safety requirements. Historical readiness v3/v4 remains
+readable without this field. The pin does not turn a review into an admission
+or establish any economic effect.
