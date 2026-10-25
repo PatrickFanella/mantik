@@ -14,12 +14,14 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type attributionBackend interface {
 	ownedAllocationBackend
 	PaperOutcomeStore
 	PaperAttributionStore
+	OwnedAdmissionReviewStore
 }
 
 func TestMemoryPaperAttribution(t *testing.T) { paperAttributionContracts(t, NewMemory()) }
@@ -106,7 +108,7 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if original.Schema != "mantik-owned-paper-attribution-v1" || original.ReceiverID != owner || original.ExecutionAvailable || original.QualificationCredit || original.Authority != "service_owned_phase_attribution_only" || len(original.Rows) != 2 {
+	if original.Schema != "mantik-owned-paper-attribution-v2" || original.ReceiverID != owner || original.ExecutionAvailable || original.QualificationCredit || original.Authority != "service_owned_phase_attribution_only" || len(original.Rows) != 2 {
 		t.Fatal(original)
 	}
 	row := original.Rows[1]
@@ -191,6 +193,7 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	if _, err = s.PaperAttribution(canceled, de, oe); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
+	attributionAdmissionReviewContracts(t, s, comparison.Record, decision.Record, de, oe)
 	// A self-rehashed outcome may not hide behind another selected decision.
 	var retained retainedPaperOutcome
 	if m, ok := s.(*Memory); ok {
@@ -217,5 +220,143 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	}
 	if partial, err := s.PaperAttribution(ctx, de, oe); err == nil || partial.Rows != nil {
 		t.Fatal("corrupt source produced partial attribution", partial, err)
+	}
+}
+
+func attributionAdmissionReviewContracts(t *testing.T, s attributionBackend, comparison OwnedAllocationRecord, decision PaperDecisionRecord, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) {
+	t.Helper()
+	ctx := context.Background()
+	before, err := s.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	get := func() PaperAttributionCatalog {
+		t.Helper()
+		v, err := s.PaperAttribution(ctx, de, oe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	initial := get()
+	for _, row := range initial.Rows {
+		if h := row.AdmissionReviewHistory; h == nil || h.Records == nil || len(h.Records) != 0 || h.CurrentID != "" {
+			t.Fatal("missing explicit empty review history", row)
+		}
+	}
+	command := OwnedAdmissionReviewCommand{ID: "review-one", ReceiverID: decision.Command.ReceiverID, ComparisonID: comparison.Command.ID, ComparisonSHA256: comparison.SHA256, DecisionID: decision.Command.ID, DecisionSHA256: decision.SHA256}
+	first, err := s.ReviewOwnedAdmission(ctx, command, func() time.Time { return comparison.At.Add(time.Second) }, de, oe)
+	if err != nil || first.Record.Status != "deferred" {
+		t.Fatal(first, err)
+	}
+	retry, err := s.ReviewOwnedAdmission(ctx, command, func() time.Time { panic("retry read fresh clock") }, de, oe)
+	if err != nil || !retry.Duplicate || !reflect.DeepEqual(first.Record, retry.Record) {
+		t.Fatal(retry, err)
+	}
+	one := get()
+	if one.SourceSHA256 == initial.SourceSHA256 || one.Rows[1].SHA256 == initial.Rows[1].SHA256 || !reflect.DeepEqual(one.Rows[0], initial.Rows[0]) {
+		t.Fatal("review scope/source binding")
+	}
+	command.ID, command.PreviousID, command.PreviousSHA256 = "review-expired", first.Record.Command.ID, first.Record.SHA256
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		receipt, err := s.ReviewOwnedAdmission(ctx, command, func() time.Time { return first.Record.Readiness.ValidUntil }, de, oe)
+		if err != nil || receipt.Record.Status != "expired" {
+			t.Error(receipt, err)
+		}
+	})
+	for range 2 {
+		wg.Go(func() {
+			view, err := s.PaperAttribution(ctx, de, oe)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			h := view.Rows[1].AdmissionReviewHistory
+			if h == nil || len(h.Records) < 1 || len(h.Records) > 2 || h.CurrentID != h.Records[len(h.Records)-1].Command.ID {
+				t.Error("mixed review snapshot", h)
+			}
+		})
+	}
+	wg.Wait()
+	final := get()
+	h := final.Rows[1].AdmissionReviewHistory
+	actual, err := s.OwnedAdmissionReviews(ctx, de, oe)
+	if err != nil || !reflect.DeepEqual(h.Records, actual.Records) || len(actual.CurrentIDs) != 1 || h.CurrentID != actual.CurrentIDs[0] || h.SourceSHA256 != workerplan.Hash(actual) || h.AdmissionAvailable || h.ExecutionAvailable || h.QualificationCredit || final.Rows[1].Economics.FeesCents != nil {
+		t.Fatal("review owner changed by attribution", h, actual, err)
+	}
+	changed := clone(final)
+	changed.Rows[1].AdmissionReviewHistory.Records[0].Readiness.Gates[0].ReasonCode = "forged"
+	changed.Rows[1].AdmissionReviewHistory.CurrentID = "forged"
+	if !reflect.DeepEqual(get(), final) {
+		t.Fatal("mutable review projection")
+	}
+	after, err := s.Snapshot(ctx)
+	if err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatal("review attribution changed operational state", err)
+	}
+	if pg, ok := s.(*Postgres); ok {
+		request, cancel := context.WithCancel(ctx)
+		tracer := &cancelCollectorCommit{cancel: cancel}
+		config := pg.pool.Config()
+		config.ConnConfig.Tracer = tracer
+		pool, err := pgxpool.NewWithConfig(ctx, config)
+		if err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		partial, err := (&Postgres{pool: pool}).PaperAttribution(request, de, oe)
+		pool.Close()
+		cancel()
+		if !tracer.fired.Load() || err == nil || !reflect.DeepEqual(partial, PaperAttributionCatalog{}) {
+			t.Fatal("failed read COMMIT exposed review history", partial, err, tracer.fired.Load())
+		}
+		reopened, err := OpenPostgres(ctx, pg.pool.Config().ConnString())
+		if err != nil {
+			t.Fatal(err)
+		}
+		restored, err := reopened.PaperAttribution(ctx, de, oe)
+		reopened.Close()
+		if err != nil || !reflect.DeepEqual(restored, final) {
+			t.Fatal("reopen changed review attribution", err)
+		}
+	}
+	// A self-rehashed assertion is not an owner review, even when selecting a
+	// different decision. Preserve and restore the exact original owner record.
+	original := actual.Records[0]
+	for name, mutate := range map[string]func(*OwnedAdmissionReview){
+		"grant":      func(r *OwnedAdmissionReview) { r.AdmissionAvailable = true },
+		"comparison": func(r *OwnedAdmissionReview) { r.Command.ComparisonSHA256 = workerplan.Hash("other") },
+		"decision":   func(r *OwnedAdmissionReview) { r.Command.DecisionID = "missing" },
+		"status":     func(r *OwnedAdmissionReview) { r.Status = "admitted" },
+		"predecessor": func(r *OwnedAdmissionReview) {
+			r.Command.PreviousID = "other"
+			r.Command.PreviousSHA256 = workerplan.Hash("other")
+		},
+	} {
+		t.Run("attribution review "+name, func(t *testing.T) {
+			write := func(r OwnedAdmissionReview) {
+				if m, ok := s.(*Memory); ok {
+					m.admissionReviews[r.Command.ID] = r
+					return
+				}
+				raw, _ := json.Marshal(r)
+				if _, err := s.(*Postgres).pool.Exec(ctx, "UPDATE mantik_owned_admission_reviews SET payload=$1 WHERE id=$2", raw, r.Command.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			bad := clone(original)
+			mutate(&bad)
+			bad.SHA256 = ""
+			bad.SHA256 = workerplan.Hash(bad)
+			write(bad)
+			defer write(original)
+			if partial, err := s.PaperAttribution(ctx, de, oe); err == nil || !reflect.DeepEqual(partial, PaperAttributionCatalog{}) {
+				t.Fatal("corrupt review produced partial attribution", partial, err)
+			}
+		})
+	}
+	if !reflect.DeepEqual(get(), final) {
+		t.Fatal("restored owner changed")
 	}
 }

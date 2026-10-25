@@ -52,19 +52,32 @@ type PaperEconomicAttribution struct {
 	RealizedPnLCents *int64 `json:"realized_pnl_cents"`
 	BaselineStatus   string `json:"baseline_status"`
 }
+
+// The complete per-decision review chain is a projection of retained non-grant
+// owner records. Global sequence numbers may have gaps for other decisions.
+type PaperAdmissionReviewHistory struct {
+	SourceSHA256        string                 `json:"source_sha256"`
+	Records             []OwnedAdmissionReview `json:"records"`
+	CurrentID           string                 `json:"current_id"`
+	Authority           string                 `json:"authority"`
+	AdmissionAvailable  bool                   `json:"admission_available"`
+	ExecutionAvailable  bool                   `json:"execution_available"`
+	QualificationCredit bool                   `json:"qualification_credit"`
+}
 type PaperAttributionRow struct {
-	Decision            PaperDecisionRecord          `json:"decision"`
-	Method              string                       `json:"method"`
-	Symbol              string                       `json:"symbol"`
-	EvidenceClass       string                       `json:"evidence_class"`
-	DefinitionSHA256    string                       `json:"definition_sha256"`
-	ForecastStatus      string                       `json:"forecast_status"`
-	ObservationStatus   string                       `json:"observation_status"`
-	Observations        []PaperOutcomeRecord         `json:"observations"`
-	Allocations         []PaperAllocationAttribution `json:"allocations"`
-	Economics           PaperEconomicAttribution     `json:"economics"`
-	QualificationCredit bool                         `json:"qualification_credit"`
-	SHA256              string                       `json:"sha256"`
+	AdmissionReviewHistory *PaperAdmissionReviewHistory `json:"admission_review_history,omitempty"`
+	Decision               PaperDecisionRecord          `json:"decision"`
+	Method                 string                       `json:"method"`
+	Symbol                 string                       `json:"symbol"`
+	EvidenceClass          string                       `json:"evidence_class"`
+	DefinitionSHA256       string                       `json:"definition_sha256"`
+	ForecastStatus         string                       `json:"forecast_status"`
+	ObservationStatus      string                       `json:"observation_status"`
+	Observations           []PaperOutcomeRecord         `json:"observations"`
+	Allocations            []PaperAllocationAttribution `json:"allocations"`
+	Economics              PaperEconomicAttribution     `json:"economics"`
+	QualificationCredit    bool                         `json:"qualification_credit"`
+	SHA256                 string                       `json:"sha256"`
 }
 type PaperAttributionCatalog struct {
 	Schema              string                `json:"schema"`
@@ -82,16 +95,21 @@ type PaperAttributionStore interface {
 
 // All source catalogues have been replayed against actual retained owner sources
 // in one Memory lock or repeatable-read transaction before this join.
-func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, outcomes PaperOutcomeCatalog, allocations OwnedAllocationCatalog) (PaperAttributionCatalog, error) {
+func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, outcomes PaperOutcomeCatalog, allocations OwnedAllocationCatalog, allReviews map[string]OwnedAdmissionReview) (PaperAttributionCatalog, error) {
 	if decisions.ReceiverID != strategies.ReceiverID || outcomes.ReceiverID != decisions.ReceiverID || allocations.ReceiverID != decisions.ReceiverID {
 		return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
 	}
-	out := PaperAttributionCatalog{Schema: "mantik-owned-paper-attribution-v1", ReceiverID: decisions.ReceiverID, Rows: []PaperAttributionRow{}, Authority: "service_owned_phase_attribution_only"}
+	out := PaperAttributionCatalog{Schema: "mantik-owned-paper-attribution-v2", ReceiverID: decisions.ReceiverID, Rows: []PaperAttributionRow{}, Authority: "service_owned_phase_attribution_only"}
+	reviews, err := ownedAdmissionReviewCatalog(ctx, decisions.ReceiverID, allReviews, allocations)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
 	out.SourceSHA256 = workerplan.Hash(struct {
 		Decisions   PaperDecisionCatalog
 		Outcomes    PaperOutcomeCatalog
 		Allocations OwnedAllocationCatalog
-	}{decisions, outcomes, allocations})
+		Reviews     OwnedAdmissionReviewCatalog
+	}{decisions, outcomes, allocations, reviews})
 	seen := map[string]bool{}
 	for _, d := range decisions.Records {
 		if err := ctx.Err(); err != nil {
@@ -157,6 +175,22 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 				row.Allocations = append(row.Allocations, item)
 			}
 		}
+		scoped := OwnedAdmissionReviewCatalog{ReceiverID: out.ReceiverID, Records: []OwnedAdmissionReview{}, CurrentIDs: []string{}}
+		for _, review := range reviews.Records {
+			if review.Command.DecisionID != d.Command.ID {
+				continue
+			}
+			if review.Command.DecisionSHA256 != d.SHA256 {
+				return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
+			}
+			scoped.Records = append(scoped.Records, clone(review))
+		}
+		current := ""
+		if len(scoped.Records) > 0 {
+			current = scoped.Records[len(scoped.Records)-1].Command.ID
+			scoped.CurrentIDs = []string{current}
+		}
+		row.AdmissionReviewHistory = &PaperAdmissionReviewHistory{SourceSHA256: workerplan.Hash(scoped), Records: scoped.Records, CurrentID: current, Authority: "service_owned_non_grant_admission_review_history_only"}
 		row.SHA256 = workerplan.Hash(row)
 		out.Rows = append(out.Rows, row)
 	}
@@ -171,6 +205,11 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 			if !seen[pin.ID] {
 				return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
 			}
+		}
+	}
+	for _, review := range reviews.Records {
+		if !seen[review.Command.DecisionID] {
+			return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
 		}
 	}
 	out.SHA256 = workerplan.Hash(out)
@@ -208,7 +247,7 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	return paperAttribution(ctx, decisions, strategies, outcomes, allocations)
+	return paperAttribution(ctx, decisions, strategies, outcomes, allocations, m.admissionReviews)
 }
 func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecisionEvaluator, outcomeEval PaperOutcomeEvaluator) (PaperAttributionCatalog, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -277,7 +316,11 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	out, err := paperAttribution(ctx, decisions, strategies, outcomes, allocations)
+	allReviews, err := readOwnedAdmissionReviews(ctx, tx)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	out, err := paperAttribution(ctx, decisions, strategies, outcomes, allocations, allReviews)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}

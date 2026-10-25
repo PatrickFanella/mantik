@@ -28,7 +28,7 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	clock.panicRead = true
 	defer func() { clock.panicRead = false }()
 	var all storage.PaperAttributionCatalog
-	if err := json.Unmarshal(request("GET", "/v1/paper-attribution", nil, 200), &all); err != nil || len(all.Rows) != 5 || all.ReceiverID != candidate.Command.ReceiverID || all.ExecutionAvailable || all.QualificationCredit || all.Authority != "service_owned_phase_attribution_only" {
+	if err := json.Unmarshal(request("GET", "/v1/paper-attribution", nil, 200), &all); err != nil || all.Schema != "mantik-owned-paper-attribution-v2" || len(all.Rows) != 5 || all.ReceiverID != candidate.Command.ReceiverID || all.ExecutionAvailable || all.QualificationCredit || all.Authority != "service_owned_phase_attribution_only" {
 		t.Fatal(all, err)
 	}
 	hash := all.SHA256
@@ -43,6 +43,10 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	var comparisons storage.OwnedAllocationCatalog
 	if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &comparisons); err != nil || len(comparisons.Records) != 1 || len(comparisons.Records[0].AdmissionChecks) != 1 || !reflect.DeepEqual(*row.Allocations[0].AdmissionReadiness, comparisons.Records[0].AdmissionChecks[0]) {
 		t.Fatal("attribution changed retained readiness", comparisons, err)
+	}
+	var reviews storage.OwnedAdmissionReviewCatalog
+	if err := json.Unmarshal(request("GET", "/v1/admission-reviews", nil, 200), &reviews); err != nil || len(reviews.Records) != 0 || row.AdmissionReviewHistory == nil || !reflect.DeepEqual(row.AdmissionReviewHistory.Records, reviews.Records) || row.AdmissionReviewHistory.CurrentID != "" || row.AdmissionReviewHistory.SourceSHA256 != workerplan.Hash(reviews) {
+		t.Fatal("HTTP lost actual review history", reviews, row.AdmissionReviewHistory, err)
 	}
 	c := row.Allocations[0].EvaluationContext
 	if c == nil || c.SourceSHA256 != comparisons.Records[0].EvaluationContext.SourceSHA256 || !reflect.DeepEqual(c.Binding, comparisons.Records[0].EvaluationContext.Decisions[0]) || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit {
@@ -59,6 +63,9 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	var noAction storage.PaperAttributionRow
 	if err := json.Unmarshal(request("GET", "/v1/paper-attribution/"+abstain.Command.ID, nil, 200), &noAction); err != nil || !reflect.DeepEqual(noAction.Decision, abstain) || !reflect.DeepEqual(noAction.Observations[0], outcomes[1]) || len(noAction.Allocations) != 0 {
 		t.Fatal(noAction, err)
+	}
+	if noAction.AdmissionReviewHistory == nil || len(noAction.AdmissionReviewHistory.Records) != 0 || noAction.AdmissionReviewHistory.CurrentID != "" {
+		t.Fatal("abstention gained admission review", noAction)
 	}
 	row.SHA256 = hash
 	all.SHA256 = workerplan.Hash(all)
@@ -104,9 +111,17 @@ func assertRestartedPaperAttribution(t *testing.T, serverURL string) {
 	if err = json.NewDecoder(declarationResponse.Body).Decode(&declarations); err != nil || declarationResponse.StatusCode != 200 || len(declarations.Records) != 1 || declarations.Records[0].Status != "declared_not_evaluated" || declarations.Records[0].AdmissionAvailable || declarations.Records[0].QualificationCredit {
 		t.Fatal("restart changed evaluation declaration", declarations, err)
 	}
+	count := 0
 	for _, row := range got.Rows {
+		if row.AdmissionReviewHistory == nil || validateAttributionRow(row, got.ReceiverID) != nil {
+			t.Fatal("restart lost valid review history", row)
+		}
+		count += len(row.AdmissionReviewHistory.Records)
 		if row.Economics.FeesCents != nil || row.Economics.RealizedPnLCents != nil {
 			t.Fatal("restart invented economic data", row)
 		}
+	}
+	if count != 1 {
+		t.Fatal("restart lost retained admission review", count)
 	}
 }

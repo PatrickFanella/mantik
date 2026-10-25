@@ -1,7 +1,8 @@
 # Service-owned paper attribution readbacks
 
 `GET /v1/paper-attribution` joins the service's retained native paper decisions,
-forward-price assessments and allocation comparisons. The authenticated targeted
+forward-price assessments, allocation comparisons and retained non-grant admission
+reviews. The authenticated targeted
 read is `GET /v1/paper-attribution/{decision_id}`. Both use the existing bearer
 token, accept no query parameters and make no model or provider requests.
 
@@ -38,6 +39,12 @@ Rows are sorted by finalized decision ID. Each row contains:
   `declaration_unavailable`. Legacy comparisons omit this optional context. These
   states do not establish applicability, evaluation success or admission. Later
   declarations do not rewrite the historical attribution.
+- The complete retained admission-review history for that decision, in owner
+  sequence order, with the current review ID and a hash of the scoped review
+  catalogue. Each review keeps its comparison and decision pins, predecessor,
+  captured readiness, review time, status, reason and reconsideration triggers.
+  An empty history means no review is retained. Review statuses remain deferred,
+  pending, blocked or expired; a current review is never an admission grant.
 - The corresponding owner-derived execution cost ceiling when that comparison
   declared an execution model. This is a ceiling, not an expense or fill.
 
@@ -59,14 +66,19 @@ receipt, a positive price delta, a cost ceiling or a successful workflow.
 
 Memory reads use one aggregate lock. PostgreSQL reads use one repeatable-read,
 read-only transaction across decision, strategy, feed, outcome, policy and
-allocation sources. Each existing owner replays its full retained history before
+allocation and admission-review sources. Each existing owner replays its full retained history before
 the join. A concurrent write appears wholly before or after the snapshot.
 Selected reads validate all source histories too; unrelated corruption cannot be
 hidden by choosing a valid decision ID. Invalid bindings, orphan outcomes or
 corrupt histories fail the complete read without a partial response.
 
 The catalogue's `source_sha256` binds the replayed decision, outcome and allocation
-catalogues, including the allocation ledger histories. Each row and the complete
+catalogues and the complete admission-review catalogue, including the allocation
+ledger histories. The response schema is `mantik-owned-paper-attribution-v2`;
+every row has `admission_review_history`, including an explicit empty history.
+Review chains are scoped by decision, so a review of another decision changes
+the complete source hash without rewriting unrelated row hashes. Global review
+sequence numbers can have gaps within a decision's chain. Each row and the complete
 catalogue have their own SHA-256 with their own `sha256` field empty during
 hashing. A hash is an integrity reference; it does not attest ownership outside
 the actual service read. The authority is `service_owned_phase_attribution_only`.
@@ -82,7 +94,8 @@ balance/return import, caller clock, model selector or economic override.
 No schema or stored record changes are required. Tests use manufactured local
 sources to check known quote deltas, absent assessments, valid no-action
 records, duplicate assessments, deferred allocations, ceilings versus costs,
-concurrent reads/writes, detached results, self-rehashed source corruption,
+concurrent outcome/review writes, detached results, exact clock-free review
+retries, empty and expired review histories, self-rehashed source corruption,
 authentication, query rejection and reconstruction after a PostgreSQL reconnect.
 The actual public finalizer and outcome evaluator are exercised separately from
 pure storage fixtures. Local checks, hosted CI, deployment and qualification are
@@ -97,7 +110,9 @@ run a model, assess an outcome, finalize a decision or change balances.
 
 The default table keeps finalized abstentions separate from failed requests.
 It prints each retained assessment status and allocation deferral/rejection,
-prints admission-readiness gates and their retained reasons, labels funding
+prints admission-readiness gates and their retained reasons, lists each
+`ADMISSION_REVIEW` with its current/historical flag, status, reason and
+reconsideration triggers, labels funding
 ceilings as bounds, and shows unavailable execution quantities,
 fees, realized P&L and economic baselines explicitly. A quote delta appears only
 for an `observed` assessment; waiting or inapplicable assessments show an
@@ -107,14 +122,17 @@ or a performance rate. Forecast calibration remains unavailable.
 Use `--format json` for the complete catalogue, source hash and row hashes.
 Select an exact row with `--id DECISION --record-sha256 ROW_SHA256`; this pin is
 the attribution row hash, not the nested decision record hash. The row can
-change when the service retains another assessment or allocation comparison.
+change when the service retains another assessment, allocation comparison or
+admission review for that decision.
 A stale pin fails before producing output; read the current catalogue to review
 the new row before selecting its hash.
 
 The client checks bounded, strict JSON, receiver identity, envelope hashes,
 nested decision/outcome links, readiness identity and context bindings, the
-retained unavailable prerequisite gates, and the current unavailable-economics
-boundary.
+retained unavailable prerequisite gates, complete review-chain links and review
+status derivation, and the current unavailable-economics
+boundary. It still accepts legacy v1 responses without a review history;
+absence in a legacy response does not establish that no review exists.
 These are representation checks. Source replay and consistent snapshot
 selection remain service responsibilities; a self-computed hash establishes no
 qualification. Wrong receivers, invalid arguments, stale pins, HTTP failures,
