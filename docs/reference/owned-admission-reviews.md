@@ -93,3 +93,11 @@ backdated clocks, rehashed corruption, restored readback, deferred COMMIT failur
 isolated restart, migration rollback/checksums and the authenticated HTTP flow.
 Manufactured test evidence and these passing checks provide no runtime or
 strategy qualification credit.
+
+New v10 comparison records retain v4 admission readiness with the exact failed
+checks of each latest owner-replayed assessment for the selected variant. For
+selected decision evidence, any retained necessary failure dominates pending
+sample status; absence of failures still grants nothing. The review consumes
+that readiness and preserves expiry precedence. Historical v9/v3 records retain
+their original bytes and clock-free retries. Schema 62 fences older writers
+without rewriting payloads; rollback requires the matching backup and binary.

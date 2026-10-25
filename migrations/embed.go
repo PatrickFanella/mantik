@@ -196,3 +196,6 @@ var DistinctEvaluationVariants string
 
 //go:embed 0061_known_source_leakage_assessments.sql
 var KnownSourceLeakageAssessments string
+
+//go:embed 0062_assessment_failure_bindings.sql
+var AssessmentFailureBindings string

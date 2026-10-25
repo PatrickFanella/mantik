@@ -523,3 +523,11 @@ wire shapes and hashes. Schema 52 adds a comment/checksum startup fence so older
 writers cannot bypass v9 declaration and assessment clock cuts. It does not
 rewrite journals. Attribution projects retained readiness; CLI shape validation
 is not independent source attestation or operational authority.
+
+New v10 comparison records retain v4 admission readiness with the exact failed
+checks of each latest owner-replayed assessment for the selected variant. For
+selected decision evidence, any retained necessary failure dominates pending
+sample status; absence of failures still grants nothing. The review consumes
+that readiness and preserves expiry precedence. Historical v9/v3 records retain
+their original bytes and clock-free retries. Schema 62 fences older writers
+without rewriting payloads; rollback requires the matching backup and binary.

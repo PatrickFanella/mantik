@@ -182,7 +182,7 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 		{Name: "evaluation_recipe", Status: "unavailable", ReasonCode: "relevant_evaluation_receipt_unavailable"},
 		{Name: "execution_reconciliation", Status: "unavailable", ReasonCode: "owned_execution_evidence_unavailable"},
 	}
-	if c.Schema == "mantik-owned-admission-readiness-v3" {
+	if c.Schema == "mantik-owned-admission-readiness-v3" || c.Schema == "mantik-owned-admission-readiness-v4" {
 		gate, err := validateReadinessAssessmentSelection(c, a)
 		if err != nil {
 			return err
@@ -199,7 +199,7 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 		if c.Binding != nil {
 			return storage.ErrPaperAttributionInvalid
 		}
-	case "mantik-owned-admission-readiness-v2", "mantik-owned-admission-readiness-v3":
+	case "mantik-owned-admission-readiness-v2", "mantik-owned-admission-readiness-v3", "mantik-owned-admission-readiness-v4":
 		b := c.Binding
 		if b == nil || b.ComparisonID != a.ComparisonID || b.PolicySHA256 != a.PolicySHA256 || b.AccountID != a.AccountID || !paperaccount.ID.MatchString(b.PolicyID) || !paperStrategyPin.MatchString(b.AccountSHA256) || !paperStrategyPin.MatchString(b.ProposalSHA256) || !paperStrategyPin.MatchString(b.LedgerSHA256) {
 			return storage.ErrPaperAttributionInvalid
@@ -284,6 +284,9 @@ func validateReadinessAssessmentSelection(c storage.OwnedAdmissionReadiness, a s
 		if !paperaccount.ID.MatchString(v.AssessmentID) || !paperaccount.ID.MatchString(v.DeclarationID) || v.DeclarationID <= previous || !paperStrategyPin.MatchString(v.AssessmentSHA256) || !paperStrategyPin.MatchString(v.DeclarationSHA256) || !paperStrategyPin.MatchString(v.EvidenceSHA256) || v.AssessedAt.IsZero() || v.AssessedAt.After(c.CheckedAt) || (v.SampleStatus != "pending" && v.SampleStatus != "failed" && v.SampleStatus != "unavailable") {
 			return gate, storage.ErrPaperAttributionInvalid
 		}
+		if err := validateReadinessFailures(c, v); err != nil {
+			return gate, err
+		}
 		found := false
 		for _, pin := range a.EvaluationContext.Binding.Assessments {
 			if pin.ID == v.AssessmentID && pin.SHA256 == v.AssessmentSHA256 && pin.DeclarationID == v.DeclarationID && pin.DeclarationSHA256 == v.DeclarationSHA256 {
@@ -298,7 +301,7 @@ func validateReadinessAssessmentSelection(c storage.OwnedAdmissionReadiness, a s
 		case "selected_research_evidence":
 			selected = true
 			pending = pending || v.SampleStatus == "pending"
-			failed = failed || v.SampleStatus == "failed"
+			failed = failed || v.SampleStatus == "failed" || len(v.FailedChecks) > 0
 		case "decision_not_retained", "decision_before_window", "decision_after_window", "abstention", "quote_before_window", "quote_after_window", "source_unavailable_at_decision", "synthetic_not_selected", "duplicate_strategy_occurrence":
 		default:
 			return gate, storage.ErrPaperAttributionInvalid
@@ -308,6 +311,9 @@ func validateReadinessAssessmentSelection(c storage.OwnedAdmissionReadiness, a s
 	switch {
 	case failed:
 		gate.Status, gate.ReasonCode = "failed", "retained_necessary_sample_check_failed"
+		if c.Schema == "mantik-owned-admission-readiness-v4" {
+			gate.ReasonCode = "retained_necessary_evaluation_check_failed"
+		}
 	case pending:
 		gate.Status, gate.ReasonCode = "pending", "retained_evaluation_outcome_window_open"
 	case selected:
@@ -350,7 +356,7 @@ func validateAttributionReviews(row storage.PaperAttributionRow, receiver string
 			found = true
 		}
 		readiness := review.Readiness
-		if !found || readiness.Schema != "mantik-owned-admission-readiness-v3" || readiness.Binding == nil {
+		if !found || (readiness.Schema != "mantik-owned-admission-readiness-v3" && readiness.Schema != "mantik-owned-admission-readiness-v4") || readiness.Binding == nil {
 			return storage.ErrPaperAttributionInvalid
 		}
 		status, reason := "deferred", "required_admission_gates_unavailable"
@@ -380,6 +386,39 @@ func validateAttributionReviews(row storage.PaperAttributionRow, receiver string
 		scoped.CurrentIDs = []string{h.CurrentID}
 	}
 	if workerplan.Hash(scoped) != h.SourceSHA256 {
+		return storage.ErrPaperAttributionInvalid
+	}
+	return nil
+}
+
+// These are portable failure shapes, not source attestations. Actual owner replay
+// must still rederive the exact failure list from the pinned assessment.
+func validateReadinessFailures(c storage.OwnedAdmissionReadiness, v storage.OwnedAssessmentReadiness) error {
+	if c.Schema != "mantik-owned-admission-readiness-v4" {
+		if len(v.FailedChecks) > 0 {
+			return storage.ErrPaperAttributionInvalid
+		}
+		return nil
+	}
+	previous := -1
+	for _, check := range v.FailedChecks {
+		index := -1
+		switch check.Name {
+		case "leakage":
+			if check.ReasonCode == "retained_candidate_source_unavailable_at_finalization" {
+				index = 0
+			}
+		case "sample_sufficiency":
+			if check.ReasonCode == "observed_occurrence_upper_bound_below_predeclared_minimum" && v.SampleStatus == "failed" {
+				index = 6
+			}
+		}
+		if check.StrategyID != c.StrategyID || check.Status != "failed" || index <= previous {
+			return storage.ErrPaperAttributionInvalid
+		}
+		previous = index
+	}
+	if (v.SampleStatus == "failed") != (len(v.FailedChecks) > 0 && v.FailedChecks[len(v.FailedChecks)-1].Name == "sample_sufficiency") {
 		return storage.ErrPaperAttributionInvalid
 	}
 	return nil
