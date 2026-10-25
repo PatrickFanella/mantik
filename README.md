@@ -517,6 +517,11 @@ Model-bearing comparisons also bind entry debit plus worst supported protective
 exit shortfall into the proposal funding requirement. These remain deferrals;
 no cash is reserved and no execution authority is issued.
 
+New owner allocation comparisons also bind proposal, cost, safety and readiness
+expiry to a stricter execution-model quote-age limit measured from the retained
+quote occurrence. Historical records and retries retain their original expiry;
+this supplies no admission or execution authority.
+
 The opt-in [automatic outcome worker](docs/reference/owned-paper-outcomes.md#automatic-sealed-collection)
 (`serve --automatic-paper-outcomes`) now seals one retained forward quote outcome
 per matured entry decision without a client assessment request. Missing prices,

@@ -589,3 +589,25 @@ query parameters or GET body, returns 404 for a missing ID, and preserves owner
 unavailability errors. The supervision `inspect_record` tool exposes this read
 as `allocation_comparison`, alongside `admission_review` and
 `decision_attribution`; none is an economic writer.
+
+## Execution-model quote-age expiry
+
+New v13 comparison records bound proposal validity by the shortest of the
+strategy quote-age limit, the existing 60-second owner cap, and the actual
+owner-selected execution model's `max_quote_age_seconds`. Every deadline starts
+at the retained decision quote's occurrence time, never at comparison or retry
+time. A stricter model shortens validity; a looser model cannot extend it.
+Model-free policies retain the strategy/owner-cap rule.
+
+The proposal, debit ceiling, execution-safety requirements and admission
+readiness carry the same resulting expiry. At the exact deadline a new
+comparison and its readiness are expired. Earlier comparisons remain historical,
+and their exact retries do not sample a clock or gain a new deadline. This is
+proposal validity, not the lifetime of a granted admission or an actual order.
+
+Schema 65 fences older writers without rewriting existing journals. v1-v12
+records retain their original derivation, bytes and retries, including their
+historical quote-age behavior. Readback never treats such a historical record as
+new execution authority. Positive admission, account reservations, financial
+effects and atomic execution remain unfinished; this correction supplies no
+grant, fill, balance change or qualification credit.

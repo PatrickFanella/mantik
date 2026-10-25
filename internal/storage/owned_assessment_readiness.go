@@ -64,10 +64,10 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 			}
 		}
 		c.Schema = "mantik-owned-admission-readiness-v3"
-		if r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || r.Schema == "mantik-owned-allocation-deferral-v12") {
+		if r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || r.Schema == "mantik-owned-allocation-deferral-v13")) {
 			c.Schema = "mantik-owned-admission-readiness-v4"
 		}
-		if r.Schema == "mantik-owned-allocation-deferral-v12" {
+		if r.Schema == "mantik-owned-allocation-deferral-v12" || r.Schema == "mantik-owned-allocation-deferral-v13" {
 			c.Schema = "mantik-owned-admission-readiness-v5"
 		}
 		c.Binding.EvaluationBindingSHA256 = workerplan.Hash(*binding)
@@ -84,7 +84,7 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 				if check.StrategyID == c.StrategyID && check.Name == "sample_sufficiency" {
 					v.SampleStatus = check.Status
 				}
-				if (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || r.Schema == "mantik-owned-allocation-deferral-v12")) && check.StrategyID == c.StrategyID && check.Status == "failed" {
+				if (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || r.Schema == "mantik-owned-allocation-deferral-v13"))) && check.StrategyID == c.StrategyID && check.Status == "failed" {
 					v.FailedChecks = append(v.FailedChecks, clone(check))
 				}
 			}

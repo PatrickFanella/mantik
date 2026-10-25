@@ -206,7 +206,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 		t.Fatal(err)
 	}
 	policy := allocation.PolicyCommand{ReceiverID: owner, AccountID: account.Account.Config.ID, Policy: allocation.Policy{ID: "owner-policy", AccountSHA256: account.Account.SHA256, MaxSnapshotAgeSeconds: 60, Strategies: []allocation.Strategy{{ID: d.ID, ArtifactSHA256: strategy.Record.DefinitionSHA256, LimitCents: 200000}}, Symbols: []allocation.Symbol{{ID: d.Symbol, LimitCents: 200000, Groups: []string{}}}, Groups: []allocation.Group{}}}
-	policy.ExecutionModel = &paperfill.Model{Method: paperfill.Method, SlippageBPS: 10, FeeBPS: 20, CommissionPerFillCents: 3, LiquidityBPS: 5000, LatencyMillis: 1000, MaxQuoteAgeSeconds: 60}
+	policy.ExecutionModel = &paperfill.Model{Method: paperfill.Method, SlippageBPS: 10, FeeBPS: 20, CommissionPerFillCents: 3, LiquidityBPS: 5000, LatencyMillis: 1000, MaxQuoteAgeSeconds: 10}
 	var policyReceipt allocation.PolicyReceipt
 	if err = json.Unmarshal(request("POST", "/v1/allocation-policies", policy, 201), &policyReceipt); err != nil || policyReceipt.Record.Schema != "mantik-owned-allocation-policy-v2" || policyReceipt.Record.Command.ExecutionModel == nil {
 		t.Fatal(policyReceipt, err)
@@ -219,8 +219,12 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	if allocationFirst.Record.ExecutionAvailable || allocationFirst.Record.QualificationCredit || allocationFirst.Record.Entry.Plan == nil || allocationFirst.Record.Entry.Plan.Decisions[0].Status != "defer" || allocationFirst.Record.Entry.Plan.Decisions[0].Reasons[0] != "admission_unavailable" {
 		t.Fatal(allocationFirst)
 	}
-	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v12" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
+	if allocationFirst.Record.Schema != "mantik-owned-allocation-deferral-v13" || len(allocationFirst.Record.ExecutionCosts) != 1 || allocationFirst.Record.ExecutionCosts[0].MaxDebitCents != d.Quantity*10023 || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding == nil || allocationFirst.Record.ExecutionCosts[0].ProtectiveFunding.ExitShortfallCeilingCents != d.Quantity*3 || allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.NotionalCents != d.Quantity*10026 {
 		t.Fatal(allocationFirst)
+	}
+	modelExpiry := first.Record.Evaluation.Coverage.Quote.OccurredAt.Add(10 * time.Second)
+	if !allocationFirst.Record.Entry.Plan.Decisions[0].Proposal.ValidUntil.Equal(modelExpiry) || !allocationFirst.Record.ExecutionCosts[0].ValidUntil.Equal(modelExpiry) || !allocationFirst.Record.ExecutionSafety[0].ProposalValidUntil.Equal(modelExpiry) || !allocationFirst.Record.AdmissionChecks[0].ValidUntil.Equal(modelExpiry) {
+		t.Fatal("HTTP owner model expiry extended", allocationFirst)
 	}
 	evaluationContext := allocationFirst.Record.EvaluationContext
 	if evaluationContext == nil || evaluationContext.AdmissionAvailable || evaluationContext.ExecutionAvailable || evaluationContext.QualificationCredit || len(evaluationContext.Decisions) != 1 || evaluationContext.Decisions[0].DecisionID != first.Record.Command.ID {
