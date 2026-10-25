@@ -735,3 +735,8 @@ without rewriting payloads; rollback requires the matching backup and binary.
 Owned allocation comparisons also bind [finalized strategy execution requirements](docs/reference/owned-allocation-comparisons.md#finalized-strategy-execution-requirements)
 to the retained decision, policy and cost ceiling. The stop, target and timing
 limits remain requirements only; they grant no admission or financial effect.
+
+The disposable integration suite checks [restored storage-owner replay](docs/reference/storage-owner-recovery.md),
+including deferred allocation requirements, clock-free retries, corrupted-owner
+rejection and restoration of the original payload. These are storage-fixture
+recovery checks, with no financial recovery or qualification claim.

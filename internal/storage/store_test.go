@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"errors"
-	"os"
 	"reflect"
 	"sync"
 	"testing"
@@ -15,15 +14,11 @@ import (
 func TestMemoryContracts(t *testing.T) { contracts(t, NewMemory()) }
 
 func TestPostgresContracts(t *testing.T) {
-	url := os.Getenv("MANTIK_TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("use make test-integration for disposable PostgreSQL contracts")
-	}
+	// This contract deliberately corrupts migration metadata. Keep it separate
+	// from the runner-owned recovery seed and its subsequent backup.
+	store := timerPostgres(t, "bootstrap")
+	url := store.pool.Config().ConnString()
 	ctx := context.Background()
-	store, err := OpenPostgres(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
 	initial, err := store.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
