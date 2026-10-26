@@ -777,3 +777,10 @@ finalization. New v14 comparisons/readiness v6 bind the failure to the owner
 assessment and block admission review; historical records keep their original
 replay behavior. This does not issue admission or financial effects. See the
 [owned allocation contract](docs/reference/owned-allocation-comparisons.md#known-failures-for-excluded-candidates).
+
+
+A retained social post can explicitly request pending owner research with
+`request_research: true` under an enabled research watch. The request pins the
+source and policy, deduplicates repeated normalized claims, and is retained
+atomically with the recording. It runs no worker/model and grants no dispatch,
+admission or financial authority. See [social research requests](docs/reference/owned-social-watches.md#explicit-owner-research-requests).

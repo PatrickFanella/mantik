@@ -37,7 +37,7 @@ decision review or rule ran.
 
 `POST /v1/social-recordings` accepts request/receiver identity, `watch_id`, current
 `policy_sha256`, `evidence_class`, exact `original` string and its raw-byte
-`original_sha256`. For social manifests, accepted classes are `synthetic_unqualified` and
+`original_sha256`, plus optional `request_research: true`. For social manifests, accepted classes are `synthetic_unqualified` and
 `recorded_social_unqualified`; the copy extension adds its own manifest and class.
 Prospective/qualified labels, caller balances, admissions, execution/fill
 authority, effects and qualification assertions are not accepted.
@@ -55,6 +55,38 @@ Supported kinds are `post`, `edit`, `delete`, `repost`, `forecast` and
 holdings, orders or observed fills. Deletes have empty text/symbols. Reposts
 require an explicit source reference. Malformed/unsupported manifests are
 rejected rather than interpreted by a model. No model call is involved.
+
+## Explicit owner research requests
+
+A new social recording can request research with `request_research: true`.
+The owner accepts that request only for an accepted plain-text post, edit or
+resolved repost under a current enabled `research` watch, within the watch's
+actual retention-delay and symbol limits. Copy activity, unsupported structured
+claims, stale/disabled scope and invalid source transitions cannot queue it.
+A rejected request writes neither its recording nor a partial research item.
+
+The resulting `research_request` pins the actual receiver, watch/policy hash,
+originating capture, original digest, source/root and normalized claim group.
+Its status is `pending_research`. Repeated normalized claims and resolved reposts
+within the same evidence class reference the same retained request rather than
+multiplying pending research. Synthetic requests cannot suppress recorded
+research or become its source.
+`research_request_duplicate` distinguishes that reference from first issuance.
+Exact command retries return the original receipt without reading a clock;
+changing the opt-in under an existing command ID conflicts.
+
+`GET /v1/social-history` includes the sorted unique `research_requests`. Requests
+are immutable facts about what was requested, not current source applicability.
+Researchers must inspect subsequent source edits/deletions and policy changes
+through the retained history and applicability endpoint. No worker or model is
+started. Dispatch, independent evidence, admission, execution and qualification
+remain false. Source authenticity and extraction are still unverified; this is
+not a decision or copy-follow proposal.
+
+Schema 67 fences old writers without rewriting old journal entries. Omitted or
+false `request_research` keeps the historical wire/hash representation; old
+records do not acquire research requests. Capture and request commit atomically
+in the existing journal and share its capacity, retry and recovery contracts.
 
 ## Causality, duplicates and reliability
 

@@ -42,6 +42,7 @@ func TestPostgresContractsSocialCommitAcknowledgements(t *testing.T) {
 	for _, kind := range []string{"watch_policy", "social_capture", "copy_capture"} {
 		if kind == "social_capture" {
 			capture := socialCapture(initial.ReceiverID, policyPin, at)
+			capture.RequestResearch = true
 			commands = append(commands, socialwatch.Command{Capture: &capture})
 		}
 		if kind == "copy_capture" {
