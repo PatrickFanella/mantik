@@ -92,6 +92,29 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	if unauthorized.StatusCode != 401 {
 		t.Fatal(unauthorized.StatusCode)
 	}
+
+	protectivePath := "/v1/paper-evaluation-declarations/" + c.ID + "/protective-replay"
+	var protective service.PaperEvaluationProtectiveReplay
+	if err := json.Unmarshal(request("GET", protectivePath, nil, 200), &protective); err != nil || protective.EntryEvidence.Evidence.SHA256 != evidence.SHA256 || len(protective.Variants) != 1 || protective.Variants[0].Status != "no_selected_decisions" || protective.PortfolioEconomicsAvailable || protective.AdmissionAvailable || protective.ExecutionAvailable || protective.QualificationCredit {
+		t.Fatal("HTTP protective replay", protective, err)
+	}
+	protectivePin := protective.SHA256
+	protective.SHA256 = ""
+	if workerplan.Hash(protective) != protectivePin {
+		t.Fatal("protective replay digest")
+	}
+	request("GET", protectivePath+"?clock=future", nil, 422)
+	request("GET", protectivePath, map[string]any{"effect": map[string]any{}, "quote": map[string]any{}}, 422)
+	request("POST", protectivePath, nil, 405)
+	request("GET", "/v1/paper-evaluation-declarations/missing/protective-replay", nil, 404)
+	denied, e := http.Get(serverURL + protectivePath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	denied.Body.Close()
+	if denied.StatusCode != 401 {
+		t.Fatal(denied.StatusCode)
+	}
 	// The current evidence projection samples the service clock; the adapter must
 	// preserve that owner's cutoff and complete response without retaining a new
 	// assessment or accepting caller evidence/results.

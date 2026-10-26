@@ -691,6 +691,13 @@ among its entry orders. This bounded read reports entry counterfactuals and expl
 source gaps; exits, portfolio economics, admission and durable effects remain
 unavailable.
 
+[Protective counterfactual replay](docs/reference/paper-evaluation-protective-replay.md)
+uses the same atomic owner sources to derive holding timers from modeled fills,
+seal partial entries and replay stop/target/timeout market exits with shared
+liquidity. Missing post-trigger observations and short source cuts leave exposure
+unclosed. These unfunded counterfactuals do not complete portfolio economics,
+admission or durable financial execution.
+
 [Owned paper evaluation assessments](docs/reference/paper-evaluation-assessments.md)
 retain service-derived pending, failed and incomplete checks against actual
 predeclared owner evidence. They grant no admission, execution or qualification.

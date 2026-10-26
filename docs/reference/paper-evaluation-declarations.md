@@ -232,3 +232,11 @@ policy and stress model together with canonical owner-selected decisions and
 on-time historical outcomes. It derives bounded shared-liquidity entry books,
 not a complete evaluation or an admission. Existing declarations, evidence and
 assessment recipes retain their separate meanings.
+
+## Protective counterfactual replay
+
+The [protective replay read](paper-evaluation-protective-replay.md) reuses the
+same owner-selected source snapshot and declared base/stress models. Its
+versioned application method derives holding clocks from modeled fills, seals
+partial entries and retains unclosed exposure at the actual source cut. It does
+not amend this plan's deadline or supply a passing economic assessment.
