@@ -229,13 +229,14 @@ func (c Command) identity() (string, string, error) {
 }
 
 type Entry struct {
-	Sequence       int            `json:"sequence"`
-	PreviousSHA256 string         `json:"previous_sha256"`
-	At             time.Time      `json:"at"`
-	Command        Command        `json:"command"`
-	Policy         *PolicyRecord  `json:"policy"`
-	Capture        *CaptureRecord `json:"capture"`
-	SHA256         string         `json:"sha256"`
+	ResearchRequestMethod string         `json:"research_request_method,omitempty"`
+	Sequence              int            `json:"sequence"`
+	PreviousSHA256        string         `json:"previous_sha256"`
+	At                    time.Time      `json:"at"`
+	Command               Command        `json:"command"`
+	Policy                *PolicyRecord  `json:"policy"`
+	Capture               *CaptureRecord `json:"capture"`
+	SHA256                string         `json:"sha256"`
 }
 type Journal struct {
 	Schema     string  `json:"schema"`
@@ -431,7 +432,7 @@ func intersects(a, b []string) bool {
 	}
 	return false
 }
-func (p *projection) apply(receiver string, c Command, at time.Time, seq int) (Entry, error) {
+func (p *projection) apply(receiver string, c Command, at time.Time, seq int, researchMethod string) (Entry, error) {
 	_, owner, err := c.identity()
 	if err != nil {
 		return Entry{}, err
@@ -443,7 +444,7 @@ func (p *projection) apply(receiver string, c Command, at time.Time, seq int) (E
 		return Entry{}, ErrInvalid
 	}
 	at = at.UTC()
-	e := Entry{Sequence: seq, PreviousSHA256: p.head, At: at, Command: clone(c)}
+	e := Entry{ResearchRequestMethod: researchMethod, Sequence: seq, PreviousSHA256: p.head, At: at, Command: clone(c)}
 	if c.Policy != nil {
 		v, err := p.policy(*c.Policy, at)
 		if err != nil {
@@ -478,8 +479,13 @@ func replay(j Journal) (projection, error) {
 			return p, ErrInvalid
 		}
 		ids[id] = true
-		expected, err := p.apply(j.ReceiverID, e.Command, e.At, i+1)
+		expected, err := p.apply(j.ReceiverID, e.Command, e.At, i+1, e.ResearchRequestMethod)
 		if err != nil || !reflect.DeepEqual(expected, e) {
+			return p, ErrInvalid
+		}
+		prefix := j
+		prefix.Entries = j.Entries[:i+1]
+		if validateResearchRequestSource(prefix, e) != nil {
 			return p, ErrInvalid
 		}
 	}
@@ -530,12 +536,19 @@ func Append(j Journal, c Command, now func() time.Time) (Journal, Receipt, error
 	if now == nil {
 		return Journal{}, Receipt{}, ErrInvalid
 	}
-	e, err := p.apply(j.ReceiverID, c, now(), len(j.Entries)+1)
+	method := ""
+	if c.Capture != nil && c.Capture.RequestResearch {
+		method = researchRequestSourceMethod
+	}
+	e, err := p.apply(j.ReceiverID, c, now(), len(j.Entries)+1, method)
 	if err != nil {
 		return Journal{}, Receipt{}, err
 	}
 	next := clone(j)
 	next.Entries = append(next.Entries, e)
+	if err := validateResearchRequestSource(next, e); err != nil {
+		return Journal{}, Receipt{}, err
+	}
 	raw, err := json.Marshal(next)
 	if err != nil || len(raw) > MaxJournalBytes {
 		return Journal{}, Receipt{}, ErrCapacity

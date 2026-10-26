@@ -784,3 +784,8 @@ A retained social post can explicitly request pending owner research with
 source and policy, deduplicates repeated normalized claims, and is retained
 atomically with the recording. It runs no worker/model and grants no dispatch,
 admission or financial authority. See [social research requests](docs/reference/owned-social-watches.md#explicit-owner-research-requests).
+
+Social research requests require current, causal source applicability at issuance,
+including the canonical source reused for deduplication. Invalid repost lineage
+is rejected atomically; historical receipts and exact retries remain immutable.
+See [owned social watches](docs/reference/owned-social-watches.md).

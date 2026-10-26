@@ -111,3 +111,122 @@ func TestResearchRequestGatesAndReplay(t *testing.T) {
 		t.Fatal("retry changed research opt-in", e)
 	}
 }
+
+func TestResearchRequestRequiresCurrentCausalSource(t *testing.T) {
+	for _, scenario := range []string{"evidence_class", "future_parent", "changed_ancestor", "deleted_ancestor", "edited_fault"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newApplicabilityFixture(t)
+			start := f.at
+			parent := testOriginal("parent", "post", 1, start)
+			cmd := testCapture("parent", "watch-a", f.policy.SHA256, parent)
+			if scenario == "evidence_class" || scenario == "edited_fault" {
+				cmd.EvidenceClass = "synthetic_unqualified"
+			}
+			f.append(Command{Capture: &cmd})
+			f.at = start.Add(time.Second)
+			child := testOriginal("child", "repost", 1, f.at)
+			child.RepostOf = &parent.Source
+			if scenario == "future_parent" {
+				child.OccurredAt = start.Add(-time.Second)
+			}
+			if scenario == "changed_ancestor" || scenario == "deleted_ancestor" || scenario == "edited_fault" {
+				f.capture("child", child)
+				f.at = start.Add(2 * time.Second)
+				if scenario == "edited_fault" {
+					child = testOriginal("child", "edit", 2, f.at)
+				} else {
+					edit := testOriginal("parent", "edit", 2, f.at)
+					if scenario == "deleted_ancestor" {
+						edit.Kind = "delete"
+						edit.Text = ""
+						edit.Symbols = []string{}
+					}
+					f.capture("parent-update", edit)
+					child = testOriginal("nested", "repost", 1, f.at)
+					child.RepostOf = &SourceRef{Provider: parent.Source.Provider, AccountID: parent.Source.AccountID, PostID: "child"}
+				}
+			}
+			c := testCapture("request", "watch-a", f.policy.SHA256, child)
+			c.RequestResearch = true
+			out, receipt, err := Append(f.j, Command{Capture: &c}, func() time.Time { return f.at })
+			if !errors.Is(err, ErrConflict) || !reflect.DeepEqual(out, Journal{}) || !reflect.DeepEqual(receipt, Receipt{}) {
+				t.Fatalf("inapplicable source queued: %+v %v", receipt, err)
+			}
+		})
+	}
+}
+
+func TestResearchRequestLegacyReplayAndCanonicalApplicability(t *testing.T) {
+	f := newApplicabilityFixture(t)
+	parent := testOriginal("parent", "post", 1, f.at)
+	c := testCapture("parent", "watch-a", f.policy.SHA256, parent)
+	c.EvidenceClass = "synthetic_unqualified"
+	f.append(Command{Capture: &c})
+	f.at = f.at.Add(time.Second)
+	child := testOriginal("child", "repost", 1, f.at)
+	child.RepostOf = &parent.Source
+	c = testCapture("legacy-request", "watch-a", f.policy.SHA256, child)
+	c.RequestResearch = true
+	// The original writer had no applicability method marker. Preserve that exact
+	// historical receipt, including its unsafe source, without creating new work.
+	p, err := replay(f.j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := p.apply(testOwner, Command{Capture: &c}, f.at, len(f.j.Entries)+1, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.j.Entries = append(f.j.Entries, e)
+	if _, err = Read(f.j); err != nil {
+		t.Fatal("legacy receipt no longer replayable", err)
+	}
+	if _, r, err := Append(f.j, Command{Capture: &c}, func() time.Time { panic("legacy retry clock") }); err != nil || !r.Duplicate || !reflect.DeepEqual(r.Entry, e) {
+		t.Fatal("legacy retry changed", err)
+	}
+	// A fresh direct source cannot recycle the invalid canonical request.
+	o := testOriginal("fresh", "post", 1, f.at)
+	fresh := testCapture("fresh", "watch-a", f.policy.SHA256, o)
+	fresh.RequestResearch = true
+	if _, _, err = Append(f.j, Command{Capture: &fresh}, func() time.Time { return f.at }); !errors.Is(err, ErrConflict) {
+		t.Fatal("invalid canonical source reused", err)
+	}
+	// Tagging a historical invalid receipt with the new method and rehashing it
+	// must not make it a valid source-bound issuance.
+	bad := clone(f.j)
+	last := &bad.Entries[len(bad.Entries)-1]
+	last.ResearchRequestMethod = researchRequestSourceMethod
+	last.SHA256 = ""
+	last.SHA256 = workerplan.Hash(*last)
+	if _, err = Read(bad); err == nil {
+		t.Fatal("forged applicability method accepted")
+	}
+}
+
+func TestResearchRequestCausalRepostAndImmutableRetry(t *testing.T) {
+	f := newApplicabilityFixture(t)
+	parent := testOriginal("parent", "post", 1, f.at)
+	f.capture("parent", parent)
+	f.at = f.at.Add(time.Second)
+	child := testOriginal("child", "repost", 1, f.at)
+	child.RepostOf = &parent.Source
+	f.capture("child", child)
+	f.at = f.at.Add(time.Second)
+	nested := testOriginal("nested", "repost", 1, f.at)
+	nested.RepostOf = &child.Source
+	c := testCapture("nested-request", "watch-a", f.policy.SHA256, nested)
+	c.RequestResearch = true
+	j, r, err := Append(f.j, Command{Capture: &c}, func() time.Time { return f.at })
+	if err != nil || r.Entry.ResearchRequestMethod != researchRequestSourceMethod || r.Entry.Capture.ResearchRequest == nil {
+		t.Fatal(r, err)
+	}
+	f.j = j
+	if _, err = Read(j); err != nil {
+		t.Fatal(err)
+	}
+	f.at = f.at.Add(time.Second)
+	f.capture("parent-edit", testOriginal("parent", "edit", 2, f.at))
+	if _, retry, err := Append(f.j, Command{Capture: &c}, func() time.Time { panic("source retry clock") }); err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Entry, r.Entry) {
+		t.Fatal("later edit changed immutable retry", err)
+	}
+}

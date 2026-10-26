@@ -60,6 +60,12 @@ func InspectApplicability(j Journal, id string, at time.Time) (Applicability, er
 	if err != nil {
 		return Applicability{}, err
 	}
+	return inspectApplicability(j, id, at, catalog.HeadSHA256)
+}
+
+// The caller has already validated every entry in this journal prefix. Keeping
+// this inspection separate avoids recursive journal replay during issuance.
+func inspectApplicability(j Journal, id string, at time.Time, head string) (Applicability, error) {
 	var selected *CaptureRecord
 	for _, e := range j.Entries {
 		if e.Capture != nil && e.Capture.Command.ID == id {
@@ -71,7 +77,7 @@ func InspectApplicability(j Journal, id string, at time.Time) (Applicability, er
 	if selected == nil {
 		return Applicability{}, ErrNotFound
 	}
-	out := Applicability{Schema: "mantik-social-source-applicability-v1", ReceiverID: j.ReceiverID, CaptureID: id, CaptureSHA256: selected.SHA256, HistorySHA256: catalog.HeadSHA256, AsOf: at.UTC(), EvidenceClass: selected.Command.EvidenceClass, Selected: sourceVersion(*selected), Lineage: []SourceVersion{}, Authority: "recorded_social_source_applicability_only"}
+	out := Applicability{Schema: "mantik-social-source-applicability-v1", ReceiverID: j.ReceiverID, CaptureID: id, CaptureSHA256: selected.SHA256, HistorySHA256: head, AsOf: at.UTC(), EvidenceClass: selected.Command.EvidenceClass, Selected: sourceVersion(*selected), Lineage: []SourceVersion{}, Authority: "recorded_social_source_applicability_only"}
 	finish := func(status string) (Applicability, error) {
 		out.Status = status
 		out.SHA256 = workerplan.Hash(out)

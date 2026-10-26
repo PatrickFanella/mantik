@@ -103,6 +103,41 @@ func socialResearchContracts(t *testing.T, s socialBackend) {
 			t.Fatal("reopen changed research", e)
 		}
 	}
+	// An invalid causal parent cannot queue research or partially retain a source.
+	parent, _ := c.Decode()
+	parent.Source.PostID = "synthetic-parent"
+	parent.Text = "different parent claim"
+	raw, _ = json.Marshal(parent)
+	parentCommand := c
+	parentCommand.ID = "synthetic-parent"
+	parentCommand.RequestResearch = false
+	parentCommand.EvidenceClass = "synthetic_unqualified"
+	parentCommand.Original = string(raw)
+	parentCommand.OriginalSHA256 = workerplan.Digest(raw)
+	if _, e := s.ApplySocialCommand(ctx, socialwatch.Command{Capture: &parentCommand}, now); e != nil {
+		t.Fatal(e)
+	}
+	child := parent
+	child.Source.PostID = "recorded-repost"
+	child.Kind = "repost"
+	child.RepostOf = &parent.Source
+	raw, _ = json.Marshal(child)
+	childCommand := c
+	childCommand.ID = "invalid-research-repost"
+	childCommand.Original = string(raw)
+	childCommand.OriginalSHA256 = workerplan.Digest(raw)
+	priorLineage, e := s.SocialHistory(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	rejected, e := s.ApplySocialCommand(ctx, socialwatch.Command{Capture: &childCommand}, now)
+	if e == nil || !reflect.DeepEqual(rejected, socialwatch.Receipt{}) {
+		t.Fatal("invalid causal source queued", rejected, e)
+	}
+	afterLineage, e := s.SocialHistory(ctx)
+	if e != nil || !reflect.DeepEqual(priorLineage, afterLineage) {
+		t.Fatal("failed source gate partially wrote journal", e)
+	}
 	// Disabling a watch cannot admit a new request. Prior requests remain facts.
 	policy.ID = "disable"
 	policy.PreviousSHA256 = registered.Entry.Policy.SHA256
@@ -144,13 +179,13 @@ func socialResearchMigration(t *testing.T, p *Postgres) {
 	if err := p.pool.QueryRow(ctx, query).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=67; COMMENT ON TABLE mantik_social_watch_journal IS 'schema66 social research fixture'; CREATE FUNCTION reject_social_research_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=67 THEN RAISE EXCEPTION 'social research migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_social_research_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_social_research_migration()`); err != nil {
+	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=68; COMMENT ON TABLE mantik_social_watch_journal IS 'schema67 social research fixture'; CREATE FUNCTION reject_social_research_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=68 THEN RAISE EXCEPTION 'social research migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_social_research_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_social_research_migration()`); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.migrate(ctx); err == nil {
 		t.Fatal("migration failure ignored")
 	}
-	if err := p.pool.QueryRow(ctx, "SELECT obj_description('mantik_social_watch_journal'::regclass)").Scan(&marker); err != nil || marker != "schema66 social research fixture" {
+	if err := p.pool.QueryRow(ctx, "SELECT obj_description('mantik_social_watch_journal'::regclass)").Scan(&marker); err != nil || marker != "schema67 social research fixture" {
 		t.Fatal("migration comment escaped rollback", marker, err)
 	}
 	if _, err := p.pool.Exec(ctx, "DROP TRIGGER reject_social_research_migration ON mantik_schema; DROP FUNCTION reject_social_research_migration()"); err != nil {
@@ -165,16 +200,16 @@ func socialResearchMigration(t *testing.T, p *Postgres) {
 	if err := p.pool.QueryRow(ctx, query).Scan(&after); err != nil || before != after {
 		t.Fatal("migration rewrote allocation payloads", err)
 	}
-	if err := p.pool.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=67").Scan(&hash); err != nil {
+	if err := p.pool.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=68").Scan(&hash); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256='damaged' WHERE version=67"); err != nil {
+	if _, err := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256='damaged' WHERE version=68"); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.migrate(ctx); err == nil {
 		t.Fatal("social research migration checksum corruption accepted")
 	}
-	if _, err := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256=$1 WHERE version=67", hash); err != nil {
+	if _, err := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256=$1 WHERE version=68", hash); err != nil {
 		t.Fatal(err)
 	}
 }

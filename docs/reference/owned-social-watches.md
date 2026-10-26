@@ -230,3 +230,20 @@ body lengths, transfer encodings and malformed IDs return 422. Missing captures
 and captures of the other manifest kind return 404; owner replay, receiver or
 storage failures return 503 without a partial source. An absent social owner has
 no recording route. Existing applicability reads retain their separate contract.
+
+New research-request entries also pin the owner method
+`owned-current-social-research-source-v1`. Before committing, the owner applies
+the existing source-applicability inspection at the actual retention time to
+both the selected recording and any canonical request reused by deduplication.
+A repost with a future parent, mismatched evidence class, deleted or changed
+ancestor, or inherited lineage fault cannot queue a request. A fresh observation
+cannot revive an inapplicable canonical request. Rejection retains neither the
+new capture nor a partial request.
+
+Schema 68 fences previous writers without rewriting retained payloads. Historical
+entries without the method marker retain their original replay semantics and
+clock-free exact retries. New marked entries are checked against their journal
+prefix during replay; later edits do not rewrite earlier issuance receipts.
+Current applicability must still be checked before any future research consumer
+uses the material. This method grants no dispatch, financial or qualification
+authority.
