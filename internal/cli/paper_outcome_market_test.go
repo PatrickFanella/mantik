@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func assertOutcomeMarketHTTP(t *testing.T, request func(string, string, any, int) []byte, url string, clock *ownedDecisionClock, outcome storage.PaperOutcomeRecord) service.PaperOutcomeMarketEvidence {
+func assertOutcomeMarketHTTP(t testing.TB, request func(string, string, any, int) []byte, url string, clock *ownedDecisionClock, outcome storage.PaperOutcomeRecord) service.PaperOutcomeMarketEvidence {
 	t.Helper()
 	path := "/v1/paper-outcomes/" + outcome.Command.ID + "/market-evidence"
 	clock.panicRead = true

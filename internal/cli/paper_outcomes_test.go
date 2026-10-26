@@ -39,7 +39,7 @@ func (s *interleavedOutcomeWorkerStore) AssessPaperOutcome(ctx context.Context, 
 }
 
 func TestOwnedPaperOutcomeHTTP(t *testing.T) { ownedPaperOutcomeHTTP(t, storage.NewMemory()) }
-func ownedPaperOutcomeHTTP(t *testing.T, s ownedDecisionHTTPBackend) service.PaperOutcomeMarketEvidence {
+func ownedPaperOutcomeHTTP(t testing.TB, s ownedDecisionHTTPBackend) service.PaperOutcomeMarketEvidence {
 	ctx := context.Background()
 	clock := &ownedDecisionClock{at: time.Date(2026, 10, 21, 14, 0, 0, 0, time.UTC)}
 	server := httptest.NewServer(service.HandlerWithClock(s, "owned-decision-token", clock))
@@ -443,5 +443,23 @@ func TestPostgresContractsOwnedPaperOutcomeHTTP(t *testing.T) {
 	var got service.PaperOutcomeMarketEvidence
 	if e = json.NewDecoder(response.Body).Decode(&got); e != nil || response.StatusCode != 200 || !reflect.DeepEqual(got, expected) {
 		t.Fatal("restart changed outcome market evidence", got, e)
+	}
+}
+
+// The capacity fixture retains many byte-equal observation bases. Measure the
+// actual authenticated catalogue handler after the complete lifecycle setup.
+func BenchmarkOwnedPaperOutcomeCatalogueHTTP(b *testing.B) {
+	m := storage.NewMemory()
+	ownedPaperOutcomeHTTP(b, m)
+	handler := service.HandlerWithClock(m, "benchmark-token", &ownedDecisionClock{panicRead: true})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		request := httptest.NewRequest("GET", "/v1/paper-outcomes", nil)
+		request.Header.Set("Authorization", "Bearer benchmark-token")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != 200 {
+			b.Fatal(response.Code, response.Body.String())
+		}
 	}
 }
