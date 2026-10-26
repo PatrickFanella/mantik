@@ -212,6 +212,19 @@ func ownedPaperOutcomeHTTP(t testing.TB, s ownedDecisionHTTPBackend) service.Pap
 		t.Fatal(observed)
 	}
 	market := assertOutcomeMarketHTTP(t, request, server.URL, clock, observed.Record)
+	if test, ok := t.(*testing.T); ok {
+		clock.panicRead = true
+		before := request("GET", "/v1/paper-outcomes", nil, 200)
+		supervisionOwnedInspections(test, request, server.URL, owner, []supervisionInspection{
+			{"outcome", observed.Record.Command.ID, "/v1/paper-outcomes/" + observed.Record.Command.ID},
+			{"outcome_market_evidence", observed.Record.Command.ID, "/v1/paper-outcomes/" + observed.Record.Command.ID + "/market-evidence"},
+		})
+		if !bytes.Equal(before, request("GET", "/v1/paper-outcomes", nil, 200)) {
+			t.Fatal("inspection mutated outcome history")
+		}
+		clock.panicRead = false
+	}
+
 	// A later missing capture does not rewrite an earlier timely observation.
 	clock.at = clock.at.Add(time.Second)
 	bad := quote("unusable", "102")

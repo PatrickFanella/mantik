@@ -801,3 +801,11 @@ ID/hash research selector. The owner records a separate versioned pending copy
 research request, rejects stale, superseded, terminal or reversed activity, and
 preserves the original capture. Source mapping and quantity claims remain
 unverified; this does not activate copy following, dispatch or financial effects.
+
+
+Typed supervision can inspect retained outcomes, their market evidence, evaluation
+declarations and evaluation assessments through `inspect_record`. These selectors
+return the existing owner readbacks, preserving the distinction between quote
+observations, planned checks and retained assessment results. They accept no
+replacement evidence or financial instructions. See the
+[supervision tool contract](docs/reference/supervision-tools.md).

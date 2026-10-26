@@ -18,7 +18,7 @@ unavailable write owners return 422 before dispatch.
 
 | Tool | Arguments | Owner |
 | --- | --- | --- |
-| `inspect_record` | `kind` and `id`; kinds `decision`, `decision_explanation`, `decision_market_evidence`, `decision_attribution`, `allocation_comparison`, `admission_review`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_record`, `copy_record`, `social_research_request`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
+| `inspect_record` | `kind` and `id`; kinds `outcome`, `outcome_market_evidence`, `evaluation_declaration`, `evaluation_assessment`, `decision`, `decision_explanation`, `decision_market_evidence`, `decision_attribution`, `allocation_comparison`, `admission_review`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_record`, `copy_record`, `social_research_request`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
 | `request_social_research` | `id`, `receiver_id`, `capture_id`, `capture_sha256`; exact retained source, current research watch | `POST /v1/social-research-requests`; pending request only |
 | `request_research` | `receiver_id`, `request_id`, `case_id`, `version`, optional `type_id` | `POST /v1/news-reviews` |
 | `change_watch_policy` | Existing policy command: `id`, `receiver_id`, optional `previous_sha256`, `policy` | `POST /v1/social-watches` |
@@ -222,3 +222,27 @@ reads the returned canonical request ID. The tool is available only when the
 social journal owner is available; it uses the same authentication, idempotence
 and atomic commit path as the direct API. Model generation is not required to
 invoke or verify this typed tool.
+
+
+`inspect_record` also selects retained observation and evaluation records through
+these fixed owner GET routes:
+
+| Kind | Owner route |
+| --- | --- |
+| `outcome` | `/v1/paper-outcomes/{id}` |
+| `outcome_market_evidence` | `/v1/paper-outcomes/{id}/market-evidence` |
+| `evaluation_declaration` | `/v1/paper-evaluation-declarations/{id}` |
+| `evaluation_assessment` | `/v1/paper-evaluation-assessments/{id}` |
+
+Each selector accepts only `kind` and a record ID. These reads use the existing
+authentication, bounded owner replay and retained record clocks. Caller-supplied
+cutoffs, replacement quotes, assessments, admissions, balances and effects are
+rejected. Missing records or absent owners return 404; unavailable owners retain
+503. The MCP schema lists these kinds with the same read-only annotations.
+
+An outcome is a forward quote observation, not a fill or realized PnL. Its market
+evidence preserves original capture, publication and admission identities without
+verifying share quantities. A declaration is an operator plan, and an assessment
+retains pending, failed or incomplete checks; inspecting either cannot complete
+a recipe or grant admission, execution or qualification. Inspection invokes no
+model or provider and does not create or update owner records.

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -123,6 +124,16 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 		t.Fatal(assessments, err)
 	}
 	request("GET", "/v1/paper-evaluation-assessments/"+assessmentCommand.ID, nil, 200)
+	beforePlans := request("GET", "/v1/paper-evaluation-declarations", nil, 200)
+	beforeAssessments := request("GET", "/v1/paper-evaluation-assessments", nil, 200)
+	supervisionOwnedInspections(t, request, serverURL, c.ReceiverID, []supervisionInspection{
+		{"evaluation_declaration", c.ID, "/v1/paper-evaluation-declarations/" + c.ID},
+		{"evaluation_assessment", assessmentCommand.ID, "/v1/paper-evaluation-assessments/" + assessmentCommand.ID},
+	})
+	if !bytes.Equal(beforePlans, request("GET", "/v1/paper-evaluation-declarations", nil, 200)) || !bytes.Equal(beforeAssessments, request("GET", "/v1/paper-evaluation-assessments", nil, 200)) {
+		t.Fatal("inspection mutated evaluation owners")
+	}
+
 	request("GET", "/v1/paper-evaluation-assessments/missing", nil, 404)
 	for _, path := range []string{"/v1/paper-evaluation-assessments?", "/v1/paper-evaluation-assessments?at=future", "/v1/paper-evaluation-assessments/invalid.id"} {
 		request("GET", path, nil, 422)
