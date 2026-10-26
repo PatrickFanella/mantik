@@ -809,3 +809,11 @@ return the existing owner readbacks, preserving the distinction between quote
 observations, planned checks and retained assessment results. They accept no
 replacement evidence or financial instructions. See the
 [supervision tool contract](docs/reference/supervision-tools.md).
+
+
+`serve --automatic-paper-evaluations` optionally retains the existing necessary
+checks once a predeclared outcome deadline has closed. It uses stable owner
+identities, live write clocks and atomic assessment storage; failed or incomplete
+checks stay failed or incomplete. The worker is disabled by default, invokes no
+provider/model, and grants no admission, execution or qualification. See
+[automatic necessary-check assessments](docs/reference/paper-evaluation-assessments.md#automatic-necessary-check-assessments).

@@ -220,3 +220,48 @@ issuer is activated.
 outcomes in a service-owned reassessment chain. They grant no admission,
 execution or qualification authority and do not turn blocked assessments into
 retirement events.
+
+
+## Automatic necessary-check assessments
+
+`mantik serve --automatic-paper-evaluations` opts the service into retaining the
+existing native necessary-check assessment after a declaration's outcome
+deadline. It is disabled by default and independent of
+`--automatic-paper-outcomes`. Enabling one worker does not enable the other.
+This worker neither collects market data nor invokes a model or provider.
+
+A cycle reads the actual declaration owner and waits strictly past the inclusive
+outcome deadline. It then selects the declaration ID and hash through the same
+atomic assessment owner used by manual requests. The owner samples the live
+issuance clock; a rollback before the cycle cut or deadline is rejected without
+occupying the automatic identity. Current owner sources are replayed inside the
+write, while earlier committed assessments remain immutable.
+
+The reserved ID is `automatic-evaluation-` followed by the hash of the compiled
+`native-predeclared-necessary-checks-v4` recipe and declaration hash. Public
+assessment POSTs reject that prefix. A committed retry reuses the same record
+without sampling a new owner issuance clock. Concurrent cycles cannot create
+multiple records, and a lost acknowledgement can be reconciled by reading that
+ID and retrying the same owner selection. If an earlier internal producer has
+occupied the ID with a pending or differently bound receipt, the worker reports
+a conflict and preserves it; it does not overwrite it or treat it as final.
+
+The retained result is still `blocked` or `incomplete`. Necessary sample or known
+leakage failures remain failures; unavailable economic, independence and other
+recipe components remain unavailable. `evaluation_complete`,
+`admission_available`, `execution_available` and `qualification_credit` remain
+false. This is automatic retention of the existing necessary checks, not a
+complete evaluation recipe, positive admission, retirement or economic effect.
+
+The worker runs immediately on startup and every 30 seconds. Each cycle has a
+20-second bound and commits each assessment independently. A source-specific
+failure or reserved-ID collision does not prevent later independent declarations
+from being attempted. The cycle returns aggregated scoped errors and remains
+unhealthy if any failed, while preserving successful commits. Cancellation or a
+global declaration-owner failure stops the cycle. Service shutdown cancels the
+worker.
+Capability `paper_evaluation_assessment` records cycle health, failures, recovery
+and stop state separately from outcome collection and protective monitoring.
+Its readiness means the worker cycle is available, not that a strategy or
+assessment is qualified. Existing fixture-operation readiness does not depend on
+this optional worker.

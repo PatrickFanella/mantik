@@ -251,9 +251,10 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest, feedPolicyPath string
-	var exportDataset, automaticOutcomes bool
+	var exportDataset, automaticOutcomes, automaticEvaluations bool
 	switch args[0] {
 	case "serve":
+		fs.BoolVar(&automaticEvaluations, "automatic-paper-evaluations", false, "automatically retain post-deadline necessary-check assessments; no admission authority")
 		fs.BoolVar(&automaticOutcomes, "automatic-paper-outcomes", false, "automatically retain sealed forward quote outcomes; no admission authority")
 		fs.StringVar(&feedPolicyPath, "feed-readiness-policy", "", "optional receiver-bound feed readiness policy JSON file")
 		fs.StringVar(&listen, "listen", "127.0.0.1:40880", "listen address; non-loopback requires MANTIK_API_TOKEN")
@@ -282,7 +283,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	if args[0] == "serve" {
-		return serve(ctx, listen, feedPolicyPath, automaticOutcomes)
+		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations)
 	}
 	if args[0] == "replay" {
 		if exportDataset {
@@ -404,7 +405,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	return nil
 }
 
-func serve(ctx context.Context, listen, policyPath string, automaticOutcomes bool) error {
+func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations bool) error {
 	var policy *service.FeedReadinessPolicy
 	if policyPath != "" {
 		file, err := os.Open(policyPath)
@@ -481,7 +482,16 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes boo
 	} else {
 		close(outcomeDone)
 	}
-	defer func() { stopWorker(); <-workerDone; <-actionDone; <-outcomeDone }()
+	evaluationDone := make(chan struct{})
+	if automaticEvaluations {
+		go func() {
+			defer close(evaluationDone)
+			service.RunPaperEvaluationWorker(workerCtx, store, workerID+"-evaluations", service.WallClock{})
+		}()
+	} else {
+		close(evaluationDone)
+	}
+	defer func() { stopWorker(); <-workerDone; <-actionDone; <-outcomeDone; <-evaluationDone }()
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	finished := make(chan error, 1)
 	go func() { finished <- server.Serve(listener) }()

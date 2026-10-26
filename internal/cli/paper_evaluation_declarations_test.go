@@ -10,13 +10,16 @@ import (
 	"testing"
 	"time"
 
+	"errors"
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
+	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
+	"sync"
 )
 
-func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, any, int) []byte, serverURL string, clock *ownedDecisionClock, strategy paperstrategy.Record, policy allocation.PolicyRecord) {
+func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, any, int) []byte, serverURL string, clock *ownedDecisionClock, strategy paperstrategy.Record, policy allocation.PolicyRecord, backend service.PaperEvaluationWorkerStore) {
 	t.Helper()
 	model := *policy.Command.ExecutionModel
 	model.FeeBPS++
@@ -230,4 +233,163 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 			t.Fatal(response.StatusCode)
 		}
 	}
+	automaticPaperEvaluationHTTP(t, request, serverURL, clock, receipt.Record, assessment.Record, backend)
+
+}
+
+type interleavedEvaluationStore struct {
+	service.PaperEvaluationWorkerStore
+	once       sync.Once
+	before     func()
+	afterError error
+}
+
+func (s *interleavedEvaluationStore) AssessPaperEvaluation(ctx context.Context, c storage.PaperEvaluationAssessmentCommand, now func() time.Time, de storage.PaperDecisionEvaluator, oe storage.PaperOutcomeEvaluator) (storage.PaperEvaluationAssessmentReceipt, error) {
+	s.once.Do(s.before)
+	receipt, err := s.PaperEvaluationWorkerStore.AssessPaperEvaluation(ctx, c, now, de, oe)
+	if err == nil && s.afterError != nil {
+		return storage.PaperEvaluationAssessmentReceipt{}, s.afterError
+	}
+	return receipt, err
+}
+
+// Uses the actual service-selected owner and live transaction clock; no imported
+// check results, market sizes, financial effects, models or providers are used.
+func automaticPaperEvaluationHTTP(t *testing.T, request func(string, string, any, int) []byte, base string, clock *ownedDecisionClock, d storage.PaperEvaluationDeclaration, pending storage.PaperEvaluationAssessment, backend service.PaperEvaluationWorkerStore) {
+	t.Helper()
+	ctx := context.Background()
+	before := request("GET", "/v1/paper-evaluation-assessments", nil, 200)
+	clock.at = d.Command.Plan.OutcomeDeadline
+	if err := service.RunPaperEvaluationCycle(ctx, backend, clock); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, request("GET", "/v1/paper-evaluation-assessments", nil, 200)) {
+		t.Fatal("sealed at inclusive deadline")
+	}
+	command := storage.PaperEvaluationAssessmentCommand{ID: service.AutomaticPaperEvaluationID(d), ReceiverID: d.Command.ReceiverID, DeclarationID: d.Command.ID, DeclarationSHA256: d.SHA256}
+	clock.panicRead = true
+	request("POST", "/v1/paper-evaluation-assessments", command, 422)
+	clock.panicRead = false
+	clock.at = d.Command.Plan.OutcomeDeadline.Add(time.Nanosecond)
+	rollback := &interleavedEvaluationStore{PaperEvaluationWorkerStore: backend, before: func() { clock.at = d.Command.Plan.OutcomeDeadline }}
+	if err := service.RunPaperEvaluationCycle(ctx, rollback, clock); !errors.Is(err, storage.ErrPaperEvaluationAssessmentInvalid) {
+		t.Fatal("rollback occupied automatic identity", err)
+	}
+	if !bytes.Equal(before, request("GET", "/v1/paper-evaluation-assessments", nil, 200)) {
+		t.Fatal("rollback retained a partial assessment")
+	}
+	clock.at = d.Command.Plan.OutcomeDeadline.Add(time.Nanosecond)
+	lostAck := errors.New("fixture acknowledgement lost after actual commit")
+	live := &interleavedEvaluationStore{PaperEvaluationWorkerStore: backend, before: func() { clock.at = clock.at.Add(time.Second) }, afterError: lostAck}
+	if err := service.RunPaperEvaluationCycle(ctx, live, clock); !errors.Is(err, lostAck) {
+		t.Fatal(err)
+	}
+	var sealed storage.PaperEvaluationAssessment
+	if e := json.Unmarshal(request("GET", "/v1/paper-evaluation-assessments/"+command.ID, nil, 200), &sealed); e != nil || !sealed.AssessedAt.Equal(clock.at) || sealed.Status != "blocked" || sealed.Evidence.Phase != "outcome_deadline_elapsed" || sealed.EvaluationComplete || sealed.AdmissionAvailable || sealed.ExecutionAvailable || sealed.QualificationCredit {
+		t.Fatal(sealed, e)
+	}
+	found := false
+	for _, c := range sealed.Checks {
+		if c.Name == "sample_sufficiency" && c.Status == "failed" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("necessary sample failure erased", sealed.Checks)
+	}
+	// Retries may read the cycle clock, never the owner's new-issuance clock.
+	onceClock := &oneEvaluationClock{at: clock.at}
+	if err := service.RunPaperEvaluationCycle(ctx, backend, onceClock); err != nil || onceClock.calls != 1 {
+		t.Fatal("retry sampled issuance clock", err, onceClock.calls)
+	}
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			if e := service.RunPaperEvaluationCycle(ctx, backend, clock); e != nil {
+				t.Error(e)
+			}
+		})
+	}
+	wg.Wait()
+	var history storage.PaperEvaluationAssessmentCatalog
+	if e := json.Unmarshal(request("GET", "/v1/paper-evaluation-assessments", nil, 200), &history); e != nil || len(history.Records) != 2 {
+		t.Fatal("automatic cycles duplicated assessments", history, e)
+	}
+	var old storage.PaperEvaluationAssessment
+	if e := json.Unmarshal(request("GET", "/v1/paper-evaluation-assessments/"+pending.Command.ID, nil, 200), &old); e != nil || !reflect.DeepEqual(old, pending) {
+		t.Fatal("old assessment rewritten", e)
+	}
+	clock.panicRead = true
+	supervisionOwnedInspections(t, request, base, d.Command.ReceiverID, []supervisionInspection{{"evaluation_assessment", command.ID, "/v1/paper-evaluation-assessments/" + command.ID}})
+	clock.panicRead = false
+	// A prior internal producer can have occupied a reserved identity. Keep that
+	// pending receipt and surface the collision; never overwrite or treat it as final.
+	clock.at = clock.at.Add(time.Nanosecond)
+	collision := d.Command
+	collision.ID = "automatic-collision-declaration"
+	collision.Plan.FamilyID = "automatic-collision-family"
+	collision.Plan.WindowStart = clock.at.Add(time.Hour)
+	collision.Plan.WindowEnd = clock.at.Add(2 * time.Hour)
+	collision.Plan.OutcomeDeadline = clock.at.Add(26 * time.Hour)
+	var declared storage.PaperEvaluationDeclarationReceipt
+	if e := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", collision, 201), &declared); e != nil {
+		t.Fatal(e)
+	}
+	// A collision in the first sorted declaration cannot starve a later owner.
+	sibling := collision
+	sibling.ID = "z-independent-declaration"
+	sibling.Plan.FamilyID = "z-independent-family"
+	clock.at = clock.at.Add(time.Nanosecond)
+	var independent storage.PaperEvaluationDeclarationReceipt
+	if e := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", sibling, 201), &independent); e != nil {
+		t.Fatal(e)
+	}
+	clock.at = collision.Plan.OutcomeDeadline.Add(time.Nanosecond)
+	poisoned := &earlyEvaluationStore{PaperEvaluationWorkerStore: backend, at: collision.Plan.OutcomeDeadline.Add(-time.Nanosecond), declarationID: collision.ID}
+	if e := service.RunPaperEvaluationCycle(ctx, poisoned, clock); !errors.Is(e, storage.ErrPaperEvaluationAssessmentConflict) {
+		t.Fatal("early canonical receipt accepted", e)
+	}
+	independentPath := "/v1/paper-evaluation-assessments/" + service.AutomaticPaperEvaluationID(independent.Record)
+	independentBefore := request("GET", independentPath, nil, 200)
+	var independentResult storage.PaperEvaluationAssessment
+	if e := json.Unmarshal(independentBefore, &independentResult); e != nil || independentResult.Status != "blocked" || !independentResult.AssessedAt.After(sibling.Plan.OutcomeDeadline) || independentResult.EvaluationComplete || independentResult.AdmissionAvailable || independentResult.ExecutionAvailable || independentResult.QualificationCredit {
+		t.Fatal("collision starved independent declaration", independentResult, e)
+	}
+	if e := service.RunPaperEvaluationCycle(ctx, backend, clock); !errors.Is(e, storage.ErrPaperEvaluationAssessmentConflict) {
+		t.Fatal("collision silently replaced", e)
+	}
+	if !bytes.Equal(independentBefore, request("GET", independentPath, nil, 200)) {
+		t.Fatal("independent automatic retry changed receipt")
+	}
+	var retained storage.PaperEvaluationAssessment
+	if e := json.Unmarshal(request("GET", "/v1/paper-evaluation-assessments/"+service.AutomaticPaperEvaluationID(declared.Record), nil, 200), &retained); e != nil || retained.Status != "pending" {
+		t.Fatal("collision evidence overwritten", retained, e)
+	}
+}
+
+type oneEvaluationClock struct {
+	at    time.Time
+	calls int
+}
+
+func (c *oneEvaluationClock) Now() time.Time {
+	c.calls++
+	if c.calls > 1 {
+		panic("retry sampled owner issuance clock")
+	}
+	return c.at
+}
+func (c *oneEvaluationClock) Wait(ctx context.Context, _ time.Duration) error { return ctx.Err() }
+
+type earlyEvaluationStore struct {
+	service.PaperEvaluationWorkerStore
+	at            time.Time
+	declarationID string
+}
+
+func (s *earlyEvaluationStore) AssessPaperEvaluation(ctx context.Context, c storage.PaperEvaluationAssessmentCommand, now func() time.Time, de storage.PaperDecisionEvaluator, oe storage.PaperOutcomeEvaluator) (storage.PaperEvaluationAssessmentReceipt, error) {
+	if c.DeclarationID == s.declarationID {
+		now = func() time.Time { return s.at }
+	}
+	return s.PaperEvaluationWorkerStore.AssessPaperEvaluation(ctx, c, now, de, oe)
 }
