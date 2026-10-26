@@ -240,3 +240,11 @@ same owner-selected source snapshot and declared base/stress models. Its
 versioned application method derives holding clocks from modeled fills, seals
 partial entries and retains unclosed exposure at the actual source cut. It does
 not amend this plan's deadline or supply a passing economic assessment.
+
+## Finite-capital counterfactual replay
+
+The [capital replay read](paper-evaluation-capital-replay.md) applies the actual
+owner account and declared policy's finite budgets to canonical candidates,
+then reruns only funded candidates through protection. Its versioned study
+method does not reuse cash within the window. Reconciled model cash and a nominal
+cash comparison do not complete portfolio evaluation or grant admission.

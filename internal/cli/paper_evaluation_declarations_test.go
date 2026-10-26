@@ -115,6 +115,29 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	if denied.StatusCode != 401 {
 		t.Fatal(denied.StatusCode)
 	}
+
+	capitalPath := "/v1/paper-evaluation-declarations/" + c.ID + "/capital-replay"
+	var capital service.PaperEvaluationCapitalReplay
+	if err := json.Unmarshal(request("GET", capitalPath, nil, 200), &capital); err != nil || capital.EntryEvidence.Evidence.SHA256 != evidence.SHA256 || capital.AccountSHA256 != policy.Account.SHA256 || capital.OpeningCashCents != policy.Account.Config.OpeningCashCents || len(capital.Variants) != 1 || capital.Variants[0].Status != "no_selected_decisions" || capital.PortfolioEvaluationComplete || capital.AdmissionAvailable || capital.ExecutionAvailable || capital.QualificationCredit {
+		t.Fatal("HTTP finite capital replay", capital, err)
+	}
+	capitalPin := capital.SHA256
+	capital.SHA256 = ""
+	if workerplan.Hash(capital) != capitalPin {
+		t.Fatal("capital replay digest")
+	}
+	request("GET", capitalPath+"?cash=caller", nil, 422)
+	request("GET", capitalPath, map[string]any{"admission": true, "snapshot": map[string]any{}}, 422)
+	request("POST", capitalPath, nil, 405)
+	request("GET", "/v1/paper-evaluation-declarations/missing/capital-replay", nil, 404)
+	noCapital, e := http.Get(serverURL + capitalPath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	noCapital.Body.Close()
+	if noCapital.StatusCode != 401 {
+		t.Fatal(noCapital.StatusCode)
+	}
 	// The current evidence projection samples the service clock; the adapter must
 	// preserve that owner's cutoff and complete response without retaining a new
 	// assessment or accepting caller evidence/results.
