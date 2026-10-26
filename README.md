@@ -684,6 +684,13 @@ context retained by v6-v9 allocation comparisons. Captured plan pins remain
 traceability without evaluation, admission, execution or qualification authority.
 See [paper attribution](docs/reference/paper-attribution.md).
 
+[Predeclared entry replay](docs/reference/paper-evaluation-entry-replay.md)
+binds canonical retained decisions, actual historical outcome sources and declared
+base/stress models in one owner snapshot. Each variant shares occurrence liquidity
+among its entry orders. This bounded read reports entry counterfactuals and explicit
+source gaps; exits, portfolio economics, admission and durable effects remain
+unavailable.
+
 [Owned paper evaluation assessments](docs/reference/paper-evaluation-assessments.md)
 retain service-derived pending, failed and incomplete checks against actual
 predeclared owner evidence. They grant no admission, execution or qualification.
