@@ -698,6 +698,13 @@ liquidity. Missing post-trigger observations and short source cuts leave exposur
 unclosed. These unfunded counterfactuals do not complete portfolio economics,
 admission or durable financial execution.
 
+[Finite-capital counterfactual replay](docs/reference/paper-evaluation-capital-replay.md)
+applies actual opening cash and policy budgets before replay, including modeled
+exit-fee shortfalls. Unfunded candidates cannot consume fill liquidity; cash,
+partial cost basis and realized net reconcile. This no-reinvestment study keeps
+marked equity, drawdown, passive benchmarking and completed evaluation unavailable,
+and does not write operational capital or admissions.
+
 [Owned paper evaluation assessments](docs/reference/paper-evaluation-assessments.md)
 retain service-derived pending, failed and incomplete checks against actual
 predeclared owner evidence. They grant no admission, execution or qualification.
