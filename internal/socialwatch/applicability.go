@@ -98,6 +98,9 @@ func inspectApplicability(j Journal, id string, at time.Time, head string) (Appl
 			policies[e.Policy.Command.Policy.ID] = *e.Policy
 			continue
 		}
+		if e.Capture == nil {
+			continue
+		}
 		c := *e.Capture
 		if !c.SourceAccepted {
 			continue

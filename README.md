@@ -785,6 +785,11 @@ source and policy, deduplicates repeated normalized claims, and is retained
 atomically with the recording. It runs no worker/model and grants no dispatch,
 admission or financial authority. See [social research requests](docs/reference/owned-social-watches.md#explicit-owner-research-requests).
 
+Already-retained social material can be selected with the typed
+`request_social_research` tool or `POST /v1/social-research-requests`, using the
+capture ID and exact receipt hash. The owner checks current source/policy
+applicability and retains a pending request without rewriting the source.
+
 Social research requests require current, causal source applicability at issuance,
 including the canonical source reused for deduplication. Invalid repost lineage
 is rejected atomically; historical receipts and exact retries remain immutable.

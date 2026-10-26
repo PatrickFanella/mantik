@@ -103,6 +103,7 @@ func socialResearchContracts(t *testing.T, s socialBackend) {
 			t.Fatal("reopen changed research", e)
 		}
 	}
+	retainedSocialResearchContracts(t, s, initial.ReceiverID, registered.Entry.Policy.SHA256, at)
 	// An invalid causal parent cannot queue research or partially retain a source.
 	parent, _ := c.Decode()
 	parent.Source.PostID = "synthetic-parent"
@@ -179,13 +180,13 @@ func socialResearchMigration(t *testing.T, p *Postgres) {
 	if err := p.pool.QueryRow(ctx, query).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=68; COMMENT ON TABLE mantik_social_watch_journal IS 'schema67 social research fixture'; CREATE FUNCTION reject_social_research_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=68 THEN RAISE EXCEPTION 'social research migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_social_research_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_social_research_migration()`); err != nil {
+	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=69; COMMENT ON TABLE mantik_social_watch_journal IS 'schema68 social research fixture'; CREATE FUNCTION reject_social_research_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=69 THEN RAISE EXCEPTION 'social research migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_social_research_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_social_research_migration()`); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.migrate(ctx); err == nil {
 		t.Fatal("migration failure ignored")
 	}
-	if err := p.pool.QueryRow(ctx, "SELECT obj_description('mantik_social_watch_journal'::regclass)").Scan(&marker); err != nil || marker != "schema67 social research fixture" {
+	if err := p.pool.QueryRow(ctx, "SELECT obj_description('mantik_social_watch_journal'::regclass)").Scan(&marker); err != nil || marker != "schema68 social research fixture" {
 		t.Fatal("migration comment escaped rollback", marker, err)
 	}
 	if _, err := p.pool.Exec(ctx, "DROP TRIGGER reject_social_research_migration ON mantik_schema; DROP FUNCTION reject_social_research_migration()"); err != nil {
@@ -200,16 +201,70 @@ func socialResearchMigration(t *testing.T, p *Postgres) {
 	if err := p.pool.QueryRow(ctx, query).Scan(&after); err != nil || before != after {
 		t.Fatal("migration rewrote allocation payloads", err)
 	}
-	if err := p.pool.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=68").Scan(&hash); err != nil {
+	if err := p.pool.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=69").Scan(&hash); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256='damaged' WHERE version=68"); err != nil {
+	if _, err := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256='damaged' WHERE version=69"); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.migrate(ctx); err == nil {
 		t.Fatal("social research migration checksum corruption accepted")
 	}
-	if _, err := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256=$1 WHERE version=68", hash); err != nil {
+	if _, err := p.pool.Exec(ctx, "UPDATE mantik_schema SET sha256=$1 WHERE version=69", hash); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func retainedSocialResearchContracts(t *testing.T, s socialBackend, owner, policy string, at time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	now := func() time.Time { return at }
+	capture := socialCapture(owner, policy, at)
+	capture.ID = "retained-selection-source"
+	original, _ := capture.Decode()
+	original.Source.PostID = "retained-selection-source"
+	original.Text = "Independent retained research selection"
+	raw, _ := json.Marshal(original)
+	capture.Original = string(raw)
+	capture.OriginalSHA256 = workerplan.Digest(raw)
+	source, err := s.ApplySocialCommand(ctx, socialwatch.Command{Capture: &capture}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := socialwatch.ResearchCommand{ID: "retained-selection", ReceiverID: owner, CaptureID: capture.ID, CaptureSHA256: source.Entry.Capture.SHA256}
+	var calls atomic.Int32
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			if _, e := s.ApplySocialCommand(ctx, socialwatch.Command{Research: &c}, func() time.Time { calls.Add(1); return at }); e != nil {
+				t.Error(e)
+			}
+		})
+	}
+	wg.Wait()
+	if calls.Load() != 1 {
+		t.Fatal("concurrent selected research issued twice", calls.Load())
+	}
+	receipt, err := s.ApplySocialCommand(ctx, socialwatch.Command{Research: &c}, func() time.Time { panic("selected research retry clock") })
+	if err != nil || !receipt.Duplicate || receipt.Entry.Research == nil || receipt.Entry.Research.ResearchRequestDuplicate || receipt.Entry.Research.Request.CaptureID != capture.ID {
+		t.Fatal(receipt, err)
+	}
+	history, err := s.SocialHistory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(history.History[len(history.History)-2], source.Entry) {
+		t.Fatal("selection rewrote retained source")
+	}
+	if pg, ok := s.(*Postgres); ok {
+		reopened, e := OpenPostgres(ctx, pg.pool.Config().ConnString())
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer reopened.Close()
+		actual, e := reopened.SocialHistory(ctx)
+		if e != nil || !reflect.DeepEqual(actual, history) {
+			t.Fatal("selection not durable across reopen", e)
+		}
 	}
 }

@@ -91,9 +91,18 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	}
 	original := socialwatch.Original{Schema: "mantik-social-recording-v1", Source: socialwatch.SourceRef{Provider: "recorded", AccountID: "recovery-research-source", PostID: "post"}, Revision: 1, Kind: "post", OccurredAt: researchAt, ObservedAt: researchAt, Text: "SPY recovery research source", Symbols: []string{"SPY"}}
 	raw, _ := json.Marshal(original)
-	capture := socialwatch.CaptureCommand{ID: "recovery-research-recording", ReceiverID: history.ReceiverID, WatchID: watch.Policy.ID, PolicySHA256: registered.Entry.Policy.SHA256, EvidenceClass: "recorded_social_unqualified", Original: string(raw), OriginalSHA256: workerplan.Digest(raw), RequestResearch: true}
+	capture := socialwatch.CaptureCommand{ID: "recovery-research-recording", ReceiverID: history.ReceiverID, WatchID: watch.Policy.ID, PolicySHA256: registered.Entry.Policy.SHA256, EvidenceClass: "recorded_social_unqualified", Original: string(raw), OriginalSHA256: workerplan.Digest(raw), RequestResearch: false}
 	if _, err = s.ApplySocialCommand(ctx, socialwatch.Command{Capture: &capture}, researchClock); err != nil {
 		t.Fatal(err)
+	}
+	historyForSelection, e := s.SocialHistory(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	sourceForSelection := historyForSelection.History[len(historyForSelection.History)-1].Capture
+	selected := socialwatch.ResearchCommand{ID: "recovery-social-selection", ReceiverID: history.ReceiverID, CaptureID: capture.ID, CaptureSHA256: sourceForSelection.SHA256}
+	if _, e = s.ApplySocialCommand(ctx, socialwatch.Command{Research: &selected}, researchClock); e != nil {
+		t.Fatal(e)
 	}
 	if got, err := s.SocialHistory(ctx); err != nil || len(got.ResearchRequests) != 1 {
 		t.Fatal("research recovery seed", got, err)

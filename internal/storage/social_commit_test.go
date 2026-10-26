@@ -39,11 +39,20 @@ func TestPostgresContractsSocialCommitAcknowledgements(t *testing.T) {
 	}
 	commands := []socialwatch.Command{{Policy: &policy}}
 	var retries []operation
-	for _, kind := range []string{"watch_policy", "social_capture", "copy_capture"} {
+	for _, kind := range []string{"watch_policy", "social_capture", "social_research", "copy_capture"} {
 		if kind == "social_capture" {
 			capture := socialCapture(initial.ReceiverID, policyPin, at)
 			capture.RequestResearch = true
 			commands = append(commands, socialwatch.Command{Capture: &capture})
+		}
+		if kind == "social_research" {
+			history, e := p.SocialHistory(ctx)
+			if e != nil {
+				t.Fatal(e)
+			}
+			source := history.History[len(history.History)-1].Capture
+			c := socialwatch.ResearchCommand{ID: "social-selection-commit", ReceiverID: initial.ReceiverID, CaptureID: source.Command.ID, CaptureSHA256: source.SHA256}
+			commands = append(commands, socialwatch.Command{Research: &c})
 		}
 		if kind == "copy_capture" {
 			source := socialwatch.Original{Schema: socialwatch.CopyRecordingSchema, Source: socialwatch.SourceRef{Provider: policy.Policy.Provider, AccountID: policy.Policy.AccountID, PostID: "copy-commit"}, Revision: 1, Kind: "post", OccurredAt: at, ObservedAt: at, Text: "Unverified recorded activity", Symbols: []string{"SPY"}, Activity: &socialwatch.Activity{Kind: "observed_fill", State: "reported", SourceSymbol: "SPY.US", Symbol: "SPY", MappingVersion: "assertion-v1", Side: "buy", QuantityUnits: 10, QuantityUnitClaim: "shares", PriceCents: 10000}}
@@ -118,7 +127,7 @@ func TestPostgresContractsSocialCommitAcknowledgements(t *testing.T) {
 		})
 	}
 	final, err := p.SocialHistory(ctx)
-	if err != nil || len(final.History) != 3 {
+	if err != nil || len(final.History) != 4 {
 		t.Fatal(final, err)
 	}
 	reopened, err := OpenPostgres(ctx, p.pool.Config().ConnString())

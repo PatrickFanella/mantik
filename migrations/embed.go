@@ -217,3 +217,6 @@ var SocialResearchRequests string
 
 //go:embed 0068_social_research_source_applicability.sql
 var SocialResearchSourceApplicability string
+
+//go:embed 0069_retained_social_research_selection.sql
+var RetainedSocialResearchSelection string

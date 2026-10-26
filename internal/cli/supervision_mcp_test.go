@@ -84,7 +84,7 @@ func TestSupervisionMCPServiceOwnersAndErrors(t *testing.T) {
 	var listed struct {
 		Tools []mcpTool `json:"tools"`
 	}
-	if json.Unmarshal(r["result"], &listed) != nil || len(listed.Tools) != 6 {
+	if json.Unmarshal(r["result"], &listed) != nil || len(listed.Tools) != 7 {
 		t.Fatal(r)
 	}
 	for _, tool := range listed.Tools {

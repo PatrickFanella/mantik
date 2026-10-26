@@ -152,6 +152,19 @@ func TestResearchRequestRequiresCurrentCausalSource(t *testing.T) {
 			if !errors.Is(err, ErrConflict) || !reflect.DeepEqual(out, Journal{}) || !reflect.DeepEqual(receipt, Receipt{}) {
 				t.Fatalf("inapplicable source queued: %+v %v", receipt, err)
 			}
+			retained := c
+			retained.RequestResearch = false
+			retained.ID = "retained-invalid-source"
+			journal, source, e := Append(f.j, Command{Capture: &retained}, func() time.Time { return f.at })
+			if e != nil {
+				t.Fatal(e)
+			}
+			selected := ResearchCommand{ID: "select-invalid-source", ReceiverID: testOwner, CaptureID: retained.ID, CaptureSHA256: source.Entry.Capture.SHA256}
+			out, receipt, e = Append(journal, Command{Research: &selected}, func() time.Time { return f.at })
+			if !errors.Is(e, ErrConflict) || !reflect.DeepEqual(out, Journal{}) || !reflect.DeepEqual(receipt, Receipt{}) {
+				t.Fatal("retained invalid source selected", receipt, e)
+			}
+
 		})
 	}
 }
@@ -228,5 +241,68 @@ func TestResearchRequestCausalRepostAndImmutableRetry(t *testing.T) {
 	f.capture("parent-edit", testOriginal("parent", "edit", 2, f.at))
 	if _, retry, err := Append(f.j, Command{Capture: &c}, func() time.Time { panic("source retry clock") }); err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Entry, r.Entry) {
 		t.Fatal("later edit changed immutable retry", err)
+	}
+}
+
+func TestRetainedSocialResearchSelection(t *testing.T) {
+	f := newApplicabilityFixture(t)
+	captured := f.capture("retained", testOriginal("post", "post", 1, f.at))
+	original := clone(f.j)
+	c := ResearchCommand{ID: "select-research", ReceiverID: testOwner, CaptureID: captured.Command.ID, CaptureSHA256: captured.SHA256}
+	f.at = f.at.Add(time.Second)
+	next, r, err := Append(f.j, Command{Research: &c}, func() time.Time { return f.at })
+	if err != nil || r.Entry.Research == nil || r.Entry.Capture != nil || r.Entry.Research.Request.CaptureID != captured.Command.ID || r.Entry.Research.ResearchRequestDuplicate || !reflect.DeepEqual(next.Entries[1], original.Entries[1]) {
+		t.Fatal(r, err)
+	}
+	request := r.Entry.Research.Request
+	if request.DispatchAvailable || request.AdmissionAvailable || request.ExecutionAvailable || request.QualificationCredit || !request.RequestedAt.Equal(f.at) {
+		t.Fatal(request)
+	}
+	catalog, err := Read(next)
+	if err != nil || len(catalog.ResearchRequests) != 1 {
+		t.Fatal(catalog, err)
+	}
+	// New command identity reuses the same research request, without rerecording.
+	alias := c
+	alias.ID = "select-again"
+	again, duplicate, err := Append(next, Command{Research: &alias}, func() time.Time { return f.at })
+	if err != nil || !duplicate.Entry.Research.ResearchRequestDuplicate || !reflect.DeepEqual(duplicate.Entry.Research.Request, request) {
+		t.Fatal(duplicate, err)
+	}
+	if _, err = InspectApplicability(again, captured.Command.ID, f.at); err != nil {
+		t.Fatal("request entry broke source inspection", err)
+	}
+	for _, change := range []func(*ResearchCommand){func(c *ResearchCommand) { c.CaptureID = "absent" }, func(c *ResearchCommand) { c.CaptureSHA256 = workerplan.Hash("wrong") }, func(c *ResearchCommand) { c.ReceiverID = "receiver-otherowner" }} {
+		bad := c
+		bad.ID = "bad-selection"
+		change(&bad)
+		out, got, e := Append(next, Command{Research: &bad}, func() time.Time { return f.at })
+		if e == nil || !reflect.DeepEqual(out, Journal{}) || !reflect.DeepEqual(got, Receipt{}) {
+			t.Fatal("invalid selection retained", got, e)
+		}
+	}
+	// Source or watch changes cannot authorize a new request; the original exact
+	// retry remains a fact and never reads the current clock.
+	f.j = again
+	f.at = f.at.Add(time.Second)
+	f.capture("edit", testOriginal("post", "edit", 2, f.at))
+	if _, got, e := Append(f.j, Command{Research: &c}, func() time.Time { panic("selection retry clock") }); e != nil || !got.Duplicate || !reflect.DeepEqual(got.Entry, r.Entry) {
+		t.Fatal(got, e)
+	}
+	alias.ID = "select-superseded"
+	if _, _, e := Append(f.j, Command{Research: &alias}, func() time.Time { return f.at }); !errors.Is(e, ErrConflict) {
+		t.Fatal("superseded source selected", e)
+	}
+	bad := clone(next)
+	last := &bad.Entries[len(bad.Entries)-1]
+	last.Research.Request.ExecutionAvailable = true
+	last.Research.Request.SHA256 = ""
+	last.Research.Request.SHA256 = workerplan.Hash(last.Research.Request)
+	last.Research.SHA256 = ""
+	last.Research.SHA256 = workerplan.Hash(last.Research)
+	last.SHA256 = ""
+	last.SHA256 = workerplan.Hash(*last)
+	if _, e := Read(bad); e == nil {
+		t.Fatal("rehashed authoritative selection accepted")
 	}
 }
