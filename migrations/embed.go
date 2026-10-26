@@ -220,3 +220,6 @@ var SocialResearchSourceApplicability string
 
 //go:embed 0069_retained_social_research_selection.sql
 var RetainedSocialResearchSelection string
+
+//go:embed 0070_retained_copy_research_selection.sql
+var RetainedCopyResearchSelection string

@@ -35,6 +35,7 @@ type ResearchRequest struct {
 }
 
 const researchRequestSourceMethod = "owned-current-social-research-source-v1"
+const copyResearchSourceMethod = "owned-current-copy-research-source-v1"
 
 // Legacy receipts retain their original semantics. New issuance binds both the
 // selected capture and any canonical deduplicated request to current, causal
@@ -47,7 +48,10 @@ func validateResearchRequestSource(j Journal, e Entry) error {
 		}
 		return nil
 	}
-	if e.ResearchRequestMethod != researchRequestSourceMethod {
+	if e.ResearchRequestMethod != researchRequestSourceMethod && e.ResearchRequestMethod != copyResearchSourceMethod {
+		return ErrInvalid
+	}
+	if e.ResearchRequestMethod == copyResearchSourceMethod && e.Research == nil {
 		return ErrInvalid
 	}
 	var sourceID, canonicalID string
@@ -62,7 +66,11 @@ func validateResearchRequestSource(j Journal, e Entry) error {
 	}
 	for _, id := range []string{sourceID, canonicalID} {
 		view, err := inspectApplicability(j, id, e.At, e.SHA256)
-		if err != nil || view.Status != "current_source_assertion_dispatch_unbound" {
+		expected := "current_source_assertion_dispatch_unbound"
+		if e.ResearchRequestMethod == copyResearchSourceMethod {
+			expected = "copy_source_mapping_and_admission_unavailable"
+		}
+		if err != nil || view.Status != expected {
 			return ErrConflict
 		}
 	}
@@ -109,7 +117,7 @@ func (p *projection) researchForSource(r CaptureRecord, at time.Time) (ResearchR
 	}
 	return clone(request), duplicate, nil
 }
-func (p *projection) selectResearch(c ResearchCommand, at time.Time) (ResearchSelection, error) {
+func (p *projection) selectResearch(c ResearchCommand, at time.Time, method string) (ResearchSelection, error) {
 	source, ok := p.captures[c.CaptureID]
 	if !ok {
 		return ResearchSelection{}, ErrNotFound
@@ -117,11 +125,40 @@ func (p *projection) selectResearch(c ResearchCommand, at time.Time) (ResearchSe
 	if source.SHA256 != c.CaptureSHA256 || source.Command.ReceiverID != c.ReceiverID {
 		return ResearchSelection{}, ErrConflict
 	}
-	request, duplicate, err := p.researchForSource(source, at)
+	var request ResearchRequest
+	var duplicate bool
+	var err error
+	schema := "mantik-owned-social-research-selection-v1"
+	if method == copyResearchSourceMethod {
+		request, duplicate, err = p.researchForCopy(source, at)
+		schema = "mantik-owned-copy-research-selection-v1"
+	} else {
+		request, duplicate, err = p.researchForSource(source, at)
+	}
 	if err != nil {
 		return ResearchSelection{}, err
 	}
-	result := ResearchSelection{Schema: "mantik-owned-social-research-selection-v1", Command: c, RequestedAt: at, Request: request, ResearchRequestDuplicate: duplicate}
+	result := ResearchSelection{Schema: schema, Command: c, RequestedAt: at, Request: request, ResearchRequestDuplicate: duplicate}
 	result.SHA256 = workerplan.Hash(result)
 	return result, nil
+}
+
+// Copy manifests remain assertions about an external actor. A pending research
+// request may inspect them without accepting their instrument or quantity claims.
+// Capture-time opt-in keeps its original social-only contract; copy selection is
+// a separate versioned retained-source operation, replayed from owner identities.
+func (p *projection) researchForCopy(r CaptureRecord, at time.Time) (ResearchRequest, bool, error) {
+	c, o := r.Command, r.Source
+	watch, ok := p.policies[c.WatchID]
+	if !ok || watch.SHA256 != c.PolicySHA256 || watch.Command.Policy.Behavior != "research" || !r.SourceAccepted || r.PolicyStatus != "copy_source_mapping_and_admission_unavailable" || o.Schema != CopyRecordingSchema || o.Activity == nil || r.Copy == nil || r.Copy.FollowStatus != "research_only" {
+		return ResearchRequest{}, false, ErrConflict
+	}
+	key := workerplan.Hash(struct{ Method, ReceiverID, EvidenceClass, ClaimGroupSHA256 string }{copyResearchSourceMethod, c.ReceiverID, c.EvidenceClass, r.ClaimGroupSHA256})
+	request, duplicate := p.research[key]
+	if !duplicate {
+		request = ResearchRequest{Schema: "mantik-owned-copy-research-request-v1", ID: "copy-research-" + key, ReceiverID: c.ReceiverID, WatchID: c.WatchID, PolicySHA256: c.PolicySHA256, CaptureID: c.ID, OriginalSHA256: c.OriginalSHA256, SourceSemanticSHA256: r.SourceSemanticSHA256, ClaimGroupSHA256: r.ClaimGroupSHA256, Source: o.Source, Root: r.Root, RequestedAt: at, EvidenceClass: c.EvidenceClass, Status: "pending_research", Authority: "service_owned_recorded_copy_research_request_only"}
+		request.SHA256 = workerplan.Hash(request)
+		p.research[key] = request
+	}
+	return clone(request), duplicate, nil
 }

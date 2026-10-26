@@ -453,7 +453,7 @@ func (p *projection) apply(receiver string, c Command, at time.Time, seq int, re
 	at = at.UTC()
 	e := Entry{ResearchRequestMethod: researchMethod, Sequence: seq, PreviousSHA256: p.head, At: at, Command: clone(c)}
 	if c.Research != nil {
-		v, err := p.selectResearch(*c.Research, at)
+		v, err := p.selectResearch(*c.Research, at, researchMethod)
 		if err != nil {
 			return Entry{}, err
 		}
@@ -553,6 +553,11 @@ func Append(j Journal, c Command, now func() time.Time) (Journal, Receipt, error
 	method := ""
 	if c.Research != nil || c.Capture != nil && c.Capture.RequestResearch {
 		method = researchRequestSourceMethod
+		if c.Research != nil {
+			if source, ok := p.captures[c.Research.CaptureID]; ok && source.Source.Schema == CopyRecordingSchema {
+				method = copyResearchSourceMethod
+			}
+		}
 	}
 	e, err := p.apply(j.ReceiverID, c, now(), len(j.Entries)+1, method)
 	if err != nil {

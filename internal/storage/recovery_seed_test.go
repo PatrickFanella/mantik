@@ -104,7 +104,26 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	if _, e = s.ApplySocialCommand(ctx, socialwatch.Command{Research: &selected}, researchClock); e != nil {
 		t.Fatal(e)
 	}
-	if got, err := s.SocialHistory(ctx); err != nil || len(got.ResearchRequests) != 1 {
+
+	original.Schema = socialwatch.CopyRecordingSchema
+	original.Source.PostID = "recovery-copy-source"
+	original.Activity = &socialwatch.Activity{Kind: "observed_fill", State: "reported", SourceSymbol: "SPY.US", Symbol: "SPY", MappingVersion: "asserted-v1", Side: "buy", QuantityUnits: 5, QuantityUnitClaim: "shares", PriceCents: 10000}
+	raw, _ = json.Marshal(original)
+	capture.ID = "recovery-copy-recording"
+	capture.EvidenceClass = "recorded_copy_unqualified"
+	capture.Original = string(raw)
+	capture.OriginalSHA256 = workerplan.Digest(raw)
+	copySource, e := s.ApplySocialCommand(ctx, socialwatch.Command{Capture: &capture}, researchClock)
+	if e != nil {
+		t.Fatal(e)
+	}
+	selected.ID = "recovery-copy-selection"
+	selected.CaptureID = capture.ID
+	selected.CaptureSHA256 = copySource.Entry.Capture.SHA256
+	if _, e = s.ApplySocialCommand(ctx, socialwatch.Command{Research: &selected}, researchClock); e != nil {
+		t.Fatal(e)
+	}
+	if got, err := s.SocialHistory(ctx); err != nil || len(got.ResearchRequests) != 2 {
 		t.Fatal("research recovery seed", got, err)
 	}
 
@@ -154,8 +173,13 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 		t.Fatal("restored retry changed retained receipt", err)
 	}
 	history, err := s.SocialHistory(ctx)
-	if err != nil || history.ReceiverID != got.ReceiverID || len(history.ResearchRequests) != 1 || history.ResearchRequests[0].CaptureID != "recovery-research-recording" || history.ResearchRequests[0].DispatchAvailable || history.ResearchRequests[0].AdmissionAvailable || history.ResearchRequests[0].ExecutionAvailable || history.ResearchRequests[0].QualificationCredit {
+	if err != nil || history.ReceiverID != got.ReceiverID || len(history.ResearchRequests) != 2 || history.ResearchRequests[0].DispatchAvailable || history.ResearchRequests[0].AdmissionAvailable || history.ResearchRequests[0].ExecutionAvailable || history.ResearchRequests[0].QualificationCredit {
 		t.Fatal("restored social owner", err)
+	}
+	for _, request := range history.ResearchRequests {
+		if request.CaptureID != "recovery-research-recording" && request.CaptureID != "recovery-copy-recording" || request.DispatchAvailable || request.AdmissionAvailable || request.ExecutionAvailable || request.QualificationCredit {
+			t.Fatal("restored research grant or unknown source", request)
+		}
 	}
 	t.Logf("owner replay preserved allocation=%s safety=%s ledger=%s social=%s", r.SHA256, r.ExecutionSafety[0].SHA256, r.LedgerSHA256, workerplan.Hash(history))
 }

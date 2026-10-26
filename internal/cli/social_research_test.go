@@ -133,6 +133,46 @@ func ownedSocialResearchHTTP(t *testing.T, s socialHTTPBackend) {
 	for _, field := range []string{`"original":"caller",`, `"account_id":"caller",`, `"admission_available":true,`, `"dispatch_available":true,`} {
 		request("POST", "/v1/social-research-requests", strings.Replace(string(mustCopyJSON(t, selected)), `"id":`, field+`"id":`, 1), 422)
 	}
+
+	// The same typed selector can request research about a retained copy manifest.
+	copyOriginal := original
+	copyOriginal.Schema = socialwatch.CopyRecordingSchema
+	copyOriginal.Source.PostID = "retained-copy-source"
+	copyOriginal.Activity = &socialwatch.Activity{Kind: "observed_fill", State: "reported", SourceSymbol: "SPY.US", Symbol: "SPY", MappingVersion: "asserted-v1", Side: "buy", QuantityUnits: 5, QuantityUnitClaim: "shares", PriceCents: 10000}
+	copyRaw, _ := json.Marshal(copyOriginal)
+	copyCommand := recordOnly
+	copyCommand.ID = "retained-copy-source"
+	copyCommand.EvidenceClass = "recorded_copy_unqualified"
+	copyCommand.Original = string(copyRaw)
+	copyCommand.OriginalSHA256 = workerplan.Digest(copyRaw)
+	sourceReceipt = socialwatch.Receipt{}
+	if e := json.Unmarshal(request("POST", "/v1/copy-recordings", copyCommand, 201), &sourceReceipt); e != nil {
+		t.Fatal(e)
+	}
+	copySelection := socialwatch.ResearchCommand{ID: "typed-copy-research", ReceiverID: history.ReceiverID, CaptureID: copyCommand.ID, CaptureSHA256: sourceReceipt.Entry.Capture.SHA256}
+	response = session.request(t, "select-copy", "tools/call", map[string]any{"name": "request_social_research", "arguments": copySelection})
+	selectedOwner.Body = socialwatch.Receipt{}
+	if json.Unmarshal(response["result"], &result) != nil || result.IsError || json.Unmarshal([]byte(result.Content[0].Text), &selectedOwner) != nil || selectedOwner.HTTPStatus != 201 || selectedOwner.Body.Entry.Research == nil {
+		t.Fatal(response)
+	}
+	copyRequest := selectedOwner.Body.Entry.Research.Request
+	if copyRequest.Schema != "mantik-owned-copy-research-request-v1" || copyRequest.ExecutionAvailable || copyRequest.DispatchAvailable || copyRequest.AdmissionAvailable || copyRequest.QualificationCredit {
+		t.Fatal(copyRequest)
+	}
+	clock.panicRead = true
+	response = session.request(t, "retry-copy", "tools/call", map[string]any{"name": "request_social_research", "arguments": copySelection})
+	if json.Unmarshal(response["result"], &result) != nil || result.IsError || json.Unmarshal([]byte(result.Content[0].Text), &selectedOwner) != nil || selectedOwner.HTTPStatus != 200 || !selectedOwner.Body.Duplicate {
+		t.Fatal(response)
+	}
+	readback = socialwatch.ResearchRequest{}
+	if e := json.Unmarshal(request("GET", "/v1/social-research-requests/"+copyRequest.ID, nil, 200), &readback); e != nil || !reflect.DeepEqual(readback, copyRequest) {
+		t.Fatal(readback, e)
+	}
+	retained = socialwatch.CaptureRecord{}
+	if e := json.Unmarshal(request("GET", "/v1/copy-recordings/"+copyCommand.ID, nil, 200), &retained); e != nil || !reflect.DeepEqual(retained, *sourceReceipt.Entry.Capture) {
+		t.Fatal("copy source rewritten", e)
+	}
+	clock.panicRead = false
 	wrong := selected
 	wrong.ID = "wrong-selection"
 	wrong.CaptureSHA256 = strings.Repeat("0", 64)

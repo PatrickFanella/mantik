@@ -214,7 +214,7 @@ Original text and activity fields remain unverified source claims. Applicability
 selectors continue to use their separate clock-dependent contract. No model call,
 extraction attestation, economic effect or qualification follows from inspection.
 
-`request_social_research` selects already-retained plain social source material;
+`request_social_research` selects already-retained plain social or copy source material;
 it does not re-record it or accept caller policy, source-class, admission or
 execution assertions. The owner rechecks source and canonical-request
 applicability before committing. `inspect_record` kind `social_research_request`
