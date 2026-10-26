@@ -69,6 +69,29 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	if workerplan.Hash(unsigned) != evidence.SHA256 {
 		t.Fatal("evidence hash")
 	}
+
+	replayPath := "/v1/paper-evaluation-declarations/" + c.ID + "/entry-replay"
+	var entryReplay service.PaperEvaluationEntryReplay
+	if err := json.Unmarshal(request("GET", replayPath, nil, 200), &entryReplay); err != nil || entryReplay.Evidence.SHA256 != evidence.SHA256 || entryReplay.PolicySHA256 != policy.SHA256 || len(entryReplay.Rows) != 0 || len(entryReplay.Variants) != 1 || entryReplay.Variants[0].Status != "no_selected_decisions" || entryReplay.PortfolioEconomicsAvailable || entryReplay.AdmissionAvailable || entryReplay.ExecutionAvailable || entryReplay.QualificationCredit {
+		t.Fatal("HTTP entry replay", entryReplay, err)
+	}
+	pin := entryReplay.SHA256
+	entryReplay.SHA256 = ""
+	if workerplan.Hash(entryReplay) != pin {
+		t.Fatal("entry replay digest")
+	}
+	request("GET", replayPath+"?model=caller", nil, 422)
+	request("GET", replayPath, map[string]any{"quote": evidence}, 422)
+	request("POST", replayPath, nil, 405)
+	request("GET", "/v1/paper-evaluation-declarations/missing/entry-replay", nil, 404)
+	unauthorized, err := http.Get(serverURL + replayPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unauthorized.Body.Close()
+	if unauthorized.StatusCode != 401 {
+		t.Fatal(unauthorized.StatusCode)
+	}
 	// The current evidence projection samples the service clock; the adapter must
 	// preserve that owner's cutoff and complete response without retaining a new
 	// assessment or accepting caller evidence/results.

@@ -117,6 +117,30 @@ func evaluationEvidenceContracts(t *testing.T, s evaluationEvidenceBackend, clas
 	} else if got.DistinctProviderOccurrences != 1 || got.Variants[0].SelectedDecisions != 1 || got.Variants[1].SelectedDecisions != 1 || statuses["alias"].Status != "duplicate_strategy_occurrence" || statuses["alias"].CanonicalDecisionID != "first" {
 		t.Fatal(got)
 	}
+
+	entryBackend := s.(PaperEvaluationEntrySourceStore)
+	entryReads := 0
+	entry, err := entryBackend.PaperEvaluationEntrySources(ctx, c.ID, func() time.Time { entryReads++; return c.Plan.OutcomeDeadline }, eval, outcomeEval)
+	if err != nil || entryReads != 1 || entry.Evidence.SHA256 != got.SHA256 || entry.Policy.SHA256 != c.PolicySHA256 || len(entry.Rows) != 2 {
+		t.Fatal("atomic entry selection", entry, entryReads, err)
+	}
+	for _, row := range entry.Rows {
+		if row.Decision.Command.ID == "first" {
+			if row.Status != "entry_sources_selected" || row.Outcome == nil || row.Outcome.Outcome.Command.ID != "assessment-one" || row.BaseCost == nil || row.StressCost == nil || row.BaseCost.DecisionSHA256 != first.Record.SHA256 || row.StressCost.ModelSHA256 != workerplan.Hash(c.Plan.StressModel) {
+				t.Fatal("entry owner/model binding", row)
+			}
+		} else if row.Status != "outcome_sources_unavailable" || row.Outcome != nil || row.BaseCost != nil {
+			t.Fatal("invented source", row)
+		}
+	}
+	entry.Policy.SHA256 = "changed"
+	againEntry, err := entryBackend.PaperEvaluationEntrySources(ctx, c.ID, func() time.Time { return c.Plan.OutcomeDeadline }, eval, outcomeEval)
+	if err != nil || againEntry.Policy.SHA256 != c.PolicySHA256 {
+		t.Fatal("entry source detachment", err)
+	}
+	if _, err = entryBackend.PaperEvaluationEntrySources(ctx, c.ID, nil, eval, outcomeEval); !errors.Is(err, ErrPaperEvaluationEvidenceInvalid) {
+		t.Fatal("nil entry clock", err)
+	}
 	after, err := s.Snapshot(ctx)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatal("read changed state", err)
@@ -177,6 +201,15 @@ func evaluationEvidenceContracts(t *testing.T, s evaluationEvidenceBackend, clas
 			if len(row.Outcomes) != 2 || len(row.LateOutcomes) != 1 || !reflect.DeepEqual(row.LateOutcomes[0], late.Record) {
 				t.Fatal("deadline partition lost owner evidence", row)
 			}
+		}
+	}
+	lateEntry, entryErr := entryBackend.PaperEvaluationEntrySources(ctx, c.ID, func() time.Time { return lateAt.Add(time.Second) }, eval, outcomeEval)
+	if entryErr != nil {
+		t.Fatal(entryErr)
+	}
+	for _, row := range lateEntry.Rows {
+		if row.Outcome != nil && row.Outcome.Outcome.Command.ID == "assessment-late" {
+			t.Fatal("late outcome expanded entry cut")
 		}
 	}
 	if !found || report.Schema != "mantik-owned-paper-evaluation-evidence-v3" || report.EvaluationAvailable || report.AdmissionAvailable || report.ExecutionAvailable || report.QualificationCredit {

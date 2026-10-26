@@ -224,3 +224,11 @@ Durable service-issued attempts are described in
 necessary sample failures and unavailable checks without issuing admission.
 Once an assessment is retained, a new declaration must be strictly later than
 every assessment clock; historical exact retries retain their original identity.
+
+## Entry counterfactual replay
+
+The [entry replay read](paper-evaluation-entry-replay.md) consumes this declared
+policy and stress model together with canonical owner-selected decisions and
+on-time historical outcomes. It derives bounded shared-liquidity entry books,
+not a complete evaluation or an admission. Existing declarations, evidence and
+assessment recipes retain their separate meanings.
