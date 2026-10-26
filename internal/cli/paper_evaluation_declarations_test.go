@@ -69,7 +69,14 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	if workerplan.Hash(unsigned) != evidence.SHA256 {
 		t.Fatal("evidence hash")
 	}
+	// The current evidence projection samples the service clock; the adapter must
+	// preserve that owner's cutoff and complete response without retaining a new
+	// assessment or accepting caller evidence/results.
+	supervisionOwnedInspections(t, request, serverURL, c.ReceiverID, []supervisionInspection{
+		{"evaluation_evidence", c.ID, path},
+	})
 	clock.panicRead = true
+	request("POST", "/v1/supervision/calls", map[string]any{"tool": "inspect_record", "arguments": map[string]any{"kind": "evaluation_evidence", "id": c.ID, "evidence": evidence}}, 422)
 	request("GET", path+"?at=future", nil, 422)
 	request("GET", path, map[string]any{"admission_available": true}, 422)
 	request("GET", "/v1/paper-evaluation-declarations/invalid.id/evidence", nil, 422)
