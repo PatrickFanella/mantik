@@ -29,3 +29,24 @@ type ResearchRequest struct {
 	QualificationCredit       bool      `json:"qualification_credit"`
 	SHA256                    string    `json:"sha256"`
 }
+
+const researchRequestSourceMethod = "owned-current-social-research-source-v1"
+
+// Legacy receipts retain their original semantics. New issuance binds both the
+// selected capture and any canonical deduplicated request to current, causal
+// source versions at issuance; a new observation cannot revive an invalid source.
+func validateResearchRequestSource(j Journal, e Entry) error {
+	if e.ResearchRequestMethod == "" {
+		return nil
+	}
+	if e.ResearchRequestMethod != researchRequestSourceMethod || e.Capture == nil || !e.Capture.Command.RequestResearch || e.Capture.ResearchRequest == nil {
+		return ErrInvalid
+	}
+	for _, id := range []string{e.Capture.Command.ID, e.Capture.ResearchRequest.CaptureID} {
+		view, err := inspectApplicability(j, id, e.At, e.SHA256)
+		if err != nil || view.Status != "current_source_assertion_dispatch_unbound" {
+			return ErrConflict
+		}
+	}
+	return nil
+}

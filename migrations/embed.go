@@ -214,3 +214,6 @@ var OwnedExcludedAssessmentFailure string
 
 //go:embed 0067_social_research_requests.sql
 var SocialResearchRequests string
+
+//go:embed 0068_social_research_source_applicability.sql
+var SocialResearchSourceApplicability string
