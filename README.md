@@ -817,3 +817,8 @@ identities, live write clocks and atomic assessment storage; failed or incomplet
 checks stay failed or incomplete. The worker is disabled by default, invokes no
 provider/model, and grants no admission, execution or qualification. See
 [automatic necessary-check assessments](docs/reference/paper-evaluation-assessments.md#automatic-necessary-check-assessments).
+
+Typed supervision can inspect a declaration's current owner-selected evidence
+with `inspect_record` kind `evaluation_evidence`. This service-clock read exposes
+exclusions and missing outcomes without creating an assessment or granting
+admission; see [supervision tools](docs/reference/supervision-tools.md).

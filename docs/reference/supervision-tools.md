@@ -18,7 +18,7 @@ unavailable write owners return 422 before dispatch.
 
 | Tool | Arguments | Owner |
 | --- | --- | --- |
-| `inspect_record` | `kind` and `id`; kinds `outcome`, `outcome_market_evidence`, `evaluation_declaration`, `evaluation_assessment`, `decision`, `decision_explanation`, `decision_market_evidence`, `decision_attribution`, `allocation_comparison`, `admission_review`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_record`, `copy_record`, `social_research_request`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
+| `inspect_record` | `kind` and `id`; kinds `outcome`, `outcome_market_evidence`, `evaluation_declaration`, `evaluation_evidence`, `evaluation_assessment`, `decision`, `decision_explanation`, `decision_market_evidence`, `decision_attribution`, `allocation_comparison`, `admission_review`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_record`, `copy_record`, `social_research_request`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
 | `request_social_research` | `id`, `receiver_id`, `capture_id`, `capture_sha256`; exact retained source, current research watch | `POST /v1/social-research-requests`; pending request only |
 | `request_research` | `receiver_id`, `request_id`, `case_id`, `version`, optional `type_id` | `POST /v1/news-reviews` |
 | `change_watch_policy` | Existing policy command: `id`, `receiver_id`, optional `previous_sha256`, `policy` | `POST /v1/social-watches` |
@@ -232,6 +232,7 @@ these fixed owner GET routes:
 | `outcome` | `/v1/paper-outcomes/{id}` |
 | `outcome_market_evidence` | `/v1/paper-outcomes/{id}/market-evidence` |
 | `evaluation_declaration` | `/v1/paper-evaluation-declarations/{id}` |
+| `evaluation_evidence` | `/v1/paper-evaluation-declarations/{id}/evidence` |
 | `evaluation_assessment` | `/v1/paper-evaluation-assessments/{id}` |
 
 Each selector accepts only `kind` and a record ID. These reads use the existing
@@ -246,3 +247,13 @@ verifying share quantities. A declaration is an operator plan, and an assessment
 retains pending, failed or incomplete checks; inspecting either cannot complete
 a recipe or grant admission, execution or qualification. Inspection invokes no
 model or provider and does not create or update owner records.
+
+`evaluation_evidence` reads the current owner-selected evidence for a declaration,
+including excluded rows, outcome availability and necessary sample-count bounds.
+The owner samples its service clock and replays its retained sources. The response
+pins its `as_of` cutoff and source catalogue; it can change on a later read and
+is separate from an immutable assessment. The adapter supplies no cutoff and
+returns the owner response unchanged. No assessment, source record or economic
+state is appended. Counts still do not establish independent samples, economic
+performance, a completed evaluation or admission. HTTP and typed MCP use the
+same fixed route, authentication and owner error behavior.

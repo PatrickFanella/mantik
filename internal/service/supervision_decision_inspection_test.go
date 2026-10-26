@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
@@ -38,9 +39,12 @@ func (*unavailableDecisionInspectionStore) PaperEvaluationDeclarations(context.C
 func (*unavailableDecisionInspectionStore) PaperEvaluationAssessments(context.Context, storage.PaperDecisionEvaluator, storage.PaperOutcomeEvaluator) (storage.PaperEvaluationAssessmentCatalog, error) {
 	return storage.PaperEvaluationAssessmentCatalog{}, errors.New("fixture evaluation assessment owner unavailable")
 }
+func (*unavailableDecisionInspectionStore) PaperEvaluationEvidence(context.Context, string, func() time.Time, storage.PaperDecisionEvaluator, storage.PaperOutcomeEvaluator) (storage.PaperEvaluationEvidence, error) {
+	return storage.PaperEvaluationEvidence{}, errors.New("fixture evaluation evidence owner unavailable")
+}
 func TestSupervisionDecisionInspectionOwnerOutageAndAuthentication(t *testing.T) {
 	h := Handler(&unavailableDecisionInspectionStore{storage.NewMemory()}, "operator")
-	for _, spec := range []struct{ kind, path string }{{"outcome", "/v1/paper-outcomes/one"}, {"outcome_market_evidence", "/v1/paper-outcomes/one/market-evidence"}, {"evaluation_declaration", "/v1/paper-evaluation-declarations/one"}, {"evaluation_assessment", "/v1/paper-evaluation-assessments/one"}, {"decision_explanation", "/v1/paper-decisions/one/explanation"}, {"decision_market_evidence", "/v1/paper-decisions/one/market-evidence"}, {"decision_attribution", "/v1/paper-attribution/one"}, {"allocation_comparison", "/v1/allocation-comparisons/one"}, {"admission_review", "/v1/admission-reviews/one"}} {
+	for _, spec := range []struct{ kind, path string }{{"outcome", "/v1/paper-outcomes/one"}, {"outcome_market_evidence", "/v1/paper-outcomes/one/market-evidence"}, {"evaluation_declaration", "/v1/paper-evaluation-declarations/one"}, {"evaluation_evidence", "/v1/paper-evaluation-declarations/one/evidence"}, {"evaluation_assessment", "/v1/paper-evaluation-assessments/one"}, {"decision_explanation", "/v1/paper-decisions/one/explanation"}, {"decision_market_evidence", "/v1/paper-decisions/one/market-evidence"}, {"decision_attribution", "/v1/paper-attribution/one"}, {"allocation_comparison", "/v1/allocation-comparisons/one"}, {"admission_review", "/v1/admission-reviews/one"}} {
 		body := toolBody("inspect_record", inspectArguments{Kind: spec.kind, ID: "one"})
 		if w := supervisionRequest(h, "POST", "/v1/supervision/calls", body, ""); w.Code != http.StatusUnauthorized {
 			t.Fatal(w.Code)
