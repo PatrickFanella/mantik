@@ -125,3 +125,88 @@ func TestOutcomeMemoDoesNotRetainOversizedBasis(t *testing.T) {
 		t.Fatal("oversized basis retained", calls)
 	}
 }
+
+func TestOutcomeCustodyMemoExactInputsAndErrors(t *testing.T) {
+	at := time.Date(2026, 10, 26, 14, 0, 0, 0, time.UTC)
+	c := PaperDecisionCommand{ID: "decision"}
+	b := PaperDecisionBasis{}
+	b.Feed.Routing = &domain.RoutingState{Inputs: map[string]domain.RetainedRoutingInput{"input": {Input: domain.RoutingInput{ID: "input"}}}}
+	calls := 0
+	verify := memoPaperOutcomeCustody(func(PaperDecisionCommand, PaperDecisionBasis, time.Time, bool) error { calls++; return nil })
+	for i := 0; i < 64; i++ {
+		if err := verify(c, b, at, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 1 {
+		t.Fatal("equal historical custody repeatedly verified", calls)
+	}
+	for _, change := range []func(*outcomeCustodyInput){
+		func(i *outcomeCustodyInput) { i.Command.ID = "different" },
+		func(i *outcomeCustodyInput) { i.At = i.At.Add(time.Second) },
+		func(i *outcomeCustodyInput) { i.Membership = false },
+		func(i *outcomeCustodyInput) { i.Basis.Feed.ReceiverID = "other" },
+	} {
+		input := outcomeCustodyInput{c, clone(b), at, true}
+		change(&input)
+		before := calls
+		if err := verify(input.Command, input.Basis, input.At, input.Membership); err != nil || calls != before+1 {
+			t.Fatal("distinct custody input reused", calls, err)
+		}
+	}
+	// Retained keys cannot alias the caller's map, and serialization-equivalent
+	// clocks with different Go locations cannot acquire another clock's success.
+	b.Feed.Routing.Inputs["input"] = domain.RetainedRoutingInput{Input: domain.RoutingInput{ID: "changed"}}
+	before := calls
+	if err := verify(c, b, at, true); err != nil || calls != before+1 {
+		t.Fatal("caller mutation reused detached key", calls, err)
+	}
+	named := at.In(time.FixedZone("named-zero", 0))
+	before = calls
+	for i := 0; i < 2; i++ {
+		if err := verify(c, b, named, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != before+2 {
+		t.Fatal("clock altered by serialization was cached", calls)
+	}
+	failures := 0
+	want := errors.New("custody unavailable")
+	fail := memoPaperOutcomeCustody(func(PaperDecisionCommand, PaperDecisionBasis, time.Time, bool) error { failures++; return want })
+	for i := 0; i < 2; i++ {
+		if err := fail(c, b, at, true); !errors.Is(err, want) {
+			t.Fatal(err)
+		}
+	}
+	if failures != 2 {
+		t.Fatal("custody error reused", failures)
+	}
+	// Non-serializable and oversized inputs still reach the verifier unchanged.
+	b.Feed.ReceiverID = strings.Repeat("x", MaxPaperOutcomeBytes)
+	oversized := 0
+	bounded := memoPaperOutcomeCustody(func(_ PaperDecisionCommand, got PaperDecisionBasis, _ time.Time, _ bool) error {
+		oversized++
+		if !reflect.DeepEqual(got, b) {
+			t.Fatal("verification input changed")
+		}
+		return nil
+	})
+	for i := 0; i < 2; i++ {
+		if err := bounded(c, b, at, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if oversized != 2 {
+		t.Fatal("oversized custody retained", oversized)
+	}
+	invalid := at.AddDate(10000, 0, 0)
+	for i := 0; i < 2; i++ {
+		if err := bounded(c, b, invalid, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if oversized != 4 {
+		t.Fatal("nonserializable input cached", oversized)
+	}
+}

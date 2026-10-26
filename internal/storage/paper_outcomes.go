@@ -135,7 +135,7 @@ func paperOutcomeForSchema(schema string, c PaperOutcomeCommand, b PaperOutcomeB
 }
 
 // Reuse only pure evaluations of an exactly equal basis and clock inside one
-// catalogue replay. Each record still receives independent custody, command,
+// catalogue replay. Each record still receives owner-snapshot custody, command,
 // envelope and hash validation. Hash buckets are guarded by full equality;
 // neither a digest collision nor an omitted JSON field can alias inputs.
 func memoPaperOutcomeEvaluator(eval PaperOutcomeEvaluator) PaperOutcomeEvaluator {
@@ -181,21 +181,27 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 		return out, err
 	}
 	eval = memoPaperOutcomeEvaluator(eval)
+	// The actual owner snapshot is fixed for this catalogue call. Reuse only
+	// successful custody checks for a fully equal command, basis, clock and mode.
+	verify := memoPaperOutcomeCustody(func(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time, membership bool) error {
+		if err := verifyPaperDecisionBasis(c, b, at, strategies, feed); err != nil {
+			return err
+		}
+		if membership {
+			return paperDecisionSourceMembership(c, b, at, feed)
+		}
+		return nil
+	})
 	for id, v := range all {
 		r, b := v.Record, v.Basis
 		d, ok := decisions[r.Command.DecisionID]
 		if id != r.Command.ID || r.Command.ReceiverID != owner || !ok || !reflect.DeepEqual(d.Record, b.Decision) {
 			return out, ErrPaperOutcomeConflict
 		}
-		if err := verifyPaperDecisionBasis(d.Record.Command, b.Observation, r.EvaluatedAt, strategies, feed); err != nil {
+		// Outcome observation has its own availability cut. Legacy and current
+		// membership modes are distinct cache inputs, never inferred from a hit.
+		if err := verify(d.Record.Command, b.Observation, r.EvaluatedAt, r.Schema == "mantik-owned-paper-outcome-v2"); err != nil {
 			return out, err
-		}
-		// Outcome observation has its own availability cut. The decision's
-		// schema does not prove membership of sources arriving afterwards.
-		if r.Schema == "mantik-owned-paper-outcome-v2" {
-			if err := paperDecisionSourceMembership(d.Record.Command, b.Observation, r.EvaluatedAt, feed); err != nil {
-				return out, err
-			}
 		}
 		expected, err := paperOutcomeForSchema(r.Schema, r.Command, b, r.EvaluatedAt, eval)
 		if err != nil || !reflect.DeepEqual(expected, r) {

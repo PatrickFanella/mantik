@@ -198,3 +198,24 @@ PostgreSQL outcome catalogue reads return records only after successful COMMIT.
 A failed read COMMIT returns an error and a zero catalogue, matching source reads
 and exact retries. Retained outcome history remains unchanged; this rule supplies
 no admission, execution or qualification authority.
+
+Within one owner-catalogue read, successful source-custody checks may be reused
+for an exactly equal decision command, observation basis, historical clock and
+source-membership mode. The current strategy/feed snapshot is fixed for that
+read. Each row still checks its decision identity, receiver, retained basis,
+record envelope, result and hashes. Errors are never reused, keys are detached,
+full Go equality guards digest buckets, and retained serialized keys are capped
+at 4 MiB. A new read starts with an empty cache; v1 and v2 source-membership modes
+cannot reuse each other's result. Historical bytes and API responses are unchanged.
+
+The authenticated full-capacity catalogue path can be measured without external
+requests using the retained local lifecycle fixture:
+
+```bash
+mise exec -- go test ./internal/cli -run '^$' \
+  -bench '^BenchmarkOwnedPaperOutcomeCatalogueHTTP$' -benchtime=3x -benchmem
+```
+
+This benchmark measures replay cost, not provider behavior, execution performance
+or qualification. Request deadlines, retention limits and financial authority do
+not change.
