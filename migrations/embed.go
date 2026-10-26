@@ -211,3 +211,6 @@ var OwnedProposalModelExpiry string
 
 //go:embed 0066_owned_excluded_assessment_failure.sql
 var OwnedExcludedAssessmentFailure string
+
+//go:embed 0067_social_research_requests.sql
+var SocialResearchRequests string

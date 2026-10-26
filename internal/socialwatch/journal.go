@@ -159,13 +159,14 @@ func (o Original) Validate() error {
 func validTime(t time.Time) bool { return !t.IsZero() && t.UTC().Year() >= 1 && t.UTC().Year() <= 9999 }
 
 type CaptureCommand struct {
-	ID             string `json:"id"`
-	ReceiverID     string `json:"receiver_id"`
-	WatchID        string `json:"watch_id"`
-	PolicySHA256   string `json:"policy_sha256"`
-	EvidenceClass  string `json:"evidence_class"`
-	Original       string `json:"original"`
-	OriginalSHA256 string `json:"original_sha256"`
+	RequestResearch bool   `json:"request_research,omitempty"`
+	ID              string `json:"id"`
+	ReceiverID      string `json:"receiver_id"`
+	WatchID         string `json:"watch_id"`
+	PolicySHA256    string `json:"policy_sha256"`
+	EvidenceClass   string `json:"evidence_class"`
+	Original        string `json:"original"`
+	OriginalSHA256  string `json:"original_sha256"`
 }
 
 func (c CaptureCommand) Decode() (Original, error) {
@@ -186,6 +187,8 @@ type PolicyRecord struct {
 	SHA256       string        `json:"sha256"`
 }
 type CaptureRecord struct {
+	ResearchRequest           *ResearchRequest `json:"research_request,omitempty"`
+	ResearchRequestDuplicate  bool             `json:"research_request_duplicate,omitempty"`
 	Copy                      *CopyObservation `json:"copy,omitempty"`
 	Command                   CaptureCommand   `json:"command"`
 	Source                    Original         `json:"source"`
@@ -251,12 +254,14 @@ type WatchView struct {
 	DispatchAvailable      bool         `json:"dispatch_available"`
 }
 type Catalog struct {
-	ReceiverID string      `json:"receiver_id"`
-	HeadSHA256 string      `json:"head_sha256"`
-	Watches    []WatchView `json:"watches"`
-	History    []Entry     `json:"history"`
+	ResearchRequests []ResearchRequest `json:"research_requests,omitempty"`
+	ReceiverID       string            `json:"receiver_id"`
+	HeadSHA256       string            `json:"head_sha256"`
+	Watches          []WatchView       `json:"watches"`
+	History          []Entry           `json:"history"`
 }
 type projection struct {
+	research map[string]ResearchRequest
 	policies map[string]PolicyRecord
 	sources  map[string]CaptureRecord
 	versions map[string]CaptureRecord
@@ -265,7 +270,7 @@ type projection struct {
 }
 
 func newProjection() projection {
-	return projection{policies: map[string]PolicyRecord{}, sources: map[string]CaptureRecord{}, versions: map[string]CaptureRecord{}}
+	return projection{research: map[string]ResearchRequest{}, policies: map[string]PolicyRecord{}, sources: map[string]CaptureRecord{}, versions: map[string]CaptureRecord{}}
 }
 func clone[T any](v T) T {
 	raw, _ := json.Marshal(v)
@@ -393,6 +398,24 @@ func (p *projection) capture(c CaptureCommand, at time.Time) (CaptureRecord, err
 	case o.Kind == "forecast" || o.Kind == "declared_position":
 		r.PolicyStatus = "structured_extraction_unavailable"
 	}
+	if c.RequestResearch {
+		if !r.SourceAccepted || r.PolicyStatus != "dispatch_unbound" || w.Behavior != "research" || o.Activity != nil {
+			return CaptureRecord{}, ErrConflict
+		}
+		requestKey := workerplan.Hash(struct{ ReceiverID, EvidenceClass, ClaimGroupSHA256 string }{c.ReceiverID, c.EvidenceClass, r.ClaimGroupSHA256})
+		request, duplicate := p.research[requestKey]
+		if !duplicate {
+			request = ResearchRequest{Schema: "mantik-owned-social-research-request-v1", ID: "social-research-" + requestKey,
+				ReceiverID: c.ReceiverID, WatchID: c.WatchID, PolicySHA256: c.PolicySHA256,
+				CaptureID: c.ID, OriginalSHA256: c.OriginalSHA256, SourceSemanticSHA256: r.SourceSemanticSHA256,
+				ClaimGroupSHA256: r.ClaimGroupSHA256, Source: o.Source, Root: r.Root, RequestedAt: at,
+				EvidenceClass: c.EvidenceClass, Status: "pending_research", Authority: "service_owned_recorded_source_research_request_only"}
+			request.SHA256 = workerplan.Hash(request)
+			p.research[requestKey] = request
+		}
+		r.ResearchRequest = &request
+		r.ResearchRequestDuplicate = duplicate
+	}
 	r.SHA256 = workerplan.Hash(r)
 	if r.SourceAccepted {
 		p.sources[sourceKey(o.Source)] = r
@@ -471,6 +494,10 @@ func Read(j Journal) (Catalog, error) {
 	for _, r := range p.policies {
 		out.Watches = append(out.Watches, WatchView{Policy: r, ConnectorStatus: "connector_not_configured", ConnectorScope: SourceRef{Provider: r.Command.Policy.Provider, AccountID: r.Command.Policy.AccountID}})
 	}
+	for _, request := range p.research {
+		out.ResearchRequests = append(out.ResearchRequests, clone(request))
+	}
+	slices.SortFunc(out.ResearchRequests, func(a, b ResearchRequest) int { return strings.Compare(a.ID, b.ID) })
 	slices.SortFunc(out.Watches, func(a, b WatchView) int {
 		return strings.Compare(a.Policy.Command.Policy.ID, b.Policy.Command.Policy.ID)
 	})

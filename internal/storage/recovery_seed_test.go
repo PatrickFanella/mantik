@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"net/url"
 	"os"
@@ -70,10 +72,33 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	if err != nil || len(valid.Records) != 1 || len(valid.Ledgers) != 1 || valid.Records[0].AdmissionChecks[0].AdmissionAvailable || valid.Records[0].ExecutionAvailable || valid.Records[0].QualificationCredit {
 		t.Fatal("invalid recovery seed", valid, err)
 	}
-	// Revalidate the other retained owner as well, after every seed write.
-	if _, err = s.SocialHistory(ctx); err != nil {
+	// Retain an actual owner research request for snapshot/restore replay.
+	history, err := s.SocialHistory(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
+	researchAt := time.Now().UTC()
+	for _, entry := range history.History {
+		if !researchAt.After(entry.At) {
+			researchAt = entry.At.Add(time.Nanosecond)
+		}
+	}
+	researchClock := func() time.Time { return researchAt }
+	watch := socialwatch.PolicyCommand{ID: "recovery-research-policy", ReceiverID: history.ReceiverID, Policy: socialwatch.Policy{ID: "recovery-research-watch", Provider: "recorded", AccountID: "recovery-research-source", Symbols: []string{"SPY"}, Behavior: "research", MaxObservationDelaySeconds: 60, Enabled: true}}
+	registered, err := s.ApplySocialCommand(ctx, socialwatch.Command{Policy: &watch}, researchClock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := socialwatch.Original{Schema: "mantik-social-recording-v1", Source: socialwatch.SourceRef{Provider: "recorded", AccountID: "recovery-research-source", PostID: "post"}, Revision: 1, Kind: "post", OccurredAt: researchAt, ObservedAt: researchAt, Text: "SPY recovery research source", Symbols: []string{"SPY"}}
+	raw, _ := json.Marshal(original)
+	capture := socialwatch.CaptureCommand{ID: "recovery-research-recording", ReceiverID: history.ReceiverID, WatchID: watch.Policy.ID, PolicySHA256: registered.Entry.Policy.SHA256, EvidenceClass: "recorded_social_unqualified", Original: string(raw), OriginalSHA256: workerplan.Digest(raw), RequestResearch: true}
+	if _, err = s.ApplySocialCommand(ctx, socialwatch.Command{Capture: &capture}, researchClock); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.SocialHistory(ctx); err != nil || len(got.ResearchRequests) != 1 {
+		t.Fatal("research recovery seed", got, err)
+	}
+
 }
 
 // Shared by source seeding and restore replay. This compiled storage fixture
@@ -120,7 +145,7 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 		t.Fatal("restored retry changed retained receipt", err)
 	}
 	history, err := s.SocialHistory(ctx)
-	if err != nil || history.ReceiverID != got.ReceiverID {
+	if err != nil || history.ReceiverID != got.ReceiverID || len(history.ResearchRequests) != 1 || history.ResearchRequests[0].CaptureID != "recovery-research-recording" || history.ResearchRequests[0].DispatchAvailable || history.ResearchRequests[0].AdmissionAvailable || history.ResearchRequests[0].ExecutionAvailable || history.ResearchRequests[0].QualificationCredit {
 		t.Fatal("restored social owner", err)
 	}
 	t.Logf("owner replay preserved allocation=%s safety=%s ledger=%s social=%s", r.SHA256, r.ExecutionSafety[0].SHA256, r.LedgerSHA256, workerplan.Hash(history))
