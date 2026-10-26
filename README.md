@@ -822,3 +822,8 @@ Typed supervision can inspect a declaration's current owner-selected evidence
 with `inspect_record` kind `evaluation_evidence`. This service-clock read exposes
 exclusions and missing outcomes without creating an assessment or granting
 admission; see [supervision tools](docs/reference/supervision-tools.md).
+
+Disposable owner recovery also retains and replays blocked evaluation plans and
+assessments, including exact retries and rejection of a self-rehashed admission
+claim. See [storage owner recovery](docs/reference/storage-owner-recovery.md).
+This fixture coverage does not qualify economic or protective recovery.

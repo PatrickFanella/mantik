@@ -41,8 +41,9 @@ def recovery_contract(container, database, replay_owner):
                 subprocess.run(['docker', 'exec', container, 'pg_dump', '-U', 'mantik', '-d', database,
                                 '-Fc', '--snapshot=' + source.snapshot_id], stdout=stream, check=True, timeout=600)
         names = {row['table'] for row in expected['tables'] if row['rows'] > 0}
-        if not {'public.mantik_social_watch_journal', 'public.mantik_owned_allocations'}.issubset(names):
-            raise ValueError('Recovery seed did not retain source and allocation owner journals')
+        if not {'public.mantik_social_watch_journal', 'public.mantik_owned_allocations',
+                'public.mantik_paper_evaluation_declarations', 'public.mantik_paper_evaluation_assessments'}.issubset(names):
+            raise ValueError('Recovery seed did not retain source, allocation and evaluation owners')
         target = database + '_restore'
         sql('CREATE DATABASE "' + target + '" TEMPLATE template0')
         with dump.open('rb') as stream:
