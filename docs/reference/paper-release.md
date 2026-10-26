@@ -2,7 +2,7 @@
 
 Issue #26 requires an exact source/image/schema identity, configured capabilities,
 fresh Mantik-owned data, verified backups, deployment authorization and rollback
-evidence. The source/image preflight below implements only the build portion.
+evidence. The source/image preflight below implements the build and isolated binary-launch portion.
 It does not inspect a running service or database, read credentials, deploy,
 run an application service, qualify a strategy or authorize a natural soak.
 
@@ -35,8 +35,23 @@ attempts, including failures, are never overwritten. The command:
 - Retains `build-command.json`, `build.log` and `image.id`, then inspects that
   exact local image ID and checks its source labels, non-root user and Mantik
   entrypoint. It does not inspect container environments.
+- Creates one temporary container from that immutable image to run only `--help`.
+  The sandbox has no network, mounts, published ports or supplied credentials;
+  it uses the non-root entrypoint, a read-only root, dropped capabilities,
+  no-new-privileges and bounded memory, CPU, process count and duration. The
+  observed sandbox configuration must match before the binary starts.
+- Retains `executable/command.json`, `executable/help.log` and
+  `executable/receipt.json`, including the actual exit state and output digest.
+  A timeout, nonzero exit, OOM, unexpected help output or unverified cleanup
+  fails the attempt. Cleanup removes only that attempt's exact container ID.
+  A create timeout is reconciled by its unique name; create/start is not retried.
 - Records success or failure in `receipt.json`. A changed checkout or retained
   archive during the attempt fails the final check.
+
+The executable receipt proves the packaged binary launched and returned help.
+It does not prove service startup, API health, database migration, deployment or
+strategy behavior. `runtime_inspected` and `database_inspected` remain false for
+those service-level gates; the separate executable receipt records this check.
 
 `source_schema_maximum` describes the archived SQL sequence, not a live database.
 The migration runner must still verify the database's actual version and
