@@ -15,6 +15,28 @@ func supervisionAllocationInspections(t *testing.T, request func(string, string,
 	t.Helper()
 	beforeComparisons := request("GET", "/v1/allocation-comparisons", nil, 200)
 	beforeReviews := request("GET", "/v1/admission-reviews", nil, 200)
+	supervisionOwnedInspections(t, request, base, receiver, []supervisionInspection{
+		{"allocation_comparison", comparison, "/v1/allocation-comparisons/" + comparison},
+		{"admission_review", review, "/v1/admission-reviews/" + review},
+		{"decision_attribution", decision, "/v1/paper-attribution/" + decision},
+	})
+	for _, path := range []string{"/v1/allocation-comparisons?", "/v1/allocation-comparisons/" + comparison + "?at=future", "/v1/allocation-comparisons/invalid.id"} {
+		request("GET", path, nil, 422)
+	}
+	for _, path := range []string{"/v1/allocation-comparisons", "/v1/allocation-comparisons/" + comparison} {
+		request("GET", path, map[string]string{"effect": "invented"}, 422)
+	}
+	if !bytes.Equal(beforeComparisons, request("GET", "/v1/allocation-comparisons", nil, 200)) || !bytes.Equal(beforeReviews, request("GET", "/v1/admission-reviews", nil, 200)) {
+		t.Fatal("inspection mutated retained owner history")
+	}
+}
+
+// Checks the actual owner routes through authenticated HTTP and typed MCP,
+// preserving records, errors, framing isolation and read-only annotations.
+type supervisionInspection struct{ kind, id, path string }
+
+func supervisionOwnedInspections(t *testing.T, request func(string, string, any, int) []byte, base, receiver string, selections []supervisionInspection) {
+	t.Helper()
 	session := mcpTestSession(t, base, receiver)
 	session.init(t)
 	listed := session.request(t, 2, "tools/list", map[string]any{})
@@ -42,11 +64,7 @@ func supervisionAllocationInspections(t *testing.T, request func(string, string,
 		}
 	}
 	next := 3
-	for _, spec := range []struct{ kind, id, path string }{
-		{"allocation_comparison", comparison, "/v1/allocation-comparisons/" + comparison},
-		{"admission_review", review, "/v1/admission-reviews/" + review},
-		{"decision_attribution", decision, "/v1/paper-attribution/" + decision},
-	} {
+	for _, spec := range selections {
 		if !kinds[spec.kind] {
 			t.Fatal("missing MCP inspection", spec.kind)
 		}
@@ -82,7 +100,7 @@ func supervisionAllocationInspections(t *testing.T, request func(string, string,
 			status int
 		}{
 			{map[string]string{"kind": spec.kind, "id": spec.id}, 200},
-			{map[string]string{"kind": spec.kind, "id": "missing"}, 404},
+			{map[string]string{"kind": spec.kind, "id": "inspection-record-not-retained"}, 404},
 			{map[string]string{"kind": spec.kind, "id": "../operations"}, 422},
 			{map[string]string{"kind": spec.kind, "id": "one%2fother"}, 422},
 			{map[string]string{"kind": spec.kind, "id": spec.id, "at": "future"}, 422},
@@ -113,15 +131,6 @@ func supervisionAllocationInspections(t *testing.T, request func(string, string,
 				}
 			}
 		}
-	}
-	for _, path := range []string{"/v1/allocation-comparisons?", "/v1/allocation-comparisons/" + comparison + "?at=future", "/v1/allocation-comparisons/invalid.id"} {
-		request("GET", path, nil, 422)
-	}
-	for _, path := range []string{"/v1/allocation-comparisons", "/v1/allocation-comparisons/" + comparison} {
-		request("GET", path, map[string]string{"effect": "invented"}, 422)
-	}
-	if !bytes.Equal(beforeComparisons, request("GET", "/v1/allocation-comparisons", nil, 200)) || !bytes.Equal(beforeReviews, request("GET", "/v1/admission-reviews", nil, 200)) {
-		t.Fatal("inspection mutated retained owner history")
 	}
 	session.in.Close()
 	if err := <-session.done; err != nil {
