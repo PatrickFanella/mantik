@@ -368,7 +368,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 		t.Fatal("wrong pin emitted", err)
 	}
 	paperAttributionHTTP(t, request, server.URL, clock, first.Record, abstain.Record)
-	paperEvaluationDeclarationHTTP(t, request, server.URL, clock, strategy.Record, policyReceipt.Record)
+	paperEvaluationDeclarationHTTP(t, request, server.URL, clock, strategy.Record, policyReceipt.Record, s.(service.PaperEvaluationWorkerStore))
 	after, _ := s.Snapshot(ctx)
 	if before.ObservationCount != after.ObservationCount || !reflect.DeepEqual(before.Events, after.Events) || !reflect.DeepEqual(before.State.Case, after.State.Case) || !reflect.DeepEqual(before.State.Actions, after.State.Actions) {
 		t.Fatal("finalization changed operational state")
@@ -418,6 +418,28 @@ func TestPostgresContractsOwnedDecisionAllocationHTTP(t *testing.T) {
 	server := httptest.NewServer(service.HandlerWithClock(reopened, "restart-token", clock))
 	defer server.Close()
 	assertRestartedPaperAttribution(t, server.URL)
+	plans, evaluationErr := reopened.PaperEvaluationDeclarations(ctx)
+	if evaluationErr != nil {
+		t.Fatal(evaluationErr)
+	}
+	for _, plan := range plans.Records {
+		if plan.Command.ID != "http-paper-evaluation" {
+			continue
+		}
+		req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/paper-evaluation-assessments/"+service.AutomaticPaperEvaluationID(plan), nil)
+		req.Header.Set("Authorization", "Bearer restart-token")
+		response, e := http.DefaultClient.Do(req)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var assessment storage.PaperEvaluationAssessment
+		e = json.NewDecoder(response.Body).Decode(&assessment)
+		response.Body.Close()
+		if e != nil || response.StatusCode != 200 || assessment.Status != "blocked" || !assessment.AssessedAt.After(plan.Command.Plan.OutcomeDeadline) || assessment.AdmissionAvailable || assessment.ExecutionAvailable || assessment.QualificationCredit {
+			t.Fatal("restart lost automatic necessary assessment", assessment, e)
+		}
+	}
+
 	marketRequest, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/paper-decisions/owned-first/market-evidence", nil)
 	marketRequest.Header.Set("Authorization", "Bearer restart-token")
 	marketResponse, err := http.DefaultClient.Do(marketRequest)

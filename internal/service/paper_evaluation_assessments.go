@@ -37,7 +37,7 @@ func paperEvaluationAssessmentRoutes(mux *http.ServeMux, store storage.Store, cl
 		defer r.Body.Close()
 		raw, err := io.ReadAll(r.Body)
 		var c storage.PaperEvaluationAssessmentCommand
-		if err != nil || workerplan.ReadBoundedShape(raw, &c, 4096) != nil || c.Validate() != nil {
+		if err != nil || workerplan.ReadBoundedShape(raw, &c, 4096) != nil || c.Validate() != nil || reservedPaperEvaluationID(c.ID) {
 			paperEvaluationAssessmentError(w, storage.ErrPaperEvaluationAssessmentInvalid)
 			return
 		}

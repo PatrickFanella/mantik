@@ -162,16 +162,16 @@ func assertRestartedPaperAttribution(t *testing.T, serverURL string) {
 	if err = json.NewDecoder(response.Body).Decode(&got); err != nil || response.StatusCode != 200 || len(got.Rows) != 5 || got.ExecutionAvailable || got.QualificationCredit {
 		t.Fatal(got, err, response.StatusCode)
 	}
-	declarationRequest, _ := http.NewRequest("GET", serverURL+"/v1/paper-evaluation-declarations", nil)
+	declarationRequest, _ := http.NewRequest("GET", serverURL+"/v1/paper-evaluation-declarations/http-paper-evaluation", nil)
 	declarationRequest.Header.Set("Authorization", "Bearer restart-token")
 	declarationResponse, err := http.DefaultClient.Do(declarationRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer declarationResponse.Body.Close()
-	var declarations storage.PaperEvaluationDeclarationCatalog
-	if err = json.NewDecoder(declarationResponse.Body).Decode(&declarations); err != nil || declarationResponse.StatusCode != 200 || len(declarations.Records) != 1 || declarations.Records[0].Status != "declared_not_evaluated" || declarations.Records[0].AdmissionAvailable || declarations.Records[0].QualificationCredit {
-		t.Fatal("restart changed evaluation declaration", declarations, err)
+	var declaration storage.PaperEvaluationDeclaration
+	if err = json.NewDecoder(declarationResponse.Body).Decode(&declaration); err != nil || declarationResponse.StatusCode != 200 || declaration.Command.ID != "http-paper-evaluation" || declaration.Status != "declared_not_evaluated" || declaration.AdmissionAvailable || declaration.ExecutionAvailable || declaration.QualificationCredit {
+		t.Fatal("restart changed evaluation declaration", declaration, err)
 	}
 	count := 0
 	for _, row := range got.Rows {
