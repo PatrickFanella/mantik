@@ -257,9 +257,13 @@ and atomically appends a research selection in the same journal. It retains
 neither replacement source bytes nor caller-supplied results. The request can
 also be made through the typed supervision tool `request_social_research`.
 
-The source must still be accepted plain-text social material under its current
-enabled research watch, within its delay limit and with valid causal lineage.
-Copy activity and unsupported structured extraction cannot use this operation.
+The source must be accepted plain-text social material or a retained copy
+activity under its current enabled research watch, within its delay limit.
+Social reposts require valid causal lineage. Unsupported structured social
+extraction cannot use this operation. Copy selections use a separate versioned
+method and request schema; their mapping and quantity claims remain unverified.
+Retracted, reversed, cancelled, rejected or flat activity cannot request research.
+Capture-time `request_research` retains its social-only contract.
 The canonical source reused for deduplication must also remain applicable. A new
 selection of a superseded, deleted, stale or differently configured source fails
 without appending any journal entry. An exact committed command retry returns
@@ -277,3 +281,20 @@ selection entries use the same applicability method as opted-in recordings;
 historical capture and policy envelopes keep their original bytes. Requests
 remain pending research only, with no dispatch, admission, execution, financial
 or qualification authority.
+
+
+Schema 70 adds retained copy research selection without changing historical
+selection receipts. Copy requests use `mantik-owned-copy-research-request-v1`
+and `service_owned_recorded_copy_research_request_only`; the selection uses
+`mantik-owned-copy-research-selection-v1`. The entry method is
+`owned-current-copy-research-source-v1`. Deduplication separates copy research
+from social research and separates recorded from synthetic evidence. Repeated
+copy activity cannot multiply requests by changing source IDs, prose or mapping
+labels. Both the selected source and the canonical source must remain current
+at issuance. A later reversal does not rewrite a committed research receipt or
+make it a current permission.
+
+A pending copy research request is not a verified trade, independent observation,
+instrument mapping, normalized quantity, bounded follow instruction or financial
+effect. Research consumers must inspect the retained source and its current
+applicability before using it. This operation invokes no worker or provider.

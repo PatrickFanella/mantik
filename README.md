@@ -794,3 +794,10 @@ Social research requests require current, causal source applicability at issuanc
 including the canonical source reused for deduplication. Invalid repost lineage
 is rejected atomically; historical receipts and exact retries remain immutable.
 See [owned social watches](docs/reference/owned-social-watches.md).
+
+
+Retained copy observations under a current research-only watch can use the same
+ID/hash research selector. The owner records a separate versioned pending copy
+research request, rejects stale, superseded, terminal or reversed activity, and
+preserves the original capture. Source mapping and quantity claims remain
+unverified; this does not activate copy following, dispatch or financial effects.
