@@ -163,8 +163,7 @@ must have been admitted and published by finalization. The bid and ask are
 whole cents rederived from original recording bytes. The provider size values
 are preserved exactly as `provider_bid_size` and `provider_ask_size`.
 
-New `mantik-owned-decision-market-evidence-v2` responses also retain
-`session_evidence` for candidates. The service derives it from the exact quote
+Version 3 retains the candidate `session_evidence` introduced in version 2. The service derives it from the exact quote
 and owner-retained calendar sources at the immutable finalization clock, using
 method `owned-decision-quote-session-at-finalization-v1`. Calendar captures pin
 original digests, publication/admission clocks and fences. A calendar available
@@ -173,21 +172,24 @@ cannot. A newer admitted calendar with no published original suppresses an older
 calendar. Missing, stale, conflicting, holiday and preopen evidence retains the
 shared session selector's result; no caller-supplied market-open flag is accepted.
 Abstentions omit session evidence. The report does not establish continuous
-market coverage, normalized share quantities, admission or execution authority.
+market coverage, admission or execution authority.
 Existing outcome readbacks keep their quote-availability clock and representation.
 
-The recording schema does not pin a provider size-unit contract. Consequently,
-`size_unit` is `provider_native_unverified` and `share_quantities_available` is
-false. The service does not guess a multiplier, label the values as shares, or
-pass them into the whole-share fill reducer. Source-unit verification and a
-versioned normalization binding remain prerequisites for economic replay and
-financial execution. A retained raw digest proves byte identity within this
-owner history; it does not attest provider access or qualify the evidence.
+Version 3 (`mantik-owned-decision-market-evidence-v3`) selects the compiled
+[REST share-size contract](alpaca-quote-share-units.md) from the actual retained
+recording scope. Supported occurrences and integer ranges expose exact bid/ask
+share counts and pin the source document, feed and method. Older/transition-day
+quotes and out-of-range values retain original sizes with shares unavailable.
+This is a current versioned interpretation of recorded bytes, not a rewrite or
+authentication of historical captures. Legacy raw inspection stays unchanged.
+A raw digest proves byte identity in this owner history; it does not attest
+provider access or qualify the evidence.
 
 This is a historical readback, with no new clock. Later quotes, missing-price
 captures and lease changes do not replace the selected finalized basis.
 Abstentions return `not_applicable_abstention` and a null quote, including when
-a reference price happened to be present. Candidate decisions return
+a reference price happened to be present. Candidates with documented share quantities return
+`dimensions_retained_documented_share_units`; unsupported quotes retain
 `dimensions_retained_share_units_unverified`. The report hashes its exact
 contents and writes no records, balances or operational state. Admission,
 execution and qualification remain false; this does not complete #19 or #20.

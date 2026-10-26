@@ -66,7 +66,7 @@ func TestDecisionQuoteSessionFinalizationCut(t *testing.T) {
 				t.Fatal(err)
 			}
 			session := got.SessionEvidence
-			if got.Schema != "mantik-owned-decision-market-evidence-v2" || session == nil || session.Method != "owned-decision-quote-session-at-finalization-v1" || !session.Evidence.At.Equal(s.Decision.FinalizedAt) || session.Evidence.Session.Code != tc.code || session.Evidence.Quote.RegularSessionEligible != tc.eligible || session.Evidence.Quote.InputID != got.Quote.InputID || got.ExecutionAvailable || got.AdmissionAvailable || got.QualificationCredit || got.Quote.ShareQuantitiesAvailable {
+			if got.Schema != "mantik-owned-decision-market-evidence-v3" || session == nil || session.Method != "owned-decision-quote-session-at-finalization-v1" || !session.Evidence.At.Equal(s.Decision.FinalizedAt) || session.Evidence.Session.Code != tc.code || session.Evidence.Quote.RegularSessionEligible != tc.eligible || session.Evidence.Quote.InputID != got.Quote.InputID || got.ExecutionAvailable || got.AdmissionAvailable || got.QualificationCredit || !got.Quote.ShareQuantitiesAvailable {
 				t.Fatal(got, session)
 			}
 			if tc.eligible && (len(session.CalendarSources) != 1 || session.CalendarSources[0].CaptureSHA256 == "" || session.CalendarSources[0].AvailableAt.After(s.Decision.FinalizedAt)) {

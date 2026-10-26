@@ -6,22 +6,27 @@ import (
 	"time"
 )
 
-// QuoteDimensions retains provider-native sizes. It deliberately has no share
-// quantities or execution authority: the recording schema has no size-unit pin.
+// QuoteDimensions preserves provider-native sizes. The legacy inspector leaves
+// shares unavailable; the explicit versioned share inspector adds documented
+// dimensions after its supported cutoff, without execution authority.
 type QuoteDimensions struct {
-	InputID                  string    `json:"input_id"`
-	Symbol                   string    `json:"symbol"`
-	Currency                 string    `json:"currency"`
-	EvidenceClass            string    `json:"evidence_class"`
-	CaptureSHA256            string    `json:"capture_sha256"`
-	OccurredAt               time.Time `json:"occurred_at"`
-	ReceivedAt               time.Time `json:"received_at"`
-	BidCents                 int64     `json:"bid_cents"`
-	AskCents                 int64     `json:"ask_cents"`
-	ProviderBidSize          int64     `json:"provider_bid_size"`
-	ProviderAskSize          int64     `json:"provider_ask_size"`
-	SizeUnit                 string    `json:"size_unit"`
-	ShareQuantitiesAvailable bool      `json:"share_quantities_available"`
+	ShareSizeContract        *QuoteShareSizeContract `json:"share_size_contract,omitempty"`
+	ShareQuantityStatus      string                  `json:"share_quantity_status,omitempty"`
+	BidShares                int64                   `json:"bid_shares,omitempty"`
+	AskShares                int64                   `json:"ask_shares,omitempty"`
+	InputID                  string                  `json:"input_id"`
+	Symbol                   string                  `json:"symbol"`
+	Currency                 string                  `json:"currency"`
+	EvidenceClass            string                  `json:"evidence_class"`
+	CaptureSHA256            string                  `json:"capture_sha256"`
+	OccurredAt               time.Time               `json:"occurred_at"`
+	ReceivedAt               time.Time               `json:"received_at"`
+	BidCents                 int64                   `json:"bid_cents"`
+	AskCents                 int64                   `json:"ask_cents"`
+	ProviderBidSize          int64                   `json:"provider_bid_size"`
+	ProviderAskSize          int64                   `json:"provider_ask_size"`
+	SizeUnit                 string                  `json:"size_unit"`
+	ShareQuantitiesAvailable bool                    `json:"share_quantities_available"`
 }
 
 // InspectQuoteDimensions rederives an exact usable input from original bytes.

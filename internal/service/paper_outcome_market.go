@@ -88,7 +88,7 @@ func inspectPaperOutcomeMarket(ctx context.Context, s storage.PaperOutcomeSource
 	if d.Evaluation.Action == "entry_candidate" && (r.Evaluation.DueAt.IsZero() || !r.Evaluation.DueAt.After(d.FinalizedAt) || r.Evaluation.WindowEnd.Before(r.Evaluation.DueAt)) {
 		return PaperOutcomeMarketEvidence{}, storage.ErrPaperOutcomeInvalid
 	}
-	out := PaperOutcomeMarketEvidence{Schema: "mantik-owned-outcome-market-evidence-v2", ReceiverID: r.Command.ReceiverID, OutcomeID: r.Command.ID, OutcomeSHA256: r.SHA256, BasisSHA256: r.BasisSHA256, DecisionID: d.Command.ID, DecisionSHA256: d.SHA256, RegistrationID: d.Command.RegistrationID, Provider: entry.Registration.Provider, Feed: entry.Registration.Feed, FinalizedAt: d.FinalizedAt, HorizonAt: r.Evaluation.DueAt, ObservationWindowEnd: r.Evaluation.WindowEnd, EvaluatedAt: r.EvaluatedAt, OutcomeStatus: r.Evaluation.Status, SelectedObservationAvailableAt: r.Evaluation.AvailableAt, Status: "quote_observations_unavailable", CoverageStatus: "retained_observations_only", Rows: []PaperOutcomeMarketRow{}, Authority: "service_owned_retained_quote_observations_only"}
+	out := PaperOutcomeMarketEvidence{Schema: "mantik-owned-outcome-market-evidence-v3", ReceiverID: r.Command.ReceiverID, OutcomeID: r.Command.ID, OutcomeSHA256: r.SHA256, BasisSHA256: r.BasisSHA256, DecisionID: d.Command.ID, DecisionSHA256: d.SHA256, RegistrationID: d.Command.RegistrationID, Provider: entry.Registration.Provider, Feed: entry.Registration.Feed, FinalizedAt: d.FinalizedAt, HorizonAt: r.Evaluation.DueAt, ObservationWindowEnd: r.Evaluation.WindowEnd, EvaluatedAt: r.EvaluatedAt, OutcomeStatus: r.Evaluation.Status, SelectedObservationAvailableAt: r.Evaluation.AvailableAt, Status: "quote_observations_unavailable", CoverageStatus: "retained_observations_only", Rows: []PaperOutcomeMarketRow{}, Authority: "service_owned_retained_quote_observations_only"}
 	seen := map[string]bool{}
 	selected := 0
 	for key, published := range feed.Records {
@@ -152,12 +152,15 @@ func inspectPaperOutcomeMarket(ctx context.Context, s storage.PaperOutcomeSource
 				}
 			}
 			if input.Kind == "quote" && quality == "usable" {
-				dimensions, err := alpaca.InspectQuoteDimensions(recording, input.ID)
+				dimensions, err := alpaca.InspectQuoteShareDimensions(recording, input.ID)
 				if err != nil {
 					return PaperOutcomeMarketEvidence{}, err
 				}
 				row.Quote = &dimensions
 				row.DimensionStatus = "dimensions_retained_share_units_unverified"
+				if dimensions.ShareQuantitiesAvailable {
+					row.DimensionStatus = "dimensions_retained_documented_share_units"
+				}
 			}
 			if input.ID == r.Evaluation.InputID {
 				if r.Evaluation.Status != "observed" || row.Quote == nil || row.CaptureSHA256 != r.Evaluation.CaptureSHA256 || row.Quote.AskCents != r.Evaluation.ObservedPriceCents || !row.OccurredAt.Equal(r.Evaluation.OccurredAt) || !row.PublishedAt.Equal(r.Evaluation.PublishedAt) || row.AvailableAt.After(r.Evaluation.AvailableAt) || r.Evaluation.AvailableAt.After(r.EvaluatedAt) {
@@ -234,6 +237,12 @@ func inspectPaperOutcomeMarket(ctx context.Context, s storage.PaperOutcomeSource
 		}
 		return strings.Compare(a.CaptureKey, b.CaptureKey)
 	})
+	out.ShareQuantitiesAvailable = len(out.Rows) > 0
+	for _, row := range out.Rows {
+		if row.Quote == nil || !row.Quote.ShareQuantitiesAvailable {
+			out.ShareQuantitiesAvailable = false
+		}
+	}
 	if len(out.Rows) > 0 {
 		out.Status = "retained_quote_observations"
 	}

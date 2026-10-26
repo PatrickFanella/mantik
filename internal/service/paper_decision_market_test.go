@@ -42,7 +42,7 @@ func marketInspectorFixture(t *testing.T) storage.PaperDecisionSources {
 func TestDecisionMarketInspectorRejectsInconsistentDimensions(t *testing.T) {
 	s := marketInspectorFixture(t)
 	got, err := inspectPaperDecisionMarket(context.Background(), s)
-	if err != nil || got.Quote == nil || got.Quote.ProviderBidSize != 7 || got.Quote.ShareQuantitiesAvailable || got.ExecutionAvailable {
+	if err != nil || got.Quote == nil || got.Quote.ProviderBidSize != 7 || !got.Quote.ShareQuantitiesAvailable || got.ExecutionAvailable {
 		t.Fatal(got, err)
 	}
 	for name, change := range map[string]func(*storage.PaperDecisionSources){

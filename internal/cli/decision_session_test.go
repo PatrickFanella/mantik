@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,6 +48,50 @@ func TestDecisionSessionReadbackShape(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := service.PaperDecisionMarketEvidence{Schema: "mantik-owned-decision-market-evidence-v2", ReceiverID: d.Command.ReceiverID, DecisionID: d.Command.ID, DecisionSHA256: d.SHA256, BasisSHA256: d.BasisSHA256, RegistrationID: d.Command.RegistrationID, FinalizedAt: d.FinalizedAt, Authority: "service_owned_recorded_market_dimensions_only", Quote: &alpaca.QuoteDimensions{InputID: "quote"}, SessionEvidence: &service.PaperOutcomeSessionEvidence{Method: "owned-decision-quote-session-at-finalization-v1", Evidence: domain.MarketCoverageReport{Scope: "service_owned_decision_quote_session_at_finalization", At: d.FinalizedAt, Quote: domain.MarketQuoteCoverage{InputID: "quote"}}}}
+			tc.change(&v)
+			v.SHA256 = workerplan.Hash(v)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = emit(w, v) }))
+			defer srv.Close()
+			got, err := fetchDecisionInspection(context.Background(), srv.URL, d, "m")
+			if tc.valid && (err != nil || got == nil) || !tc.valid && (err == nil || got != nil) {
+				t.Fatal(got, err)
+			}
+		})
+	}
+}
+
+func TestDecisionSessionDocumentedShareReadback(t *testing.T) {
+	t.Setenv("MANTIK_API_TOKEN", "terminal-token")
+	for _, tc := range []struct {
+		name   string
+		valid  bool
+		change func(*service.PaperDecisionMarketEvidence)
+	}{
+		{"v3", true, func(*service.PaperDecisionMarketEvidence) {}},
+		{"scaled_shares", false, func(v *service.PaperDecisionMarketEvidence) { v.Quote.AskShares *= 100 }},
+		{"substituted_contract", false, func(v *service.PaperDecisionMarketEvidence) {
+			v.Quote.ShareSizeContract.SourceSHA256 = strings.Repeat("0", 64)
+		}},
+		{"foreign_feed", false, func(v *service.PaperDecisionMarketEvidence) { v.Feed = "sip" }},
+		{"missing_contract", false, func(v *service.PaperDecisionMarketEvidence) { v.Quote.ShareSizeContract = nil }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := decisionViewFixture("one")
+			raw := fmt.Sprintf(`{"quotes":{"SPY":{"t":%q,"ap":100,"bp":99,"as":5,"bs":7}}}`, d.FinalizedAt.Add(-time.Second).Format(time.RFC3339Nano))
+			rec := alpaca.Recording{Schema: alpaca.RecordingSchema, Currency: "USD", CaptureID: "quote", Capability: "latest_quotes", Feed: "iex", Symbols: []string{"SPY"}, Revision: 1, ReceivedAt: d.FinalizedAt, EvidenceClass: "synthetic_unqualified", AccessRef: "fixture", RawRef: "artifact:quote", Original: raw, SHA256: alpaca.Digest(raw), MaxQuoteAgeSeconds: 60}
+			norm, err := alpaca.Normalize(rec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dims, err := alpaca.InspectQuoteShareDimensions(rec, norm.Inputs[0].ID)
+			if err != nil || !dims.ShareQuantitiesAvailable {
+				t.Fatal(dims, err)
+			}
+			d.Evaluation.Action = "entry_candidate"
+			d.Evaluation.Coverage.Quote.InputID = dims.InputID
+			d.SHA256 = ""
+			d.SHA256 = workerplan.Hash(d)
+			v := service.PaperDecisionMarketEvidence{Schema: "mantik-owned-decision-market-evidence-v3", ReceiverID: d.Command.ReceiverID, DecisionID: d.Command.ID, DecisionSHA256: d.SHA256, BasisSHA256: d.BasisSHA256, RegistrationID: d.Command.RegistrationID, FinalizedAt: d.FinalizedAt, Feed: "iex", Authority: "service_owned_recorded_market_dimensions_only", Quote: &dims, SessionEvidence: &service.PaperOutcomeSessionEvidence{Method: "owned-decision-quote-session-at-finalization-v1", Evidence: domain.MarketCoverageReport{Scope: "service_owned_decision_quote_session_at_finalization", At: d.FinalizedAt, Quote: domain.MarketQuoteCoverage{InputID: dims.InputID}}}}
 			tc.change(&v)
 			v.SHA256 = workerplan.Hash(v)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = emit(w, v) }))

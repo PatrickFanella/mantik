@@ -20,7 +20,9 @@ qualification credit. Synthetic and stress tests remain unqualified.
 
 Prices range from 1 through 100,000,000 cents; quantities are whole shares from
 1 through 1,000,000. The owner must normalize provider size units to shares before
-calling the method. Slippage and variable fees are 0 through 1,000 basis points,
+calling the method. The [REST quote share-size contract](alpaca-quote-share-units.md)
+now supplies documented dimensions in supported owner reads; it does not remove
+the fill method's own quantity bounds or its admission/custody prerequisites. Slippage and variable fees are 0 through 1,000 basis points,
 commission is 0 through 1,000,000 cents per fill, displayed liquidity is 1 through
 10,000 basis points, latency is 0 through 60,000 milliseconds and quote age is
 1 through 3,600 seconds. Orders expire within 24 hours. Journal arithmetic caps
@@ -135,7 +137,7 @@ capacity. This finite kernel has no reserved protective/recovery capacity and
 must not be installed as a protective worker queue. Authority is
 `owner_supplied_shared_paper_fill_method_only`, with false execution attestation
 and qualification credit. There is no public book writer, CLI, database migration
-or operational activation. Provider-size normalization, service-owned admission,
+or operational activation. Owner-selected source-to-fill binding, service-owned admission,
 funded reservations, atomic effect/ledger persistence and recovery remain
 unfinished under #19/#20/#21/#25.
 
