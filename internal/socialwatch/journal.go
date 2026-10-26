@@ -213,13 +213,27 @@ type CaptureRecord struct {
 	SHA256                    string           `json:"sha256"`
 }
 type Command struct {
-	Policy  *PolicyCommand  `json:"policy"`
-	Capture *CaptureCommand `json:"capture"`
+	Research *ResearchCommand `json:"research,omitempty"`
+	Policy   *PolicyCommand   `json:"policy"`
+	Capture  *CaptureCommand  `json:"capture"`
 }
 
 func (c Command) identity() (string, string, error) {
-	if (c.Policy == nil) == (c.Capture == nil) {
+	count := 0
+	if c.Policy != nil {
+		count++
+	}
+	if c.Capture != nil {
+		count++
+	}
+	if c.Research != nil {
+		count++
+	}
+	if count != 1 {
 		return "", "", ErrInvalid
+	}
+	if c.Research != nil {
+		return c.Research.ID, c.Research.ReceiverID, c.Research.Validate()
 	}
 	if c.Policy != nil {
 		return c.Policy.ID, c.Policy.ReceiverID, c.Policy.Validate()
@@ -229,14 +243,15 @@ func (c Command) identity() (string, string, error) {
 }
 
 type Entry struct {
-	ResearchRequestMethod string         `json:"research_request_method,omitempty"`
-	Sequence              int            `json:"sequence"`
-	PreviousSHA256        string         `json:"previous_sha256"`
-	At                    time.Time      `json:"at"`
-	Command               Command        `json:"command"`
-	Policy                *PolicyRecord  `json:"policy"`
-	Capture               *CaptureRecord `json:"capture"`
-	SHA256                string         `json:"sha256"`
+	Research              *ResearchSelection `json:"research,omitempty"`
+	ResearchRequestMethod string             `json:"research_request_method,omitempty"`
+	Sequence              int                `json:"sequence"`
+	PreviousSHA256        string             `json:"previous_sha256"`
+	At                    time.Time          `json:"at"`
+	Command               Command            `json:"command"`
+	Policy                *PolicyRecord      `json:"policy"`
+	Capture               *CaptureRecord     `json:"capture"`
+	SHA256                string             `json:"sha256"`
 }
 type Journal struct {
 	Schema     string  `json:"schema"`
@@ -262,6 +277,7 @@ type Catalog struct {
 	History          []Entry           `json:"history"`
 }
 type projection struct {
+	captures map[string]CaptureRecord
 	research map[string]ResearchRequest
 	policies map[string]PolicyRecord
 	sources  map[string]CaptureRecord
@@ -271,7 +287,7 @@ type projection struct {
 }
 
 func newProjection() projection {
-	return projection{research: map[string]ResearchRequest{}, policies: map[string]PolicyRecord{}, sources: map[string]CaptureRecord{}, versions: map[string]CaptureRecord{}}
+	return projection{captures: map[string]CaptureRecord{}, research: map[string]ResearchRequest{}, policies: map[string]PolicyRecord{}, sources: map[string]CaptureRecord{}, versions: map[string]CaptureRecord{}}
 }
 func clone[T any](v T) T {
 	raw, _ := json.Marshal(v)
@@ -400,23 +416,14 @@ func (p *projection) capture(c CaptureCommand, at time.Time) (CaptureRecord, err
 		r.PolicyStatus = "structured_extraction_unavailable"
 	}
 	if c.RequestResearch {
-		if !r.SourceAccepted || r.PolicyStatus != "dispatch_unbound" || w.Behavior != "research" || o.Activity != nil {
-			return CaptureRecord{}, ErrConflict
-		}
-		requestKey := workerplan.Hash(struct{ ReceiverID, EvidenceClass, ClaimGroupSHA256 string }{c.ReceiverID, c.EvidenceClass, r.ClaimGroupSHA256})
-		request, duplicate := p.research[requestKey]
-		if !duplicate {
-			request = ResearchRequest{Schema: "mantik-owned-social-research-request-v1", ID: "social-research-" + requestKey,
-				ReceiverID: c.ReceiverID, WatchID: c.WatchID, PolicySHA256: c.PolicySHA256,
-				CaptureID: c.ID, OriginalSHA256: c.OriginalSHA256, SourceSemanticSHA256: r.SourceSemanticSHA256,
-				ClaimGroupSHA256: r.ClaimGroupSHA256, Source: o.Source, Root: r.Root, RequestedAt: at,
-				EvidenceClass: c.EvidenceClass, Status: "pending_research", Authority: "service_owned_recorded_source_research_request_only"}
-			request.SHA256 = workerplan.Hash(request)
-			p.research[requestKey] = request
+		request, duplicate, err := p.researchForSource(r, at)
+		if err != nil {
+			return CaptureRecord{}, err
 		}
 		r.ResearchRequest = &request
 		r.ResearchRequestDuplicate = duplicate
 	}
+
 	r.SHA256 = workerplan.Hash(r)
 	if r.SourceAccepted {
 		p.sources[sourceKey(o.Source)] = r
@@ -445,7 +452,13 @@ func (p *projection) apply(receiver string, c Command, at time.Time, seq int, re
 	}
 	at = at.UTC()
 	e := Entry{ResearchRequestMethod: researchMethod, Sequence: seq, PreviousSHA256: p.head, At: at, Command: clone(c)}
-	if c.Policy != nil {
+	if c.Research != nil {
+		v, err := p.selectResearch(*c.Research, at)
+		if err != nil {
+			return Entry{}, err
+		}
+		e.Research = &v
+	} else if c.Policy != nil {
 		v, err := p.policy(*c.Policy, at)
 		if err != nil {
 			return Entry{}, err
@@ -457,6 +470,7 @@ func (p *projection) apply(receiver string, c Command, at time.Time, seq int, re
 			return Entry{}, err
 		}
 		e.Capture = &v
+		p.captures[v.Command.ID] = v
 	}
 	e.SHA256 = workerplan.Hash(e)
 	p.head = e.SHA256
@@ -537,7 +551,7 @@ func Append(j Journal, c Command, now func() time.Time) (Journal, Receipt, error
 		return Journal{}, Receipt{}, ErrInvalid
 	}
 	method := ""
-	if c.Capture != nil && c.Capture.RequestResearch {
+	if c.Research != nil || c.Capture != nil && c.Capture.RequestResearch {
 		method = researchRequestSourceMethod
 	}
 	e, err := p.apply(j.ReceiverID, c, now(), len(j.Entries)+1, method)

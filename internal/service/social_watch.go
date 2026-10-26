@@ -35,7 +35,7 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			return
 		}
 		limit := int64(64 << 10)
-		if policy {
+		if policy || r.Pattern == "POST /v1/social-research-requests" {
 			limit = 4096
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, limit)
@@ -46,7 +46,14 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			return
 		}
 		var c socialwatch.Command
-		if policy {
+		if r.Pattern == "POST /v1/social-research-requests" {
+			var selected socialwatch.ResearchCommand
+			if workerplan.ReadBoundedShape(raw, &selected, int(limit)) != nil || selected.Validate() != nil {
+				socialWatchError(w, socialwatch.ErrInvalid)
+				return
+			}
+			c.Research = &selected
+		} else if policy {
 			var p socialwatch.PolicyCommand
 			if workerplan.ReadBoundedShape(raw, &p, int(limit)) != nil || p.Validate() != nil {
 				socialWatchError(w, socialwatch.ErrInvalid)
@@ -89,6 +96,7 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		write(w, code, receipt)
 	}
+	mux.HandleFunc("POST /v1/social-research-requests", func(w http.ResponseWriter, r *http.Request) { post(w, r, false) })
 	mux.HandleFunc("POST /v1/social-watches", func(w http.ResponseWriter, r *http.Request) { post(w, r, true) })
 	mux.HandleFunc("POST /v1/social-recordings", func(w http.ResponseWriter, r *http.Request) { post(w, r, false) })
 	mux.HandleFunc("POST /v1/copy-watches", func(w http.ResponseWriter, r *http.Request) { post(w, r, true) })
@@ -162,6 +170,27 @@ func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		socialWatchError(w, socialwatch.ErrNotFound)
 	}
+	mux.HandleFunc("GET /v1/social-research-requests/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if !paperaccount.ID.MatchString(id) || r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
+			socialWatchError(w, socialwatch.ErrInvalid)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		history, err := backend.SocialHistory(ctx)
+		if err != nil {
+			write(w, 503, map[string]string{"error": "social watch storage unavailable"})
+			return
+		}
+		for _, request := range history.ResearchRequests {
+			if request.ID == id {
+				write(w, 200, request)
+				return
+			}
+		}
+		socialWatchError(w, socialwatch.ErrNotFound)
+	})
 	mux.HandleFunc("GET /v1/social-recordings/{id}", recording)
 	mux.HandleFunc("GET /v1/copy-recordings/{id}", recording)
 	mux.HandleFunc("GET /v1/social-recordings/{id}/applicability", applicability)

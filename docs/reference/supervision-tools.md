@@ -18,7 +18,8 @@ unavailable write owners return 422 before dispatch.
 
 | Tool | Arguments | Owner |
 | --- | --- | --- |
-| `inspect_record` | `kind` and `id`; kinds `decision`, `decision_explanation`, `decision_market_evidence`, `decision_attribution`, `allocation_comparison`, `admission_review`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_record`, `copy_record`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
+| `inspect_record` | `kind` and `id`; kinds `decision`, `decision_explanation`, `decision_market_evidence`, `decision_attribution`, `allocation_comparison`, `admission_review`, `review_case`, `news_record`, `research_review`, `watch`, `copy_watch`, `social_record`, `copy_record`, `social_research_request`, `social_applicability`, `copy_applicability` | Existing targeted GET route for that kind |
+| `request_social_research` | `id`, `receiver_id`, `capture_id`, `capture_sha256`; exact retained source, current research watch | `POST /v1/social-research-requests`; pending request only |
 | `request_research` | `receiver_id`, `request_id`, `case_id`, `version`, optional `type_id` | `POST /v1/news-reviews` |
 | `change_watch_policy` | Existing policy command: `id`, `receiver_id`, optional `previous_sha256`, `policy` | `POST /v1/social-watches` |
 | `change_copy_watch_policy` | Same policy command; research, review or inactive bounded follow intent | `POST /v1/copy-watches` |
@@ -212,3 +213,12 @@ Missing captures or absent owners retain HTTP 404; owner failures retain 503.
 Original text and activity fields remain unverified source claims. Applicability
 selectors continue to use their separate clock-dependent contract. No model call,
 extraction attestation, economic effect or qualification follows from inspection.
+
+`request_social_research` selects already-retained plain social source material;
+it does not re-record it or accept caller policy, source-class, admission or
+execution assertions. The owner rechecks source and canonical-request
+applicability before committing. `inspect_record` kind `social_research_request`
+reads the returned canonical request ID. The tool is available only when the
+social journal owner is available; it uses the same authentication, idempotence
+and atomic commit path as the direct API. Model generation is not required to
+invoke or verify this typed tool.

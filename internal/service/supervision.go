@@ -46,12 +46,13 @@ type supervisionTool struct {
 var supervisionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,159}$`)
 
 func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
-	tools := []supervisionTool{{"inspect_record", "{kind: decision|decision_explanation|decision_market_evidence|decision_attribution|allocation_comparison|admission_review|review_case|news_record|research_review|watch|copy_watch|social_record|copy_record|social_applicability|copy_applicability, id: string}; owner availability applies", false}}
+	tools := []supervisionTool{{"inspect_record", "{kind: decision|decision_explanation|decision_market_evidence|decision_attribution|allocation_comparison|admission_review|review_case|news_record|research_review|watch|copy_watch|social_record|copy_record|social_research_request|social_applicability|copy_applicability, id: string}; owner availability applies", false}}
 	if _, ok := store.(storage.ReviewStore); ok {
 		tools = append(tools, supervisionTool{"request_research", "news-review start command: receiver_id, request_id, case_id, version, optional type_id", true})
 	}
 	if _, ok := store.(storage.SocialWatchStore); ok {
 		tools = append(tools,
+			supervisionTool{"request_social_research", "socialwatch.ResearchCommand; select retained capture id/hash; pending research only, no dispatch", true},
 			supervisionTool{"change_watch_policy", "socialwatch.PolicyCommand; behavior restricted to research or decision_review", true},
 			supervisionTool{"change_copy_watch_policy", "socialwatch.PolicyCommand; research, decision_review or inactive bounded_paper_follow intent; no admission or execution", true})
 	}
@@ -111,7 +112,7 @@ func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
 				invalid(w)
 				return
 			}
-			paths := map[string]string{"decision_attribution": "/v1/paper-attribution/", "allocation_comparison": "/v1/allocation-comparisons/", "admission_review": "/v1/admission-reviews/", "decision": "/v1/paper-decisions/", "decision_explanation": "/v1/paper-decisions/", "decision_market_evidence": "/v1/paper-decisions/", "review_case": "/v1/decision-review-cases/", "news_record": "/v1/news-recordings/", "research_review": "/v1/news-reviews/", "watch": "/v1/social-watches/", "copy_watch": "/v1/copy-watches/", "social_record": "/v1/social-recordings/", "copy_record": "/v1/copy-recordings/", "social_applicability": "/v1/social-recordings/", "copy_applicability": "/v1/copy-recordings/"}
+			paths := map[string]string{"decision_attribution": "/v1/paper-attribution/", "allocation_comparison": "/v1/allocation-comparisons/", "admission_review": "/v1/admission-reviews/", "decision": "/v1/paper-decisions/", "decision_explanation": "/v1/paper-decisions/", "decision_market_evidence": "/v1/paper-decisions/", "review_case": "/v1/decision-review-cases/", "news_record": "/v1/news-recordings/", "research_review": "/v1/news-reviews/", "watch": "/v1/social-watches/", "copy_watch": "/v1/copy-watches/", "social_research_request": "/v1/social-research-requests/", "social_record": "/v1/social-recordings/", "copy_record": "/v1/copy-recordings/", "social_applicability": "/v1/social-recordings/", "copy_applicability": "/v1/copy-recordings/"}
 			prefix, ok := paths[args.Kind]
 			if !ok {
 				invalid(w)
@@ -126,6 +127,13 @@ func supervisionRoutes(mux *http.ServeMux, store storage.Store) {
 			case "decision_market_evidence":
 				path += "/market-evidence"
 			}
+		case "request_social_research":
+			var args socialwatch.ResearchCommand
+			if !decode(&args, 4096) || args.Validate() != nil {
+				invalid(w)
+				return
+			}
+			path, body = "/v1/social-research-requests", args
 		case "request_research":
 			var args researchRequestArguments
 			if !decode(&args, 4096) {

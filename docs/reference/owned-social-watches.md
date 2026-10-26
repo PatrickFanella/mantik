@@ -247,3 +247,33 @@ prefix during replay; later edits do not rewrite earlier issuance receipts.
 Current applicability must still be checked before any future research consumer
 uses the material. This method grants no dispatch, financial or qualification
 authority.
+
+## Research from retained captures
+
+`POST /v1/social-research-requests` accepts only `id`, `receiver_id`, `capture_id`
+and `capture_sha256`. The hash pins the complete retained capture receipt.
+The owner loads that source and its watch policy, checks current applicability,
+and atomically appends a research selection in the same journal. It retains
+neither replacement source bytes nor caller-supplied results. The request can
+also be made through the typed supervision tool `request_social_research`.
+
+The source must still be accepted plain-text social material under its current
+enabled research watch, within its delay limit and with valid causal lineage.
+Copy activity and unsupported structured extraction cannot use this operation.
+The canonical source reused for deduplication must also remain applicable. A new
+selection of a superseded, deleted, stale or differently configured source fails
+without appending any journal entry. An exact committed command retry returns
+its historical receipt without reading the clock, even after later source or
+policy changes. Reusing that command ID with different selectors conflicts.
+
+The original capture receipt remains unchanged. The selection records its own
+command and issuance time and contains the canonical pending request, with an
+explicit deduplication flag. `GET /v1/social-research-requests/{request-id}` reads
+the immutable canonical request; `/v1/social-history` includes selections and
+original source history. Neither read invokes a worker or provider.
+
+Schema 69 fences earlier writers without rewriting retained payloads. New
+selection entries use the same applicability method as opted-in recordings;
+historical capture and policy envelopes keep their original bytes. Requests
+remain pending research only, with no dispatch, admission, execution, financial
+or qualification authority.
