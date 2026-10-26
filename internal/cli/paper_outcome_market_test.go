@@ -15,7 +15,7 @@ func assertOutcomeMarketHTTP(t testing.TB, request func(string, string, any, int
 	path := "/v1/paper-outcomes/" + outcome.Command.ID + "/market-evidence"
 	clock.panicRead = true
 	var got service.PaperOutcomeMarketEvidence
-	if e := json.Unmarshal(request("GET", path, nil, 200), &got); e != nil || got.Schema != "mantik-owned-outcome-market-evidence-v2" || got.OutcomeSHA256 != outcome.SHA256 || got.BasisSHA256 != outcome.BasisSHA256 || got.DecisionSHA256 != outcome.Command.DecisionSHA256 || len(got.Rows) == 0 || got.ContinuousCoverageAvailable || got.ShareQuantitiesAvailable || got.AdmissionAvailable || got.ExecutionAvailable || got.QualificationCredit {
+	if e := json.Unmarshal(request("GET", path, nil, 200), &got); e != nil || got.Schema != "mantik-owned-outcome-market-evidence-v3" || got.OutcomeSHA256 != outcome.SHA256 || got.BasisSHA256 != outcome.BasisSHA256 || got.DecisionSHA256 != outcome.Command.DecisionSHA256 || len(got.Rows) == 0 || got.ContinuousCoverageAvailable || got.AdmissionAvailable || got.ExecutionAvailable || got.QualificationCredit {
 		t.Fatal("actual outcome market evidence", got, e)
 	}
 	selected := 0
@@ -28,10 +28,19 @@ func assertOutcomeMarketHTTP(t testing.TB, request func(string, string, any, int
 		}
 		if row.SelectedForwardQuote {
 			selected++
-			if row.SessionEvidence == nil || !row.SessionEvidence.Evidence.Quote.RegularSessionEligible || len(row.SessionEvidence.CalendarSources) == 0 || row.SessionEvidence.CalendarSources[0].CaptureSHA256 == "" || row.Quote == nil || row.InputID != outcome.Evaluation.InputID || row.CaptureSHA256 != outcome.Evaluation.CaptureSHA256 || row.Quote.AskCents != outcome.Evaluation.ObservedPriceCents || row.Quote.ShareQuantitiesAvailable || row.Quote.SizeUnit != "provider_native_unverified" {
+			if row.SessionEvidence == nil || !row.SessionEvidence.Evidence.Quote.RegularSessionEligible || len(row.SessionEvidence.CalendarSources) == 0 || row.SessionEvidence.CalendarSources[0].CaptureSHA256 == "" || row.Quote == nil || row.InputID != outcome.Evaluation.InputID || row.CaptureSHA256 != outcome.Evaluation.CaptureSHA256 || row.Quote.AskCents != outcome.Evaluation.ObservedPriceCents || !row.Quote.ShareQuantitiesAvailable || row.Quote.SizeUnit != "shares" || row.Quote.BidShares != row.Quote.ProviderBidSize || row.Quote.AskShares != row.Quote.ProviderAskSize {
 				t.Fatal("forward quote dimensions", row)
 			}
 		}
+	}
+	allShares := len(got.Rows) > 0
+	for _, row := range got.Rows {
+		if row.Quote == nil || !row.Quote.ShareQuantitiesAvailable {
+			allShares = false
+		}
+	}
+	if got.ShareQuantitiesAvailable != allShares {
+		t.Fatal("aggregate share availability ignored gaps", got)
 	}
 	if selected != 1 {
 		t.Fatal("selected forward observation missing", got)

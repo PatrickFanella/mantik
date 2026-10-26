@@ -140,3 +140,11 @@ capacity. Continuous ingestion also needs retention and pagination policy.
 Real-feed readiness requires an explicit [startup policy](feed-readiness.md)
 and validated server evidence. Profitable paper operation remains a
 later qualification gate.
+
+## Recorded quote share units
+
+The explicit [REST quote share-size contract](alpaca-quote-share-units.md) binds
+current owner-derived dimensions to the reviewed provider schema and a
+conservative post-transition occurrence date. The legacy raw inspector is
+unchanged. Interpreting recorded size fields does not authenticate a capture,
+qualify an evidence class or grant execution authority.

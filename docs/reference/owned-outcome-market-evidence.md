@@ -12,7 +12,7 @@ transaction and returns no source result if COMMIT fails. The inspector uses
 the retained outcome timestamp; it never consults wall time or acquires data.
 There is no new table, journal, write command or offline CLI.
 
-The `mantik-owned-outcome-market-evidence-v2` response pins the receiver,
+The `mantik-owned-outcome-market-evidence-v3` response pins the receiver,
 outcome, basis, finalized decision and collector registration. It retains the
 decision finalization, outcome horizon, observation-window end and assessment
 timestamp alongside the outcome's existing status.
@@ -71,7 +71,7 @@ quote-level outcome; it does not identify a fill or an economic return.
 
 ## Quote session evidence
 
-Version 2 adds `session_evidence` for each usable quote row. Missing,
+Version 2 introduced `session_evidence` for each usable quote row. Missing,
 quarantined and unpublished quote rows keep this field null. The method
 `owned-quote-session-at-availability-v1` reconstructs the service evidence cut
 at the row's `available_at`, without consulting wall time. It applies the same
@@ -99,20 +99,32 @@ condition; it cannot make a quote session-eligible. The report concerns this
 specific quote, rather than replacing it with another latest quote.
 
 This is one observed quote's session context. It does not establish continuous
-holding-window coverage, collector liveness, liquidity, verified share units,
+holding-window coverage, collector liveness, available liquidity,
 cost-bearing execution, admission or qualification. The outer authority flags
 remain false. Existing outcome records and source hashes are unchanged; the
 readback's version and hash include the new projection.
 
 ## Boundaries and historical readback
 
-`coverage_status` is `retained_observations_only`.
-`continuous_coverage_available`, `share_quantities_available`,
-`admission_available`, `execution_available` and `qualification_credit` remain
-false. Provider-native sizes retain `size_unit: provider_native_unverified`;
-there is no conversion to shares. Missing updates, unknown size units,
-regular-session path coverage, liquidity assumptions and actual cost-bearing
-execution remain unresolved inputs to a future applicable recipe.
+`coverage_status` remains `retained_observations_only`.
+`continuous_coverage_available`, `admission_available`, `execution_available`
+and `qualification_credit` remain false.
+
+Version 3 uses the compiled [REST share-size contract](alpaca-quote-share-units.md)
+for each usable quote. Its size fields retain original provider values while
+supported occurrences expose exact `bid_shares` and `ask_shares`, with the
+source document and method pin. Such rows report
+`dimensions_retained_documented_share_units`. Unsupported dates or ranges keep
+share quantities unavailable. Missing, quarantined and unpublished rows retain
+their original gap classifications and null quote dimensions.
+
+The outer `share_quantities_available` is true only when there is at least one
+row and every retained row has supported share dimensions. A single gap or
+unsupported row keeps it false. It describes dimensions of the retained rows,
+not continuous coverage or a complete executable holding-window path. Source
+classes, timing, session context and strategy admission remain separate checks.
+No multiplier, live liquidity or financial result is inferred. Existing source
+records and outcomes are unchanged; only the v3 projection and hash change.
 
 An outcome with no retained quote observations reports
 `quote_observations_unavailable`. Abstentions report

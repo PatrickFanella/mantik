@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"io"
 	"reflect"
 	"strings"
@@ -55,13 +56,13 @@ func fetchDecisionInspection(ctx context.Context, base string, d storage.PaperDe
 		}
 		pin := v.SHA256
 		v.SHA256 = ""
-		if pin != workerplan.Hash(v) || (v.Schema != "mantik-owned-decision-market-evidence-v1" && v.Schema != "mantik-owned-decision-market-evidence-v2") || v.Authority != "service_owned_recorded_market_dimensions_only" || v.AdmissionAvailable || v.ExecutionAvailable || v.QualificationCredit || v.ReceiverID != d.Command.ReceiverID || v.DecisionID != d.Command.ID || v.DecisionSHA256 != d.SHA256 || v.BasisSHA256 != d.BasisSHA256 || !v.FinalizedAt.Equal(d.FinalizedAt) || v.RegistrationID != d.Command.RegistrationID {
+		if pin != workerplan.Hash(v) || (v.Schema != "mantik-owned-decision-market-evidence-v1" && v.Schema != "mantik-owned-decision-market-evidence-v2" && v.Schema != "mantik-owned-decision-market-evidence-v3") || v.Authority != "service_owned_recorded_market_dimensions_only" || v.AdmissionAvailable || v.ExecutionAvailable || v.QualificationCredit || v.ReceiverID != d.Command.ReceiverID || v.DecisionID != d.Command.ID || v.DecisionSHA256 != d.SHA256 || v.BasisSHA256 != d.BasisSHA256 || !v.FinalizedAt.Equal(d.FinalizedAt) || v.RegistrationID != d.Command.RegistrationID {
 			return nil, errDecisionReadback
 		}
 		if v.Schema == "mantik-owned-decision-market-evidence-v1" && v.SessionEvidence != nil {
 			return nil, errDecisionReadback
 		}
-		if v.Schema == "mantik-owned-decision-market-evidence-v2" {
+		if v.Schema == "mantik-owned-decision-market-evidence-v2" || v.Schema == "mantik-owned-decision-market-evidence-v3" {
 			if d.Evaluation.Action == "entry_candidate" {
 				s := v.SessionEvidence
 				if s == nil || v.Quote == nil || s.Method != "owned-decision-quote-session-at-finalization-v1" || s.Evidence.Scope != "service_owned_decision_quote_session_at_finalization" || !s.Evidence.At.Equal(d.FinalizedAt) || s.Evidence.Quote.InputID != v.Quote.InputID || v.Quote.InputID != d.Evaluation.Coverage.Quote.InputID || s.Evidence.QualificationCredit || s.Evidence.CollectorLivenessVerified || s.Evidence.GlobalReadinessConfigured {
@@ -70,6 +71,9 @@ func fetchDecisionInspection(ctx context.Context, base string, d storage.PaperDe
 			} else if v.SessionEvidence != nil {
 				return nil, errDecisionReadback
 			}
+		}
+		if v.Schema == "mantik-owned-decision-market-evidence-v3" && v.Quote != nil && (alpaca.ValidateQuoteShareDimensions(*v.Quote) != nil || v.Quote.ShareSizeContract.Feed != v.Feed) {
+			return nil, errDecisionReadback
 		}
 		v.SHA256 = pin
 		return v, nil

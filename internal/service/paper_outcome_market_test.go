@@ -64,8 +64,8 @@ func TestOutcomeMarketRetainsTemporalAndDimensionGaps(t *testing.T) {
 	byKey := map[string]PaperOutcomeMarketRow{}
 	for _, r := range out.Rows {
 		byKey[r.CaptureKey] = r
-		if r.Quote != nil && (r.Quote.ShareQuantitiesAvailable || r.Quote.SizeUnit != "provider_native_unverified") {
-			t.Fatal("inferred share units", r)
+		if r.Quote != nil && (!r.Quote.ShareQuantitiesAvailable || r.Quote.SizeUnit != "shares" || r.Quote.BidShares != r.Quote.ProviderBidSize || r.Quote.AskShares != r.Quote.ProviderAskSize) {
+			t.Fatal("documented share units missing", r)
 		}
 	}
 	if byKey["spy:quote-r1"].TemporalStatus != "before_finalization" || byKey["spy:during-r1"].TemporalStatus != "within_holding_window" || byKey["spy:delayed-r1"].TemporalStatus != "published_or_admitted_after_horizon" || byKey["spy:forward-r1"].TemporalStatus != "after_horizon" || !byKey["spy:forward-r1"].SelectedForwardQuote {

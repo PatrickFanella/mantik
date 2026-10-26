@@ -53,7 +53,7 @@ func inspectPaperDecisionMarket(ctx context.Context, s storage.PaperDecisionSour
 	if !ok || e.Registration.Provider != "alpaca" {
 		return PaperDecisionMarketEvidence{}, storage.ErrPaperDecisionConflict
 	}
-	out := PaperDecisionMarketEvidence{Schema: "mantik-owned-decision-market-evidence-v2", ReceiverID: d.Command.ReceiverID, DecisionID: d.Command.ID, DecisionSHA256: d.SHA256, BasisSHA256: d.BasisSHA256, FinalizedAt: d.FinalizedAt, Provider: e.Registration.Provider, Feed: e.Registration.Feed, RegistrationID: d.Command.RegistrationID, Status: "not_applicable_abstention", Authority: "service_owned_recorded_market_dimensions_only"}
+	out := PaperDecisionMarketEvidence{Schema: "mantik-owned-decision-market-evidence-v3", ReceiverID: d.Command.ReceiverID, DecisionID: d.Command.ID, DecisionSHA256: d.SHA256, BasisSHA256: d.BasisSHA256, FinalizedAt: d.FinalizedAt, Provider: e.Registration.Provider, Feed: e.Registration.Feed, RegistrationID: d.Command.RegistrationID, Status: "not_applicable_abstention", Authority: "service_owned_recorded_market_dimensions_only"}
 	if d.Evaluation.Action == "entry_candidate" {
 		id := d.Evaluation.Coverage.Quote.InputID
 		if b.Feed.Routing == nil {
@@ -84,7 +84,7 @@ func inspectPaperDecisionMarket(ctx context.Context, s storage.PaperDecisionSour
 				if i.ID != id {
 					continue
 				}
-				dimensions, err := alpaca.InspectQuoteDimensions(r, id)
+				dimensions, err := alpaca.InspectQuoteShareDimensions(r, id)
 				if err != nil {
 					return PaperDecisionMarketEvidence{}, err
 				}
@@ -109,6 +109,9 @@ func inspectPaperDecisionMarket(ctx context.Context, s storage.PaperDecisionSour
 		session.Evidence.Scope = "service_owned_decision_quote_session_at_finalization"
 		out.SessionEvidence = &session
 		out.Status = "dimensions_retained_share_units_unverified"
+		if out.Quote.ShareQuantitiesAvailable {
+			out.Status = "dimensions_retained_documented_share_units"
+		}
 	}
 	out.SHA256 = workerplan.Hash(out)
 	return out, nil

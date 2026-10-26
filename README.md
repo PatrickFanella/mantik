@@ -827,3 +827,8 @@ Disposable owner recovery also retains and replays blocked evaluation plans and
 assessments, including exact retries and rejection of a self-rehashed admission
 claim. See [storage owner recovery](docs/reference/storage-owner-recovery.md).
 This fixture coverage does not qualify economic or protective recovery.
+
+Decision and outcome market-evidence v3 reads now derive documented share sizes
+from actual retained quote owners using a pinned [Alpaca REST unit contract](docs/reference/alpaca-quote-share-units.md).
+Historical transition-day/unsupported values remain explicit, and evidence
+classes, admission, financial execution and qualification remain separate gates.
