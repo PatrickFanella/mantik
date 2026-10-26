@@ -45,7 +45,8 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	policy.Policy.Strategies[0].ArtifactSHA256 = strategy.Record.DefinitionSHA256
 	policy.Policy.Symbols[0].ID = "SPY"
 	policy.ExecutionModel = &paperfill.Model{Method: paperfill.Method, SlippageBPS: 10, FeeBPS: 20, CommissionPerFillCents: 3, LiquidityBPS: 5000, LatencyMillis: 1000, MaxQuoteAgeSeconds: 60}
-	if _, err = s.RegisterAllocationPolicy(ctx, policy, clock); err != nil {
+	registeredPolicy, err := s.RegisterAllocationPolicy(ctx, policy, clock)
+	if err != nil {
 		t.Fatal(err)
 	}
 	reg := feedcollector.Registration{ID: "spy-iex", Provider: "alpaca", Feed: "iex", Symbol: "SPY", EvidenceClass: d.InputEvidenceClass, JournalID: "journal-one", AccessRef: "access-one", LeaseSeconds: 300}
@@ -72,6 +73,26 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	if err != nil || len(valid.Records) != 1 || len(valid.Ledgers) != 1 || valid.Records[0].AdmissionChecks[0].AdmissionAvailable || valid.Records[0].ExecutionAvailable || valid.Records[0].QualificationCredit {
 		t.Fatal("invalid recovery seed", valid, err)
 	}
+	// Retain actual evaluation owners in the exported snapshot. This storage
+	// fixture supplies no measured outcomes or economic admission authority.
+	stress := *policy.ExecutionModel
+	stress.FeeBPS++
+	plan := PaperEvaluationDeclarationCommand{ID: "recovery-evaluation-plan", ReceiverID: account.ReceiverID, Recipe: PaperEvaluationRecipe, PolicyID: policy.Policy.ID, PolicySHA256: registeredPolicy.Record.SHA256, Plan: PaperEvaluationPlan{
+		FamilyID: "recovery-evaluation-family", Variants: []PaperEvaluationVariant{{ID: d.ID, SHA256: strategy.Record.SHA256}},
+		WindowStart: at.Add(time.Hour), WindowEnd: at.Add(2 * time.Hour), OutcomeDeadline: at.Add(26 * time.Hour),
+		MinIndependentDecisions: 30, MinimumNetExcessCents: 0, MaximumDrawdownCents: 1000, AdmissionTTLSeconds: 3600,
+		Benchmarks: []string{"cash_no_action", "passive_same_symbol"}, StressModel: stress,
+	}}
+	declaration, err := s.DeclarePaperEvaluation(ctx, plan, func() time.Time { return at.Add(2 * time.Second) })
+	if err != nil {
+		t.Fatal("evaluation recovery declaration seed", err)
+	}
+	assessmentCommand := PaperEvaluationAssessmentCommand{ID: "recovery-evaluation-assessment", ReceiverID: account.ReceiverID, DeclarationID: plan.ID, DeclarationSHA256: declaration.Record.SHA256}
+	assessment, err := s.AssessPaperEvaluation(ctx, assessmentCommand, func() time.Time { return plan.Plan.OutcomeDeadline.Add(time.Nanosecond) }, eval, recoveryFixtureOutcomeEvaluator)
+	if err != nil || assessment.Record.Schema != "mantik-owned-paper-evaluation-assessment-v4" || assessment.Record.Status != "blocked" || assessment.Record.EvaluationComplete || assessment.Record.AdmissionAvailable || assessment.Record.ExecutionAvailable || assessment.Record.QualificationCredit {
+		t.Fatal("evaluation recovery assessment seed", assessment, err)
+	}
+
 	// Retain an actual owner research request for snapshot/restore replay.
 	history, err := s.SocialHistory(ctx)
 	if err != nil {
@@ -139,6 +160,12 @@ func recoveryFixtureDecisionEvaluator(c PaperDecisionCommand, b PaperDecisionBas
 	return PaperDecisionEvaluation{Action: "entry_candidate", ReasonCode: "storage_recovery_fixture_only", PriceCents: input.Input.PriceCents, Signal: true, Coverage: domain.MarketCoverageReport{Quote: domain.MarketQuoteCoverage{InputID: input.Input.ID}}}, nil
 }
 
+// No outcome is created by recovery; the callback is required for complete
+// owner replay and remains a compiled storage fixture with no economic result.
+func recoveryFixtureOutcomeEvaluator(b PaperOutcomeBasis, _ time.Time) (PaperOutcomeEvaluation, error) {
+	return PaperOutcomeEvaluation{Status: "waiting_price", ReasonCode: "storage_recovery_fixture_only", DueAt: b.Decision.FinalizedAt.Add(time.Hour), WindowEnd: b.Decision.FinalizedAt.Add(2 * time.Hour)}, nil
+}
+
 func TestPostgresContractsRecoveryReplay(t *testing.T) {
 	if os.Getenv("MANTIK_RECOVERY_REPLAY") != "1" {
 		t.Skip("explicit disposable restored owner replay only")
@@ -154,7 +181,7 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	got, err := s.OwnedAllocations(ctx, recoveryFixtureDecisionEvaluator)
+	got, err := s.OwnedAllocations(ctx, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
 	if os.Getenv("MANTIK_RECOVERY_EXPECT_REJECTION") == "1" {
 		if !errors.Is(err, ErrOwnedAllocationInvalid) || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
 			t.Fatal("corrupt restored owner binding not rejected", err)
@@ -168,10 +195,11 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 	if r.Command.ID != "recovery-comparison" || len(r.ExecutionSafety) != 1 || len(r.AdmissionChecks) != 1 || r.AdmissionChecks[0].AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || got.Capital[0].AvailableCashCents != got.Capital[0].Account.Config.OpeningCashCents || len(got.Capital[0].Positions) != 0 || len(got.Capital[0].Orders) != 0 {
 		t.Fatal("restored owner altered deferral-only capital", got)
 	}
-	retry, err := s.CompareOwnedAllocation(ctx, r.Command, func() time.Time { t.Fatal("restore retry sampled a clock"); return time.Time{} }, recoveryFixtureDecisionEvaluator)
+	retry, err := s.CompareOwnedAllocation(ctx, r.Command, func() time.Time { t.Fatal("restore retry sampled a clock"); return time.Time{} }, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
 	if err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, r) {
 		t.Fatal("restored retry changed retained receipt", err)
 	}
+	assertRestoredEvaluationOwner(t, s, got.ReceiverID)
 	history, err := s.SocialHistory(ctx)
 	if err != nil || history.ReceiverID != got.ReceiverID || len(history.ResearchRequests) != 2 || history.ResearchRequests[0].DispatchAvailable || history.ResearchRequests[0].AdmissionAvailable || history.ResearchRequests[0].ExecutionAvailable || history.ResearchRequests[0].QualificationCredit {
 		t.Fatal("restored social owner", err)
@@ -182,4 +210,65 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 		}
 	}
 	t.Logf("owner replay preserved allocation=%s safety=%s ledger=%s social=%s", r.SHA256, r.ExecutionSafety[0].SHA256, r.LedgerSHA256, workerplan.Hash(history))
+}
+
+// This runs only against the exact runner-owned restored database. It verifies
+// real replay and retries, then rejects a self-rehashed grant substitution and
+// restores the original payload bytes before the outer snapshot identity check.
+func assertRestoredEvaluationOwner(t *testing.T, s *Postgres, owner string) {
+	t.Helper()
+	ctx := context.Background()
+	plans, err := s.PaperEvaluationDeclarations(ctx)
+	if err != nil || plans.ReceiverID != owner || len(plans.Records) != 1 {
+		t.Fatal("restored evaluation plan owner", plans, err)
+	}
+	plan := plans.Records[0]
+	assessments, err := s.PaperEvaluationAssessments(ctx, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
+	if err != nil || assessments.ReceiverID != owner || len(assessments.Records) != 1 {
+		t.Fatal("restored evaluation assessment owner", assessments, err)
+	}
+	record := assessments.Records[0]
+	if plan.Command.ID != "recovery-evaluation-plan" || record.Command.ID != "recovery-evaluation-assessment" || record.Command.DeclarationID != plan.Command.ID || record.Command.DeclarationSHA256 != plan.SHA256 || record.Evidence.Declaration.SHA256 != plan.SHA256 || record.Schema != "mantik-owned-paper-evaluation-assessment-v4" || record.Status != "blocked" || record.EvaluationComplete || record.AdmissionAvailable || record.ExecutionAvailable || record.QualificationCredit {
+		t.Fatal("restored evaluation lost source binding or gained authority", plan, record)
+	}
+	noClock := func() time.Time { t.Fatal("restored evaluation retry sampled clock"); return time.Time{} }
+	retriedPlan, err := s.DeclarePaperEvaluation(ctx, plan.Command, noClock)
+	if err != nil || !retriedPlan.Duplicate || !reflect.DeepEqual(retriedPlan.Record, plan) {
+		t.Fatal("restored plan retry changed receipt", err)
+	}
+	retried, err := s.AssessPaperEvaluation(ctx, record.Command, noClock, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
+	if err != nil || !retried.Duplicate || !reflect.DeepEqual(retried.Record, record) {
+		t.Fatal("restored assessment retry changed receipt", err)
+	}
+	var original []byte
+	if err := s.pool.QueryRow(ctx, "SELECT payload FROM mantik_paper_evaluation_assessments WHERE id=$1", record.Command.ID).Scan(&original); err != nil {
+		t.Fatal(err)
+	}
+	func() {
+		defer func() {
+			if _, err := s.pool.Exec(ctx, "UPDATE mantik_paper_evaluation_assessments SET payload=$1 WHERE id=$2", original, record.Command.ID); err != nil {
+				t.Fatal("restore original assessment bytes", err)
+			}
+		}()
+		damaged := clone(record)
+		damaged.AdmissionAvailable = true
+		damaged.SHA256 = ""
+		damaged.SHA256 = workerplan.Hash(damaged)
+		raw, err := json.Marshal(damaged)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.pool.Exec(ctx, "UPDATE mantik_paper_evaluation_assessments SET payload=$1 WHERE id=$2", raw, record.Command.ID); err != nil {
+			t.Fatal(err)
+		}
+		rejected, err := s.PaperEvaluationAssessments(ctx, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
+		if !errors.Is(err, ErrPaperEvaluationAssessmentInvalid) || !reflect.DeepEqual(rejected, PaperEvaluationAssessmentCatalog{}) {
+			t.Fatal("restored rehashed assessment grant accepted", rejected, err)
+		}
+	}()
+	again, err := s.PaperEvaluationAssessments(ctx, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
+	if err != nil || !reflect.DeepEqual(again, assessments) {
+		t.Fatal("repaired restored assessment owner changed", err)
+	}
+	t.Logf("restored evaluation plan=%s assessment=%s; clock-free retries and self-rehashed grant rejection passed", plan.SHA256, record.SHA256)
 }

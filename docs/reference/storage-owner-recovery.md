@@ -39,3 +39,21 @@ This proves fixture storage-owner replay after isolated restore. It does not
 prove financial execution, protective recovery, unknown-effect reconciliation,
 production restart, release rollback or natural-soak qualification. Those remain
 separate gates for issues #19, #20, #25, #26 and #27.
+
+## Evaluation owner restore coverage
+
+The disposable recovery seed also retains an actual predeclared evaluation plan
+and a v4 assessment issued after its outcome deadline. The assessment is blocked
+for insufficient evidence and grants no admission, execution or qualification.
+These are storage fixtures using compiled fixture evaluators, not observations
+from providers or an application worker run.
+
+The exported snapshot and restored table identities must contain both evaluation
+owner tables. Restored replay checks the declaration/assessment source pins and
+non-grant status, then retries each exact command without sampling a clock.
+The restored database also rejects an assessment whose admission flag was changed
+and whose hash was recomputed. Its original payload bytes are restored before
+the outer snapshot identity comparison. No source database is corrupted, and no
+assessment or economic effect is created during restored replay. This extends
+storage recovery coverage; financial/protective recovery and deployment readiness
+remain separate acceptance gates.
