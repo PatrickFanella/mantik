@@ -27,6 +27,14 @@ limit. This replaces Go's implicit ten-minute package alarm: merged-main run
 one second and was validating retained JSON. Application request timeouts and
 all assertions retain their existing values. A timed-out HTTP request still
 fails the suite; the harness does not retry requests or increase application deadlines.
+
+Allocation contracts exercise the complete 32-comparison capacity, overflow,
+exact retry and database reopen before their corruption/legacy cases. Those
+later cases use the first two original entries as a valid multi-entry prefix,
+preserving every corruption and retry assertion without repeatedly replaying a
+capacity-sized journal. This keeps boundary/load verification separate from
+field-tampering verification; no production bound or timeout is changed.
+
 The candidate HTTP test fences its own temporary database against new
 connections before forcing its removal, so a canceled transaction still draining
 its connection cannot prevent cleanup.

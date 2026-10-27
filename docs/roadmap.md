@@ -1,394 +1,149 @@
-# Mantik roadmap
-
-Mantik is an autonomous paper-trading research system supervised through a
-terminal, with occasional conversational direction. It continuously gathers
-information, opens decision cases when conditions warrant, tests hypotheses,
-allocates paper capital under explicit rules, and records outcomes.
-
-The goal is dependable, measurable paper operation with evidence of strategy
-value. Profitability must be established empirically. The intended destination
-is live trading through Alpaca with real capital, after prospective paper
-profitability and operational safety meet predeclared admission gates. Mantik
-is currently paper-only; the live stage below is future planning work.
-
-## Planning and delivery
-
-- [Project board](https://git.subcult.tv/subculture-collective/mantik/projects/5)
-- [Milestones](https://git.subcult.tv/subculture-collective/mantik/milestones)
-- [Delivery model](delivery.md)
-- [Architecture](architecture.md)
-
-Milestones have capability exit gates and no promised dates. Issue acceptance
-criteria and native dependencies are authoritative for implementation. Board
-columns show current activity. Initial future issues are unassigned planning
-work with no automatic pickup labels.
-
-The bootstrap in [PR #2](https://git.subcult.tv/subculture-collective/mantik/pulls/2)
-provides a persistent service, CLI, structured records, and one unqualified
-synthetic lifecycle. It has local and hosted checks but is not real-market
-qualification. Consult Gitea for its current merge status.
-
-## Design commitments
-
-Research, decision-making, and operations have distinct authority. The library
-supplies reusable methods, components, tests, and evidence rather than treating
-each idea as a new trading system.
-
-Established rules handle routine cases; LLM tools investigate ambiguity and new
-ideas. Mandatory evaluations run independently of model tool selection.
-Evaluation carries structured claims, measurements, provenance, uncertainty,
-and check outcomes. Original narrative sources remain available for targeted
-inspection. Readable explanations are generated after decision finalization.
-
-Decisions define validity, safety limits, stops/exits, and future obligations.
-Operations enforces them independently of model availability. Trigger sources
-include news, prices, calendars, watched social accounts, copytrading activity,
-portfolio/execution state, research milestones, failures/recovery, and human
-direction. Missing expected events are conditions too.
-
-Synthetic, stress, historical, and prospective evidence remain distinguishable.
-A successful code test, merged PR, healthy service, or attractive backtest does
-not qualify a strategy.
-
-## Milestone sequence
-
-### [M0: Foundation](https://git.subcult.tv/subculture-collective/mantik/milestone/155)
-
-A runnable synthetic paper lifecycle with persistent service, CLI, isolated development, and verified delivery.
-
-**Exit gate:** Bootstrap PR #2 merged, issue #1 reconciled, and current-main CI passes. This is not real-market qualification.
-
-- [#1: Bootstrap core](https://git.subcult.tv/subculture-collective/mantik/issues/1), delivered through [PR #2](https://git.subcult.tv/subculture-collective/mantik/pulls/2).
-- [#28: Publish the roadmap and project backlog](https://git.subcult.tv/subculture-collective/mantik/issues/28).
-
-### [M1: Library and reproducible research](https://git.subcult.tv/subculture-collective/mantik/milestone/156)
-
-Reusable strategy and evaluation contracts, recoverable research provenance, versioned datasets, and deterministic replay.
-
-**Exit gate:** A registered baseline method can be replayed against pinned observations with identical decisions and retained evaluation results; original research has an assessed inventory.
-
-- [#3: Define reusable strategy, component, and evaluation contracts](https://git.subcult.tv/subculture-collective/mantik/issues/3). Depends on #1.
-- [#4: Recover and assess the original Augr research corpus](https://git.subcult.tv/subculture-collective/mantik/issues/4). Depends on #1.
-- [#5: Add versioned observation datasets and point-in-time replay](https://git.subcult.tv/subculture-collective/mantik/issues/5). Depends on #3.
-- [#6: Register baseline methods and reproducible experiment recipes](https://git.subcult.tv/subculture-collective/mantik/issues/6). Depends on #3, #5, #4.
-
-### [M2: Durable triggers and operations](https://git.subcult.tv/subculture-collective/mantik/milestone/157)
-
-Persistent triggers, independent timers, missing-event detection, durable action delivery, and restart-safe protection.
-
-**Exit gate:** A finalized decision survives restart; its timer and protective actions execute without an LLM or new quote; unknown outcomes are reconciled without duplicate effects.
-
-- [#7: Implement persistent trigger definitions and decision-case routing](https://git.subcult.tv/subculture-collective/mantik/issues/7). Depends on #3.
-- [#8: Add independent deadlines and missing-event detection](https://git.subcult.tv/subculture-collective/mantik/issues/8). Depends on #7.
-- [#9: Add durable action delivery and uncertain-outcome reconciliation](https://git.subcult.tv/subculture-collective/mantik/issues/9). Depends on #7.
-- [#10: Expose operational exceptions and capability-scoped readiness](https://git.subcult.tv/subculture-collective/mantik/issues/10). Depends on #8, #9.
-
-### [M3: Information and case routing](https://git.subcult.tv/subculture-collective/mantik/milestone/158)
-
-Time-aware inputs from prices, calendars, news, watched social accounts, and copytrading observations.
-
-**Exit gate:** At least one authorized real feed and recorded fixtures route through the same provenance-aware contracts; repeats, corrections, late data, and source outages have explicit case behavior.
-
-- [#11: Add a price and calendar ingestion adapter with recorded fixtures](https://git.subcult.tv/subculture-collective/mantik/issues/11). Depends on #5, #7, #10.
-- [#12: Normalize news claims, revisions, and related-event routing](https://git.subcult.tv/subculture-collective/mantik/issues/12). Depends on #5, #7.
-- [#13: Add watched social-account policies and attributed observations](https://git.subcult.tv/subculture-collective/mantik/issues/13). Depends on #12, #7.
-- [#14: Implement copytrading observation and bounded follow policies](https://git.subcult.tv/subculture-collective/mantik/issues/14). Depends on #11, #13, #9.
-
-### [M4: Autonomous research and structured decisions](https://git.subcult.tv/subculture-collective/mantik/milestone/159)
-
-Tool-driven investigation, hypothesis lifecycles, isolated research workers, and generated candidate implementations.
-
-**Exit gate:** An unfamiliar observation opens a bounded investigation that reuses the library, runs mandatory evaluations, and produces a finalized structured decision or abstention; generated methods remain unqualified candidates.
-
-The [recorded research contract audit](research/research-contract-acceptance.md)
-maps delivered review, hypothesis and worker contracts to issues #15–#17.
-Its 2026-10-19 refresh verifies the recorded decision/hypothesis contracts after
-#12's closure. The external-worker refresh verifies the fixed protocol gate;
-[candidate source declarations](reference/candidate-source.md) and
-[isolated compile checks](reference/candidate-build.md) start #18. Candidate
-behavioral execution and synthetic cutoff replay are now available, with the
-limits described below. Recorded fixture coverage does not close the integrated
-M4 exit gate.
-
-[Candidate fixture test plans](reference/candidate-fixture-tests.md) now bind
-explicit expected signals to every retained input and compare caller-reported
-outputs without executing source. Dedicated behavioral workers now execute those
-plans. The [candidate acceptance audit](research/candidate-evaluation-acceptance.md)
-now covers service-owned generation/registration/worker lineage and fresh isolated
-compile, behavior, property and replay evidence for #18. This remains unqualified
-synthetic evaluation, with no automatic provider generation or strategy promotion.
-
-- [#15: Define decision workflow and LLM tool contracts](https://git.subcult.tv/subculture-collective/mantik/issues/15). Depends on #3, #12, #9.
-- [#16: Add hypothesis lifecycle and autonomous research-attempt history](https://git.subcult.tv/subculture-collective/mantik/issues/16). Depends on #6, #15.
-- [#17: Add an isolated research-worker protocol for reusable tools](https://git.subcult.tv/subculture-collective/mantik/issues/17). Depends on #5, #15.
-- [#18: Evaluate generated candidate strategy implementations in isolation](https://git.subcult.tv/subculture-collective/mantik/issues/18). Depends on #16, #17.
-
-### [M5: Portfolio and evaluated paper strategies](https://git.subcult.tv/subculture-collective/mantik/milestone/160)
-
-Allocator-owned capital, realistic execution assumptions, and evidence-based strategy admission and retirement.
-
-The [paper account foundation](reference/paper-accounts.md) retains finite
-operator-declared capital and immutable opening funding. It does not implement
-reservations, portfolio positions or competing proposal allocation. See the
-[ordered implementation units](plans/paper-accounts.md).
-
-**Exit gate:** Competing candidates pass through account-scoped allocation and deterministic gates; paper outcomes include costs and execution limitations; no research workflow bypasses safety.
-
-- [#19: Implement account-scoped portfolio allocation for competing proposals](https://git.subcult.tv/subculture-collective/mantik/issues/19). Depends on #3, #9, #16.
-- [#20: Add realistic paper execution and economic reconciliation models](https://git.subcult.tv/subculture-collective/mantik/issues/20). Depends on #11, #19.
-- [#21: Add automatic evaluation, paper admission, and retirement gates](https://git.subcult.tv/subculture-collective/mantik/issues/21). Depends on #6, #16, #18, #20.
-
-### [M6: Terminal supervision and direction](https://git.subcult.tv/subculture-collective/mantik/milestone/161)
-
-A TUI, conversational application tools, and evidence-linked explanations and attribution.
-
-**Exit gate:** The operator can inspect and direct the running service from the terminal, trace a decision to its evidence, and recover an exception; narrative is produced only after finalization.
-
-The [terminal supervision acceptance audit](research/terminal-supervision-acceptance.md)
-records read-only inspection across the six implemented terminal views. That
-issue-level delivery does not complete conversational direction, performance
-attribution or the full M6 exit gate.
-
-- [#22: Build the terminal supervision interface](https://git.subcult.tv/subculture-collective/mantik/issues/22). Depends on #10, #7.
-- [#23: Add conversational supervision and post-decision explanations](https://git.subcult.tv/subculture-collective/mantik/issues/23). Depends on #15, #22, #16.
-- [#24: Expose decision and portfolio performance attribution](https://git.subcult.tv/subculture-collective/mantik/issues/24). Depends on #21, #22.
-
-### [M7: Prospective paper qualification](https://git.subcult.tv/subculture-collective/mantik/milestone/162)
-
-Recovery evidence, deployment receipts, and natural paper evaluation against declared baselines.
-
-**Exit gate:** The exact release passes restore/restart checks and a predeclared prospective observation window; incomplete evidence and failed performance gates are reported honestly. M7 remains paper-only; passing it supplies evidence for a
-separate live-admission review and does not enable live orders.
-
-- [#25: Qualify backup, restore, restart, and protective recovery](https://git.subcult.tv/subculture-collective/mantik/issues/25). Depends on #10, #20.
-- [#26: Prepare an isolated paper release with rollback and capability receipts](https://git.subcult.tv/subculture-collective/mantik/issues/26). Depends on #25, #21, #23.
-- [#27: Run a predeclared prospective paper qualification window](https://git.subcult.tv/subculture-collective/mantik/issues/27). Depends on #26, #24.
-
-## Planned M8: Alpaca live admission and bounded rollout
-
-The user selected Alpaca as the intended real-money execution destination.
-This stage follows M5's realistic execution/account allocation and M7's
-prospective paper qualification (#19–#21 and #25–#27). It is a planning stage;
-its native milestone and bounded implementation issues remain to be reviewed.
-It does not change the current fixture pilot or the paper-only acceptance
-criteria of existing issues.
-
-**Entry gate:** Predeclare paper profitability criteria before measuring the
-qualification window. Specify the admitted strategy/version, instruments,
-capital assumptions, benchmark, net return after realistic costs/slippage,
-maximum drawdown and exposure, sample size, observation duration, uncertainty,
-and out-of-sample/prospective method. Preserve failed attempts and account for
-selection bias. Set the numeric thresholds in the admission specification;
-none are established by this roadmap update. Positive synthetic P&L, an
-attractive backtest, or a short winning run is insufficient evidence.
-
-**Required work before live activation:**
-
-- Define an Alpaca adapter contract against the provider's current documentation
-  and qualify its separate paper environment first. Verify account/environment
-  identity, supported instruments, market-data coverage, order lifecycle,
-  idempotency, unknown-outcome reconciliation, partial fills, cancellations,
-  reconnects, and positions/cash reconciliation. Do not assume provider paper
-  fills establish live execution quality.
-- Separate paper and live credentials, endpoints, account IDs, balances, and
-  evidence. Fail closed on an environment/account mismatch. Existing finalized
-  paper decisions cannot be replayed into the live account.
-- Keep allocator and safety authority independent of research/model availability.
-  Define permitted instruments/order types, capital and position limits,
-  exposure/daily-loss/drawdown stops, stale-data behavior, independent protection,
-  manual halt, and controlled recovery. Reject unqualified strategies.
-- Qualify outages, ambiguous submissions, restart, backup/restore, reconciliation,
-  and operator controls against provider behavior, retaining the exact source,
-  image, adapter, and account receipts.
-- Require an explicit operator activation specifying the account, capital budget,
-  strategy versions, limits, and monitoring plan. Begin with a bounded live pilot;
-  expansion requires a separate review of execution, economics, and risk evidence.
-
-**Exit gate:** The explicitly authorized bounded Alpaca live pilot operates within
-its declared controls, reconciles every economic effect, and has retained
-recovery and operator-halt evidence. Paper profitability is an admission input;
-it does not establish that live trading will be profitable. No live account is
-connected and no real-money orders are authorized by recording this direction.
-
-## Completion path to the next soak
-
-The operator selected completion of all remaining development/release issues
-before starting the next soak on 2026-10-20. The
-[paper-soak delivery plan](plans/paper-soak.md) maps #18, #19–#21, #13–#14 and
-#23–#26 to explicit exit evidence; #27 is the natural soak and its report.
-The plan retains every issue's acceptance criteria and native dependencies.
-It also requires an assembled autonomous input-to-ledger rehearsal rather than
-inferring readiness from separate component checks or idle worker uptime.
-
-## First implementation sequence
-
-The first running-app checkpoint is an **isolated operational pilot after M2**,
-once #7–#10 are merged and their integrated recovery behavior is verified.
-M2 implementation (#7–#10) is merged. Verify the remaining runtime scenarios,
-then run the persistent service with controlled, current-time synthetic inputs
-for a declared 24-hour window. Do not defer this feedback loop until the full
-research, portfolio, or terminal roadmap is complete.
-
-The pilot must demonstrate a traceable lifecycle, no duplicate effects after
-interruption, independent protection or a visible price-unavailable exception,
-bounded operator recovery, and preserved state after restart and isolated
-restore. See the [first pilot acceptance plan](runbooks/first-pilot.md).
-This proves operational behavior within the fixture contract. Real-feed
-validation follows through #11; economic and strategy qualification retain
-their M5/M7 gates.
-
-After the foundation is accepted, start with the library/evaluation contract
-and recovery of the original research corpus. Build versioned datasets and
-replay against those contracts. Trigger routing can then proceed alongside
-baseline research, followed by independent protective timers and durable action
-delivery.
-
-Introduce real information through the same recorded-input contracts, then
-add structured model investigation and isolated research tools. Generated
-methods remain candidates until the portfolio, execution, and evaluation gates
-support admission.
-
-Terminal work starts as soon as the case and exception APIs support it; it does
-not need to wait for every market or strategy. Prospective qualification follows
-the integrated safety, execution, recovery, and operator workflows.
-
-## Decisions owned by future issues
-
-- Alpaca is selected for the first price/calendar feed. The bounded
-  [real-feed rehearsal](runbooks/first-real-feed.md) verified an active paper
-  endpoint, IEX read access, real calendar routing, and unusable quote suppression.
-  SIP access was denied for the tested credentials. Usable fresh quote coverage,
-  continuous collection, licensing scope, and real-feed readiness still require
-  their own evidence.
-- Where the original research corpus resides and which sources may be retained.
-- Initial baseline strategy families, benchmarks, instruments, and dataset scope.
-- Watched accounts/traders and whether each supplies research, decision inputs,
-  or bounded paper-follow behavior.
-- Research-worker transport, isolation, resource policy, and artifact storage.
-- Model/tool selection and measurable benefit against deterministic baselines.
-- Simulation assumptions and admission, retirement, and prospective criteria.
-- A Mantik-owned deployment target, backup storage, and authorized observation
-  window.
-
-Go 1.26.9 and PostgreSQL are the current foundation. Reconsider Rust only with a
-specific requirement and a representative comparison. Python research tools can
-be added through the worker boundary without changing the service language.
-
-## Scope boundaries
-
-Existing Augr implementations and research can be assessed for reuse. Its
-services, credentials, and financial data are not a migration target in this
-plan. Broad venue expansion and live trading are not prerequisites for the
-first qualified paper workflow. Do not activate all inputs or generate a fleet
-of strategies merely to demonstrate activity.
-
-Keep the roadmap current when accepted scope changes. Update issue dependencies
-and milestone gates together, retaining failed or incomplete evidence rather
-than rewriting it into a pass.
-
-Candidate behavioral workers now compile, link and execute sealed synthetic
-fixture plans in a dedicated owned container profile. This adds actual bounded
-example checks with retained mismatch/failure/timeout evidence. It does not close
-#18: authoritative candidate/search lineage remains unfinished, and finite sample
-properties do not establish universal behavior. No result grants activation or
-qualification. See
-[the behavioral worker contract](reference/candidate-behavior.md).
-
-A bounded local candidate attempt journal now retains pre-launch intent and
-every request/outcome, with request-ID retries that reconcile the original handle.
-This improves local failure/retry evidence; it does not establish service-owned
-candidate search completeness or close #18. See
-[the local journal contract](reference/candidate-attempt-journal.md).
-
-Finite candidate sample property reports now check every eligible pair for
-explicit repeated-price/monotonic requirements, separately from example annotation
-agreement. Missing or inapplicable coverage cannot pass. This does not establish
-universal properties, point-in-time replay or close #18. See
-[the property contract](reference/candidate-properties.md).
-
-Candidate replay projections now retain every parent exposure and derive
-availability-ordered worker inputs at explicit cutoffs, including no-input frames.
-This is synthetic input replay; generated-source/service lineage and a final #18
-acceptance audit remain. See [the replay contract](reference/candidate-replay.md).
-
-The [candidate lineage contract](reference/candidate-lineage.md) now binds
-candidate packages to authoritative publication inputs and earlier parent pins,
-with complete-prefix validation and bounded request retries. Memory and PostgreSQL
-backends now atomically retain registrations and exact datasets and validate the
-entire history on reads. Authenticated API/CLI access now verifies receiver and
-registration pins and exports exact dataset bytes, with disposable PostgreSQL HTTP
-restart checks. [Candidate worker intent backends](reference/candidate-worker-intents.md)
-now retain pre-execution registration/job pins with exact retries, bounded complete
-history and restart/corruption checks. Authenticated intent commands now expose a
-coherent receiver/history snapshot and validate job export before output.
-The [recorded generation bridge](reference/generated-candidate-lineage.md) defines
-source-pinned registration links and full-prefix retry rules while preserving
-legacy registration hashes. It refuses rejected output and retrofitting an old
-unlinked registration. Schema 35 now atomically retains the generated link, legacy
-registration and exact dataset in Memory/PostgreSQL; ordinary registration reads
-and retries also validate retained links. Authenticated bridge commands now expose
-new registration and verified full-artifact/source/output inspection.
-Receiver-bound local journals now retain the full exported service intent before
-launch and require the same receipt for reconciliation. Portable
-[outcome captures](reference/candidate-outcome-captures.md) preserve full bound
-receipts and exact failed/incomplete output without execution credit.
-[Outcome backends](reference/candidate-worker-outcomes.md) now retain immutable
-reports/capture bytes with complete-prefix validation and exact retries.
-Authenticated outcome submission and pinned receipt/capture/output access are
-implemented. Coherent history now retains every intent/report and the exact
-unreported-request complement from one validated backend snapshot. Cross-owner
-execution fencing and generated-source provenance remain unfinished;
-this does not close #18.
-
-
-A prospective rehearsal on merged source `e882d455` issued five real service
-intents and ran four isolated native workers: two completed, one mismatched and
-one retained partial panic output. Four reports and one unreported intent survived
-service restart and an isolated PostgreSQL restore with exact capture preservation
-and zero economic effects. Earlier driver setup failures were retained. This is
-bounded synthetic runtime evidence, not deployment, provider proof or qualification.
-
-[Recorded generation](reference/recorded-candidate-generation.md) now preserves
-an offline request, exact recorded output and candidate/rejection links without
-model calls. This supplies a portable generation evidence contract; durable
-service generation lineage, a provider adapter and the final #18 acceptance audit
-remain unfinished. Cross-owner execution fencing is a separate ownership concern.
-
-
-[Generation intent backends](reference/candidate-generation-intents.md) now retain
-publication-bound plans and exact datasets before generation output admission.
-They preserve every bounded request and exact retries under one receiver lock or
-transaction, with full-prefix publication/dataset validation and migration checks.
-Schema 33 adds declaration/input tables only; provider calls, output admission,
-generated registration links and authenticated intent access remain unfinished.
-
-Authenticated generation-intent HTTP/CLI access now admits bounded strict JSON,
-checks expected receiver/publication/plan pins, and exports coherent validated
-intent/plan/prompt/exact-dataset evidence. Shared Memory/PostgreSQL transport
-contracts include reopened-database readback. This retains declarations only;
-generation outcomes, generated registration lineage and a provider adapter remain
-unfinished under #18.
-
-[Generation outcome contracts](reference/candidate-generation-outcomes.md) now
-define intent-bound full recordings, compact derived receipts, complete ordered
-history/unreported complements and exact retry rules. Pure checks preserve failed
-output and reject changed bindings or inconsistent capture/retention times.
-Durable owner-snapshot validation and atomic report retention are the next slice;
-there is no provider call or new admission route in these contracts.
-
-Generation outcomes now have atomic Memory/PostgreSQL storage (schema 34), with
-one row for receipt and full recording and complete authoritative intent,
-publication, raw dataset and recording checks before reads or exact retries.
-Shared contracts cover failure retention, sparse history, concurrency, reopen,
-insert failure, corruption and migration preservation. Output HTTP/CLI admission
-and explicit generated-registration lineage remain next; provider requests remain
-outside this slice.
-
-Authenticated generation-output HTTP/CLI admission and inspection now validate
-expected receiver/intent/plan/recording/outcome pins before emitting evidence.
-Report clients compare the complete pinned service intent before POST and rederive
-the returned receipt. Selected exports validate one full coherent artifact and
-preserve failed-output/source bytes. Shared Memory/PostgreSQL contracts include
-full database reopen readback. Generated-registration retention now builds on
-these owner-validated artifacts. Its authenticated commands validate the complete
-provenance chain and expected registration/link identities before export.
+# Mantik roadmap to 1.0
+
+Mantik 1.0 is a complete, isolated paper-research and paper-operation service
+supervised from the terminal. It must turn attributed inputs into research,
+applicable evaluation, finalized decisions or abstentions, owner-issued paper
+eligibility, finite capital allocation, reconciled paper execution, protection
+and inspectable outcomes. Social/copy-follow, conversational direction,
+attribution and recovery remain part of 1.0.
+
+**Current state:** the provenance, replay, research and terminal foundations are
+substantial; the positive funded paper lifecycle is unfinished. There is no
+accepted complete paper release or natural qualification run. Successful tests,
+merged PRs, healthy workers and closed foundation issues do not establish those
+outcomes. The [2026-10-27 delivery audit](research/1-0-delivery-audit.md) records
+what exists and what remains at merged main `897a3b433afc599835ae60b74c4db9166a5ee67c`
+(schema 74).
+
+## Release definition and scope
+
+The [1.0 release gate, #286](https://git.subcult.tv/subculture-collective/mantik/issues/286),
+is the acceptance index. Release requires the development, isolated runtime,
+recovery and fresh natural-run gates below. A safety or functional gate failure
+blocks release. Minimum evidence and stop criteria are declared before the run;
+an insufficient or curtailed run remains incomplete.
+
+Operational reliability, strategy performance and statistical qualification are
+separate conclusions. A paper system can reveal losses or insufficient strategy
+samples; those results must be visible and must not be represented as profitability
+or a qualified strategy. A test fixture never receives natural qualification
+credit. Live trading is outside 1.0.
+
+The first complete lifecycle uses an explicit supported native baseline,
+instruments, feed scope and versioned cost/evaluation methods. Do not expand to a
+fleet of strategies, providers, venues or languages to demonstrate activity.
+Generated and copy-follow methods use the same applicable evaluation, admission,
+allocation and execution authorities; their existing isolation/source contracts
+remain useful foundations.
+
+## Delivery order
+
+Milestones are acceptance gates with no promised dates. The
+[project board](https://git.subcult.tv/subculture-collective/mantik/projects/5)
+and [native milestones](https://git.subcult.tv/subculture-collective/mantik/milestones)
+track this sequence. New planning issues have no automatic pickup labels,
+assignment or deadline. Each implementation PR must deliver behavior needed by
+its issue; another inspection endpoint is justified only by a concrete acceptance
+blocker.
+
+### RC1: Complete one evaluated paper lifecycle
+
+| Order | Delivery issue | Observable result |
+| --- | --- | --- |
+| 1 | [#282: Economics and applicable evaluation](https://git.subcult.tv/subculture-collective/mantik/issues/282) | Source-bound cash/passive benchmarks, corporate-action treatment, equity/drawdown and all applicable evaluation checks produce reproducible complete/pass, fail or insufficient results. No caller-supplied results or retroactive criteria. |
+| 2 | [#283: Paper eligibility and atomic commitments](https://git.subcult.tv/subculture-collective/mantik/issues/283) | Actual retained decision/evaluation/policy/account evidence produces a bounded owner-issued eligibility decision and one durable reservation/commitment under competing capital/exposure limits. Expiry, reassessment and retirement are enforced. |
+| 3 | [#284: Ongoing paper effects](https://git.subcult.tv/subculture-collective/mantik/issues/284) | Only allocator commitments can create paper orders/effects. Fills, costs, cash, positions, releases and protection reconcile atomically through partial/unknown outcomes and restart. Missing quotes cannot invent a fill. |
+| 4 | [#285: Autonomous input-to-ledger integration](https://git.subcult.tv/subculture-collective/mantik/issues/285) | Owned workers actually collect, dispatch research, evaluate, finalize, admit/defer, allocate, execute and reconcile. Runtime evidence proves scheduling rather than a test harness driving every step; model/feed outages retain safe behavior. |
+
+These issues complete the implementation units underlying the still-open parent
+acceptance issues [#19](https://git.subcult.tv/subculture-collective/mantik/issues/19),
+[#20](https://git.subcult.tv/subculture-collective/mantik/issues/20) and
+[#21](https://git.subcult.tv/subculture-collective/mantik/issues/21). Parent issues
+close only after their complete requirement-by-requirement audit. Issue #19 was
+reopened: its earlier closure covered deferral-oriented groundwork, not funded
+allocation.
+
+The applicable recipe must address leakage, warm-up, out-of-sample behavior,
+parameter/cost sensitivity, benchmark comparison, calibration, sample sufficiency
+and dependence, and search multiplicity. A `not_applicable` result requires the
+compiled method's actual contract. Crossing an occurrence count does not prove
+independent samples. Original inputs, failed attempts, exact numeric terms,
+source availability and correction/unsupported-action states remain retained.
+
+Three states must stay distinct:
+
+1. **Evaluation complete:** the applicable method and evidence windows have a
+   complete retained result, which can pass or fail.
+2. **Paper-operationally eligible:** an owner-derived decision permits the
+   isolated paper lifecycle under a bounded strategy/account/policy/version and
+   expiry. It does not prove profitability.
+3. **Qualification credit:** supplied only by the later fresh natural-run report
+   when its predeclared criteria are actually met.
+
+Issue #27 cannot be a prerequisite to the paper operation needed to collect its
+own prospective evidence. This distinction does not permit a synthetic fixture,
+caller assertion or unavailable evaluation to issue a grant.
+
+### RC2: Complete source and operator journeys
+
+| Acceptance issue | Remaining result |
+| --- | --- |
+| [#13: Verified social intake and dispatch](https://git.subcult.tv/subculture-collective/mantik/issues/13) | Bind an authorized provider/account, retain original posts/edits/deletions/reposts and scoped failures, and dispatch applicable observations into actual owned research/cases. A social claim is not an observed fill. |
+| [#14: Verified bounded copy-follow](https://git.subcult.tv/subculture-collective/mantik/issues/14) | Verify source activity, instrument/quantity semantics and delay; derive independently sized owner-bound proposals with common evaluation/admission/protection. Repeated sources, reversals and mismatches cannot multiply exposure. |
+| [#23: Conversational direction](https://git.subcult.tv/subculture-collective/mantik/issues/23) | Complete a running-service conversation through existing typed operations: inspect, request research, change authorized watches and perform scoped actions with readback. Finalized-evidence explanations and contradiction reviews cannot change financial authority. Model outage leaves protection running. |
+| [#24: Economic and delay attribution](https://git.subcult.tv/subculture-collective/mantik/issues/24) | Trace actual forecast/decision/allocation/execution outcomes and costs against cash/passive baselines, including social/copy delay. CLI/TUI expose uncertainty, missing evidence, abstention and insufficient samples; quote deltas and cost ceilings are not P&L. |
+
+These workflows can be developed alongside RC1 where their owners already exist,
+but all four must be accepted before the complete release's natural run. Recorded
+manifests, typed tools and deterministic explanations are delivered foundations,
+not substitutes for these end-to-end journeys.
+
+### Release, recovery and natural qualification
+
+| Gate | Acceptance issue | Required evidence |
+| --- | --- | --- |
+| Financial recovery | [#25](https://git.subcult.tv/subculture-collective/mantik/issues/25) | Exact-release backup/isolated restore and interruption drills with actual commitments, orders, fills, positions, cash, protection and unknown outcomes; no duplicate effect or lost obligation. Current nonfinancial-owner restore tests are supporting evidence. |
+| Complete isolated candidate | [#26](https://git.subcult.tv/subculture-collective/mantik/issues/26) | All remaining development criteria accepted; exact source/image/schema/config/capabilities, new Mantik-owned data, configured workers, integrated rehearsal, running readbacks, pre-change backup and rollback proof. A build/help preflight is only a sub-gate. |
+| Fresh natural window | [#27](https://git.subcult.tv/subculture-collective/mantik/issues/27) | Predeclare the exact release, strategies/evaluator/account/policy/source scope, metrics, baselines/costs, minimum evidence/window and stop criteria. Observe natural behavior; retain failures and report reliability, economics and qualification separately. |
+| 1.0 acceptance | [#286](https://git.subcult.tv/subculture-collective/mantik/issues/286) | Audit the complete gates, then publish the release's verified source/artifact identities, acceptance/soak report, capabilities and known limitations. No unsupported profitability or live-admission claim. |
+
+The [paper-soak delivery plan](plans/paper-soak.md) defines the assembled rehearsal
+and natural-run evidence. No previous curtailed observation is credited as the
+new run. The old overnight schedule stays disabled; this development task has no
+inherited overnight cutoff.
+
+## Delivered foundations and historical milestones
+
+The old M0–M7 headings described the original build order. Their issue history is
+retained; the active milestone titles now describe the 1.0 exit gates above.
+
+| Foundation | Historical issues | Delivery boundary |
+| --- | --- | --- |
+| Service, library, corpus assessment, datasets and replay | #1, #3–#6, #28 | Delivered contracts and retained evidence; no automatic market qualification. |
+| Durable routing, timers, delivery and capability readiness | #7–#10 | Delivered within their fixture/operational contracts; financial protection still needs #25 acceptance. |
+| Price/calendar and news ingestion | #11–#12 | Delivered adapters/recorded contracts; access, cadence and enabled runtime must be verified for the selected release. |
+| Structured research, hypotheses, isolated workers and generated candidates | #15–#18 | Delivered recorded/isolated contracts; assembled autonomous dispatch remains #285. |
+| Read-only terminal supervision | #22 | Delivered inspection views; conversational direction and economic attribution remain #23/#24. |
+
+The [research contract audit](research/research-contract-acceptance.md),
+[candidate evaluation audit](research/candidate-evaluation-acceptance.md) and
+[terminal supervision audit](research/terminal-supervision-acceptance.md) retain
+their original evidence boundaries. The obsolete PR-by-PR roadmap appendices
+have been removed; maintained reference contracts and Git/PR history retain that
+implementation detail.
+
+## After 1.0
+
+Alpaca remains the intended eventual real-money destination. A later live stage
+requires predeclared prospective profitability/risk evidence, separate account
+and credential/environment identity, broker order/reconciliation qualification,
+independent capital/protection limits and explicit bounded operator activation.
+Paper qualification is evidence for that review, never authorization for live
+orders. Broad venue expansion and a language rewrite are not 1.0 prerequisites.
+
+Research, evaluation and operations retain separate authority. Operations acts
+only on finalized applicable decisions and must work without models. Keep local
+checks, exact-head PR CI, merged-main CI, deployment, runtime observations and
+natural qualification distinct. Preserve original source/evidence, idempotence,
+failures, source hashes and recovery receipts outside Git; do not import or alter
+existing Augr financial state or replace current pilots/Switchyard resources.
