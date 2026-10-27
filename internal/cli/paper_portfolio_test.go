@@ -255,11 +255,13 @@ func TestPostgresContractsOwnedPortfolioAssessmentHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var legacyError map[string]string
+	legacyDecode := json.NewDecoder(legacyResponse.Body).Decode(&legacyError)
 	legacyResponse.Body.Close()
 	legacyServer.Close()
 	legacy.Close()
-	if legacyResponse.StatusCode != 503 {
-		t.Fatal("legacy owner accepted v6 without its compiled evaluator", legacyResponse.StatusCode)
+	if legacyResponse.StatusCode != http.StatusUnprocessableEntity || legacyDecode != nil || legacyError["error"] != "invalid owned paper evaluation assessment" {
+		t.Fatal("legacy owner did not reject unconfigured v6 replay", legacyResponse.StatusCode, legacyError, legacyDecode)
 	}
 	reopened, err := storage.OpenPostgresWithPortfolioEvaluator(ctx, u.String(), service.EvaluateOwnedPaperPortfolio)
 	if err != nil {
@@ -315,9 +317,11 @@ func TestPostgresContractsOwnedPortfolioAssessmentHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var deniedError map[string]string
+	deniedDecode := json.NewDecoder(denied.Body).Decode(&deniedError)
 	denied.Body.Close()
-	if denied.StatusCode != 503 {
-		t.Fatal("rehashing fabricated accounting granted replay", denied.StatusCode)
+	if denied.StatusCode != http.StatusUnprocessableEntity || deniedDecode != nil || deniedError["error"] != "invalid owned paper evaluation assessment" {
+		t.Fatal("fabricated accounting did not fail owner replay", denied.StatusCode, deniedError, deniedDecode)
 	}
 	if _, err := data.Exec(ctx, "UPDATE mantik_paper_evaluation_assessments SET payload=$1 WHERE id=$2", original, expected.Command.ID); err != nil {
 		t.Fatal(err)
