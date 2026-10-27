@@ -39,6 +39,22 @@ func corporateActionSourceHTTPContracts(t *testing.T, base string, d storage.Pap
 	if err := requestBounded(ctx, base, "/v1/corporate-action-sources", nil, &catalog, nil, 32768, true); err != nil || len(catalog.Records) != 1 || catalog.ReceiverID != c.ReceiverID || catalog.QualificationCredit {
 		t.Fatal("source discovery failed", catalog, err)
 	}
+	// Existing assessments predate this append. Their inspection must resolve
+	// the retained cut rather than use the current corporate-source catalogue.
+	var assessments storage.PaperEvaluationAssessmentCatalog
+	if err := requestBounded(ctx, base, "/v1/paper-evaluation-assessments", nil, &assessments, nil, storage.MaxPaperEvaluationAssessmentCatalogBytes, true); err != nil || len(assessments.Records) == 0 {
+		t.Fatal("assessment fixture unavailable", err)
+	}
+	for _, a := range assessments.Records {
+		var inspection storage.PaperEvaluationCorporateInspection
+		path := "/v1/paper-evaluation-assessments/" + a.Command.ID + "/corporate-sources"
+		if err := requestBounded(ctx, base, path, nil, &inspection, nil, storage.MaxPaperEvaluationCorporateInspectionBytes, true); err != nil || inspection.AssessmentSHA256 != a.SHA256 || len(inspection.Pages) != 0 || inspection.ProviderAttested || inspection.CoverageComplete || inspection.EconomicApplicationReady || inspection.AdmissionAvailable || inspection.ExecutionAvailable || inspection.QualificationCredit {
+			t.Fatal("assessment HTTP inspection used later source or granted authority", inspection, err)
+		}
+		if err := requestBounded(ctx, base, path+"?at=future", nil, &inspection, nil, 4096, true); err == nil {
+			t.Fatal("inspection accepted a caller-selected cut")
+		}
+	}
 	var absent storage.CorporateActionSourceRecord
 	if err := requestBounded(ctx, base, "/v1/corporate-action-sources/missing", nil, &absent, nil, 4096, true); err == nil {
 		t.Fatal("missing original became an owner record")

@@ -81,4 +81,20 @@ func paperEvaluationAssessmentRoutes(mux *http.ServeMux, store storage.Store, cl
 	}
 	mux.HandleFunc("GET /v1/paper-evaluation-assessments", read)
 	mux.HandleFunc("GET /v1/paper-evaluation-assessments/{id}", read)
+	if inspector, ok := store.(storage.PaperEvaluationCorporateInspectionStore); ok {
+		mux.HandleFunc("GET /v1/paper-evaluation-assessments/{id}/corporate-sources", func(w http.ResponseWriter, r *http.Request) {
+			if !paperaccount.ID.MatchString(r.PathValue("id")) || r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
+				paperEvaluationAssessmentError(w, storage.ErrPaperEvaluationAssessmentInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			v, err := inspector.PaperEvaluationCorporateInspection(ctx, r.PathValue("id"), evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+			if err != nil {
+				paperEvaluationAssessmentError(w, err)
+				return
+			}
+			write(w, 200, v)
+		})
+	}
 }

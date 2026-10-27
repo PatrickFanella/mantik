@@ -10,6 +10,7 @@ The authenticated service provides:
 - `POST /v1/paper-evaluation-assessments`
 - `GET /v1/paper-evaluation-assessments`
 - `GET /v1/paper-evaluation-assessments/{id}`
+- `GET /v1/paper-evaluation-assessments/{id}/corporate-sources`
 
 A POST command contains only `id`, `receiver_id`, `declaration_id` and
 `declaration_sha256`. The declaration must belong to the service receiver and
@@ -301,3 +302,30 @@ check retained envelopes only; they do not attest evaluation or economic results
 Legacy v1-v4 assessment payloads keep their old methods, bytes and hashes and do
 not acquire a retrospective source inventory. The automatic worker's new identity
 uses recipe v5; old worker receipts remain retained.
+
+### Inspecting a retained source cut
+
+`GET /v1/paper-evaluation-assessments/{id}/corporate-sources` resolves an
+assessment's custody pins against the actual source owner in one Memory lock or
+read-only PostgreSQL repeatable-read transaction. The service replays both
+catalogues before returning `mantik-owned-assessment-corporate-sources-v1`.
+The response pins the assessment and declaration hashes, assessment clock and
+source-cut hash. Each page includes its exact source pin, reported capture and
+revision, query contract, process-date range, symbols, evidence class, response
+time, cursor metadata and observed record count. The response is bounded to
+512 KiB; original response bodies remain in the targeted corporate-source GET.
+No caller-selected clock, query parameters or request body are accepted.
+
+Later source appends do not change this inspection. Legacy assessments return
+`source_cut_unavailable_for_legacy_assessment` with no pages or source-cut hash;
+the service does not construct a retrospective cut for them. A missing assessment
+returns 404, and an invalid retained assessment or source fails owner replay.
+
+The status `retained_source_inventory_only` describes custody metadata. It does
+not select a latest revision, join pages into a dataset, map process dates to
+entitlement dates or establish symbol relevance for an economic event. Acquisition
+custody is `caller_reported_response_only_request_and_completion_unavailable`:
+the service recording does not contain the journal's retained request/completion
+attempts. The authority is `service_owned_assessment_source_inspection_only`.
+Provider attestation, complete coverage, economic application, admission,
+execution and qualification flags remain false, including for a terminal page.
