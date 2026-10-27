@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 // CorporateActionFeed identifies a REST snapshot query, not an exchange feed.
@@ -26,6 +27,8 @@ type CorporateActionRecord struct {
 // CorporateActionSnapshot describes only the page observed at ReceivedAt. A
 // terminal page does not establish complete provider coverage or prior knowledge.
 type CorporateActionSnapshot struct {
+	PageToken                 string                  `json:"page_token,omitempty"`
+	RequestedAt               *time.Time              `json:"requested_at,omitempty"`
 	CaptureID                 string                  `json:"capture_id"`
 	Revision                  int                     `json:"revision"`
 	EvidenceClass             string                  `json:"evidence_class"`
@@ -93,6 +96,10 @@ func corporateActionJSONValue(d *json.Decoder, depth int) error {
 	return nil
 }
 
+func validCorporateActionPageToken(token string) bool {
+	return len(token) <= 4096 && utf8.ValidString(token) && !strings.ContainsFunc(token, unicode.IsControl)
+}
+
 func corporateActions(r Recording) (*CorporateActionSnapshot, error) {
 	decoder := json.NewDecoder(strings.NewReader(r.Original))
 	decoder.UseNumber()
@@ -114,11 +121,11 @@ func corporateActions(r Recording) (*CorporateActionSnapshot, error) {
 	if json.Unmarshal(envelope.Actions, &groups) != nil || groups == nil {
 		return nil, errors.New("invalid corporate-action groups")
 	}
-	out := &CorporateActionSnapshot{CaptureID: r.CaptureID, Revision: r.Revision, EvidenceClass: r.EvidenceClass, AccessRef: r.AccessRef, ReceivedAt: r.ReceivedAt.UTC(), Contract: CorporateActionContract, QueryDateBasis: "inclusive_process_date", DataQuality: "all", Region: "us", Symbols: slices.Clone(r.Symbols), Start: r.Start, End: r.End, AvailableAt: r.ReceivedAt.UTC(), RawRef: r.RawRef, SourceSHA256: r.SHA256, Records: []CorporateActionRecord{}, PageState: "terminal_page_only"}
+	out := &CorporateActionSnapshot{PageToken: r.PageToken, CaptureID: r.CaptureID, Revision: r.Revision, EvidenceClass: r.EvidenceClass, AccessRef: r.AccessRef, ReceivedAt: r.ReceivedAt.UTC(), Contract: CorporateActionContract, QueryDateBasis: "inclusive_process_date", DataQuality: "all", Region: "us", Symbols: slices.Clone(r.Symbols), Start: r.Start, End: r.End, AvailableAt: r.ReceivedAt.UTC(), RawRef: r.RawRef, SourceSHA256: r.SHA256, Records: []CorporateActionRecord{}, PageState: "terminal_page_only"}
 	slices.Sort(out.Symbols)
 	if string(envelope.Next) != "null" {
 		var token string
-		if json.Unmarshal(envelope.Next, &token) != nil || len(token) > 4096 || strings.ContainsFunc(token, unicode.IsControl) {
+		if json.Unmarshal(envelope.Next, &token) != nil || !validCorporateActionPageToken(token) {
 			return nil, errors.New("invalid corporate-action continuation token")
 		}
 		out.NextPageToken = &token
@@ -185,6 +192,12 @@ func (j *Journal) CorporateActionSnapshots(asOf time.Time) ([]CorporateActionSna
 			if status.State != "retained" {
 				continue
 			}
+			var intent collectionIntent
+			if _, err := j.readCollection(collectionName(c.Recording.CaptureID, "intent"), &intent); err != nil {
+				return nil, err
+			}
+			requestedAt := intent.At.UTC()
+			snapshot.RequestedAt = &requestedAt
 			var done collectionCompletion
 			if _, err := j.readCollection(collectionName(c.Recording.CaptureID, "complete"), &done); err != nil {
 				return nil, err

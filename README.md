@@ -262,7 +262,7 @@ The [capture journal](docs/reference/alpaca-journal.md) retains validated record
 and supports receiver-bound submission and recovery through `alpaca-retain`,
 `alpaca-submit`, and `alpaca-journal`. `alpaca-collect` performs one explicit,
 bounded provider read with durable attempt evidence, including
-[corporate-action source snapshots](docs/reference/alpaca-corporate-action-snapshots.md); `alpaca-collection` inspects
+[corporate-action source snapshots and explicit page continuations](docs/reference/alpaca-corporate-action-snapshots.md); `alpaca-collection` inspects
 its retained status. `alpaca-session` runs a finite count within journal capacity,
 with inspection through `alpaca-session-status`. No provider connection or
 scheduler starts with the service. [Journal archive and restore](docs/reference/alpaca-archives.md)
