@@ -64,8 +64,14 @@ func ReadFeedReadinessPolicy(r io.Reader) (*FeedReadinessPolicy, error) {
 // HandlerWithFeedReadiness freezes a validated policy for the handler lifetime.
 // Missing registrations and receiver mismatches are reported as not ready.
 func HandlerWithFeedReadiness(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy) (http.Handler, error) {
+	return HandlerWithCorporateAcquisitions(store, token, clock, policy, nil)
+}
+
+// HandlerWithCorporateAcquisitions retains normal token authentication and a
+// frozen feed policy; the caller owns the optional journal reader's lifetime.
+func HandlerWithCorporateAcquisitions(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy, acquisitions *CorporateAcquisitionReader) (http.Handler, error) {
 	if policy == nil {
-		return handlerWithPolicy(store, token, clock, nil), nil
+		return handlerWithAcquisitions(store, token, clock, nil, acquisitions), nil
 	}
 	if err := policy.validate(); err != nil {
 		return nil, err
@@ -73,7 +79,7 @@ func HandlerWithFeedReadiness(store storage.Store, token string, clock Clock, po
 	frozen := *policy
 	frozen.RequiredRegistrations = slices.Clone(policy.RequiredRegistrations)
 	slices.Sort(frozen.RequiredRegistrations)
-	return handlerWithPolicy(store, token, clock, &frozen), nil
+	return handlerWithAcquisitions(store, token, clock, &frozen, acquisitions), nil
 }
 
 func feedReadiness(ctx context.Context, store storage.Store, at time.Time, policy *FeedReadinessPolicy, storageOK bool) domain.CapabilityReadiness {
