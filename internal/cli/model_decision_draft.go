@@ -143,10 +143,7 @@ func runModelDecisionDraft(ctx context.Context, args []string, out, errOut io.Wr
 	if err := draftArtifact(root, "review-response.json", reviewed); err != nil {
 		return err
 	}
-	r := reviewed.Record
-	hash := r.SHA256
-	r.SHA256 = ""
-	if !reflect.DeepEqual(r.Command, command) || hash != workerplan.Hash(r) || r.Schema != "mantik-finalized-decision-review-v1" || r.Method != "retained-decision-fact-claims-v1" || r.Authority != "finalized_decision_claim_review_only" || r.ProseVerified || r.ModelUsed || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || r.BasisSHA256 != d.BasisSHA256 || r.ReviewedAt.Before(d.FinalizedAt) || r.RecordPath != "/v1/paper-decisions/"+*id || (r.Status != "claims_consistent" && r.Status != "review_required") || r.Status == "review_required" && r.CaseID != "decision-review-"+d.SHA256 || r.Status == "claims_consistent" && r.CaseID != "" {
+	if !draftReviewMatches(reviewed.Record, command, d) {
 		return errors.New("model draft review readback does not match actual source")
 	}
 	// Read the retained owner record after POST; a lost read remains inspectable
@@ -162,4 +159,10 @@ func runModelDecisionDraft(ctx context.Context, args []string, out, errOut io.Wr
 		return err
 	}
 	return emit(out, map[string]any{"schema": "mantik-model-decision-draft-result-v1", "capture_dir": *capture, "review": reviewed, "model_request_completed": true, "prose_verified": false, "qualification_credit": false})
+}
+
+func draftReviewMatches(r storage.DecisionReviewRecord, command storage.DecisionReviewCommand, d storage.PaperDecisionRecord) bool {
+	hash := r.SHA256
+	r.SHA256 = ""
+	return reflect.DeepEqual(r.Command, command) && hash == workerplan.Hash(r) && r.Schema == "mantik-finalized-decision-review-v1" && r.Method == "retained-decision-fact-claims-v1" && r.Authority == "finalized_decision_claim_review_only" && !r.ProseVerified && !r.ModelUsed && !r.AdmissionAvailable && !r.ExecutionAvailable && !r.QualificationCredit && r.BasisSHA256 == d.BasisSHA256 && !r.ReviewedAt.Before(d.FinalizedAt) && r.RecordPath == "/v1/paper-decisions/"+d.Command.ID && (r.Status == "claims_consistent" && r.CaseID == "" || r.Status == "review_required" && r.CaseID == "decision-review-"+d.SHA256)
 }

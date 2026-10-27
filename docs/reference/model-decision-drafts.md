@@ -109,13 +109,44 @@ review ID or issue another model call to resolve that uncertainty. A lost final
 readback likewise leaves the returned receipt inspectable. No model or review
 request is retried automatically.
 
+Use the original pins and capture directory to inspect an uncertain review:
+
+```sh
+mantik paper-decision-draft-reconcile \
+  --api-url http://127.0.0.1:40880 \
+  --receiver-id RECEIVER \
+  --decision-id DECISION \
+  --decision-sha256 ORIGINAL_DECISION_SHA256 \
+  --review-id ORIGINAL_REVIEW_ID \
+  --capture-dir /absolute/private/original-attempt
+```
+
+The command reads bounded `source.json` and `review-intent.json`, checks their
+identities against these explicit pins, and reads the original finalized decision,
+deterministic explanation and review from the selected service. It requires the
+original service origin and exact retained decision and review command. A matching
+review returns `retained_review_verified`; a confirmed review 404 returns
+`not_found_at_read`. Service outages, malformed responses and conflicting retained
+commands fail visibly. A 404 describes that read only: an earlier in-flight POST
+may still commit, so neither result authorizes a retry.
+
+Reconciliation makes only service GET requests. It needs no model configuration
+or model token, performs no model request or review POST, and leaves the attempt
+directory unchanged. Its JSON output can be retained separately. It verifies the
+service review against the retained intent, not model execution, the model-response
+archive or arbitrary prose. It cannot reconcile a capture without a retained
+review intent; preserve that earlier acquisition state for separate inspection.
+
 ## Verification and remaining acceptance
 
 Tests use manufactured model HTTP responses with actual authenticated Memory and
 disposable PostgreSQL finalization/review owners. They exercise source pins,
 private request retention, supported and contradictory claims, case membership,
 owner readback, capture/review reuse, invalid output, provider outage and unchanged
-operational state. Model endpoint failures leave deterministic owner inspection
+operational state. Recovery checks also cover a lost response after actual review
+commit, an unavailable POST with no commit, repeated read-only reconciliation,
+conflicting and oversized intents, wrong source pins and service outages.
+Model endpoint failures leave deterministic owner inspection
 available. No model client or worker starts with the Mantik service.
 
 These tests do not establish behavior of a real model or a configured deployment.

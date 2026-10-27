@@ -265,3 +265,6 @@ CLI flow using the same finalized-decision reads and typed claim-review owner.
 The model receives no tools or financial authority. The MCP bridge itself still
 makes no provider/model request. Retained typed findings do not verify arbitrary
 prose or complete conversational acceptance.
+`paper-decision-draft-reconcile` checks the retained intent against the actual
+service review using GET requests only. It preserves the original attempt and
+does not resolve uncertainty by issuing another model or review request.

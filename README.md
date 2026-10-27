@@ -548,6 +548,9 @@ command reads a pinned finalized decision, retains one advisory model attempt an
 checks its typed claims through the same service review owner. Prose remains
 unverified, and model failure does not alter the deterministic explanation or
 strategy/protection workers.
+`paper-decision-draft-reconcile` reads the original intent and actual service
+review after an uncertain submission, without another model request or review
+POST. A missing review at the read time does not authorize a retry.
 
 Individual retained sources are available through authenticated, clock-free
 `GET /v1/social-recordings/{capture-id}` and `GET /v1/copy-recordings/{capture-id}`;
