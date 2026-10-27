@@ -387,10 +387,15 @@ the observation window. Each item has `symbol`, `journal_id`,
 sorted, and exactly cover the symbols in the retained native variants. Each
 query is for one symbol and an inclusive process-date range of at most 31 dates.
 Journal and root collection identities use 1–40 ASCII letters, digits, underscores
-or hyphens; each journal/root pair must be unique. The access reference is bounded
+or hyphens; each journal/root pair must be unique. New declarations require the
+`journal-` prefix used by configured acquisition journals. Previously retained
+intents without that prefix remain inspectable and exact retries preserve their
+original record; they cannot resolve to a configured journal acquisition. This
+restriction applies only to new append attempts, without rewriting historical
+declarations or changing their replay validation. The access reference is bounded
 to 256 bytes and cannot contain control characters. The array accepts 1–10 items.
 
-For example, an item can name `SPY`, journal `study-journal`, root collection
+For example, an item can name `SPY`, journal `journal-study`, root collection
 `spy-actions-001`, access reference `paper-research-access`, and process-date
 start/end `2026-11-02`. These are intended query parameters, not supplied source
 records, acquisition receipts, hashes, results or a claim that the source exists.

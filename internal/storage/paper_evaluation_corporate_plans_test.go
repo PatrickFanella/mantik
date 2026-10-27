@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"sync"
@@ -27,6 +28,11 @@ func predeclaredCorporateSelection(t *testing.T, s corporateSelectionBackend) {
 	c, at := declarationFixture(t, s)
 	root, acquisition := chainSource(c.ReceiverID, "planned-root", "", "", "event", at.Add(3*time.Second))
 	c.Plan.CorporateSources = []PaperEvaluationCorporateSourcePlan{{Symbol: "SPY", JournalID: acquisition.JournalID, RootCollectionID: acquisition.CollectionID, AccessRef: root.Recording.AccessRef, Start: root.Recording.Start, End: root.Recording.End}}
+	badJournal := clone(c)
+	badJournal.Plan.CorporateSources[0].JournalID = "unresolvable-journal-name"
+	if _, err := s.DeclarePaperEvaluation(ctx, badJournal, func() time.Time { t.Fatal("invalid new journal intent sampled clock"); return time.Time{} }); !errors.Is(err, ErrPaperEvaluationDeclarationInvalid) {
+		t.Fatal("new intent cannot match a configured acquisition", err)
+	}
 	var wg sync.WaitGroup
 	for range 4 {
 		wg.Go(func() {
@@ -79,6 +85,70 @@ func predeclaredCorporateSelection(t *testing.T, s corporateSelectionBackend) {
 	r, err := s.PaperEvaluationCorporateSelection(ctx, newer.Command.ID, f.de, f.oe)
 	if err != nil || r.Rows[0].Plan.Symbol != "SPY" || r.Rows[0].Chain.Pages[0].Source.Symbols[0] != "SPY" {
 		t.Fatal("mutable readback", r, err)
+	}
+}
+
+func TestMemoryHistoricalCorporateJournalIntent(t *testing.T) {
+	historicalCorporateJournalIntent(t, NewMemory())
+}
+func TestPostgresContractsHistoricalCorporateJournalIntent(t *testing.T) {
+	historicalCorporateJournalIntent(t, timerPostgres(t, "historicaljournalintent"))
+}
+func historicalCorporateJournalIntent(t *testing.T, s corporateSelectionBackend) {
+	t.Helper()
+	ctx := context.Background()
+	c, at := declarationFixture(t, s)
+	c.Plan.CorporateSources = []PaperEvaluationCorporateSourcePlan{{Symbol: "SPY", JournalID: "unresolvable-journal-name", RootCollectionID: "root", AccessRef: "access", Start: "2026-10-14", End: "2026-10-14"}}
+	strategies, err := s.PaperStrategies(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policies, err := s.AllocationPolicies(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Manufacture an originally valid v3 record using its preserved replay
+	// constructor. This is compatibility evidence, not an acquisition observation.
+	old, err := paperEvaluationDeclarationVersion(c, strategies, policies, at.Add(time.Second), "mantik-owned-paper-evaluation-declaration-v3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	switch owner := s.(type) {
+	case *Memory:
+		owner.paperEvaluationPlans[c.ID] = clone(old)
+	case *Postgres:
+		raw, err := json.Marshal(old)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := owner.pool.Exec(ctx, "INSERT INTO mantik_paper_evaluation_declarations(id,payload) VALUES($1,$2)", c.ID, raw); err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatal("unknown fixture owner")
+	}
+	for range 2 {
+		r, err := s.DeclarePaperEvaluation(ctx, c, func() time.Time { t.Fatal("historical retry sampled clock"); return time.Time{} })
+		if err != nil || !r.Duplicate || !reflect.DeepEqual(r.Record, old) {
+			t.Fatal("historical intent changed", r, err)
+		}
+	}
+	f := &corporateChainFixture{s: s, declaration: old, at: at, step: 2, de: recoveryFixtureDecisionEvaluator, oe: recoveryFixtureOutcomeEvaluator}
+	a := f.assess(t, "historical-intent-assessment")
+	r, err := s.PaperEvaluationCorporateSelection(ctx, a.Command.ID, f.de, f.oe)
+	if err != nil || len(r.Rows) != 1 || r.Rows[0].Status != "predeclared_root_unavailable_at_cut" || r.Rows[0].PredeclaredChainResolved || r.EconomicApplicationReady || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
+		t.Fatal("historical intent became a source grant", r, err)
+	}
+	if pg, ok := s.(*Postgres); ok {
+		reopened, err := OpenPostgres(ctx, pg.pool.Config().ConnString())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer reopened.Close()
+		retry, err := reopened.DeclarePaperEvaluation(ctx, c, nil)
+		if err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, old) {
+			t.Fatal("restart lost historical retry", retry, err)
+		}
 	}
 }
 

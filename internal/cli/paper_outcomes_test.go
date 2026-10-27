@@ -374,8 +374,13 @@ func ownedPaperOutcomeHTTP(t testing.TB, s ownedDecisionHTTPBackend) service.Pap
 	request("GET", "/v1/paper-outcomes/absent", nil, 404)
 	// Full retention leaves canonical old retries available, but a new matured
 	// decision must fail visibly rather than evicting evidence or changing IDs.
+	// Capacity filler does not need another forward-quote calculation. Use the
+	// already finalized abstention; the real observed outcomes above remain in
+	// the full catalogue and are still replayed by the owner and HTTP reads.
+	commandOutcome.DecisionID = abstention.Record.Command.ID
+	commandOutcome.DecisionSHA256 = abstention.Record.SHA256
 	for i := len(catalog.Records); i < storage.MaxPaperOutcomes; i++ {
-		assess(fmt.Sprintf("capacity-%02d", i), "observed")
+		assess(fmt.Sprintf("capacity-%02d", i), "not_applicable")
 	}
 	clock.at = first.Record.FinalizedAt.Add(172 * time.Second)
 	publish(quote("capacity-entry", "100"))
@@ -426,6 +431,11 @@ func TestPostgresContractsOwnedPaperOutcomeHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
+		// A canceled HTTP transaction can still be releasing its connection.
+		// Fence only this test-owned database before removing its sessions.
+		if _, e := conn.Exec(ctx, "ALTER DATABASE "+pgx.Identifier{db}.Sanitize()+" ALLOW_CONNECTIONS false"); e != nil {
+			t.Error(e)
+		}
 		_, e := conn.Exec(ctx, "DROP DATABASE "+pgx.Identifier{db}.Sanitize()+" WITH (FORCE)")
 		if e != nil {
 			t.Error(e)

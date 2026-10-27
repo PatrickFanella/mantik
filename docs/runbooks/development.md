@@ -35,7 +35,13 @@ preserving every corruption and retry assertion without repeatedly replaying a
 capacity-sized journal. This keeps boundary/load verification separate from
 field-tampering verification; no production bound or timeout is changed.
 
-The candidate HTTP test fences its own temporary database against new
+The outcome HTTP contract keeps its forward-observation and historical-replay
+assertions, then fills the remaining catalogue capacity using a finalized
+abstention. These additional records exercise the same retained outcome writer
+and full-capacity read/overflow paths without repeating forward-quote evaluation
+for every filler ID. The production request deadline remains unchanged.
+
+The candidate and outcome HTTP tests fence their own temporary databases against new
 connections before forcing its removal, so a canceled transaction still draining
 its connection cannot prevent cleanup.
 
