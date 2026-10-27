@@ -379,3 +379,51 @@ false. The explicit root selects a diagnostic inspection, not a predeclared
 economic dataset, benchmark or qualification result. Process dates are not
 converted into entitlement dates, absent objects are not interpreted as deleted
 or action-free coverage, and original assessments remain unchanged.
+### Predeclared corporate source selection
+
+An optional `plan.corporate_sources` array records intended acquisitions before
+the observation window. Each item has `symbol`, `journal_id`,
+`root_collection_id`, `access_ref`, `start` and `end`. Symbols must be unique,
+sorted, and exactly cover the symbols in the retained native variants. Each
+query is for one symbol and an inclusive process-date range of at most 31 dates.
+Journal and root collection identities use 1–40 ASCII letters, digits, underscores
+or hyphens; each journal/root pair must be unique. The access reference is bounded
+to 256 bytes and cannot contain control characters. The array accepts 1–10 items.
+
+For example, an item can name `SPY`, journal `study-journal`, root collection
+`spy-actions-001`, access reference `paper-research-access`, and process-date
+start/end `2026-11-02`. These are intended query parameters, not supplied source
+records, acquisition receipts, hashes, results or a claim that the source exists.
+New declarations containing this array use declaration schema v3. Declarations
+without it keep their v2 representation; legacy v1/v2 payloads and retries retain
+their original hashes. An empty array is invalid. A retained declaration cannot
+be edited or supplied a replacement source plan after observing results.
+
+`GET /v1/paper-evaluation-assessments/{id}/corporate-selection` accepts no body,
+query parameters, caller clock or root selection. One Memory lock or PostgreSQL
+read-only repeatable-read transaction replays the actual assessment, declaration
+and source owners. The service resolves the predeclared journal/root identities
+only within the assessment's source cut, checks the exact single-symbol query
+scope and access reference, then derives the causal page chain. Every selected
+page request must be strictly after declaration and its verified availability
+must be no later than the inclusive outcome deadline. Later imports cannot alter
+earlier assessments. Source retention after the outcome deadline does not move
+the acquisition deadline or assert prior provider knowledge.
+
+The response schema is `mantik-owned-predeclared-corporate-selection-v1` and is
+bounded to 1 MiB; overflow fails without truncation. It binds assessment,
+declaration, source-cut and per-plan hashes and retains each inspected chain.
+Missing or ambiguous roots, mismatched query scope, acquisitions outside clock
+bounds, and the chain's missing/ambiguous/overlap/cycle states remain explicit.
+`predeclared_chain_resolved` means only that the intended chain terminated within
+those acquisition bounds. Legacy declarations return
+`corporate_source_plan_not_predeclared`, without retroactive selection.
+
+Authority remains `service_owned_predeclared_acquisition_selection_only`.
+Coverage, economic application, admission, execution and qualification flags stay
+false. The compiled corporate query uses `data_quality=all`, US region, ascending
+order and process dates. Those dates are not entitlement dates; a terminated
+chain is not complete coverage or a correction history. Rates, instrument
+mapping, ex/record/payable dates, total-return benchmarks and missing/deleted
+actions still need applicable economic rules. Schema 74 is a compatibility fence
+for the optional v3 declaration and rewrites no stored payloads.

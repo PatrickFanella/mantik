@@ -35,17 +35,18 @@ type PaperEvaluationVariant struct {
 // This is an operator declaration of intended checks, never supplied results.
 // Registration precedes the observation window and pins the whole variant family.
 type PaperEvaluationPlan struct {
-	FamilyID                string                   `json:"family_id"`
-	Variants                []PaperEvaluationVariant `json:"variants"`
-	WindowStart             time.Time                `json:"window_start"`
-	WindowEnd               time.Time                `json:"window_end"`
-	OutcomeDeadline         time.Time                `json:"outcome_deadline"`
-	MinIndependentDecisions int                      `json:"min_independent_decisions"`
-	MinimumNetExcessCents   int64                    `json:"minimum_net_excess_cents"`
-	MaximumDrawdownCents    int64                    `json:"maximum_drawdown_cents"`
-	AdmissionTTLSeconds     int64                    `json:"admission_ttl_seconds"`
-	Benchmarks              []string                 `json:"benchmarks"`
-	StressModel             paperfill.Model          `json:"stress_model"`
+	CorporateSources        []PaperEvaluationCorporateSourcePlan `json:"corporate_sources,omitempty"`
+	FamilyID                string                               `json:"family_id"`
+	Variants                []PaperEvaluationVariant             `json:"variants"`
+	WindowStart             time.Time                            `json:"window_start"`
+	WindowEnd               time.Time                            `json:"window_end"`
+	OutcomeDeadline         time.Time                            `json:"outcome_deadline"`
+	MinIndependentDecisions int                                  `json:"min_independent_decisions"`
+	MinimumNetExcessCents   int64                                `json:"minimum_net_excess_cents"`
+	MaximumDrawdownCents    int64                                `json:"maximum_drawdown_cents"`
+	AdmissionTTLSeconds     int64                                `json:"admission_ttl_seconds"`
+	Benchmarks              []string                             `json:"benchmarks"`
+	StressModel             paperfill.Model                      `json:"stress_model"`
 }
 type PaperEvaluationDeclarationCommand struct {
 	ID           string              `json:"id"`
@@ -65,6 +66,9 @@ func declarationTime(t time.Time) bool {
 }
 func (c PaperEvaluationDeclarationCommand) Validate() error {
 	p := c.Plan
+	if validateCorporateSourcePlans(p.CorporateSources) != nil {
+		return ErrPaperEvaluationDeclarationInvalid
+	}
 	if !paperaccount.ID.MatchString(c.ID) || !ValidReceiverID(c.ReceiverID) || c.Recipe != PaperEvaluationRecipe || !paperaccount.ID.MatchString(c.PolicyID) || !decisionPin.MatchString(c.PolicySHA256) || !paperaccount.ID.MatchString(p.FamilyID) || p.Variants == nil || len(p.Variants) < 1 || len(p.Variants) > paperstrategy.MaxDefinitions || !declarationTime(p.WindowStart) || !declarationTime(p.WindowEnd) || !declarationTime(p.OutcomeDeadline) || !p.WindowEnd.After(p.WindowStart) || p.WindowEnd.Sub(p.WindowStart) > 90*24*time.Hour || !p.OutcomeDeadline.After(p.WindowEnd) || p.OutcomeDeadline.Sub(p.WindowEnd) > 48*time.Hour || p.MinIndependentDecisions < 2 || p.MinIndependentDecisions > 1000000 || p.MinimumNetExcessCents < -paperaccount.MaxOpeningCashCents || p.MinimumNetExcessCents > paperaccount.MaxOpeningCashCents || p.MaximumDrawdownCents < 0 || p.MaximumDrawdownCents > paperaccount.MaxOpeningCashCents || p.AdmissionTTLSeconds < 1 || p.AdmissionTTLSeconds > 86400 || !reflect.DeepEqual(p.Benchmarks, []string{"cash_no_action", "passive_same_symbol"}) || p.StressModel.Validate() != nil {
 		return ErrPaperEvaluationDeclarationInvalid
 	}
@@ -106,13 +110,19 @@ type PaperEvaluationDeclarationStore interface {
 }
 
 func newPaperEvaluationDeclaration(c PaperEvaluationDeclarationCommand, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, at time.Time) (PaperEvaluationDeclaration, error) {
+	if c.Plan.CorporateSources != nil {
+		return paperEvaluationDeclarationVersion(c, strategies, policies, at, "mantik-owned-paper-evaluation-declaration-v3")
+	}
 	return paperEvaluationDeclarationVersion(c, strategies, policies, at, "mantik-owned-paper-evaluation-declaration-v2")
 }
 
 // Legacy declarations keep their ID-count semantics and original bytes. New
 // declarations cannot label identical native configurations as distinct variants.
 func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, at time.Time, schema string) (PaperEvaluationDeclaration, error) {
-	if schema != "mantik-owned-paper-evaluation-declaration-v1" && schema != "mantik-owned-paper-evaluation-declaration-v2" {
+	if schema != "mantik-owned-paper-evaluation-declaration-v1" && schema != "mantik-owned-paper-evaluation-declaration-v2" && schema != "mantik-owned-paper-evaluation-declaration-v3" {
+		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
+	}
+	if (schema == "mantik-owned-paper-evaluation-declaration-v3") != (c.Plan.CorporateSources != nil) {
 		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
 	}
 	if c.Validate() != nil || !declarationTime(at) || strategies.Validate() != nil || policies.Validate() != nil || strategies.ReceiverID != c.ReceiverID || policies.ReceiverID != c.ReceiverID || !c.Plan.WindowStart.After(at) || c.Plan.WindowStart.Sub(at) > 365*24*time.Hour {
@@ -150,7 +160,7 @@ func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, stra
 		if !matched || d.Method != paperstrategy.Method || c.Plan.OutcomeDeadline.Before(c.Plan.WindowEnd.Add(time.Duration(d.Safety.MaxHoldingSeconds)*time.Second)) {
 			return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationConflict
 		}
-		if schema == "mantik-owned-paper-evaluation-declaration-v2" {
+		if schema == "mantik-owned-paper-evaluation-declaration-v2" || schema == "mantik-owned-paper-evaluation-declaration-v3" {
 			configuration := nativeVariantConfiguration(strategy)
 			if seenConfigurations[configuration.ConfigurationSHA256] {
 				return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationConflict
@@ -159,6 +169,9 @@ func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, stra
 			configurations = append(configurations, configuration)
 		}
 		variants = append(variants, strategy)
+	}
+	if err := corporateSourcePlanSymbols(c.Plan.CorporateSources, variants); err != nil {
+		return PaperEvaluationDeclaration{}, err
 	}
 	r := PaperEvaluationDeclaration{VariantConfigurations: configurations, Schema: schema, Command: clone(c), DeclaredAt: at.UTC(), SourceSHA256: workerplan.Hash(struct {
 		Variants []paperstrategy.Record

@@ -97,7 +97,7 @@ func journalCorporateMigration(t *testing.T, p *Postgres) {
 	if err := p.pool.QueryRow(ctx, q).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version=73; COMMENT ON TABLE mantik_corporate_action_sources IS 'journal rollback marker'; CREATE FUNCTION reject_journal_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=73 THEN RAISE EXCEPTION 'manufactured journal migration failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_journal_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_journal_migration()`); err != nil {
+	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=73; COMMENT ON TABLE mantik_corporate_action_sources IS 'journal rollback marker'; CREATE FUNCTION reject_journal_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=73 THEN RAISE EXCEPTION 'manufactured journal migration failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_journal_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_journal_migration()`); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.migrate(ctx); err == nil {
