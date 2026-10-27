@@ -78,6 +78,22 @@ func (c *Client) target(q Query) (string, error) {
 		}
 		v := url.Values{"symbols": {strings.Join(symbols, ",")}, "feed": {c.feed}, "currency": {"USD"}}
 		return c.dataOrigin + "/v2/stocks/quotes/latest?" + v.Encode(), nil
+	case "corporate_actions":
+		if _, _, err := calendarRange(q.Start, q.End); err != nil {
+			return "", err
+		}
+		symbols := slices.Clone(q.Symbols)
+		slices.Sort(symbols)
+		if len(symbols) < 1 || len(symbols) > 10 {
+			return "", errors.New("corporate actions require 1–10 symbols")
+		}
+		for n, symbol := range symbols {
+			if !symbolPattern.MatchString(symbol) || n > 0 && symbols[n-1] == symbol {
+				return "", errors.New("invalid corporate-action symbols")
+			}
+		}
+		v := url.Values{"symbols": {strings.Join(symbols, ",")}, "start": {q.Start}, "end": {q.End}, "region": {"us"}, "data_quality": {"all"}, "sort": {"asc"}, "limit": {"1000"}}
+		return c.dataOrigin + "/v1/corporate-actions?" + v.Encode(), nil
 	case "market_calendar":
 		if len(q.Symbols) != 0 {
 			return "", errors.New("calendar query does not accept symbols")

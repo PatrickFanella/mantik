@@ -63,11 +63,12 @@ type Session struct {
 }
 
 type Result struct {
-	Schema      string                `json:"schema"`
-	Inputs      []domain.RoutingInput `json:"inputs"`
-	Coverage    []Coverage            `json:"coverage"`
-	Sessions    []Session             `json:"sessions"`
-	Unsupported []string              `json:"unsupported"`
+	Schema           string                   `json:"schema"`
+	Inputs           []domain.RoutingInput    `json:"inputs"`
+	Coverage         []Coverage               `json:"coverage"`
+	Sessions         []Session                `json:"sessions"`
+	Unsupported      []string                 `json:"unsupported"`
+	CorporateActions *CorporateActionSnapshot `json:"corporate_actions,omitempty"`
 }
 
 func Digest(raw string) string { sum := sha256.Sum256([]byte(raw)); return hex.EncodeToString(sum[:]) }
@@ -109,6 +110,13 @@ func (r Recording) validate() error {
 	case "latest_quotes":
 		if !slices.Contains([]string{"iex", "sip", "delayed_sip"}, r.Feed) || r.Start != "" || r.End != "" {
 			return errors.New("quotes require an explicit supported feed and no calendar range")
+		}
+	case "corporate_actions":
+		if r.Feed != CorporateActionFeed {
+			return errors.New("corporate actions require the REST snapshot contract")
+		}
+		if _, _, err := calendarRange(r.Start, r.End); err != nil {
+			return err
 		}
 	case "market_calendar":
 		if r.Feed != "regular_session" {
@@ -152,7 +160,9 @@ func Normalize(r Recording) (Result, error) {
 		return out, err
 	}
 	var err error
-	if r.Capability == "latest_quotes" {
+	if r.Capability == "corporate_actions" {
+		out.CorporateActions, err = corporateActions(r)
+	} else if r.Capability == "latest_quotes" {
 		err = quotes(r, &out)
 	} else {
 		err = calendar(r, &out)

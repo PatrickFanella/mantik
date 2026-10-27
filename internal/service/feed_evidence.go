@@ -22,6 +22,11 @@ func recordingKey(r alpaca.Recording) string { return fmt.Sprintf("%s-r%d", r.Ca
 // Validate raw capture and normalized history independently of a client's
 // coverage boolean. A calendar with no sessions still has a validated range.
 func validateFeedRecording(s storage.FeedEvidenceSnapshot, registration string, r alpaca.Recording) error {
+	// This publication owner is limited to admitted quote/calendar evidence.
+	// New source-custody normalizers must not implicitly widen its contract.
+	if r.Capability != "latest_quotes" && r.Capability != "market_calendar" {
+		return storage.ErrEvidenceInvalid
+	}
 	e, exists := s.Collectors.Entries[registration]
 	if !exists {
 		return feedcollector.ErrNotFound

@@ -54,6 +54,25 @@ func TestValidatedFeedCoveragePublicationAndClock(t *testing.T) {
 		t.Helper()
 		request("POST", "/v1/feed-evidence", map[string]any{"receiver_id": receiver, "fence": fence, "recording": r}, expected)
 	}
+	// Source-custody capabilities must not inherit quote/calendar publication
+	// merely because they normalize successfully with no routing inputs.
+	corporate := quote
+	corporate.CaptureID, corporate.Capability, corporate.Feed = "corporate", "corporate_actions", alpaca.CorporateActionFeed
+	corporate.Start, corporate.End = "2026-10-15", "2026-10-15"
+	corporate.RawRef = "journal:journal-test:capture-corporate-r1.json"
+	corporate.Original = `{"corporate_actions":{},"next_page_token":null}`
+	corporate.SHA256 = alpaca.Digest(corporate.Original)
+	if normalized, err := alpaca.Normalize(corporate); err != nil || normalized.CorporateActions == nil {
+		t.Fatal("manufactured source custody did not normalize", err)
+	}
+	beforeCorporate, _ := store.FeedEvidence(ctx)
+	publish(corporate, 422)
+	afterCorporate, _ := store.FeedEvidence(ctx)
+	beforeRaw, _ := json.Marshal(beforeCorporate)
+	afterRaw, _ := json.Marshal(afterCorporate)
+	if !bytes.Equal(beforeRaw, afterRaw) {
+		t.Fatal("unsupported source publication changed service ownership")
+	}
 	publish(quote, 409) // raw validation alone cannot invent admitted history.
 	for _, r := range []alpaca.Recording{quote, calendar} {
 		normalized, err := alpaca.Normalize(r)

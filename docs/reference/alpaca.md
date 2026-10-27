@@ -22,8 +22,10 @@ Existing pilot services keep their pinned revisions.
 Provider response bytes remain in the recording's `original` string with a
 verified SHA-256. Unknown provider fields remain raw evidence; normalization
 extracts the supported contract. Recording-envelope fields are strict.
-Corporate actions, expiry, settlement, and execution are explicitly unsupported
-in output. Any settlement or extended-session fields in a response remain raw
+Corporate-action [REST snapshots](alpaca-corporate-action-snapshots.md) can also
+be retained through the same client and journal. Their source projection grants
+no economic handling: corporate actions, expiry, settlement, and execution remain
+explicitly unsupported in output. Any settlement or extended-session fields in a response remain raw
 evidence and do not establish those capabilities.
 
 ## Recording envelope and offline command
