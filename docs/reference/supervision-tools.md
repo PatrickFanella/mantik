@@ -257,3 +257,11 @@ returns the owner response unchanged. No assessment, source record or economic
 state is appended. Counts still do not establish independent samples, economic
 performance, a completed evaluation or admission. HTTP and typed MCP use the
 same fixed route, authentication and owner error behavior.
+
+## Explicit model-assisted decision drafts
+
+[Model-assisted decision drafts](model-decision-drafts.md) are a separate explicit
+CLI flow using the same finalized-decision reads and typed claim-review owner.
+The model receives no tools or financial authority. The MCP bridge itself still
+makes no provider/model request. Retained typed findings do not verify arbitrary
+prose or complete conversational acceptance.
