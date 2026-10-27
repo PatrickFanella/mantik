@@ -552,6 +552,10 @@ strategy/protection workers.
 review after an uncertain submission, without another model request or review
 POST. A missing review at the read time does not authorize a retry.
 
+An explicitly configured `serve --corporate-source-journal PATH --corporate-source-journal-id ID`
+can inspect verified local acquisitions through `GET /v1/corporate-action-acquisitions/{id}`.
+The server owns the existing journal lock; this does not start collection or import sources.
+
 The separate [corporate-action source custody](docs/reference/corporate-action-source-custody.md)
 API retains original reported pages with service receipt times, immutable hashes
 and targeted readback. It preserves unknown source fields and revisions without

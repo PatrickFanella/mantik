@@ -59,6 +59,14 @@ func TestCorporateAcquisitionBindsActualRetryArtifactsAndRestores(t *testing.T) 
 	if err != nil || !reflect.DeepEqual(got, r) {
 		t.Fatal("receipt changed on replay", err)
 	}
+	source, err := j.CorporateActionAcquiredSource(spec.ID)
+	if err != nil || !reflect.DeepEqual(source.Acquisition, r) || source.Recording.Original != actionPage("original", "") {
+		t.Fatal("acquired source lost original or proof", err)
+	}
+	recordingRaw, _ := json.Marshal(source.Recording)
+	if Digest(string(recordingRaw)) != r.RecordingSHA256 {
+		t.Fatal("source differs from acquisition pin")
+	}
 	got.Attempts[0].State = "forged"
 	unchanged, err := j.CorporateActionAcquisition(spec.ID)
 	if err != nil || !reflect.DeepEqual(unchanged, r) {
@@ -92,6 +100,10 @@ func TestCorporateAcquisitionBindsActualRetryArtifactsAndRestores(t *testing.T) 
 	replayed, err := rj.CorporateActionAcquisition(spec.ID)
 	if err != nil || !reflect.DeepEqual(replayed, r) {
 		t.Fatal("restored acquisition differs", err)
+	}
+	restoredSource, err := rj.CorporateActionAcquiredSource(spec.ID)
+	if err != nil || !reflect.DeepEqual(restoredSource, source) {
+		t.Fatal("restored source differs", err)
 	}
 	// Rehashed but impossible acquisition clocks must fail before source use.
 	for _, kind := range []string{"before_intent", "inter_attempt", "premature_completion"} {

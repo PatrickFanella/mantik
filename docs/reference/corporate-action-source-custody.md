@@ -81,3 +81,33 @@ An [assessment-pinned inspection](paper-evaluation-assessments.md#inspecting-a-r
 resolves the exact records retained by a v5 assessment and returns bounded query,
 revision and pagination metadata. It preserves the difference between reported
 response custody and the acquisition journal's request/completion evidence.
+
+## Owner-configured journal acquisition reads
+
+`serve --corporate-source-journal /absolute/private/journal
+--corporate-source-journal-id journal-EXPECTED` enables
+`GET /v1/corporate-action-acquisitions/{collection-id}`. Both flags are required.
+The journal must already exist, have the expected identity and satisfy the
+journal's private ownership and permissions checks. The service holds its
+exclusive journal lock until shutdown, so collectors and other journal owners
+must finish and release that journal first. The reader does not start a
+collector, open provider credentials or fetch a response.
+
+The authenticated GET accepts only a collection ID. It returns the verified
+[acquisition receipt](alpaca-corporate-action-snapshots.md#verified-journal-acquisition-receipts)
+and exact original recording from that configured journal. The recording hash
+and original response hash are bound by the receipt. Requests cannot supply a
+path, clock, recording or acquisition assertion; query parameters and bodies
+are rejected. The route is absent unless the server has a configured reader.
+Missing collection evidence returns 404; an interrupted, failed or inconsistent
+acquisition returns 409; other read failures return 503 without local path
+information. Reads are serialized and revalidate the retained journal evidence.
+Closing or reopening the reader does not change the source identity.
+
+This is a read of a locally retained acquisition, including when its bytes were
+originally observed by a separate collector. It does not attest provider origin,
+complete coverage or execution by the current service process. The response's
+coverage, economic-application, admission, execution and qualification flags
+remain false. The existing caller-reported `POST /v1/corporate-action-sources`
+contract is unchanged. Importing this acquisition into the durable service source
+catalogue with owner binding remains a separate acceptance dependency.

@@ -256,10 +256,12 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fs.SetOutput(errOut)
-	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest, feedPolicyPath string
+	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest, feedPolicyPath, corporateJournalPath, corporateJournalID string
 	var exportDataset, automaticOutcomes, automaticEvaluations bool
 	switch args[0] {
 	case "serve":
+		fs.StringVar(&corporateJournalPath, "corporate-source-journal", "", "optional existing private journal for verified corporate acquisition reads")
+		fs.StringVar(&corporateJournalID, "corporate-source-journal-id", "", "expected identity of the configured corporate acquisition journal")
 		fs.BoolVar(&automaticEvaluations, "automatic-paper-evaluations", false, "automatically retain post-deadline necessary-check assessments; no admission authority")
 		fs.BoolVar(&automaticOutcomes, "automatic-paper-outcomes", false, "automatically retain sealed forward quote outcomes; no admission authority")
 		fs.StringVar(&feedPolicyPath, "feed-readiness-policy", "", "optional receiver-bound feed readiness policy JSON file")
@@ -289,7 +291,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	if args[0] == "serve" {
-		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations)
+		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, corporateJournalPath, corporateJournalID)
 	}
 	if args[0] == "replay" {
 		if exportDataset {
@@ -411,7 +413,16 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	return nil
 }
 
-func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations bool) error {
+func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations bool, corporateJournalPath, corporateJournalID string) error {
+	var acquisitions *service.CorporateAcquisitionReader
+	if corporateJournalPath != "" || corporateJournalID != "" {
+		var err error
+		acquisitions, err = service.OpenCorporateAcquisitionReader(corporateJournalPath, corporateJournalID)
+		if err != nil {
+			return err
+		}
+		defer acquisitions.Close()
+	}
 	var policy *service.FeedReadinessPolicy
 	if policyPath != "" {
 		file, err := os.Open(policyPath)
@@ -460,7 +471,7 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 		return err
 	}
 	defer store.Close()
-	handler, err := service.HandlerWithFeedReadiness(store, token, service.WallClock{}, policy)
+	handler, err := service.HandlerWithCorporateAcquisitions(store, token, service.WallClock{}, policy, acquisitions)
 	if err != nil {
 		return err
 	}

@@ -44,6 +44,40 @@ type CorporateActionAcquisition struct {
 	SHA256                   string                              `json:"sha256"`
 }
 
+type CorporateActionAcquiredSource struct {
+	Acquisition CorporateActionAcquisition `json:"acquisition"`
+	Recording   Recording                  `json:"recording"`
+}
+
+// CorporateActionAcquiredSource resolves the original recording and receipt
+// from this owned journal. No caller recording or proof is accepted.
+func (j *Journal) CorporateActionAcquiredSource(id string) (CorporateActionAcquiredSource, error) {
+	if !capturePattern.MatchString(id) {
+		return CorporateActionAcquiredSource{}, ErrJournalConflict
+	}
+	captures, err := j.captures()
+	if err != nil {
+		return CorporateActionAcquiredSource{}, err
+	}
+	for _, c := range captures {
+		if c.Recording.CaptureID != id {
+			continue
+		}
+		proof, err := j.corporateActionAcquisition(id, &c)
+		if err != nil {
+			return CorporateActionAcquiredSource{}, err
+		}
+		return CorporateActionAcquiredSource{proof, c.Recording}, nil
+	}
+	// Resolve incomplete and failed collections through their actual owner,
+	// rather than interpreting a missing capture as a successful empty page.
+	_, err = j.CorporateActionAcquisition(id)
+	if err == nil {
+		err = ErrJournalConflict
+	}
+	return CorporateActionAcquiredSource{}, err
+}
+
 // CorporateActionAcquisition verifies a completed network collection and its
 // actual capture, including every bounded attempt. Reads never resume a request
 // or promote a manual capture, an unfinished attempt or failed normalization.
