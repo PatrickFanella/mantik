@@ -556,8 +556,10 @@ The separate [corporate-action source custody](docs/reference/corporate-action-s
 API retains original reported pages with service receipt times, immutable hashes
 and targeted readback. It preserves unknown source fields and revisions without
 granting provider authenticity, complete coverage, economic interpretation or
-admission. Historical evaluation selection and passive-benchmark accounting remain
-unfinished; quote/calendar publication keeps its existing capability boundary.
+admission. New v5 evaluation assessments pin the actual custody inventory at issuance and
+reject later backdated source writes. Economic source selection and passive
+benchmark accounting remain unfinished; quote/calendar publication keeps its
+existing capability boundary.
 
 Individual retained sources are available through authenticated, clock-free
 `GET /v1/social-recordings/{capture-id}` and `GET /v1/copy-recordings/{capture-id}`;

@@ -21,11 +21,12 @@ are rejected. There is no new offline command or financial write route.
 The service replays the actual strategy, policy, declaration, finalized-decision
 and outcome owners in one consistent snapshot. Issuance takes the existing
 collector → state → receiver lock order in PostgreSQL; Memory uses its aggregate
-mutex. New records use `mantik-owned-paper-evaluation-assessment-v4` and
-`native-predeclared-necessary-checks-v4`. They retain the command, service clock,
-complete selected evidence, individual check states, native warm-up and forecast-calibration applicability,
-and a SHA256 digest. Existing v1, v2 and v3 records keep their original recipes,
-bytes and hashes; replay does not attach later applicability results.
+mutex. New records use `mantik-owned-paper-evaluation-assessment-v5` and
+`native-predeclared-necessary-checks-v5`. They retain the command, service clock,
+complete selected evidence, individual check states, native warm-up and
+forecast-calibration applicability, a corporate-source custody cut and a SHA256
+digest. Existing v1, v2, v3 and v4 records keep their original recipes, bytes and
+hashes; replay does not attach later applicability results.
 
 Each predeclared variant receives all eight planned checks. Before the outcome
 deadline, sample sufficiency remains `pending`. At or after that deadline, an
@@ -238,7 +239,7 @@ occupying the automatic identity. Current owner sources are replayed inside the
 write, while earlier committed assessments remain immutable.
 
 The reserved ID is `automatic-evaluation-` followed by the hash of the compiled
-`native-predeclared-necessary-checks-v4` recipe and declaration hash. Public
+`native-predeclared-necessary-checks-v5` recipe and declaration hash. Public
 assessment POSTs reject that prefix. A committed retry reuses the same record
 without sampling a new owner issuance clock. Concurrent cycles cannot create
 multiple records, and a lost acknowledgement can be reconciled by reading that
@@ -265,3 +266,38 @@ and stop state separately from outcome collection and protective monitoring.
 Its readiness means the worker cycle is available, not that a strategy or
 assessment is qualified. Existing fixture-operation readiness does not depend on
 this optional worker.
+
+
+## Corporate-source custody cuts
+
+Schema 72 adds the v5 assessment envelope. New issuance pins every corporate
+source retained by this service at the assessment clock, in source sequence
+order. `corporate_source_cut` retains the receiver, declaration ID/hash, as-of
+clock and each source ID, sequence, record hash, original-response hash and
+service retention time. It contains references; originals remain available from
+the [source custody owner](corporate-action-source-custody.md).
+
+This is an inventory of reported source custody, not a selection of economically
+relevant or complete actions. It chooses no latest revision, merges no pages,
+invents no deletion, and establishes no provider knowledge, acquisition
+attestation, total-return benchmark or admission. All source-cut authority flags
+remain false. Benchmark comparison and the other unfinished checks remain
+unavailable even when the inventory is nonempty.
+
+Issuance and source appends share the existing collector/receiver transaction
+locks, or Memory's aggregate mutex. A new source must be strictly later than every
+retained decision, outcome and assessment and cannot roll back the shared source
+clock. It advances that source clock atomically with retention. Equal-clock races
+therefore either put the source in the assessment cut or reject its later append.
+Exact source and assessment retries remain clock-free and return original bytes.
+New assessment issuance also rejects a clock before a source already held by the
+owner; it cannot silently omit that source.
+
+Historical v5 replay reconstructs the source prefix from actual owner records at
+the retained assessment time. Later appends do not revise the old cut. Missing,
+substituted or self-rehashed source pins fail actual owner replay, including
+through allocation, admission-review and attribution callers. Clock-floor paths
+check retained envelopes only; they do not attest evaluation or economic results.
+Legacy v1-v4 assessment payloads keep their old methods, bytes and hashes and do
+not acquire a retrospective source inventory. The automatic worker's new identity
+uses recipe v5; old worker receipts remain retained.

@@ -22,7 +22,7 @@ func allocationOutcomeEvaluator(evals []PaperOutcomeEvaluator) (PaperOutcomeEval
 // database transaction. No assessment is accepted just because its digest or
 // self-declared check flags look valid. This validates the entire owner before a
 // comparison catalogue, new receipt or historical exact retry can escape.
-func resolveAllocationAssessmentOwner(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, declarations PaperEvaluationDeclarationCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, outcomes map[string]retainedPaperOutcome, feed FeedEvidenceSnapshot, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationAssessmentCatalog, error) {
+func resolveAllocationAssessmentOwner(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, declarations PaperEvaluationDeclarationCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, outcomes map[string]retainedPaperOutcome, feed FeedEvidenceSnapshot, corporate []CorporateActionSourceRecord, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationAssessmentCatalog, error) {
 	if len(all) == 0 {
 		return PaperEvaluationAssessmentCatalog{ReceiverID: owner, Records: []PaperEvaluationAssessment{}}, nil
 	}
@@ -33,5 +33,5 @@ func resolveAllocationAssessmentOwner(ctx context.Context, owner string, all map
 	if err != nil {
 		return PaperEvaluationAssessmentCatalog{}, err
 	}
-	return paperEvaluationAssessmentCatalog(ctx, owner, all, paperEvaluationSources{declarations, decisions, actual, retained, feed.Collectors.LastClock, strategies})
+	return paperEvaluationAssessmentCatalog(ctx, owner, all, paperEvaluationSources{corporate, declarations, decisions, actual, retained, feed.Collectors.LastClock, strategies})
 }

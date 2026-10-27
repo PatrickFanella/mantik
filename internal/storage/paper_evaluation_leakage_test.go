@@ -17,7 +17,7 @@ func TestKnownSourceLeakageRecipeVersions(t *testing.T) {
 	evaluationAssessmentSelectionContracts(t, m, true)
 	var base PaperEvaluationAssessment
 	for _, r := range m.evaluationAssessments {
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v4" && len(r.Evidence.Rows) > 0 {
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v5" && len(r.Evidence.Rows) > 0 {
 			base = clone(r)
 			break
 		}

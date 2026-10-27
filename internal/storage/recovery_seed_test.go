@@ -88,8 +88,13 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 		t.Fatal("evaluation recovery declaration seed", err)
 	}
 	assessmentCommand := PaperEvaluationAssessmentCommand{ID: "recovery-evaluation-assessment", ReceiverID: account.ReceiverID, DeclarationID: plan.ID, DeclarationSHA256: declaration.Record.SHA256}
+	corporate := corporateSourceFixture(account.ReceiverID)
+	corporate.ID = "recovery-corporate-source"
+	if _, err := s.RetainCorporateActionSource(ctx, corporate, func() time.Time { return plan.Plan.OutcomeDeadline }); err != nil {
+		t.Fatal("corporate source recovery seed", err)
+	}
 	assessment, err := s.AssessPaperEvaluation(ctx, assessmentCommand, func() time.Time { return plan.Plan.OutcomeDeadline.Add(time.Nanosecond) }, eval, recoveryFixtureOutcomeEvaluator)
-	if err != nil || assessment.Record.Schema != "mantik-owned-paper-evaluation-assessment-v4" || assessment.Record.Status != "blocked" || assessment.Record.EvaluationComplete || assessment.Record.AdmissionAvailable || assessment.Record.ExecutionAvailable || assessment.Record.QualificationCredit {
+	if err != nil || assessment.Record.Schema != "mantik-owned-paper-evaluation-assessment-v5" || assessment.Record.Status != "blocked" || assessment.Record.EvaluationComplete || assessment.Record.AdmissionAvailable || assessment.Record.ExecutionAvailable || assessment.Record.QualificationCredit {
 		t.Fatal("evaluation recovery assessment seed", assessment, err)
 	}
 
@@ -146,11 +151,6 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	}
 	if got, err := s.SocialHistory(ctx); err != nil || len(got.ResearchRequests) != 2 {
 		t.Fatal("research recovery seed", got, err)
-	}
-	corporate := corporateSourceFixture(account.ReceiverID)
-	corporate.ID = "recovery-corporate-source"
-	if _, err := s.RetainCorporateActionSource(ctx, corporate, func() time.Time { return corporate.Recording.ReceivedAt.Add(time.Hour) }); err != nil {
-		t.Fatal("corporate source recovery seed", err)
 	}
 
 }
@@ -234,9 +234,13 @@ func assertRestoredEvaluationOwner(t *testing.T, s *Postgres, owner string) {
 		t.Fatal("restored evaluation assessment owner", assessments, err)
 	}
 	record := assessments.Records[0]
-	if plan.Command.ID != "recovery-evaluation-plan" || record.Command.ID != "recovery-evaluation-assessment" || record.Command.DeclarationID != plan.Command.ID || record.Command.DeclarationSHA256 != plan.SHA256 || record.Evidence.Declaration.SHA256 != plan.SHA256 || record.Schema != "mantik-owned-paper-evaluation-assessment-v4" || record.Status != "blocked" || record.EvaluationComplete || record.AdmissionAvailable || record.ExecutionAvailable || record.QualificationCredit {
+	if plan.Command.ID != "recovery-evaluation-plan" || record.Command.ID != "recovery-evaluation-assessment" || record.Command.DeclarationID != plan.Command.ID || record.Command.DeclarationSHA256 != plan.SHA256 || record.Evidence.Declaration.SHA256 != plan.SHA256 || record.Schema != "mantik-owned-paper-evaluation-assessment-v5" || record.Status != "blocked" || record.EvaluationComplete || record.AdmissionAvailable || record.ExecutionAvailable || record.QualificationCredit {
 		t.Fatal("restored evaluation lost source binding or gained authority", plan, record)
 	}
+	if record.CorporateSourceCut == nil || len(record.CorporateSourceCut.Sources) != 1 || record.CorporateSourceCut.Sources[0].ID != "recovery-corporate-source" {
+		t.Fatal("restored assessment lost actual corporate source custody cut", record)
+	}
+	assertCorporateCutNoGrant(t, record)
 	noClock := func() time.Time { t.Fatal("restored evaluation retry sampled clock"); return time.Time{} }
 	retriedPlan, err := s.DeclarePaperEvaluation(ctx, plan.Command, noClock)
 	if err != nil || !retriedPlan.Duplicate || !reflect.DeepEqual(retriedPlan.Record, plan) {
