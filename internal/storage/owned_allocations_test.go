@@ -526,6 +526,11 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			t.Fatal("decode")
 		}
 	}
+	// Capacity, overflow, full-journal retry and full-journal reopen were proved
+	// above. Corruption and legacy cases need a valid multi-entry history, not
+	// thirty-two repeated comparisons on every read/retry. Keep the first two
+	// original entries (including their original hashes and prefix bindings).
+	journal.Records = clone(journal.Records[:2])
 	writeJournal := func(j ownedAllocationJournal) {
 		for i := range j.Records {
 			if j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v14" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v13" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v12" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v11" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v10" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v8" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v7" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v6" {
@@ -544,6 +549,10 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 				t.Fatal(e)
 			}
 		}
+	}
+	writeJournal(journal)
+	if prefix, err := s.OwnedAllocations(ctx, eval); err != nil || len(prefix.Records) != 2 {
+		t.Fatal("corruption fixture is not a valid retained prefix", prefix, err)
 	}
 	// v12 records retain their exact bytes and clock-free retry representation.
 	legacy12 := clone(journal)
