@@ -218,6 +218,14 @@ func appendPaperEvaluationDeclaration(owner string, all map[string]PaperEvaluati
 		}
 		return PaperEvaluationDeclarationReceipt{clone(old), true}, nil
 	}
+	// New intents must name a journal identity that the configured acquisition
+	// owner can produce. Keep this append-only restriction after exact retry:
+	// historical v3 intents with an unresolvable name remain replayable.
+	for _, source := range c.Plan.CorporateSources {
+		if !strings.HasPrefix(source.JournalID, "journal-") {
+			return PaperEvaluationDeclarationReceipt{}, ErrPaperEvaluationDeclarationInvalid
+		}
+	}
 	for _, r := range catalog.Records {
 		if r.Command.Plan.FamilyID == c.Plan.FamilyID {
 			return PaperEvaluationDeclarationReceipt{}, ErrPaperEvaluationDeclarationConflict
