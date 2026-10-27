@@ -565,6 +565,9 @@ and targeted readback. It preserves unknown source fields and revisions without
 granting provider authenticity, complete coverage, economic interpretation or
 admission. Assessment-pinned `GET /v1/paper-evaluation-assessments/{id}/corporate-sources`
 resolves query, revision and pagination metadata from the retained owner cut.
+`GET /v1/paper-evaluation-assessments/{id}/corporate-page-chains/{source-id}`
+inspects causal cursor links within that same cut, preserving ambiguity and
+missing acquisition evidence without granting coverage or economic authority.
 New v5 evaluation assessments pin the actual custody inventory at issuance and
 reject later backdated source writes. Economic source selection and passive
 benchmark accounting remain unfinished; quote/calendar publication keeps its

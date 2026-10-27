@@ -337,3 +337,45 @@ Corporate-source inspection includes `acquisition_sha256` and
 legacy caller-reported pages keep their original inspection fields and hash.
 This does not change an assessment's recipe or turn custody into a benchmark,
 coverage or admission result.
+
+### Inspecting causal corporate page links
+
+`GET /v1/paper-evaluation-assessments/{id}/corporate-page-chains/{source-id}`
+inspects one explicit first-page source within that assessment's retained source
+set. No caller clock, query parameters or request body are accepted. The service
+replays the assessment and source catalogue under one Memory lock or PostgreSQL
+read-only repeatable-read transaction before resolving any page.
+
+Schema `mantik-owned-assessment-corporate-chain-v1`, method
+`assessment-pinned-causal-corporate-page-chain-v1`, binds the assessment,
+declaration and source-cut hashes, assessment clock, root source hash and each
+page's source/acquisition pin. Original objects remain available through targeted
+source retrieval. The response includes reported query and cursor metadata,
+verified acquisition request/availability clocks and observed record counts;
+it is bounded to 1 MiB. A response that exceeds the bound fails without truncating
+its contents.
+
+A continuation must have the requested cursor, the same journal identity and
+full query scope (contract, process-date basis/range, data quality, region,
+symbols, evidence class and access reference). Its acquisition request must be
+strictly later than the prior page's acquisition completion/availability clock.
+Only sources already pinned by the assessment are candidates. Later imports
+cannot alter an older inspection. Multiple matching acquisitions remain
+`ambiguous_next_page`; the service does not choose a latest revision.
+
+The result preserves `root_unavailable_at_cut`,
+`source_cut_unavailable_for_legacy_assessment`, `acquisition_custody_unavailable`,
+`next_page_unavailable_at_cut`, `next_page_acquisition_not_causal`,
+`ambiguous_next_page`, `overlapping_source_ids`, `cursor_cycle` and
+`page_bound_reached` states. A continuation page cannot be selected as a first-page
+root. The 32-source owner bound also bounds chain length. Candidate ambiguity
+returns source references, and source objects are not merged or deduplicated.
+Caller-reported sources cannot supply missing acquisition clocks.
+
+`page_chain_terminated` sets only `pagination_terminated`. The authority remains
+`service_owned_assessment_page_links_only`; provider attestation, complete
+coverage, economic application, admission, execution and qualification remain
+false. The explicit root selects a diagnostic inspection, not a predeclared
+economic dataset, benchmark or qualification result. Process dates are not
+converted into entitlement dates, absent objects are not interpreted as deleted
+or action-free coverage, and original assessments remain unchanged.

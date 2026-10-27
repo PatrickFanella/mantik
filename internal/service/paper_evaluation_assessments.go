@@ -81,6 +81,22 @@ func paperEvaluationAssessmentRoutes(mux *http.ServeMux, store storage.Store, cl
 	}
 	mux.HandleFunc("GET /v1/paper-evaluation-assessments", read)
 	mux.HandleFunc("GET /v1/paper-evaluation-assessments/{id}", read)
+	if chains, ok := store.(storage.PaperEvaluationCorporateChainStore); ok {
+		mux.HandleFunc("GET /v1/paper-evaluation-assessments/{id}/corporate-page-chains/{source_id}", func(w http.ResponseWriter, r *http.Request) {
+			if !paperaccount.ID.MatchString(r.PathValue("id")) || !paperaccount.ID.MatchString(r.PathValue("source_id")) || r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
+				paperEvaluationAssessmentError(w, storage.ErrPaperEvaluationAssessmentInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			v, err := chains.PaperEvaluationCorporatePageChain(ctx, r.PathValue("id"), r.PathValue("source_id"), evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+			if err != nil {
+				paperEvaluationAssessmentError(w, err)
+				return
+			}
+			write(w, 200, v)
+		})
+	}
 	if inspector, ok := store.(storage.PaperEvaluationCorporateInspectionStore); ok {
 		mux.HandleFunc("GET /v1/paper-evaluation-assessments/{id}/corporate-sources", func(w http.ResponseWriter, r *http.Request) {
 			if !paperaccount.ID.MatchString(r.PathValue("id")) || r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) > 0 {

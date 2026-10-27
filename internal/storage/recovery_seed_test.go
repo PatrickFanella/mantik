@@ -240,6 +240,10 @@ func assertRestoredEvaluationOwner(t *testing.T, s *Postgres, owner string) {
 		t.Fatal("restored assessment lost actual corporate source custody cut", record)
 	}
 	assertCorporateCutNoGrant(t, record)
+	chain, err := s.PaperEvaluationCorporatePageChain(ctx, record.Command.ID, "recovery-corporate-source", recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
+	if err != nil || chain.Status != "next_page_unavailable_at_cut" || len(chain.Pages) != 1 || chain.RootSourceSHA256 != record.CorporateSourceCut.Sources[0].SHA256 || chain.Pages[0].Source.AcquisitionSHA256 == "" || chain.CoverageComplete || chain.EconomicApplicationReady || chain.AdmissionAvailable || chain.ExecutionAvailable || chain.QualificationCredit {
+		t.Fatal("restored chain lost acquisition binding or granted authority", chain, err)
+	}
 	noClock := func() time.Time { t.Fatal("restored evaluation retry sampled clock"); return time.Time{} }
 	retriedPlan, err := s.DeclarePaperEvaluation(ctx, plan.Command, noClock)
 	if err != nil || !retriedPlan.Duplicate || !reflect.DeepEqual(retriedPlan.Record, plan) {
