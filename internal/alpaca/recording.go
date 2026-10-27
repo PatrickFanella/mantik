@@ -29,6 +29,7 @@ var symbolPattern = regexp.MustCompile(`^[A-Z][A-Z0-9.-]{0,19}$`)
 var pricePattern = regexp.MustCompile(`^[0-9]{1,7}(\.[0-9]{1,9})?$`)
 
 type Recording struct {
+	PageToken          string    `json:"page_token,omitempty"`
 	Currency           string    `json:"currency"`
 	Schema             string    `json:"schema"`
 	CaptureID          string    `json:"capture_id"`
@@ -108,17 +109,23 @@ func (r Recording) validate() error {
 	}
 	switch r.Capability {
 	case "latest_quotes":
+		if r.PageToken != "" {
+			return errors.New("quote recording does not accept a page token")
+		}
 		if !slices.Contains([]string{"iex", "sip", "delayed_sip"}, r.Feed) || r.Start != "" || r.End != "" {
 			return errors.New("quotes require an explicit supported feed and no calendar range")
 		}
 	case "corporate_actions":
-		if r.Feed != CorporateActionFeed {
+		if r.Feed != CorporateActionFeed || !validCorporateActionPageToken(r.PageToken) {
 			return errors.New("corporate actions require the REST snapshot contract")
 		}
 		if _, _, err := calendarRange(r.Start, r.End); err != nil {
 			return err
 		}
 	case "market_calendar":
+		if r.PageToken != "" {
+			return errors.New("calendar recording does not accept a page token")
+		}
 		if r.Feed != "regular_session" {
 			return errors.New("calendar requires regular_session coverage")
 		}

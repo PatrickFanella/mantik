@@ -18,6 +18,7 @@ var ErrBackpressure = errors.New("alpaca request already in flight")
 
 // Query is restricted to market reads. No account/order path can be requested.
 type Query struct {
+	PageToken  string
 	Capability string
 	Symbols    []string
 	Start      string
@@ -66,7 +67,7 @@ func wait(ctx context.Context, d time.Duration) error {
 func (c *Client) target(q Query) (string, error) {
 	switch q.Capability {
 	case "latest_quotes":
-		if len(q.Symbols) < 1 || len(q.Symbols) > 10 || q.Start != "" || q.End != "" {
+		if len(q.Symbols) < 1 || len(q.Symbols) > 10 || q.Start != "" || q.End != "" || q.PageToken != "" {
 			return "", errors.New("quote request requires 1–10 symbols")
 		}
 		symbols := slices.Clone(q.Symbols)
@@ -79,6 +80,9 @@ func (c *Client) target(q Query) (string, error) {
 		v := url.Values{"symbols": {strings.Join(symbols, ",")}, "feed": {c.feed}, "currency": {"USD"}}
 		return c.dataOrigin + "/v2/stocks/quotes/latest?" + v.Encode(), nil
 	case "corporate_actions":
+		if !validCorporateActionPageToken(q.PageToken) {
+			return "", errors.New("invalid corporate-action page token")
+		}
 		if _, _, err := calendarRange(q.Start, q.End); err != nil {
 			return "", err
 		}
@@ -93,9 +97,12 @@ func (c *Client) target(q Query) (string, error) {
 			}
 		}
 		v := url.Values{"symbols": {strings.Join(symbols, ",")}, "start": {q.Start}, "end": {q.End}, "region": {"us"}, "data_quality": {"all"}, "sort": {"asc"}, "limit": {"1000"}}
+		if q.PageToken != "" {
+			v.Set("page_token", q.PageToken)
+		}
 		return c.dataOrigin + "/v1/corporate-actions?" + v.Encode(), nil
 	case "market_calendar":
-		if len(q.Symbols) != 0 {
+		if len(q.Symbols) != 0 || q.PageToken != "" {
 			return "", errors.New("calendar query does not accept symbols")
 		}
 		if _, _, err := calendarRange(q.Start, q.End); err != nil {

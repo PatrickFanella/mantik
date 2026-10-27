@@ -99,3 +99,67 @@ func TestCorporateActionExistingCollectionCLIAndInspection(t *testing.T) {
 		t.Fatal(out.String(), err)
 	}
 }
+
+func TestCorporateActionExistingCLIContinuationRetainsCursorAndIntent(t *testing.T) {
+	var calls atomic.Int32
+	cursor := "cursor+/=&? space"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		token := r.URL.Query().Get("page_token")
+		switch token {
+		case "":
+			raw, _ := json.Marshal(map[string]any{"corporate_actions": map[string]any{"cash_dividends": []any{map[string]any{"id": "a"}}}, "next_page_token": cursor})
+			_, _ = w.Write(raw)
+		case cursor:
+			_, _ = fmt.Fprint(w, `{"corporate_actions":{"cash_dividends":[{"id":"b"}]},"next_page_token":null}`)
+		default:
+			t.Error("cursor changed", token)
+		}
+	}))
+	defer server.Close()
+	base, _ := url.Parse(server.URL)
+	previous := http.DefaultTransport
+	http.DefaultTransport = corporateActionTransport{base, previous}
+	defer func() { http.DefaultTransport = previous }()
+	root := t.TempDir()
+	journal := filepath.Join(root, "journal")
+	specPath := filepath.Join(root, "spec.json")
+	credentials := filepath.Join(root, "credentials.json")
+	if err := os.WriteFile(credentials, []byte(`{"key":"manufactured-key","secret":"manufactured-secret"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run := func(id, token string) {
+		t.Helper()
+		spec := alpaca.CollectionSpec{ID: id, Capability: "corporate_actions", Feed: "iex", Symbols: []string{"SPY"}, Start: "2026-10-14", End: "2026-10-14", AccessRef: "manufactured-access", MaxQuoteAgeSeconds: 60, PageToken: token}
+		raw, _ := json.Marshal(spec)
+		if err := os.WriteFile(specPath, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		var out, errOut bytes.Buffer
+		if err := Run(context.Background(), []string{"alpaca-collect", "--journal", journal, "--spec", specPath, "--credentials-file", credentials}, &out, &errOut); err != nil {
+			t.Fatal(err)
+		}
+		var status alpaca.CollectionStatus
+		if err := json.Unmarshal(out.Bytes(), &status); err != nil || status.State != "retained" {
+			t.Fatal(out.String(), err)
+		}
+	}
+	run("cli-root", "")
+	if calls.Load() != 1 {
+		t.Fatal("command automatically followed cursor")
+	}
+	run("cli-page", cursor)
+	run("cli-page", cursor)
+	if calls.Load() != 2 {
+		t.Fatal("continuation was duplicated")
+	}
+	j, err := alpaca.OpenExistingJournal(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = j.Close() }()
+	chain, err := j.CorporateActionPageChain("cli-root", 1, time.Now().UTC())
+	if err != nil || !chain.PaginationTerminated || len(chain.Pages) != 2 || chain.Pages[1].PageToken != cursor || chain.CoverageComplete || chain.EconomicApplicationReady {
+		t.Fatal(chain, err)
+	}
+}

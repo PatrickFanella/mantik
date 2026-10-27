@@ -20,6 +20,7 @@ var ErrCollectionFailed = errors.New("collection failed; inspect retained collec
 // CollectionSpec is explicit attribution, not evidence of entitlement. A new
 // retrieval requires a new identity; the successful recording uses revision 1.
 type CollectionSpec struct {
+	PageToken          string   `json:"page_token,omitempty"`
 	ID                 string   `json:"id"`
 	Capability         string   `json:"capability"`
 	Feed               string   `json:"feed"`
@@ -102,7 +103,7 @@ func (s CollectionSpec) recording(response Response, journalID string) Recording
 	} else if s.Capability == "market_calendar" {
 		feed = "regular_session"
 	}
-	return Recording{Schema: RecordingSchema, Currency: "USD", CaptureID: s.ID, Capability: s.Capability, Feed: feed, Symbols: s.Symbols, Start: s.Start, End: s.End, Revision: 1, ReceivedAt: response.ReceivedAt, EvidenceClass: "prospective_market_unqualified", AccessRef: s.AccessRef, RawRef: "journal:" + journalID + ":" + collectionName(s.ID, fmt.Sprintf("response-%d", response.Attempts)), Original: response.Original, SHA256: response.SHA256, MaxQuoteAgeSeconds: s.MaxQuoteAgeSeconds}
+	return Recording{PageToken: s.PageToken, Schema: RecordingSchema, Currency: "USD", CaptureID: s.ID, Capability: s.Capability, Feed: feed, Symbols: s.Symbols, Start: s.Start, End: s.End, Revision: 1, ReceivedAt: response.ReceivedAt, EvidenceClass: "prospective_market_unqualified", AccessRef: s.AccessRef, RawRef: "journal:" + journalID + ":" + collectionName(s.ID, fmt.Sprintf("response-%d", response.Attempts)), Original: response.Original, SHA256: response.SHA256, MaxQuoteAgeSeconds: s.MaxQuoteAgeSeconds}
 }
 func (s CollectionSpec) validate() error {
 	if !capturePattern.MatchString(s.ID) || (s.Feed != "iex" && s.Feed != "sip" && s.Feed != "delayed_sip") {
@@ -299,7 +300,7 @@ func (j *Journal) Collect(ctx context.Context, c *Client, s CollectionSpec) (Col
 		}
 		return j.Collection(s.ID)
 	}
-	query := Query{Capability: s.Capability, Start: s.Start, End: s.End}
+	query := Query{PageToken: s.PageToken, Capability: s.Capability, Start: s.Start, End: s.End}
 	if s.Capability == "latest_quotes" || s.Capability == "corporate_actions" {
 		query.Symbols = s.Symbols
 	}
