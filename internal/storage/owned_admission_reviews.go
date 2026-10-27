@@ -226,7 +226,7 @@ func (m *Memory) admissionReviewSourcesLocked(ctx context.Context, de PaperDecis
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
-	actual, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, plans, d, s, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, de, oe)
+	actual, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, plans, d, s, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, de, oe, p, m.portfolioEvaluator)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
@@ -300,7 +300,7 @@ func (p *Postgres) admissionReviewAccess(ctx context.Context, write bool, c Owne
 		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, write, de, oe)
+	s, err := readPaperEvaluationSources(ctx, tx, write, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
 	}

@@ -248,7 +248,7 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	assessmentCatalog, err := paperEvaluationAssessmentCatalog(ctx, m.receiverID, m.evaluationAssessments, paperEvaluationSources{m.corporateActionSources, declarations, decisions, outcomes, m.paperDecisions, m.collectors.LastClock, strategies})
+	assessmentCatalog, err := paperEvaluationAssessmentCatalog(ctx, m.receiverID, m.evaluationAssessments, paperEvaluationSources{corporateSources: m.corporateActionSources, declarations: declarations, decisions: decisions, outcomes: outcomes, retained: m.paperDecisions, sourceClock: m.collectors.LastClock, strategies: strategies, policies: policies, retainedOutcomes: m.paperOutcomes, portfolioEvaluator: m.portfolioEvaluator})
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
@@ -329,7 +329,7 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	assessmentCatalog, err := paperEvaluationAssessmentCatalog(ctx, feed.ReceiverID, assessments, paperEvaluationSources{corporate.Records, declarations, decisions, outcomes, retained, feed.Collectors.LastClock, strategies})
+	assessmentCatalog, err := paperEvaluationAssessmentCatalog(ctx, feed.ReceiverID, assessments, paperEvaluationSources{corporateSources: corporate.Records, declarations: declarations, decisions: decisions, outcomes: outcomes, retained: retained, sourceClock: feed.Collectors.LastClock, strategies: strategies, policies: policies, retainedOutcomes: all, portfolioEvaluator: p.portfolioEvaluator})
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}

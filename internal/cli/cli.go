@@ -465,7 +465,7 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 		return errors.New("DATABASE_URL is required for serve")
 	}
 	openCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	store, err := storage.OpenPostgres(openCtx, databaseURL)
+	store, err := storage.OpenPostgresWithPortfolioEvaluator(openCtx, databaseURL, service.EvaluateOwnedPaperPortfolio)
 	cancel()
 	if err != nil {
 		return err

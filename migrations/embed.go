@@ -235,3 +235,6 @@ var JournalCorporateSources string
 
 //go:embed 0074_predeclared_corporate_selection.sql
 var PredeclaredCorporateSelection string
+
+//go:embed 0075_observed_portfolio_assessments.sql
+var ObservedPortfolioAssessments string
