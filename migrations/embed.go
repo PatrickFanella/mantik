@@ -226,3 +226,6 @@ var RetainedCopyResearchSelection string
 
 //go:embed 0071_corporate_action_source_custody.sql
 var CorporateActionSourceCustody string
+
+//go:embed 0072_evaluation_corporate_source_cuts.sql
+var EvaluationCorporateSourceCuts string

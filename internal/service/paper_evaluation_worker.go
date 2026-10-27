@@ -15,7 +15,7 @@ import (
 const PaperEvaluationWorkerInterval = 30 * time.Second
 const PaperEvaluationWorkerCapability = "paper_evaluation_assessment"
 const AutomaticPaperEvaluationPrefix = "automatic-evaluation-"
-const automaticPaperEvaluationRecipe = "native-predeclared-necessary-checks-v4"
+const automaticPaperEvaluationRecipe = "native-predeclared-necessary-checks-v5"
 
 type PaperEvaluationWorkerStore interface {
 	storage.PaperEvaluationDeclarationStore

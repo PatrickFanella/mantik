@@ -41,7 +41,7 @@ func legacyAssessmentFixture(t *testing.T, s assessmentBackend, r PaperEvaluatio
 }
 func assertNativeWarmUp(t *testing.T, r PaperEvaluationAssessment, plan PaperEvaluationDeclarationCommand) {
 	t.Helper()
-	if r.Schema != "mantik-owned-paper-evaluation-assessment-v4" || r.Recipe != "native-predeclared-necessary-checks-v4" || r.WarmUp == nil || r.WarmUp.Method != "native-threshold-stateless-warmup-v1" || r.WarmUp.RequiredLookbackObservations != 0 || r.WarmUp.Status != "not_required" || len(r.WarmUp.Strategies) != len(plan.Plan.Variants) || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
+	if r.Schema != "mantik-owned-paper-evaluation-assessment-v5" || r.Recipe != "native-predeclared-necessary-checks-v5" || r.WarmUp == nil || r.WarmUp.Method != "native-threshold-stateless-warmup-v1" || r.WarmUp.RequiredLookbackObservations != 0 || r.WarmUp.Status != "not_required" || len(r.WarmUp.Strategies) != len(plan.Plan.Variants) || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 		t.Fatal("invalid native applicability", r)
 	}
 	for i, s := range r.WarmUp.Strategies {
@@ -138,7 +138,7 @@ func TestNativeWarmUpEnvelopeCannotInventRequirementsOrMethods(t *testing.T) {
 			change(&v)
 			v.SHA256 = ""
 			v.SHA256 = workerplan.Hash(v)
-			if got, err := paperEvaluationAssessmentRecipe(c, receipt.Record.Evidence, &v, receipt.Record.Schema); err == nil || !reflect.DeepEqual(got, PaperEvaluationAssessment{}) {
+			if got, err := paperEvaluationAssessmentWithSources(c, receipt.Record.Evidence, &v, receipt.Record.CorporateSourceCut, receipt.Record.Schema); err == nil || !reflect.DeepEqual(got, PaperEvaluationAssessment{}) {
 				t.Fatal("fabricated applicability accepted", got, err)
 			}
 		})
@@ -154,7 +154,7 @@ func TestNativeWarmUpEnvelopeCannotInventRequirementsOrMethods(t *testing.T) {
 	v.Strategies[0] = changed
 	v.SHA256 = ""
 	v.SHA256 = workerplan.Hash(v)
-	if _, err = paperEvaluationAssessmentRecipe(c, receipt.Record.Evidence, &v, receipt.Record.Schema); err == nil {
+	if _, err = paperEvaluationAssessmentWithSources(c, receipt.Record.Evidence, &v, receipt.Record.CorporateSourceCut, receipt.Record.Schema); err == nil {
 		t.Fatal("valid different strategy bypassed predeclaration")
 	}
 }

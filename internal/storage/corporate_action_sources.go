@@ -171,7 +171,14 @@ func (m *Memory) RetainCorporateActionSource(ctx context.Context, c CorporateAct
 		return CorporateActionSourceReceipt{}, err
 	}
 	if !r.Duplicate {
+		if r.Record.RetainedAt.Before(m.collectors.LastClock) {
+			return CorporateActionSourceReceipt{}, ErrCorporateActionSourceInvalid
+		}
+		if err := m.sourceObservationClockLocked(r.Record.RetainedAt); err != nil {
+			return CorporateActionSourceReceipt{}, err
+		}
 		m.corporateActionSources = append(m.corporateActionSources, clone(r.Record))
+		m.collectors.LastClock = r.Record.RetainedAt
 	}
 	return r, nil
 }
@@ -229,6 +236,12 @@ func (p *Postgres) RetainCorporateActionSource(ctx context.Context, c CorporateA
 		return CorporateActionSourceReceipt{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
+	// Match decision/outcome/assessment issuance lock order: collector first,
+	// then receiver. A later source write cannot enter an already retained cut.
+	feed, err := readFeedEvidence(ctx, tx, true)
+	if err != nil {
+		return CorporateActionSourceReceipt{}, err
+	}
 	cat, err := readCorporateActionSources(ctx, tx, true)
 	if err != nil {
 		return CorporateActionSourceReceipt{}, err
@@ -238,11 +251,25 @@ func (p *Postgres) RetainCorporateActionSource(ctx context.Context, c CorporateA
 		return CorporateActionSourceReceipt{}, err
 	}
 	if !r.Duplicate {
+		if r.Record.RetainedAt.Before(feed.Collectors.LastClock) {
+			return CorporateActionSourceReceipt{}, ErrCorporateActionSourceInvalid
+		}
+		if err := readSourceObservationClock(ctx, tx, cat.ReceiverID, r.Record.RetainedAt); err != nil {
+			return CorporateActionSourceReceipt{}, err
+		}
 		raw, err := json.Marshal(r.Record)
 		if err != nil {
 			return CorporateActionSourceReceipt{}, err
 		}
 		if _, err = tx.Exec(ctx, "INSERT INTO mantik_corporate_action_sources(id,sequence,payload) VALUES($1,$2,$3)", r.Record.Command.ID, r.Record.Sequence, raw); err != nil {
+			return CorporateActionSourceReceipt{}, err
+		}
+		feed.Collectors.LastClock = r.Record.RetainedAt
+		encoded, err := json.Marshal(feed.Collectors)
+		if err != nil {
+			return CorporateActionSourceReceipt{}, err
+		}
+		if _, err = tx.Exec(ctx, "UPDATE mantik_feed_collectors SET payload=$1 WHERE singleton", encoded); err != nil {
 			return CorporateActionSourceReceipt{}, err
 		}
 	}

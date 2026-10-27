@@ -47,15 +47,22 @@ false. Authentication identifies the submitting service client; it does not
 authenticate a provider response or prove network acquisition. The journal does
 not accept a balance, admission, effect or caller-supplied coverage assertion.
 
-The reported `recording.received_at` is not the service's knowledge time. The new
-`retained_at` describes this custody operation and is monotonic within this
-journal only. These records are not yet selected by historical evaluation cuts.
-A future economic owner must integrate causal cuts and source provenance before
-using them; it cannot substitute a later page for earlier knowledge. A terminal
-cursor likewise does not prove provider-atomic or complete action coverage.
-Acquisition-intent custody, service-owned page-chain selection, instrument and
-entitlement rules, revision/deletion handling, rounding, fractional shares,
-cash-in-lieu, total-return benchmarks and economic effects remain separate work.
+The reported `recording.received_at` is not the service's knowledge time.
+`retained_at` describes this custody operation. Under schema 72, new source
+writes also serialize against the shared source clock and retained decision,
+outcome and assessment cuts; they must be strictly later than those receipts.
+Exact retries keep their original timestamps and payloads. Existing source
+record schemas and bytes are unchanged.
+
+New [v5 assessments](paper-evaluation-assessments.md#corporate-source-custody-cuts)
+retain the actual custody prefix at issuance. This is not economic source
+selection or provider historical knowledge. A future economic owner must still
+bind relevance, acquisition provenance, causal market cuts and a declared method;
+it cannot substitute a later page for earlier knowledge. A terminal cursor does
+not prove provider-atomic or complete action coverage. Acquisition-intent custody,
+service-owned page-chain selection, instrument and entitlement rules,
+revision/deletion handling, rounding, fractional shares, cash-in-lieu,
+total-return benchmarks and economic effects remain separate work.
 
 The [acquisition journal](alpaca-corporate-action-snapshots.md) preserves the earlier
 source collection contract. Corporate pages remain rejected by

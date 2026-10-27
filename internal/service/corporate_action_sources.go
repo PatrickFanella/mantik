@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
@@ -16,7 +17,7 @@ func corporateActionSourceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, storage.ErrCorporateActionSourceInvalid):
 		write(w, 422, map[string]string{"error": "invalid corporate-action source custody"})
-	case errors.Is(err, storage.ErrCorporateActionSourceConflict), errors.Is(err, storage.ErrCorporateActionSourceCapacity), errors.Is(err, storage.ErrReceiverMismatch):
+	case errors.Is(err, storage.ErrCorporateActionSourceConflict), errors.Is(err, storage.ErrCorporateActionSourceCapacity), errors.Is(err, storage.ErrReceiverMismatch), errors.Is(err, feedcollector.ErrClockBackwards):
 		write(w, 409, map[string]string{"error": err.Error()})
 	default:
 		write(w, 503, map[string]string{"error": "corporate-action source storage unavailable"})

@@ -226,7 +226,7 @@ func (m *Memory) admissionReviewSourcesLocked(ctx context.Context, de PaperDecis
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
-	actual, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, plans, d, s, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), de, oe)
+	actual, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, plans, d, s, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, de, oe)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}

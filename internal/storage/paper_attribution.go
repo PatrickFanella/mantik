@@ -248,7 +248,7 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	assessmentCatalog, err := paperEvaluationAssessmentCatalog(ctx, m.receiverID, m.evaluationAssessments, paperEvaluationSources{declarations, decisions, outcomes, m.paperDecisions, m.collectors.LastClock, strategies})
+	assessmentCatalog, err := paperEvaluationAssessmentCatalog(ctx, m.receiverID, m.evaluationAssessments, paperEvaluationSources{m.corporateActionSources, declarations, decisions, outcomes, m.paperDecisions, m.collectors.LastClock, strategies})
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
@@ -325,7 +325,11 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	assessmentCatalog, err := paperEvaluationAssessmentCatalog(ctx, feed.ReceiverID, assessments, paperEvaluationSources{declarations, decisions, outcomes, retained, feed.Collectors.LastClock, strategies})
+	corporate, err := readCorporateActionSources(ctx, tx, false)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	assessmentCatalog, err := paperEvaluationAssessmentCatalog(ctx, feed.ReceiverID, assessments, paperEvaluationSources{corporate.Records, declarations, decisions, outcomes, retained, feed.Collectors.LastClock, strategies})
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
