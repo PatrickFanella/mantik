@@ -554,7 +554,10 @@ POST. A missing review at the read time does not authorize a retry.
 
 An explicitly configured `serve --corporate-source-journal PATH --corporate-source-journal-id ID`
 can inspect verified local acquisitions through `GET /v1/corporate-action-acquisitions/{id}`.
-The server owns the existing journal lock; this does not start collection or import sources.
+The server owns the existing journal lock and does not start collection.
+With that reader configured, `POST /v1/corporate-action-imports` imports an exact
+acquisition pin and original recording into the durable source catalogue; callers
+cannot supply source bytes, proof assertions or financial authority.
 
 The separate [corporate-action source custody](docs/reference/corporate-action-source-custody.md)
 API retains original reported pages with service receipt times, immutable hashes

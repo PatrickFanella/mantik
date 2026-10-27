@@ -88,9 +88,8 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 		t.Fatal("evaluation recovery declaration seed", err)
 	}
 	assessmentCommand := PaperEvaluationAssessmentCommand{ID: "recovery-evaluation-assessment", ReceiverID: account.ReceiverID, DeclarationID: plan.ID, DeclarationSHA256: declaration.Record.SHA256}
-	corporate := corporateSourceFixture(account.ReceiverID)
-	corporate.ID = "recovery-corporate-source"
-	if _, err := s.RetainCorporateActionSource(ctx, corporate, func() time.Time { return plan.Plan.OutcomeDeadline }); err != nil {
+	corporate, acquisition := journalCorporateSourceFixture(account.ReceiverID, "recovery-corporate-source")
+	if _, err := s.RetainJournalCorporateActionSource(ctx, corporate, acquisition, func() time.Time { return plan.Plan.OutcomeDeadline }); err != nil {
 		t.Fatal("corporate source recovery seed", err)
 	}
 	assessment, err := s.AssessPaperEvaluation(ctx, assessmentCommand, func() time.Time { return plan.Plan.OutcomeDeadline.Add(time.Nanosecond) }, eval, recoveryFixtureOutcomeEvaluator)

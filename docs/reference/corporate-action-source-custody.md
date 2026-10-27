@@ -109,5 +109,51 @@ originally observed by a separate collector. It does not attest provider origin,
 complete coverage or execution by the current service process. The response's
 coverage, economic-application, admission, execution and qualification flags
 remain false. The existing caller-reported `POST /v1/corporate-action-sources`
-contract is unchanged. Importing this acquisition into the durable service source
-catalogue with owner binding remains a separate acceptance dependency.
+contract is unchanged. The durable import described below uses this configured reader; direct
+caller-reported sources remain a separate custody class.
+
+## Durable import from the configured journal
+
+When the journal reader is configured, authenticated
+`POST /v1/corporate-action-imports` accepts only `id`, `receiver_id`,
+`collection_id` and `acquisition_sha256`. The acquisition pin comes from the
+configured reader's GET. The service obtains the recording and receipt from
+that journal; a request cannot provide recording bytes, proof fields, balances,
+admission or effects. The supplied receiver must match the durable source owner.
+
+New imported records use `mantik-owned-corporate-action-source-v2`. They retain
+the original recording, full bounded acquisition receipt and its hash under
+`service_custody_of_configured_journal_acquisition_only`. The durable owner
+validates the receipt's schema, method, identity, attempt clocks, digest and
+exact original-recording binding. The journal owner verifies the referenced
+acquisition artifacts when the import is created. Retained hashes are not a
+provider signature or independent proof of remotely supplied artifacts; the
+import path is restricted to the configured local reader.
+
+The source append and shared source clock commit under one Memory lock or
+PostgreSQL transaction, in the existing collector-then-receiver lock order.
+Retention cannot precede acquisition completion or enter an issued assessment
+cut. A failed clock update rolls back the source append too. Exact retries return
+200 and the original receipt without sampling the clock or reopening the
+journal, including after the reader has closed. A changed source identity,
+collection, acquisition pin or original-reference alias conflicts. New imports
+return 201. Failed, incomplete, missing or changed journal evidence cannot create
+a source record. The existing targeted source GET provides durable reconciliation
+after an uncertain HTTP response.
+
+Schema 73 fences older writers without rewriting v1 source payloads. Existing
+caller-reported receipts retain their original hashes and authority. The public
+caller-reported writer cannot adopt an imported record by copying its command.
+Assessment cuts bind the actual imported source record hash, and assessment
+inspection identifies the acquisition hash and configured-journal custody.
+Durable readback and exact retry can use the retained binding after a database
+restore; a new import still requires the configured journal owner. The original
+intent, attempt and completion artifacts remain in the journal; preserve its
+verified archive separately. A database backup does not replace that journal
+archive.
+
+Neither terminal pagination nor successful import establishes complete or
+historical provider coverage, action-free intervals or economic relevance.
+Provider-attestation, coverage, economic-application, admission, execution and
+qualification flags stay false. Causal page selection and economic benchmark
+application remain separate acceptance work.

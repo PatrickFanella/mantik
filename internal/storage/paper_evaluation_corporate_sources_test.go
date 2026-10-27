@@ -291,7 +291,7 @@ func corporateCutMigration(t *testing.T, p *Postgres) {
 	if err := p.pool.QueryRow(ctx, q).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version=72; COMMENT ON TABLE mantik_paper_evaluation_assessments IS 'cut rollback marker'; CREATE FUNCTION reject_corporate_cut_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=72 THEN RAISE EXCEPTION 'manufactured cut migration rejection'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_corporate_cut_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_corporate_cut_migration()`); err != nil {
+	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=72; COMMENT ON TABLE mantik_paper_evaluation_assessments IS 'cut rollback marker'; CREATE FUNCTION reject_corporate_cut_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=72 THEN RAISE EXCEPTION 'manufactured cut migration rejection'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_corporate_cut_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_corporate_cut_migration()`); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.migrate(ctx); err == nil {
