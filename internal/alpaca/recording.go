@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata"
-	"unicode/utf8"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/alpacarecord"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/routing"
 )
@@ -28,25 +28,7 @@ var capturePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,40}$`)
 var symbolPattern = regexp.MustCompile(`^[A-Z][A-Z0-9.-]{0,19}$`)
 var pricePattern = regexp.MustCompile(`^[0-9]{1,7}(\.[0-9]{1,9})?$`)
 
-type Recording struct {
-	PageToken          string    `json:"page_token,omitempty"`
-	Currency           string    `json:"currency"`
-	Schema             string    `json:"schema"`
-	CaptureID          string    `json:"capture_id"`
-	Capability         string    `json:"capability"`
-	Feed               string    `json:"feed"`
-	Symbols            []string  `json:"symbols"`
-	Start              string    `json:"start,omitempty"`
-	End                string    `json:"end,omitempty"`
-	Revision           int       `json:"revision"`
-	ReceivedAt         time.Time `json:"received_at"`
-	EvidenceClass      string    `json:"evidence_class"`
-	AccessRef          string    `json:"access_ref"`
-	RawRef             string    `json:"raw_ref"`
-	Original           string    `json:"original"`
-	SHA256             string    `json:"sha256"`
-	MaxQuoteAgeSeconds int64     `json:"max_quote_age_seconds"`
-}
+type Recording alpacarecord.Recording
 
 type Coverage struct {
 	Capability string `json:"capability"`
@@ -97,15 +79,8 @@ func Read(r io.Reader) (Recording, error) {
 func validTime(at time.Time) bool { return !at.IsZero() && at.Year() > 0 && at.Year() <= 9999 }
 
 func (r Recording) validate() error {
-	if r.Currency != "USD" || r.Schema != RecordingSchema || !capturePattern.MatchString(r.CaptureID) || r.Revision < 1 || r.Revision > 1000000 || !validTime(r.ReceivedAt) || len(r.Original) == 0 || len(r.Original) > MaxBytes || r.SHA256 != Digest(r.Original) || !utf8.ValidString(r.Original) || !json.Valid([]byte(r.Original)) || len(r.Symbols) < 1 || len(r.Symbols) > 10 || r.MaxQuoteAgeSeconds < 1 || r.MaxQuoteAgeSeconds > 86400 || !slices.Contains([]string{"synthetic_unqualified", "recorded_market_unqualified", "prospective_market_unqualified"}, r.EvidenceClass) {
-		return errors.New("incomplete recording or mismatched raw digest")
-	}
-	seen := map[string]bool{}
-	for _, s := range r.Symbols {
-		if !symbolPattern.MatchString(s) || seen[s] {
-			return errors.New("invalid or duplicate recording symbol")
-		}
-		seen[s] = true
+	if err := alpacarecord.ValidateBase(alpacarecord.Recording(r)); err != nil {
+		return err
 	}
 	switch r.Capability {
 	case "latest_quotes":
@@ -139,12 +114,7 @@ func (r Recording) validate() error {
 }
 
 func calendarRange(start, end string) (time.Time, time.Time, error) {
-	a, e1 := time.Parse("2006-01-02", start)
-	b, e2 := time.Parse("2006-01-02", end)
-	if e1 != nil || e2 != nil || !validTime(a) || !validTime(b) || b.Before(a) || b.Sub(a) > 30*24*time.Hour {
-		return a, b, errors.New("calendar requires an inclusive range of at most 31 dates")
-	}
-	return a, b, nil
+	return alpacarecord.CalendarRange(start, end)
 }
 
 func (r Recording) input(symbol, key string, at time.Time) domain.RoutingInput {

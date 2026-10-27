@@ -223,3 +223,6 @@ var RetainedSocialResearchSelection string
 
 //go:embed 0070_retained_copy_research_selection.sql
 var RetainedCopyResearchSelection string
+
+//go:embed 0071_corporate_action_source_custody.sql
+var CorporateActionSourceCustody string

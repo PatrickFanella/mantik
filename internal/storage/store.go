@@ -50,6 +50,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	corporateActionSources   []CorporateActionSourceRecord
 	admissionReviews         map[string]OwnedAdmissionReview
 	paperEvaluationPlans     map[string]PaperEvaluationDeclaration
 	evaluationAssessments    map[string]PaperEvaluationAssessment

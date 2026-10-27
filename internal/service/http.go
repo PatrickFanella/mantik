@@ -84,6 +84,7 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	researchRoutes(mux, store)
 	feedCollectorRoutes(mux, store, clock, policy)
 	feedEvidenceRoutes(mux, store, clock, policy)
+	corporateActionSourceRoutes(mux, store, clock)
 	operationalRoutes(mux, store, clock, policy)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]string{"status": "up", "mode": "paper_fixture"})
