@@ -97,7 +97,9 @@ func (j *Journal) readCollection(name string, value any) (string, error) {
 func collectionName(id, suffix string) string { return "collection-" + id + "-" + suffix + ".json" }
 func (s CollectionSpec) recording(response Response, journalID string) Recording {
 	feed := s.Feed
-	if s.Capability == "market_calendar" {
+	if s.Capability == "corporate_actions" {
+		feed = CorporateActionFeed
+	} else if s.Capability == "market_calendar" {
 		feed = "regular_session"
 	}
 	return Recording{Schema: RecordingSchema, Currency: "USD", CaptureID: s.ID, Capability: s.Capability, Feed: feed, Symbols: s.Symbols, Start: s.Start, End: s.End, Revision: 1, ReceivedAt: response.ReceivedAt, EvidenceClass: "prospective_market_unqualified", AccessRef: s.AccessRef, RawRef: "journal:" + journalID + ":" + collectionName(s.ID, fmt.Sprintf("response-%d", response.Attempts)), Original: response.Original, SHA256: response.SHA256, MaxQuoteAgeSeconds: s.MaxQuoteAgeSeconds}
@@ -107,7 +109,9 @@ func (s CollectionSpec) validate() error {
 		return errors.New("collection requires a bounded identity and explicit supported feed")
 	}
 	raw := `{"quotes":{}}`
-	if s.Capability == "market_calendar" {
+	if s.Capability == "corporate_actions" {
+		raw = `{"corporate_actions":{},"next_page_token":null}`
+	} else if s.Capability == "market_calendar" {
 		raw = `[]`
 	}
 	r := s.recording(Response{Original: raw, SHA256: Digest(raw), ReceivedAt: time.Now().UTC(), Attempts: 1}, "validation")
@@ -296,7 +300,7 @@ func (j *Journal) Collect(ctx context.Context, c *Client, s CollectionSpec) (Col
 		return j.Collection(s.ID)
 	}
 	query := Query{Capability: s.Capability, Start: s.Start, End: s.End}
-	if s.Capability == "latest_quotes" {
+	if s.Capability == "latest_quotes" || s.Capability == "corporate_actions" {
 		query.Symbols = s.Symbols
 	}
 	persistenceFailed := false
