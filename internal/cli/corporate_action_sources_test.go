@@ -54,6 +54,14 @@ func corporateActionSourceHTTPContracts(t *testing.T, base string, d storage.Pap
 		if err := requestBounded(ctx, base, path+"?at=future", nil, &inspection, nil, 4096, true); err == nil {
 			t.Fatal("inspection accepted a caller-selected cut")
 		}
+		var chain storage.PaperEvaluationCorporateChain
+		chainPath := "/v1/paper-evaluation-assessments/" + a.Command.ID + "/corporate-page-chains/" + c.ID
+		if err := requestBounded(ctx, base, chainPath, nil, &chain, nil, storage.MaxPaperEvaluationCorporateChainBytes, true); err != nil || chain.Status != "root_unavailable_at_cut" || len(chain.Pages) != 0 || chain.RootSourceSHA256 != "" || chain.AssessmentSHA256 != a.SHA256 || chain.PaginationTerminated || chain.CoverageComplete || chain.EconomicApplicationReady || chain.AdmissionAvailable || chain.ExecutionAvailable || chain.QualificationCredit {
+			t.Fatal("chain used source appended after assessment", chain, err)
+		}
+		if err := requestBounded(ctx, base, chainPath+"?at=future", nil, &chain, nil, 4096, true); err == nil {
+			t.Fatal("chain accepted a caller clock")
+		}
 	}
 	var absent storage.CorporateActionSourceRecord
 	if err := requestBounded(ctx, base, "/v1/corporate-action-sources/missing", nil, &absent, nil, 4096, true); err == nil {

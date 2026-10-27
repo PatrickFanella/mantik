@@ -17,6 +17,7 @@ type corporateAssessmentBackend interface {
 	assessmentBackend
 	CorporateActionSourceStore
 	PaperEvaluationCorporateInspectionStore
+	PaperEvaluationCorporateChainStore
 }
 
 func TestMemoryEvaluationCorporateSourceCuts(t *testing.T) {
@@ -172,8 +173,9 @@ func evaluationCorporateSourceCuts(t *testing.T, s corporateAssessmentBackend) {
 		_, readErr := s.PaperEvaluationAssessments(ctx, de, oe)
 		_, retryErr := s.AssessPaperEvaluation(ctx, c, noClock, de, oe)
 		_, inspectErr := s.PaperEvaluationCorporateInspection(ctx, c.ID, de, oe)
+		_, chainErr := s.PaperEvaluationCorporatePageChain(ctx, c.ID, source.ID, de, oe)
 		set(r.Record)
-		if !errors.Is(readErr, ErrPaperEvaluationAssessmentInvalid) || !errors.Is(retryErr, ErrPaperEvaluationAssessmentInvalid) || !errors.Is(inspectErr, ErrPaperEvaluationAssessmentInvalid) {
+		if !errors.Is(readErr, ErrPaperEvaluationAssessmentInvalid) || !errors.Is(retryErr, ErrPaperEvaluationAssessmentInvalid) || !errors.Is(inspectErr, ErrPaperEvaluationAssessmentInvalid) || !errors.Is(chainErr, ErrPaperEvaluationAssessmentInvalid) {
 			t.Fatal("self-rehashed source cut substituted actual owner", kind, readErr, retryErr)
 		}
 	}
@@ -185,7 +187,11 @@ func evaluationCorporateSourceCuts(t *testing.T, s corporateAssessmentBackend) {
 	set(legacy)
 	old, err := s.AssessPaperEvaluation(ctx, c, noClock, de, oe)
 	oldInspection, inspectErr := s.PaperEvaluationCorporateInspection(ctx, c.ID, de, oe)
+	oldChain, chainErr := s.PaperEvaluationCorporatePageChain(ctx, c.ID, source.ID, de, oe)
 	set(r.Record)
+	if chainErr != nil || oldChain.Status != "source_cut_unavailable_for_legacy_assessment" || len(oldChain.Pages) != 0 {
+		t.Fatal("legacy chain invented source cut", chainErr)
+	}
 	if inspectErr != nil || oldInspection.Status != "source_cut_unavailable_for_legacy_assessment" || len(oldInspection.Pages) != 0 || oldInspection.SourceCutSHA256 != "" || oldInspection.AssessmentSHA256 != legacy.SHA256 {
 		t.Fatal("legacy inspection invented a retrospective cut", oldInspection, inspectErr)
 	}

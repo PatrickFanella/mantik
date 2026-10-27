@@ -157,3 +157,8 @@ historical provider coverage, action-free intervals or economic relevance.
 Provider-attestation, coverage, economic-application, admission, execution and
 qualification flags stay false. Causal page selection and economic benchmark
 application remain separate acceptance work.
+
+An [assessment-bound page-chain inspection](paper-evaluation-assessments.md#inspecting-causal-corporate-page-links)
+can resolve causal cursor links from the imported acquisitions in an existing
+assessment cut. It retains missing and ambiguous links and does not promote
+pagination termination into complete coverage or economic authority.
