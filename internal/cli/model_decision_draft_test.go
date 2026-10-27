@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -134,6 +137,136 @@ func modelDecisionDraftContracts(t *testing.T, base string, d storage.PaperDecis
 				t.Fatal("receipt missing/private", name, err)
 			}
 		}
+	}
+	// Manufacture a lost review response after the actual service has committed,
+	// and an unavailable POST that never reaches it. Reconciliation must resolve
+	// only the owner's current readback, without touching the model or POSTing.
+	for _, committed := range []bool{true, false} {
+		target, err := url.Parse(base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var posts atomic.Int32
+		var unavailable atomic.Bool
+		proxy := httputil.NewSingleHostReverseProxy(target)
+		proxy.ModifyResponse = func(r *http.Response) error {
+			if r.Request.Method == http.MethodPost {
+				_ = r.Body.Close()
+				r.StatusCode = http.StatusServiceUnavailable
+				r.Body = io.NopCloser(strings.NewReader(`{"error":"manufactured lost response"}`))
+				r.ContentLength = -1
+				r.Header.Del("Content-Length")
+			}
+			return nil
+		}
+		gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if unavailable.Load() {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			if r.Method == http.MethodPost {
+				posts.Add(1)
+				if !committed {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+			}
+			proxy.ServeHTTP(w, r)
+		}))
+		func() {
+			defer gateway.Close()
+			reviewID := fmt.Sprintf("model-uncertain-%t", committed)
+			capture = filepath.Join(root, reviewID)
+			status = 200
+			payload, _ := json.Marshal(decisiondraft.Draft{Explanation: "Retained research decision; no execution established.", Claims: []storage.DecisionReviewClaim{{Field: "action", Value: d.Evaluation.Action}}})
+			content = string(payload)
+			requestArgs := args(reviewID, d.SHA256)
+			requestArgs[2] = gateway.URL
+			var out, diag bytes.Buffer
+			if err := Run(ctx, requestArgs, &out, &diag); err == nil || !strings.Contains(err.Error(), "outcome unverified") {
+				t.Fatal("uncertain review was accepted", err)
+			}
+			requestArgs[0] = "paper-decision-draft-reconcile"
+			requestArgs = requestArgs[:len(requestArgs)-2] // no model config needed
+			count := calls.Load()
+			before := map[string]string{}
+			entries, err := os.ReadDir(capture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range entries {
+				b, err := os.ReadFile(filepath.Join(capture, e.Name()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				before[e.Name()] = string(b)
+			}
+			for range 2 {
+				out.Reset()
+				if err := Run(ctx, requestArgs, &out, &diag); err != nil {
+					t.Fatal(out.String(), err)
+				}
+				want := "not_found_at_read"
+				if committed {
+					want = "retained_review_verified"
+				}
+				var result struct {
+					Status   string `json:"status"`
+					Retry    bool   `json:"retry_authorized"`
+					Attested bool   `json:"model_execution_attested"`
+				}
+				if json.Unmarshal(out.Bytes(), &result) != nil || result.Status != want || result.Retry || result.Attested || calls.Load() != count || posts.Load() != 1 {
+					t.Fatal("reconciliation retried or claimed authority", out.String())
+				}
+			}
+			entries, err = os.ReadDir(capture)
+			if err != nil || len(entries) != len(before) {
+				t.Fatal("reconciliation changed attempt artifacts", err)
+			}
+			for _, e := range entries {
+				b, err := os.ReadFile(filepath.Join(capture, e.Name()))
+				if err != nil || string(b) != before[e.Name()] {
+					t.Fatal("reconciliation rewrote original evidence", e.Name(), err)
+				}
+			}
+			unavailable.Store(true)
+			out.Reset()
+			if err := Run(ctx, requestArgs, &out, &diag); err == nil || out.Len() != 0 || posts.Load() != 1 || calls.Load() != count {
+				t.Fatal("unavailable service became a reconciliation result", out.String(), err)
+			}
+			unavailable.Store(false)
+			originalPin := requestArgs[8]
+			requestArgs[8] = strings.Repeat("f", 64)
+			if err := Run(ctx, requestArgs, &out, &diag); err == nil || posts.Load() != 1 || calls.Load() != count {
+				t.Fatal("wrong reconciliation pin accepted", err)
+			}
+			requestArgs[8] = originalPin
+			intentPath := filepath.Join(capture, "review-intent.json")
+			if err := os.WriteFile(intentPath, []byte(strings.Repeat(" ", storage.MaxDecisionReviewCommandBytes+1)), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := Run(ctx, requestArgs, &out, &diag); err == nil || posts.Load() != 1 || calls.Load() != count {
+				t.Fatal("oversized reconciliation intent accepted", err)
+			}
+			if err := os.WriteFile(intentPath, []byte(before["review-intent.json"]), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if committed {
+				var intent storage.DecisionReviewCommand
+				if json.Unmarshal([]byte(before["review-intent.json"]), &intent) != nil {
+					t.Fatal("bad retained intent")
+				}
+				intent.Explanation = "A different caller assertion"
+				b, _ := json.Marshal(intent)
+				if err := os.WriteFile(filepath.Join(capture, "review-intent.json"), b, 0600); err != nil {
+					t.Fatal(err)
+				}
+				out.Reset()
+				if err := Run(ctx, requestArgs, &out, &diag); err == nil || calls.Load() != count || posts.Load() != 1 || out.Len() != 0 {
+					t.Fatal("changed intent matched actual owner", out.String(), err)
+				}
+			}
+		}()
 	}
 	var before storage.DecisionReviewCatalog
 	if err := requestBounded(ctx, base, "/v1/paper-decision-reviews", nil, &before, nil, 1<<20, true); err != nil {
