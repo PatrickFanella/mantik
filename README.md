@@ -543,6 +543,12 @@ New v2 finalized decisions also reject omission of selected-registration inputs
 and raw publications available at finalization. Retained v1 decisions keep their
 legacy replay contract; this is no qualification or financial-effect grant.
 
+The explicit [model-assisted decision draft](docs/reference/model-decision-drafts.md)
+command reads a pinned finalized decision, retains one advisory model attempt and
+checks its typed claims through the same service review owner. Prose remains
+unverified, and model failure does not alter the deterministic explanation or
+strategy/protection workers.
+
 Individual retained sources are available through authenticated, clock-free
 `GET /v1/social-recordings/{capture-id}` and `GET /v1/copy-recordings/{capture-id}`;
 these resolve claim-review source links without granting applicability or execution.
