@@ -39,26 +39,16 @@ func (j *Journal) CorporateActionSnapshots(asOf time.Time) ([]CorporateActionSna
 		// a crash. Never promote that artifact into a completed collection.
 		snapshot := *c.Result.CorporateActions
 		if strings.HasPrefix(c.OriginalRef, "journal:"+j.ID+":collection-") {
-			status, err := j.Collection(c.Recording.CaptureID)
+			acquisition, err := j.corporateActionAcquisition(c.Recording.CaptureID, &c)
+			if errors.Is(err, ErrCollectionIncomplete) || errors.Is(err, ErrCollectionFailed) {
+				continue
+			}
 			if err != nil {
 				return nil, err
 			}
-			if status.State != "retained" {
-				continue
-			}
-			var intent collectionIntent
-			if _, err := j.readCollection(collectionName(c.Recording.CaptureID, "intent"), &intent); err != nil {
-				return nil, err
-			}
-			requestedAt := intent.At.UTC()
+			requestedAt := acquisition.RequestedAt
 			snapshot.RequestedAt = &requestedAt
-			var done collectionCompletion
-			if _, err := j.readCollection(collectionName(c.Recording.CaptureID, "complete"), &done); err != nil {
-				return nil, err
-			}
-			if done.At.After(snapshot.AvailableAt) {
-				snapshot.AvailableAt = done.At
-			}
+			snapshot.AvailableAt = acquisition.AvailableAt
 			if snapshot.AvailableAt.After(asOf) {
 				continue
 			}
