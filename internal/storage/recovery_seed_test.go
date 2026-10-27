@@ -147,6 +147,11 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	if got, err := s.SocialHistory(ctx); err != nil || len(got.ResearchRequests) != 2 {
 		t.Fatal("research recovery seed", got, err)
 	}
+	corporate := corporateSourceFixture(account.ReceiverID)
+	corporate.ID = "recovery-corporate-source"
+	if _, err := s.RetainCorporateActionSource(ctx, corporate, func() time.Time { return corporate.Recording.ReceivedAt.Add(time.Hour) }); err != nil {
+		t.Fatal("corporate source recovery seed", err)
+	}
 
 }
 
@@ -200,6 +205,7 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 		t.Fatal("restored retry changed retained receipt", err)
 	}
 	assertRestoredEvaluationOwner(t, s, got.ReceiverID)
+	assertRestoredCorporateSource(t, s, got.ReceiverID)
 	history, err := s.SocialHistory(ctx)
 	if err != nil || history.ReceiverID != got.ReceiverID || len(history.ResearchRequests) != 2 || history.ResearchRequests[0].DispatchAvailable || history.ResearchRequests[0].AdmissionAvailable || history.ResearchRequests[0].ExecutionAvailable || history.ResearchRequests[0].QualificationCredit {
 		t.Fatal("restored social owner", err)
