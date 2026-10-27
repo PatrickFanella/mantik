@@ -76,3 +76,8 @@ checksum rejection. The existing HTTP finalization harness exercises these route
 against both backends without changing operational state. Recovery seeds and
 replays an original page in the actual backup/restore flow and rejects a
 self-rehashed coverage grant before restoring the original payload.
+
+An [assessment-pinned inspection](paper-evaluation-assessments.md#inspecting-a-retained-source-cut)
+resolves the exact records retained by a v5 assessment and returns bounded query,
+revision and pagination metadata. It preserves the difference between reported
+response custody and the acquisition journal's request/completion evidence.

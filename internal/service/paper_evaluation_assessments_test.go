@@ -11,7 +11,7 @@ import (
 func TestPaperEvaluationAssessmentRejectsUnknownLengthBody(t *testing.T) {
 	mux := http.NewServeMux()
 	paperEvaluationAssessmentRoutes(mux, storage.NewMemory(), WallClock{})
-	for _, path := range []string{"/v1/paper-evaluation-assessments", "/v1/paper-evaluation-assessments/receipt"} {
+	for _, path := range []string{"/v1/paper-evaluation-assessments", "/v1/paper-evaluation-assessments/receipt", "/v1/paper-evaluation-assessments/receipt/corporate-sources"} {
 		r := httptest.NewRequest("GET", path, strings.NewReader(`{"at":"future"}`))
 		r.Proto = "HTTP/2.0"
 		r.ProtoMajor = 2

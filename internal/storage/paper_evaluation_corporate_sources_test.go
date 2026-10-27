@@ -16,6 +16,7 @@ import (
 type corporateAssessmentBackend interface {
 	assessmentBackend
 	CorporateActionSourceStore
+	PaperEvaluationCorporateInspectionStore
 }
 
 func TestMemoryEvaluationCorporateSourceCuts(t *testing.T) {
@@ -90,6 +91,22 @@ func evaluationCorporateSourceCuts(t *testing.T, s corporateAssessmentBackend) {
 		t.Fatal("actual source cut missing", r)
 	}
 	assertCorporateCutNoGrant(t, r.Record)
+	inspection, err := s.PaperEvaluationCorporateInspection(ctx, c.ID, de, oe)
+	if err != nil || inspection.AssessmentSHA256 != r.Record.SHA256 || inspection.SourceCutSHA256 != r.Record.CorporateSourceCut.SHA256 || len(inspection.Pages) != 1 || inspection.Pages[0].Pin.SHA256 != first.Record.SHA256 || inspection.Pages[0].CaptureID != source.Recording.CaptureID || inspection.Pages[0].Revision != source.Recording.Revision || inspection.Pages[0].AcquisitionCustody != "caller_reported_response_only_request_and_completion_unavailable" || inspection.ProviderAttested || inspection.CoverageComplete || inspection.EconomicApplicationReady || inspection.AdmissionAvailable || inspection.ExecutionAvailable || inspection.QualificationCredit {
+		t.Fatal("inspection did not resolve actual custody pins", inspection, err)
+	}
+	page := inspection.Pages[0]
+	if page.QueryDateBasis != "inclusive_process_date" || page.Start != source.Recording.Start || page.End != source.Recording.End || !reflect.DeepEqual(page.Symbols, source.Recording.Symbols) || !page.ReceivedAt.Equal(source.Recording.ReceivedAt) || page.PageState != "more_pages_unavailable" || page.NextPageToken == nil || *page.NextPageToken != "next+cursor" || page.RecordsObserved != 1 {
+		t.Fatal("inspection changed source query or pagination metadata", page)
+	}
+	if _, err := s.PaperEvaluationCorporateInspection(ctx, "missing", de, oe); !errors.Is(err, ErrPaperEvaluationAssessmentNotFound) {
+		t.Fatal("missing assessment became a source inspection", err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := s.PaperEvaluationCorporateInspection(cancelled, c.ID, de, oe); !errors.Is(err, context.Canceled) {
+		t.Fatal("cancelled inspection returned a record", err)
+	}
 	second := clone(source)
 	second.ID = "source-after-cut"
 	second.Recording.Revision = 2
@@ -110,6 +127,15 @@ func evaluationCorporateSourceCuts(t *testing.T, s corporateAssessmentBackend) {
 	}
 	if _, err := s.RetainCorporateActionSource(ctx, source, noClock); err != nil {
 		t.Fatal("old source retry lost", err)
+	}
+	afterLate, err := s.PaperEvaluationCorporateInspection(ctx, c.ID, de, oe)
+	if err != nil || !reflect.DeepEqual(afterLate, inspection) {
+		t.Fatal("late revision changed assessment inspection", afterLate, err)
+	}
+	afterLate.Pages[0].Symbols[0] = "MUTATED"
+	again, err := s.PaperEvaluationCorporateInspection(ctx, c.ID, de, oe)
+	if err != nil || !reflect.DeepEqual(again, inspection) {
+		t.Fatal("inspection aliased owner data", err)
 	}
 	c2 := c
 	c2.ID = "corporate-cut-two"
@@ -145,8 +171,9 @@ func evaluationCorporateSourceCuts(t *testing.T, s corporateAssessmentBackend) {
 		set(bad)
 		_, readErr := s.PaperEvaluationAssessments(ctx, de, oe)
 		_, retryErr := s.AssessPaperEvaluation(ctx, c, noClock, de, oe)
+		_, inspectErr := s.PaperEvaluationCorporateInspection(ctx, c.ID, de, oe)
 		set(r.Record)
-		if !errors.Is(readErr, ErrPaperEvaluationAssessmentInvalid) || !errors.Is(retryErr, ErrPaperEvaluationAssessmentInvalid) {
+		if !errors.Is(readErr, ErrPaperEvaluationAssessmentInvalid) || !errors.Is(retryErr, ErrPaperEvaluationAssessmentInvalid) || !errors.Is(inspectErr, ErrPaperEvaluationAssessmentInvalid) {
 			t.Fatal("self-rehashed source cut substituted actual owner", kind, readErr, retryErr)
 		}
 	}
@@ -157,7 +184,11 @@ func evaluationCorporateSourceCuts(t *testing.T, s corporateAssessmentBackend) {
 	}
 	set(legacy)
 	old, err := s.AssessPaperEvaluation(ctx, c, noClock, de, oe)
+	oldInspection, inspectErr := s.PaperEvaluationCorporateInspection(ctx, c.ID, de, oe)
 	set(r.Record)
+	if inspectErr != nil || oldInspection.Status != "source_cut_unavailable_for_legacy_assessment" || len(oldInspection.Pages) != 0 || oldInspection.SourceCutSHA256 != "" || oldInspection.AssessmentSHA256 != legacy.SHA256 {
+		t.Fatal("legacy inspection invented a retrospective cut", oldInspection, inspectErr)
+	}
 	if err != nil || !old.Duplicate || !reflect.DeepEqual(old.Record, legacy) || old.Record.CorporateSourceCut != nil {
 		t.Fatal("legacy v4 receipt reinterpreted", err)
 	}
@@ -195,9 +226,13 @@ func evaluationCorporateSourceCuts(t *testing.T, s corporateAssessmentBackend) {
 			t.Fatal(err)
 		}
 		again, err := reopened.AssessPaperEvaluation(ctx, c, noClock, de, oe)
+		inspected, inspectErr := reopened.PaperEvaluationCorporateInspection(ctx, c.ID, de, oe)
 		reopened.Close()
 		if err != nil || !reflect.DeepEqual(again.Record, r.Record) {
 			t.Fatal("reopen changed custody cut", err)
+		}
+		if inspectErr != nil || !reflect.DeepEqual(inspected, inspection) {
+			t.Fatal("reopen changed pinned source inspection", inspectErr)
 		}
 	}
 }

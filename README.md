@@ -556,7 +556,9 @@ The separate [corporate-action source custody](docs/reference/corporate-action-s
 API retains original reported pages with service receipt times, immutable hashes
 and targeted readback. It preserves unknown source fields and revisions without
 granting provider authenticity, complete coverage, economic interpretation or
-admission. New v5 evaluation assessments pin the actual custody inventory at issuance and
+admission. Assessment-pinned `GET /v1/paper-evaluation-assessments/{id}/corporate-sources`
+resolves query, revision and pagination metadata from the retained owner cut.
+New v5 evaluation assessments pin the actual custody inventory at issuance and
 reject later backdated source writes. Economic source selection and passive
 benchmark accounting remain unfinished; quote/calendar publication keeps its
 existing capability boundary.
