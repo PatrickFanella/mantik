@@ -232,3 +232,6 @@ var EvaluationCorporateSourceCuts string
 
 //go:embed 0073_journal_corporate_sources.sql
 var JournalCorporateSources string
+
+//go:embed 0074_predeclared_corporate_selection.sql
+var PredeclaredCorporateSelection string

@@ -46,6 +46,14 @@ func corporateActionSourceHTTPContracts(t *testing.T, base string, d storage.Pap
 		t.Fatal("assessment fixture unavailable", err)
 	}
 	for _, a := range assessments.Records {
+		var selection storage.PaperEvaluationCorporateSelection
+		selectionPath := "/v1/paper-evaluation-assessments/" + a.Command.ID + "/corporate-selection"
+		if err := requestBounded(ctx, base, selectionPath, nil, &selection, nil, storage.MaxPaperEvaluationCorporateChainBytes, true); err != nil || selection.Status != "corporate_source_plan_not_predeclared" || len(selection.Rows) != 0 || selection.AssessmentSHA256 != a.SHA256 || selection.AdmissionAvailable || selection.ExecutionAvailable || selection.QualificationCredit {
+			t.Fatal("legacy assessment acquired a post-hoc source plan", selection, err)
+		}
+		if err := requestBounded(ctx, base, selectionPath+"?root=chosen-afterward", nil, &selection, nil, 4096, true); err == nil {
+			t.Fatal("selection accepted a caller root")
+		}
 		var inspection storage.PaperEvaluationCorporateInspection
 		path := "/v1/paper-evaluation-assessments/" + a.Command.ID + "/corporate-sources"
 		if err := requestBounded(ctx, base, path, nil, &inspection, nil, storage.MaxPaperEvaluationCorporateInspectionBytes, true); err != nil || inspection.AssessmentSHA256 != a.SHA256 || len(inspection.Pages) != 0 || inspection.ProviderAttested || inspection.CoverageComplete || inspection.EconomicApplicationReady || inspection.AdmissionAvailable || inspection.ExecutionAvailable || inspection.QualificationCredit {

@@ -884,3 +884,9 @@ Decision and outcome market-evidence v3 reads now derive documented share sizes
 from actual retained quote owners using a pinned [Alpaca REST unit contract](docs/reference/alpaca-quote-share-units.md).
 Historical transition-day/unsupported values remain explicit, and evidence
 classes, admission, financial execution and qualification remain separate gates.
+## Predeclared corporate acquisitions
+
+Evaluation declarations may predeclare intended corporate-action acquisition
+identities and query scopes. The service resolves those intents through the
+[assessment corporate selection readback](docs/reference/paper-evaluation-assessments.md#predeclared-corporate-source-selection).
+This is source selection only; economic evaluation and admission remain unavailable.

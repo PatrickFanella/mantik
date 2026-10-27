@@ -78,7 +78,8 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	stress := *policy.ExecutionModel
 	stress.FeeBPS++
 	plan := PaperEvaluationDeclarationCommand{ID: "recovery-evaluation-plan", ReceiverID: account.ReceiverID, Recipe: PaperEvaluationRecipe, PolicyID: policy.Policy.ID, PolicySHA256: registeredPolicy.Record.SHA256, Plan: PaperEvaluationPlan{
-		FamilyID: "recovery-evaluation-family", Variants: []PaperEvaluationVariant{{ID: d.ID, SHA256: strategy.Record.SHA256}},
+		CorporateSources: []PaperEvaluationCorporateSourcePlan{{Symbol: "SPY", JournalID: "journal-manufactured", RootCollectionID: "acquired-recovery-corporate-source", AccessRef: "manufactured-access", Start: "2026-10-14", End: "2026-10-14"}},
+		FamilyID:         "recovery-evaluation-family", Variants: []PaperEvaluationVariant{{ID: d.ID, SHA256: strategy.Record.SHA256}},
 		WindowStart: at.Add(time.Hour), WindowEnd: at.Add(2 * time.Hour), OutcomeDeadline: at.Add(26 * time.Hour),
 		MinIndependentDecisions: 30, MinimumNetExcessCents: 0, MaximumDrawdownCents: 1000, AdmissionTTLSeconds: 3600,
 		Benchmarks: []string{"cash_no_action", "passive_same_symbol"}, StressModel: stress,
@@ -243,6 +244,10 @@ func assertRestoredEvaluationOwner(t *testing.T, s *Postgres, owner string) {
 	chain, err := s.PaperEvaluationCorporatePageChain(ctx, record.Command.ID, "recovery-corporate-source", recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
 	if err != nil || chain.Status != "next_page_unavailable_at_cut" || len(chain.Pages) != 1 || chain.RootSourceSHA256 != record.CorporateSourceCut.Sources[0].SHA256 || chain.Pages[0].Source.AcquisitionSHA256 == "" || chain.CoverageComplete || chain.EconomicApplicationReady || chain.AdmissionAvailable || chain.ExecutionAvailable || chain.QualificationCredit {
 		t.Fatal("restored chain lost acquisition binding or granted authority", chain, err)
+	}
+	selection, err := s.PaperEvaluationCorporateSelection(ctx, record.Command.ID, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
+	if err != nil || len(selection.Rows) != 1 || selection.Rows[0].Plan.RootCollectionID != "acquired-recovery-corporate-source" || selection.Rows[0].Chain == nil || selection.Rows[0].PredeclaredChainResolved || selection.CoverageComplete || selection.EconomicApplicationReady || selection.AdmissionAvailable || selection.ExecutionAvailable || selection.QualificationCredit {
+		t.Fatal("restored selection lost predeclaration or granted authority", selection, err)
 	}
 	noClock := func() time.Time { t.Fatal("restored evaluation retry sampled clock"); return time.Time{} }
 	retriedPlan, err := s.DeclarePaperEvaluation(ctx, plan.Command, noClock)
