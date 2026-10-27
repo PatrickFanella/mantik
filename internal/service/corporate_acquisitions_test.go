@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,71 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
+
+func TestConfiguredJournalImportRetainsActualSourceAndRetriesWithoutJournal(t *testing.T) {
+	dir, id, source := acquisitionReaderFixture(t)
+	owner, err := OpenCorporateAcquisitionReader(dir, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	store := storage.NewMemory()
+	receiver, err := store.ResearchSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := HandlerWithCorporateAcquisitions(store, "token", WallClock{}, nil, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := map[string]any{"id": "import-one", "receiver_id": receiver.ID, "collection_id": "acquired", "acquisition_sha256": source.Acquisition.SHA256}
+	post := func(command any, token string) *httptest.ResponseRecorder {
+		raw, _ := json.Marshal(command)
+		r := httptest.NewRequest("POST", "/v1/corporate-action-imports", bytes.NewReader(raw))
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := post(c, ""); w.Code != 401 {
+		t.Fatal("import bypassed auth", w.Code)
+	}
+	w := post(c, "token")
+	var receipt storage.CorporateActionSourceReceipt
+	if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &receipt) != nil || receipt.Record.Acquisition == nil || !reflect.DeepEqual(*receipt.Record.Acquisition, source.Acquisition) || receipt.Record.Command.Recording.Original != source.Recording.Original || receipt.Record.ProviderAttested || receipt.Record.CoverageComplete || receipt.Record.EconomicApplicationReady || receipt.Record.AdmissionAvailable || receipt.Record.ExecutionAvailable || receipt.Record.QualificationCredit {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w = post(c, "token")
+	var retry storage.CorporateActionSourceReceipt
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &retry) != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, receipt.Record) {
+		t.Fatal("exact retry required journal or changed receipt", w.Code, w.Body.String())
+	}
+	c["acquisition_sha256"] = strings.Repeat("f", 64)
+	if w := post(c, "token"); w.Code != 409 {
+		t.Fatal("changed pin adopted", w.Code)
+	}
+	c["acquisition_sha256"] = source.Acquisition.SHA256
+	for _, field := range []string{"recording", "acquisition", "admission_available", "available_cash_cents"} {
+		c[field] = true
+		if w := post(c, "token"); w.Code != 422 {
+			t.Fatal("import accepted caller assertion", field, w.Code)
+		}
+		delete(c, field)
+	}
+	c["id"] = "new-import"
+	if w := post(c, "token"); w.Code != 503 {
+		t.Fatal("closed journal supplied fresh import", w.Code)
+	}
+	cat, err := store.CorporateActionSources(context.Background())
+	if err != nil || len(cat.Records) != 1 || !reflect.DeepEqual(cat.Records[0], receipt.Record) {
+		t.Fatal("failed import changed catalogue", err)
+	}
+}
 
 // These are manufactured local acquisition artifacts. Real loopback acquisition
 // and retry behavior is tested by internal/alpaca; this checks service custody.

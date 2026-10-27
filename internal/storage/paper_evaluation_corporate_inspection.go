@@ -16,6 +16,7 @@ const MaxPaperEvaluationCorporateInspectionBytes = 512 << 10
 // Metadata resolves an assessment's immutable custody pins, never an economic
 // dataset. Original response bodies remain available through targeted source GET.
 type PaperEvaluationCorporatePage struct {
+	AcquisitionSHA256  string                            `json:"acquisition_sha256,omitempty"`
 	Pin                PaperEvaluationCorporateSourcePin `json:"pin"`
 	CaptureID          string                            `json:"capture_id"`
 	Revision           int                               `json:"revision"`
@@ -95,6 +96,11 @@ func inspectAssessmentCorporateSources(ctx context.Context, owner, id string, al
 				return PaperEvaluationCorporateInspection{}, err
 			}
 			out.Pages = append(out.Pages, PaperEvaluationCorporatePage{Pin: pin, CaptureID: page.CaptureID, Revision: page.Revision, Contract: page.Contract, QueryDateBasis: page.QueryDateBasis, DataQuality: page.DataQuality, Region: page.Region, Symbols: clone(page.Symbols), Start: page.Start, End: page.End, EvidenceClass: page.EvidenceClass, ReceivedAt: page.ReceivedAt, PageToken: page.PageToken, NextPageToken: clone(page.NextPageToken), PageState: page.PageState, RecordsObserved: len(page.Records), AcquisitionCustody: "caller_reported_response_only_request_and_completion_unavailable"})
+			if r.Acquisition != nil {
+				last := &out.Pages[len(out.Pages)-1]
+				last.AcquisitionSHA256 = r.Acquisition.SHA256
+				last.AcquisitionCustody = "service_retained_configured_journal_acquisition"
+			}
 		}
 	}
 	out.SHA256 = workerplan.Hash(out)

@@ -47,19 +47,20 @@ func (c CorporateActionSourceCommand) Validate() error {
 }
 
 type CorporateActionSourceRecord struct {
-	Schema                   string                       `json:"schema"`
-	Command                  CorporateActionSourceCommand `json:"command"`
-	Sequence                 int                          `json:"sequence"`
-	RetainedAt               time.Time                    `json:"retained_at"`
-	PreviousSHA256           string                       `json:"previous_sha256"`
-	Authority                string                       `json:"authority"`
-	ProviderAttested         bool                         `json:"provider_attested"`
-	CoverageComplete         bool                         `json:"coverage_complete"`
-	EconomicApplicationReady bool                         `json:"economic_application_ready"`
-	AdmissionAvailable       bool                         `json:"admission_available"`
-	ExecutionAvailable       bool                         `json:"execution_available"`
-	QualificationCredit      bool                         `json:"qualification_credit"`
-	SHA256                   string                       `json:"sha256"`
+	Acquisition              *alpacarecord.CorporateActionAcquisition `json:"acquisition,omitempty"`
+	Schema                   string                                   `json:"schema"`
+	Command                  CorporateActionSourceCommand             `json:"command"`
+	Sequence                 int                                      `json:"sequence"`
+	RetainedAt               time.Time                                `json:"retained_at"`
+	PreviousSHA256           string                                   `json:"previous_sha256"`
+	Authority                string                                   `json:"authority"`
+	ProviderAttested         bool                                     `json:"provider_attested"`
+	CoverageComplete         bool                                     `json:"coverage_complete"`
+	EconomicApplicationReady bool                                     `json:"economic_application_ready"`
+	AdmissionAvailable       bool                                     `json:"admission_available"`
+	ExecutionAvailable       bool                                     `json:"execution_available"`
+	QualificationCredit      bool                                     `json:"qualification_credit"`
+	SHA256                   string                                   `json:"sha256"`
 }
 type CorporateActionSourceReceipt struct {
 	Record    CorporateActionSourceRecord `json:"record"`
@@ -74,12 +75,40 @@ type CorporateActionSourceStore interface {
 	CorporateActionSources(context.Context) (CorporateActionSourceCatalog, error)
 }
 
+// Only an owner adapter reading its configured journal supplies this proof.
+// The public caller-reported source command has no acquisition assertion field.
+type JournalCorporateActionSourceStore interface {
+	CorporateActionSourceStore
+	RetainJournalCorporateActionSource(context.Context, CorporateActionSourceCommand, alpacarecord.CorporateActionAcquisition, func() time.Time) (CorporateActionSourceReceipt, error)
+}
+
 func newCorporateActionSource(c CorporateActionSourceCommand, seq int, previous string, at time.Time) (CorporateActionSourceRecord, error) {
 	if c.Validate() != nil || seq < 1 || !declarationTime(at) || at.Before(c.Recording.ReceivedAt) {
 		return CorporateActionSourceRecord{}, ErrCorporateActionSourceInvalid
 	}
 	r := CorporateActionSourceRecord{Schema: "mantik-owned-corporate-action-source-v1", Command: clone(c), Sequence: seq, RetainedAt: at.UTC(), PreviousSHA256: previous, Authority: "service_custody_of_caller_reported_corporate_action_source_only"}
 	r.SHA256 = workerplan.Hash(r)
+	return r, nil
+}
+
+func corporateActionSourceVersion(c CorporateActionSourceCommand, seq int, previous string, at time.Time, acquisition *alpacarecord.CorporateActionAcquisition) (CorporateActionSourceRecord, error) {
+	r, err := newCorporateActionSource(c, seq, previous, at)
+	if err != nil || acquisition == nil {
+		return r, err
+	}
+	if acquisition.Validate(c.Recording) != nil || at.Before(acquisition.AvailableAt) {
+		return CorporateActionSourceRecord{}, ErrCorporateActionSourceInvalid
+	}
+	a := clone(*acquisition)
+	r.Acquisition = &a
+	r.Schema = "mantik-owned-corporate-action-source-v2"
+	r.Authority = "service_custody_of_configured_journal_acquisition_only"
+	r.SHA256 = ""
+	r.SHA256 = workerplan.Hash(r)
+	raw, err := json.Marshal(r)
+	if err != nil || len(raw) > MaxCorporateActionSourceBytes+4096 {
+		return CorporateActionSourceRecord{}, ErrCorporateActionSourceCapacity
+	}
 	return r, nil
 }
 func corporateActionSourceCatalog(ctx context.Context, owner string, records []CorporateActionSourceRecord) (CorporateActionSourceCatalog, error) {
@@ -94,7 +123,7 @@ func corporateActionSourceCatalog(ctx context.Context, owner string, records []C
 		if err := ctx.Err(); err != nil {
 			return CorporateActionSourceCatalog{}, err
 		}
-		want, err := newCorporateActionSource(r.Command, i+1, previous, r.RetainedAt)
+		want, err := corporateActionSourceVersion(r.Command, i+1, previous, r.RetainedAt, r.Acquisition)
 		if err != nil || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) || r.RetainedAt.Before(clock) || ids[r.Command.ID] || originals[r.Command.Recording.RawRef] {
 			return CorporateActionSourceCatalog{}, ErrCorporateActionSourceInvalid
 		}
@@ -107,11 +136,14 @@ func corporateActionSourceCatalog(ctx context.Context, owner string, records []C
 	return out, nil
 }
 func appendCorporateActionSource(ctx context.Context, owner string, all []CorporateActionSourceRecord, c CorporateActionSourceCommand, now func() time.Time) (CorporateActionSourceReceipt, error) {
+	return appendCorporateActionSourceWithAcquisition(ctx, owner, all, c, nil, now)
+}
+func appendCorporateActionSourceWithAcquisition(ctx context.Context, owner string, all []CorporateActionSourceRecord, c CorporateActionSourceCommand, acquisition *alpacarecord.CorporateActionAcquisition, now func() time.Time) (CorporateActionSourceReceipt, error) {
 	cat, err := corporateActionSourceCatalog(ctx, owner, all)
 	if err != nil {
 		return CorporateActionSourceReceipt{}, err
 	}
-	if c.Validate() != nil {
+	if c.Validate() != nil || acquisition != nil && acquisition.Validate(c.Recording) != nil {
 		return CorporateActionSourceReceipt{}, ErrCorporateActionSourceInvalid
 	}
 	if c.ReceiverID != owner {
@@ -119,7 +151,7 @@ func appendCorporateActionSource(ctx context.Context, owner string, all []Corpor
 	}
 	for _, r := range cat.Records {
 		if r.Command.ID == c.ID {
-			if !reflect.DeepEqual(r.Command, c) {
+			if !reflect.DeepEqual(r.Command, c) || !reflect.DeepEqual(r.Acquisition, acquisition) {
 				return CorporateActionSourceReceipt{}, ErrCorporateActionSourceConflict
 			}
 			return CorporateActionSourceReceipt{clone(r), true}, nil
@@ -143,7 +175,7 @@ func appendCorporateActionSource(ctx context.Context, owner string, all []Corpor
 		}
 		previous = last.SHA256
 	}
-	r, err := newCorporateActionSource(c, len(all)+1, previous, at)
+	r, err := corporateActionSourceVersion(c, len(all)+1, previous, at, acquisition)
 	if err != nil {
 		return CorporateActionSourceReceipt{}, err
 	}
@@ -161,12 +193,18 @@ func (m *Memory) CorporateActionSources(ctx context.Context) (CorporateActionSou
 	return corporateActionSourceCatalog(ctx, m.receiverID, m.corporateActionSources)
 }
 func (m *Memory) RetainCorporateActionSource(ctx context.Context, c CorporateActionSourceCommand, now func() time.Time) (CorporateActionSourceReceipt, error) {
+	return m.retainCorporateActionSource(ctx, c, nil, now)
+}
+func (m *Memory) RetainJournalCorporateActionSource(ctx context.Context, c CorporateActionSourceCommand, a alpacarecord.CorporateActionAcquisition, now func() time.Time) (CorporateActionSourceReceipt, error) {
+	return m.retainCorporateActionSource(ctx, c, &a, now)
+}
+func (m *Memory) retainCorporateActionSource(ctx context.Context, c CorporateActionSourceCommand, acquisition *alpacarecord.CorporateActionAcquisition, now func() time.Time) (CorporateActionSourceReceipt, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return CorporateActionSourceReceipt{}, err
 	}
-	r, err := appendCorporateActionSource(ctx, m.receiverID, m.corporateActionSources, c, now)
+	r, err := appendCorporateActionSourceWithAcquisition(ctx, m.receiverID, m.corporateActionSources, c, acquisition, now)
 	if err != nil {
 		return CorporateActionSourceReceipt{}, err
 	}
@@ -231,6 +269,12 @@ func (p *Postgres) CorporateActionSources(ctx context.Context) (CorporateActionS
 	return cat, nil
 }
 func (p *Postgres) RetainCorporateActionSource(ctx context.Context, c CorporateActionSourceCommand, now func() time.Time) (CorporateActionSourceReceipt, error) {
+	return p.retainCorporateActionSource(ctx, c, nil, now)
+}
+func (p *Postgres) RetainJournalCorporateActionSource(ctx context.Context, c CorporateActionSourceCommand, a alpacarecord.CorporateActionAcquisition, now func() time.Time) (CorporateActionSourceReceipt, error) {
+	return p.retainCorporateActionSource(ctx, c, &a, now)
+}
+func (p *Postgres) retainCorporateActionSource(ctx context.Context, c CorporateActionSourceCommand, acquisition *alpacarecord.CorporateActionAcquisition, now func() time.Time) (CorporateActionSourceReceipt, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return CorporateActionSourceReceipt{}, err
@@ -246,7 +290,7 @@ func (p *Postgres) RetainCorporateActionSource(ctx context.Context, c CorporateA
 	if err != nil {
 		return CorporateActionSourceReceipt{}, err
 	}
-	r, err := appendCorporateActionSource(ctx, cat.ReceiverID, cat.Records, c, now)
+	r, err := appendCorporateActionSourceWithAcquisition(ctx, cat.ReceiverID, cat.Records, c, acquisition, now)
 	if err != nil {
 		return CorporateActionSourceReceipt{}, err
 	}

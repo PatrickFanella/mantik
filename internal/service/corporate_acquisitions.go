@@ -3,13 +3,17 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"sync"
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
+	"git.subcult.tv/subculture-collective/mantik/internal/alpacarecord"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
+	"git.subcult.tv/subculture-collective/mantik/internal/storage"
+	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
 // CorporateAcquisitionReader owns one explicitly configured existing journal.
@@ -62,7 +66,7 @@ func (o *CorporateAcquisitionReader) read(ctx context.Context, id string) (alpac
 	}
 	return v, nil
 }
-func corporateAcquisitionRoutes(mux *http.ServeMux, owner *CorporateAcquisitionReader) {
+func corporateAcquisitionRoutes(mux *http.ServeMux, owner *CorporateAcquisitionReader, store storage.Store, clock Clock) {
 	if owner == nil {
 		return
 	}
@@ -85,4 +89,73 @@ func corporateAcquisitionRoutes(mux *http.ServeMux, owner *CorporateAcquisitionR
 			write(w, 503, map[string]string{"error": "corporate acquisition unavailable"})
 		}
 	})
+	if backend, ok := store.(storage.JournalCorporateActionSourceStore); ok {
+		mux.HandleFunc("POST /v1/corporate-action-imports", func(w http.ResponseWriter, r *http.Request) {
+			var c struct {
+				ID                string `json:"id"`
+				ReceiverID        string `json:"receiver_id"`
+				CollectionID      string `json:"collection_id"`
+				AcquisitionSHA256 string `json:"acquisition_sha256"`
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 4096)
+			defer r.Body.Close()
+			raw, err := io.ReadAll(r.Body)
+			if err != nil || workerplan.ReadBoundedShape(raw, &c, 4096) != nil || !paperaccount.ID.MatchString(c.ID) || !storage.ValidReceiverID(c.ReceiverID) || !paperaccount.ID.MatchString(c.CollectionID) || len(c.CollectionID) > 40 || !alpacarecord.ValidSHA256(c.AcquisitionSHA256) || r.URL.RawQuery != "" || r.URL.ForceQuery {
+				corporateActionSourceError(w, storage.ErrCorporateActionSourceInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			cat, err := backend.CorporateActionSources(ctx)
+			if err != nil {
+				corporateActionSourceError(w, err)
+				return
+			}
+			if cat.ReceiverID != c.ReceiverID {
+				corporateActionSourceError(w, storage.ErrReceiverMismatch)
+				return
+			}
+			for _, old := range cat.Records {
+				if old.Command.ID != c.ID {
+					continue
+				}
+				if old.Acquisition == nil || old.Acquisition.CollectionID != c.CollectionID || old.Acquisition.SHA256 != c.AcquisitionSHA256 {
+					corporateActionSourceError(w, storage.ErrCorporateActionSourceConflict)
+					return
+				}
+				write(w, 200, storage.CorporateActionSourceReceipt{Record: old, Duplicate: true})
+				return
+			}
+			source, err := owner.read(ctx, c.CollectionID)
+			if err != nil {
+				corporateAcquisitionReadError(w, err)
+				return
+			}
+			if source.Acquisition.SHA256 != c.AcquisitionSHA256 {
+				corporateActionSourceError(w, storage.ErrCorporateActionSourceConflict)
+				return
+			}
+			receipt, err := backend.RetainJournalCorporateActionSource(ctx, storage.CorporateActionSourceCommand{ID: c.ID, ReceiverID: c.ReceiverID, Recording: alpacarecord.Recording(source.Recording)}, source.Acquisition, clock.Now)
+			if err != nil {
+				corporateActionSourceError(w, err)
+				return
+			}
+			code := 201
+			if receipt.Duplicate {
+				code = 200
+			}
+			write(w, code, receipt)
+		})
+	}
+}
+
+func corporateAcquisitionReadError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		write(w, 404, map[string]string{"error": "corporate acquisition not retained"})
+	case errors.Is(err, alpaca.ErrCollectionIncomplete), errors.Is(err, alpaca.ErrCollectionFailed), errors.Is(err, alpaca.ErrJournalConflict):
+		write(w, 409, map[string]string{"error": "corporate acquisition is incomplete, failed or inconsistent"})
+	default:
+		write(w, 503, map[string]string{"error": "corporate acquisition unavailable"})
+	}
 }

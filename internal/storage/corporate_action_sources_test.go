@@ -269,12 +269,11 @@ func assertRestoredCorporateSource(t *testing.T, p *Postgres, owner string) {
 	}
 	r := cat.Records[0]
 	assertCorporateSourceFlags(t, r)
-	want := corporateSourceFixture(owner)
-	want.ID = r.Command.ID
-	if !reflect.DeepEqual(r.Command, want) {
+	want, acquisition := journalCorporateSourceFixture(owner, r.Command.ID)
+	if !reflect.DeepEqual(r.Command, want) || r.Acquisition == nil || !reflect.DeepEqual(*r.Acquisition, acquisition) {
 		t.Fatal("restored original page changed")
 	}
-	retry, err := p.RetainCorporateActionSource(ctx, r.Command, func() time.Time { t.Fatal("restored source retry read clock"); return time.Time{} })
+	retry, err := p.RetainJournalCorporateActionSource(ctx, r.Command, acquisition, func() time.Time { t.Fatal("restored source retry read clock"); return time.Time{} })
 	if err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, r) {
 		t.Fatal("restored source retry changed receipt", err)
 	}

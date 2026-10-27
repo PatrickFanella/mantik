@@ -229,3 +229,6 @@ var CorporateActionSourceCustody string
 
 //go:embed 0072_evaluation_corporate_source_cuts.sql
 var EvaluationCorporateSourceCuts string
+
+//go:embed 0073_journal_corporate_sources.sql
+var JournalCorporateSources string

@@ -329,3 +329,11 @@ the service recording does not contain the journal's retained request/completion
 attempts. The authority is `service_owned_assessment_source_inspection_only`.
 Provider attestation, complete coverage, economic application, admission,
 execution and qualification flags remain false, including for a terminal page.
+
+Imported configured-journal source records remain part of the same custody
+prefix. Their versioned record hash also binds the retained acquisition receipt.
+Corporate-source inspection includes `acquisition_sha256` and
+`service_retained_configured_journal_acquisition` custody for those pages;
+legacy caller-reported pages keep their original inspection fields and hash.
+This does not change an assessment's recipe or turn custody into a benchmark,
+coverage or admission result.
