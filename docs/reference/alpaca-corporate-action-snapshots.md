@@ -143,3 +143,33 @@ Verification uses manufactured HTTP responses through the existing collection
 and CLI paths, historical cut, revision and continuation-link tests, failed/interrupted capture
 checks, and actual private journal archive/restore. It does not qualify provider
 availability or corporate-action coverage.
+
+## Verified journal acquisition receipts
+
+`Journal.CorporateActionAcquisition(collectionID)` derives
+`mantik-journal-corporate-acquisition-v1` from an actual retained corporate-action
+network collection. It verifies the collection and capture, then binds the exact
+intent, completion, capture, recording and original-response hashes. Every
+bounded attempt contributes its start/response artifact hashes, clocks, terminal
+state, HTTP status and partial-response flag. Failed attempts remain in the
+receipt when a later attempt succeeds.
+
+Method `retained-intent-attempts-capture-completion-v1` requires the request
+intent to precede the first attempt, each response to follow its start, each
+later attempt to follow the prior response, and completion to follow the last
+response. Equal clocks are allowed. Impossible clock ordering fails even when
+artifact envelopes have been rehashed. The receipt's `available_at` is the
+verified completion clock, which cannot precede the original response.
+`CorporateActionSnapshots` uses this verification for network captures before
+exposing their request and availability clocks; manual captures retain no
+acquisition clock. Missing, failed or unfinished collections cannot produce a
+successful acquisition receipt. Readback never retries or resumes acquisition.
+
+The receipt contains bounded metadata and references, not raw attempt bodies or
+credentials. Existing raw journal artifacts and capture bytes remain unchanged.
+Archive/restore preserves the receipt's identity and hashes. The authority is
+`journal_owned_recorded_acquisition_only`: provider attestation, coverage,
+economic application, admission, execution and qualification remain false.
+This journal receipt does not by itself extend the service's caller-reported
+source API or attest a remotely supplied receipt. Service-owned acquisition
+binding remains a separate acceptance dependency.
