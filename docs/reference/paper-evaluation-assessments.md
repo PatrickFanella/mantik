@@ -500,3 +500,50 @@ chain is not complete coverage or a correction history. Rates, instrument
 mapping, ex/record/payable dates, total-return benchmarks and missing/deleted
 actions still need applicable economic rules. Schema 74 is a compatibility fence
 for the optional v3 declaration and rewrites no stored payloads.
+
+
+## Retained observed benchmarks
+
+A prospectively declared `native-threshold-observed-benchmark-plan-v3` plan
+issues assessment v8, recipe `native-predeclared-observed-benchmarks-v8`.
+The compiled owner derives `base_benchmarks` and `stress_benchmarks` alongside
+each available portfolio variant, in the same source snapshot and with its
+actual finite opening cash and cost model. The internal accounting selection
+preserves legacy v6/v7 source hashes and results. Callers supply no benchmark
+book, quote, count, result or coverage assertion. The worker gives the new
+recipe its own automatic identity.
+
+Cash uses nominal USD without interest: ending cash equals opening cash and
+net return is zero. The passive alternative uses the first usable retained
+quote in that model's counterfactual study path as a price reference. Availability
+clock and then quote ID fix the ordering. It places
+one whole-share limit order one nanosecond after the reference's availability;
+the reference cannot fill that order. The fixed limit includes modeled adverse
+slippage. Quantity fits opening cash under one-share fee rounding and fixed
+commissions, capped by the fill method's share limit. Only subsequent eligible
+updates fill the order through the existing shared-occurrence method, retaining
+latency, quote freshness, displayed share capacity, partial fills and revisions.
+Entry expires at the earlier of 24 hours or the retained source cut. No proceeds
+are reinvested, and no terminal sale is invented.
+
+The retained passive book, reference source hash, filled quantity, observed
+bid equity and cash differences are reproducible owner results. Missing or stale
+terminal marks leave the corresponding difference unavailable. Insufficient
+cash, absent later quotes, unfilled/partial orders and bounded source capacity
+remain explicit outcomes. Alternative strategy/passive books do not consume
+each other's liquidity: they are separate counterfactual studies.
+
+The path is conditional on the selected retained sources and funding, rather
+than proof of a full-window buy-and-hold return. Corporate entitlements,
+complete-window coverage and total-return reconciliation remain unavailable.
+The mandatory `benchmark_comparison` check therefore stays `unavailable`, even
+when an observed-price excess is positive. Positive economic acceptance still
+requires documented corporate-action coverage and reconciliation evidence,
+not REST pagination or these arithmetic differences. Admission, execution and
+qualification remain false. Other failed checks remain failed.
+
+Schema 77 fences older writers without rewriting historical payloads. Actual
+owner replay reconstructs the source cut, books and benchmarks during issuance,
+readback and downstream allocation/admission/attribution. A coherently rehashed
+benchmark edit or schema downgrade is rejected. Local fixtures and database
+reopen/copy tests remain distinct from deployment and funded recovery evidence.

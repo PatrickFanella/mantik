@@ -14,9 +14,10 @@ import (
 // Internal read input, never an HTTP command. Every owner is replayed in the
 // same locked/repeatable-read snapshot; callers select only a declaration ID.
 type PaperEvaluationEntrySources struct {
-	Evidence PaperEvaluationEvidence
-	Policy   allocation.PolicyRecord
-	Rows     []PaperEvaluationEntrySource
+	AccountingRecipe string `json:"accounting_recipe,omitempty"`
+	Evidence         PaperEvaluationEvidence
+	Policy           allocation.PolicyRecord
+	Rows             []PaperEvaluationEntrySource
 }
 type PaperEvaluationEntrySource struct {
 	Decision   PaperDecisionRecord

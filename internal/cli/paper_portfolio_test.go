@@ -20,6 +20,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
+	"git.subcult.tv/subculture-collective/mantik/internal/papereconomics"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
@@ -55,6 +56,7 @@ func TestOwnedPortfolioAssessmentHTTP(t *testing.T) {
 // public handler. Their prospective labels do not give them qualification credit.
 func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldout ...bool) storage.PaperEvaluationAssessment {
 	holdout := len(useHoldout) > 0 && useHoldout[0]
+	benchmarks := len(useHoldout) > 2 && useHoldout[2]
 	delayed := len(useHoldout) > 1 && useHoldout[1]
 	var referencePublishedAt time.Time
 	t.Helper()
@@ -113,6 +115,10 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 	if holdout {
 		plan.Recipe = storage.PaperHoldoutEvaluationRecipe
 		plan.Plan.Holdout = &storage.PaperEvaluationHoldoutPlan{Method: storage.PaperHoldoutMethod, SplitAt: start.Add(20 * time.Second), EmbargoSeconds: 2, MinimumTrainingOccurrences: 2, MinimumHoldoutOccurrences: 2}
+	}
+	if benchmarks {
+		plan.Recipe = storage.PaperBenchmarkEvaluationRecipe
+		plan.Plan.BenchmarkMethod = papereconomics.BenchmarkMethod
 	}
 	var declaration storage.PaperEvaluationDeclarationReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", plan, 201), &declaration); err != nil {
@@ -177,11 +183,18 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 	if holdout {
 		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v7", storage.PaperHoldoutAssessmentRecipe
 	}
+	if benchmarks {
+		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v8", storage.PaperBenchmarkAssessmentRecipe
+	}
 	if r.Schema != wantSchema || r.Recipe != wantRecipe || r.Portfolio == nil || len(r.Portfolio.Variants) != 1 || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 		t.Fatal(r)
 	}
 	if holdout {
-		if declaration.Record.Schema != "mantik-owned-paper-evaluation-declaration-v4" || r.Holdout == nil || len(r.Holdout.Variants) != 1 || r.Holdout.Variants[0].TrainingOccurrenceUpperBound != 1 || r.Holdout.Variants[0].HoldoutOccurrenceUpperBound != 0 || r.Holdout.Variants[0].Status != "failed" || r.Holdout.IndependenceEstablished || r.Holdout.OutOfSamplePerformanceAvailable {
+		expectedDeclaration := "mantik-owned-paper-evaluation-declaration-v4"
+		if benchmarks {
+			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v5"
+		}
+		if declaration.Record.Schema != expectedDeclaration || r.Holdout == nil || len(r.Holdout.Variants) != 1 || r.Holdout.Variants[0].TrainingOccurrenceUpperBound != 1 || r.Holdout.Variants[0].HoldoutOccurrenceUpperBound != 0 || r.Holdout.Variants[0].Status != "failed" || r.Holdout.IndependenceEstablished || r.Holdout.OutOfSamplePerformanceAvailable {
 			t.Fatal("owner-derived holdout partition", r.Holdout)
 		}
 	}
@@ -189,6 +202,25 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 		t.Fatalf("holdout availability predates owner publication: retained=%s published=%s", r.Holdout.Rows[0].FeatureAvailableAt, referencePublishedAt)
 	}
 	v := r.Portfolio.Variants[0]
+	if benchmarks {
+		if r.Portfolio.Method != storage.PaperBenchmarkPortfolioMethod || v.BaseBenchmarks == nil || v.StressBenchmarks == nil || v.BaseBenchmarks.CashEndingCents != 200000 || v.BaseBenchmarks.TotalReturnComparisonAvailable || v.BaseBenchmarks.CorporateCoverageReconciled || v.BaseBenchmarks.AdmissionAvailable || v.BaseBenchmarks.ExecutionAvailable || v.BaseBenchmarks.QualificationCredit {
+			t.Fatal("owner benchmark envelope", v)
+		}
+		found := false
+		for _, check := range r.Checks {
+			if check.Name == "benchmark_comparison" {
+				found = true
+				if check.Status != "unavailable" || check.ReasonCode != "observed_price_benchmarks_do_not_establish_total_return_or_corporate_coverage" {
+					t.Fatal("observed prices promoted to total-return acceptance", check)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("mandatory benchmark check missing")
+		}
+
+	}
+
 	if v.Base == nil || v.Stress == nil || v.Base.EndingCashCents != 193000 || v.Base.RealizedNetCents != -7000 || v.Base.ClosedNetCents == nil || *v.Base.ClosedNetCents != -7000 || v.Base.ObservedMaximumDrawdownCents != 7000 || v.Base.TotalReturnAvailable || v.Stress.EndingCashCents >= v.Base.EndingCashCents {
 		t.Fatal("owner-pinned known economics", v)
 	}
@@ -256,7 +288,8 @@ func TestOwnedHoldoutAssessmentHTTP(t *testing.T) {
 	}
 	ownedPortfolioAssessmentHTTP(t, m, true)
 }
-func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool) {
+func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool, benchmark ...bool) {
+	benchmarks := len(benchmark) > 0 && benchmark[0]
 	base := os.Getenv("MANTIK_TEST_DATABASE_URL")
 	if base == "" {
 		t.Skip("use make test-integration")
@@ -288,7 +321,7 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := ownedPortfolioAssessmentHTTP(t, s, holdout, holdout)
+	expected := ownedPortfolioAssessmentHTTP(t, s, holdout, holdout, benchmarks)
 	s.Close()
 	legacy, err := storage.OpenPostgres(ctx, u.String())
 	if err != nil {
@@ -386,6 +419,26 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool) {
 				r.Holdout = nil
 			}},
 			{"omit-portfolio", func(r *storage.PaperEvaluationAssessment) { r.Portfolio = nil }},
+			{"benchmark-substitution", func(r *storage.PaperEvaluationAssessment) {
+				if benchmarks {
+					b := r.Portfolio.Variants[0].BaseBenchmarks
+					b.CashEndingCents++
+					b.SHA256 = ""
+					b.SHA256 = workerplan.Hash(*b)
+					r.Portfolio.SHA256 = ""
+					r.Portfolio.SHA256 = workerplan.Hash(*r.Portfolio)
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
+			{"benchmark-schema-downgrade", func(r *storage.PaperEvaluationAssessment) {
+				if benchmarks {
+					r.Schema = "mantik-owned-paper-evaluation-assessment-v7"
+					r.Recipe = storage.PaperHoldoutAssessmentRecipe
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
 		} {
 			var forged storage.PaperEvaluationAssessment
 			if err := json.Unmarshal(original, &forged); err != nil {
@@ -418,6 +471,9 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool) {
 	migration := 75
 	if holdout {
 		migration = 76
+	}
+	if benchmarks {
+		migration = 77
 	}
 	var hash string
 	if err := data.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=$1", migration).Scan(&hash); err != nil {
@@ -509,4 +565,15 @@ func TestHoldoutDelayedPublicationAvailability(t *testing.T) {
 		t.Fatal(err)
 	}
 	ownedPortfolioAssessmentHTTP(t, m, true, true)
+}
+
+func TestOwnedBenchmarkAssessmentHTTP(t *testing.T) {
+	s, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPortfolioAssessmentHTTP(t, s, true, true, true)
+}
+func TestPostgresContractsOwnedBenchmarkAssessmentHTTP(t *testing.T) {
+	postgresPortfolioAssessmentHTTP(t, true, true)
 }

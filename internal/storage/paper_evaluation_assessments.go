@@ -244,7 +244,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
 		var warmup *PaperEvaluationWarmUp
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v2" || r.Schema == "mantik-owned-paper-evaluation-assessment-v3" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v4" || r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || r.Schema == "mantik-owned-paper-evaluation-assessment-v7") {
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v2" || r.Schema == "mantik-owned-paper-evaluation-assessment-v3" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v4" || r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v7" || r.Schema == "mantik-owned-paper-evaluation-assessment-v8")) {
 			value, e := ownedNativeWarmUp(e.Declaration, s.strategies)
 			if e != nil {
 				return PaperEvaluationAssessmentCatalog{}, e
@@ -252,7 +252,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			warmup = &value
 		}
 		var cut *PaperEvaluationCorporateSourceCut
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || r.Schema == "mantik-owned-paper-evaluation-assessment-v7" {
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v7" || r.Schema == "mantik-owned-paper-evaluation-assessment-v8") {
 			value, err := ownedCorporateEvaluationCut(ctx, e, s.corporateSources)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
@@ -260,20 +260,20 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			cut = &value
 		}
 		var portfolio *PaperEvaluationPortfolio
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || r.Schema == "mantik-owned-paper-evaluation-assessment-v7" {
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v7" || r.Schema == "mantik-owned-paper-evaluation-assessment-v8") {
 			portfolio, err = ownedPortfolioEvaluation(ctx, e, s)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
 			}
 		}
 		var holdout *PaperEvaluationHoldout
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v7" {
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v7" || r.Schema == "mantik-owned-paper-evaluation-assessment-v8" {
 			holdout, err = ownedEvaluationHoldout(ctx, e, s.strategies, s.retained)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
 			}
 		}
-		want, err := paperAssessmentWithHoldout(r.Command, e, warmup, cut, portfolio, holdout, r.Schema)
+		want, err := paperAssessmentWithBenchmarks(r.Command, e, warmup, cut, portfolio, holdout, r.Schema)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) {
 			return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentInvalid
 		}
@@ -294,7 +294,7 @@ func paperEvaluationSourceClock(owner string, all map[string]PaperEvaluationAsse
 		return ErrPaperEvaluationAssessmentInvalid
 	}
 	for id, r := range all {
-		want, err := paperAssessmentWithHoldout(r.Command, r.Evidence, r.WarmUp, r.CorporateSourceCut, r.Portfolio, r.Holdout, r.Schema)
+		want, err := paperAssessmentWithBenchmarks(r.Command, r.Evidence, r.WarmUp, r.CorporateSourceCut, r.Portfolio, r.Holdout, r.Schema)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) {
 			return ErrPaperEvaluationAssessmentInvalid
 		}
@@ -385,7 +385,10 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 			return PaperEvaluationAssessmentReceipt{}, err
 		}
 	}
-	record, err := paperAssessmentWithHoldout(c, e, &warmup, &cut, portfolio, holdout, schema)
+	if e.Declaration.Command.Plan.BenchmarkMethod != "" {
+		schema = "mantik-owned-paper-evaluation-assessment-v8"
+	}
+	record, err := paperAssessmentWithBenchmarks(c, e, &warmup, &cut, portfolio, holdout, schema)
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}

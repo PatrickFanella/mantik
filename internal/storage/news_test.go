@@ -196,7 +196,7 @@ func TestPostgresContractsNewsUpgrade(t *testing.T) {
 		t.Fatal("upgrade rewrote fixture aggregate", err)
 	}
 	var version int
-	if err = upgraded.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&version); err != nil || version != 76 {
+	if err = upgraded.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&version); err != nil || version != 77 {
 		t.Fatal(version, err)
 	}
 	if _, err = upgraded.pool.Exec(ctx, "UPDATE mantik_schema SET sha256='changed' WHERE version=11"); err != nil {
