@@ -12,15 +12,26 @@ import (
 // assessment owner. The owner supplies its replayed transaction snapshot; no
 // public command can provide books, calculations, balances or evaluation flags.
 func EvaluateOwnedPaperPortfolio(ctx context.Context, inputs storage.PaperEvaluationEntrySources) (storage.PaperEvaluationPortfolio, error) {
+	if inputs.AccountingRecipe != "" && inputs.AccountingRecipe != storage.PaperBenchmarkAssessmentRecipe {
+		return storage.PaperEvaluationPortfolio{}, storage.ErrPaperEvaluationAssessmentInvalid
+	}
+	benchmarks := inputs.AccountingRecipe == storage.PaperBenchmarkAssessmentRecipe
+	if benchmarks && inputs.Evidence.Declaration.Command.Plan.BenchmarkMethod != papereconomics.BenchmarkMethod {
+		return storage.PaperEvaluationPortfolio{}, storage.ErrPaperEvaluationAssessmentInvalid
+	}
 	capital, err := inspectEvaluationCapitalReplay(ctx, inputs)
 	if err != nil {
 		return storage.PaperEvaluationPortfolio{}, err
 	}
 	out := storage.PaperEvaluationPortfolio{Method: storage.PaperPortfolioMethod, EvidenceSHA256: inputs.Evidence.SHA256, SourceSHA256: workerplan.Hash(inputs), PolicySHA256: inputs.Policy.SHA256, Variants: []storage.PaperEvaluationPortfolioVariant{}, Authority: "service_owned_observed_portfolio_accounting_only"}
+	if benchmarks {
+		out.Method = storage.PaperBenchmarkPortfolioMethod
+	}
 	for _, v := range capital.Variants {
 		row := storage.PaperEvaluationPortfolioVariant{StrategyID: v.StrategyID, Status: v.Status}
 		if v.Base != nil && v.Stress != nil && v.Base.Replay != nil && v.Stress.Replay != nil {
 			values := []*papereconomics.Result{}
+			baselines := []*papereconomics.Benchmarks{}
 			for _, model := range []*PaperEvaluationCapitalModel{v.Base, v.Stress} {
 				p := model.Replay
 				value, err := papereconomics.Evaluate(ctx, papereconomics.Input{OpeningCashCents: capital.OpeningCashCents, EntryBook: p.EntryBook, ExitBook: p.ExitBook, CutAt: p.CutAt})
@@ -31,8 +42,18 @@ func EvaluateOwnedPaperPortfolio(ctx context.Context, inputs storage.PaperEvalua
 					return storage.PaperEvaluationPortfolio{}, storage.ErrPaperEvaluationAssessmentInvalid
 				}
 				values = append(values, &value)
+				if benchmarks {
+					baseline, e := papereconomics.EvaluateBenchmarks(ctx, papereconomics.Input{OpeningCashCents: capital.OpeningCashCents, EntryBook: p.EntryBook, ExitBook: p.ExitBook, CutAt: p.CutAt})
+					if e != nil {
+						return storage.PaperEvaluationPortfolio{}, e
+					}
+					baselines = append(baselines, &baseline)
+				}
 			}
 			row.Base, row.Stress = values[0], values[1]
+			if benchmarks {
+				row.BaseBenchmarks, row.StressBenchmarks = baselines[0], baselines[1]
+			}
 			row.Status = "observed_book_equity_only_total_return_unavailable"
 		}
 		out.Variants = append(out.Variants, row)

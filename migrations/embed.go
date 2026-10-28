@@ -241,3 +241,6 @@ var ObservedPortfolioAssessments string
 
 //go:embed 0076_predeclared_holdout_assessments.sql
 var PredeclaredHoldoutAssessments string
+
+//go:embed 0077_observed_benchmark_assessments.sql
+var ObservedBenchmarkAssessments string

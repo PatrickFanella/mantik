@@ -17,7 +17,8 @@ The existing bearer authentication protects:
 A command contains `id`, `receiver_id`, a versioned recipe, `policy_id`, `policy_sha256` and
 `plan`. The original recipe is `native-threshold-paper-evaluation-plan-v1`;
 `native-threshold-purged-holdout-plan-v2` adds the prospective partition choices
-described below. Callers cannot supply an account, balance, clock, finalized decision,
+described below. `native-threshold-observed-benchmark-plan-v3` additionally pins
+the observed benchmark method. Callers cannot supply an account, balance, clock, finalized decision,
 check result, effect, admission or qualification assertion. Unknown/duplicate
 fields, trailing JSON and query strings fail. The POST limit is 16 KiB.
 
@@ -298,3 +299,19 @@ owner account and declared policy's finite budgets to canonical candidates,
 then reruns only funded candidates through protection. Its versioned study
 method does not reuse cash within the window. Reconciled model cash and a nominal
 cash comparison do not complete portfolio evaluation or grant admission.
+
+
+## Prospective observed benchmark method
+
+Recipe `native-threshold-observed-benchmark-plan-v3` requires the existing
+`holdout` plan and `benchmark_method` set to
+`owner-observed-first-quote-whole-share-passive-v1`. It retains declaration
+schema v5. Original recipes reject this method field; schema v4 cannot be used
+to remove it. The method, costs, capital policy, variant family and temporal
+choices are fixed before the observation window, including exact retries.
+
+This method supplies finite-capital cash and passive observed-price studies
+inside the retained assessment. It does not declare corporate-action coverage
+or turn a selected counterfactual quote path into continuous observation of the
+whole declared window. See [observed benchmarks](paper-evaluation-assessments.md#retained-observed-benchmarks)
+for the entry clock, costs, expiry, unavailable marks and total-return boundary.

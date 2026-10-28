@@ -8,6 +8,8 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
+const PaperBenchmarkAssessmentRecipe = "native-predeclared-observed-benchmarks-v8"
+const PaperBenchmarkPortfolioMethod = "owner-selected-finite-capital-observed-benchmarks-v2"
 const PaperPortfolioMethod = "owner-selected-finite-capital-observed-equity-v1"
 const PaperPortfolioAssessmentRecipe = "native-predeclared-observed-portfolio-v6"
 
@@ -16,10 +18,12 @@ const PaperPortfolioAssessmentRecipe = "native-predeclared-observed-portfolio-v6
 type PaperPortfolioEvaluator func(context.Context, PaperEvaluationEntrySources) (PaperEvaluationPortfolio, error)
 
 type PaperEvaluationPortfolioVariant struct {
-	StrategyID string                 `json:"strategy_id"`
-	Status     string                 `json:"status"`
-	Base       *papereconomics.Result `json:"base,omitempty"`
-	Stress     *papereconomics.Result `json:"stress,omitempty"`
+	BaseBenchmarks   *papereconomics.Benchmarks `json:"base_benchmarks,omitempty"`
+	StressBenchmarks *papereconomics.Benchmarks `json:"stress_benchmarks,omitempty"`
+	StrategyID       string                     `json:"strategy_id"`
+	Status           string                     `json:"status"`
+	Base             *papereconomics.Result     `json:"base,omitempty"`
+	Stress           *papereconomics.Result     `json:"stress,omitempty"`
 }
 
 type PaperEvaluationPortfolio struct {
@@ -72,14 +76,42 @@ func (p *Postgres) PaperEvaluationAssessmentRecipe() string {
 // This validates an envelope for clock fencing. Catalogue replay independently
 // selects actual pinned source owners and reexecutes the compiled evaluator.
 func validatePortfolioEnvelope(e PaperEvaluationEvidence, p PaperEvaluationPortfolio) error {
-	if p.Method != PaperPortfolioMethod || p.Authority != "service_owned_observed_portfolio_accounting_only" || p.EvidenceSHA256 != e.SHA256 || p.PolicySHA256 != e.Declaration.Command.PolicySHA256 || !decisionPin.MatchString(p.SourceSHA256) || len(p.Variants) != len(e.Declaration.Command.Plan.Variants) || p.EvaluationComplete || p.AdmissionAvailable || p.ExecutionAvailable || p.QualificationCredit {
+	expectedMethod := PaperPortfolioMethod
+	benchmarks := e.Declaration.Command.Plan.BenchmarkMethod != ""
+	if benchmarks {
+		expectedMethod = PaperBenchmarkPortfolioMethod
+	}
+	if p.Method != expectedMethod || p.Authority != "service_owned_observed_portfolio_accounting_only" || p.EvidenceSHA256 != e.SHA256 || p.PolicySHA256 != e.Declaration.Command.PolicySHA256 || !decisionPin.MatchString(p.SourceSHA256) || len(p.Variants) != len(e.Declaration.Command.Plan.Variants) || p.EvaluationComplete || p.AdmissionAvailable || p.ExecutionAvailable || p.QualificationCredit {
 		return ErrPaperEvaluationAssessmentInvalid
 	}
 	for i, v := range p.Variants {
 		if v.StrategyID != e.Declaration.Command.Plan.Variants[i].ID || v.Status == "" || (v.Base == nil) != (v.Stress == nil) {
 			return ErrPaperEvaluationAssessmentInvalid
 		}
-		for _, value := range []*papereconomics.Result{v.Base, v.Stress} {
+		values := []*papereconomics.Result{v.Base, v.Stress}
+		if benchmarks {
+			if (v.Base == nil) != (v.BaseBenchmarks == nil) || (v.Stress == nil) != (v.StressBenchmarks == nil) {
+				return ErrPaperEvaluationAssessmentInvalid
+			}
+			for i, b := range []*papereconomics.Benchmarks{v.BaseBenchmarks, v.StressBenchmarks} {
+				if b == nil {
+					continue
+				}
+				original := []*papereconomics.Result{v.Base, v.Stress}[i]
+				u := clone(*b)
+				u.SHA256 = ""
+				if b.Method != papereconomics.BenchmarkMethod || b.InputSHA256 != original.InputSHA256 || b.Authority != "owner_selected_observed_price_benchmarks_only" || b.SHA256 != workerplan.Hash(u) || b.TotalReturnComparisonAvailable || b.CorporateCoverageReconciled || b.AdmissionAvailable || b.ExecutionAvailable || b.QualificationCredit {
+					return ErrPaperEvaluationAssessmentInvalid
+				}
+				if (b.PassiveBook == nil) != (b.Passive == nil) {
+					return ErrPaperEvaluationAssessmentInvalid
+				}
+				values = append(values, b.Passive)
+			}
+		} else if v.BaseBenchmarks != nil || v.StressBenchmarks != nil {
+			return ErrPaperEvaluationAssessmentInvalid
+		}
+		for _, value := range values {
 			if value == nil {
 				continue
 			}
@@ -105,6 +137,9 @@ func ownedPortfolioEvaluation(ctx context.Context, e PaperEvaluationEvidence, s 
 	inputs, err := evaluationEntrySourcesForEvidence(ctx, e, s.strategies, s.policies, s.retainedOutcomes)
 	if err != nil {
 		return nil, err
+	}
+	if e.Declaration.Command.Plan.BenchmarkMethod != "" {
+		inputs.AccountingRecipe = PaperBenchmarkAssessmentRecipe
 	}
 	value, err := s.portfolioEvaluator(ctx, clone(inputs))
 	if err != nil {

@@ -879,6 +879,13 @@ Closed partitions below their declared occurrence minima block the necessary
 out-of-sample check; sufficient counts do not establish independence or performance.
 Original plans and historical assessments keep their methods and hashes.
 
+A [prospective observed benchmark recipe](docs/reference/paper-evaluation-declarations.md#prospective-observed-benchmark-method)
+now binds finite-capital cash and passive price-path accounting to retained
+assessments. It preserves partial/unfilled orders, source hashes, fees and
+unavailable marks. The comparison remains insufficient for total-return
+acceptance without documented corporate coverage and reconciliation; observed
+price differences issue no admission or execution authority.
+
 `serve --automatic-paper-evaluations` optionally retains the existing necessary
 checks once a predeclared outcome deadline has closed. It uses stable owner
 identities, live write clocks and atomic assessment storage; failed or incomplete

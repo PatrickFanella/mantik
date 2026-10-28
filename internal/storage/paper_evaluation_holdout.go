@@ -10,6 +10,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/alpacarecord"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/papereconomics"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
@@ -28,10 +29,17 @@ type PaperEvaluationHoldoutPlan struct {
 
 func validHoldoutRecipe(c PaperEvaluationDeclarationCommand) bool {
 	h := c.Plan.Holdout
-	if h == nil {
-		return c.Recipe == PaperEvaluationRecipe
+	expected := PaperHoldoutEvaluationRecipe
+	if c.Plan.BenchmarkMethod != "" {
+		if c.Plan.BenchmarkMethod != papereconomics.BenchmarkMethod {
+			return false
+		}
+		expected = PaperBenchmarkEvaluationRecipe
 	}
-	if c.Recipe != PaperHoldoutEvaluationRecipe || h.Method != PaperHoldoutMethod || !declarationTime(h.SplitAt) || h.EmbargoSeconds < 0 || h.EmbargoSeconds > 86400 || h.MinimumTrainingOccurrences < 2 || h.MinimumTrainingOccurrences > 1000000 || h.MinimumHoldoutOccurrences < 2 || h.MinimumHoldoutOccurrences > 1000000 {
+	if h == nil {
+		return c.Plan.BenchmarkMethod == "" && c.Recipe == PaperEvaluationRecipe
+	}
+	if c.Recipe != expected || h.Method != PaperHoldoutMethod || !declarationTime(h.SplitAt) || h.EmbargoSeconds < 0 || h.EmbargoSeconds > 86400 || h.MinimumTrainingOccurrences < 2 || h.MinimumTrainingOccurrences > 1000000 || h.MinimumHoldoutOccurrences < 2 || h.MinimumHoldoutOccurrences > 1000000 {
 		return false
 	}
 	embargo := time.Duration(h.EmbargoSeconds) * time.Second
