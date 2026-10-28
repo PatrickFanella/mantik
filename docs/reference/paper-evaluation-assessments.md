@@ -22,12 +22,15 @@ are rejected. There is no new offline command or financial write route.
 The service replays the actual strategy, policy, declaration, finalized-decision
 and outcome owners in one consistent snapshot. Issuance takes the existing
 collector → state → receiver lock order in PostgreSQL; Memory uses its aggregate
-mutex. New records use `mantik-owned-paper-evaluation-assessment-v5` and
-`native-predeclared-necessary-checks-v5`. They retain the command, service clock,
+mutex. The compiled `serve` owner issues
+`mantik-owned-paper-evaluation-assessment-v6` with recipe
+`native-predeclared-observed-portfolio-v6`. Records retain the command, service clock,
 complete selected evidence, individual check states, native warm-up and
 forecast-calibration applicability, a corporate-source custody cut and a SHA256
-digest. Existing v1, v2, v3 and v4 records keep their original recipes, bytes and
-hashes; replay does not attach later applicability results.
+digest and owner-derived observed portfolio accounting. Existing v1 through v5
+records keep their original recipes, bytes and hashes; replay does not attach
+later applicability or accounting results. Legacy stores without the compiled
+portfolio dependency continue to issue v5 and cannot replay v6 records.
 
 Each predeclared variant receives all eight planned checks. Before the outcome
 deadline, sample sufficiency remains `pending`. At or after that deadline, an
@@ -45,6 +48,42 @@ Failed and unavailable checks remain inspectable alongside pending attempts.
 unqualified. Forward-quote outcomes do not become fills, economic returns,
 benchmark results or realized PnL. A blocked assessment is not a retirement
 event, and an incomplete assessment cannot authorize an allocation.
+
+## Retained observed portfolio accounting
+
+Schema 75 is a compatibility fence for v6 records. The migration changes table
+metadata and retains historical payloads without rewriting them. The service
+injects its compiled evaluator when constructing the store; commands cannot
+select a callback, supply books or calculations, or enable financial authority.
+
+For each variant with paired base/stress capital replays, the assessment owner
+uses the actual policy opening capital and verified counterfactual entry/exit
+books to retain cash, remaining whole-share cost basis, realized net proceeds,
+observed bid equity and maximum drawdown over retained event clocks. Spread,
+fees, partial positions and shared finite capital remain in the arithmetic.
+Entry debits precede exit credits at equal clocks. An unfunded entry fails;
+future exit proceeds cannot finance it. Book, input, policy and evidence hashes
+bind the calculations to the original owner-selected source cut.
+
+Equity uses usable observed bids within the pinned quote-age limit. A missing or
+stale mark leaves equity unavailable. Equal-clock observations use quote-ID order
+for a deterministic mark, not an inferred intratick path. An open position stays
+open; no terminal liquidation is invented. A fully closed book exposes its
+counterfactual closed net proceeds separately from observed marked equity.
+
+This accounting does not interpret corporate entitlements, establish complete
+coverage, compute passive total return, prove independent samples, or complete
+out-of-sample, sensitivity and search controls. Its total-return, evaluation,
+admission, execution and qualification flags remain false. Drawdown is an
+observed event-path measure and does not satisfy the full evaluation gate.
+
+Exact retries and reads preserve the retained result after later source
+publication. Catalogue replay, including allocation, admission-review and
+attribution reads, reselects the actual historical sources and reexecutes the
+compiled evaluator. A coherently rehashed fabricated result fails replay.
+Disposable HTTP tests cover retries, worker recipe identity, PostgreSQL reopen,
+tamper rejection, migration failure rollback and closed-database copy/reopen.
+These are manufactured fixtures and do not qualify funded recovery or a release.
 
 ## Known source-unavailability leakage
 
@@ -239,8 +278,10 @@ issuance clock; a rollback before the cycle cut or deadline is rejected without
 occupying the automatic identity. Current owner sources are replayed inside the
 write, while earlier committed assessments remain immutable.
 
-The reserved ID is `automatic-evaluation-` followed by the hash of the compiled
-`native-predeclared-necessary-checks-v5` recipe and declaration hash. Public
+The reserved ID is `automatic-evaluation-` followed by the hash of the owner
+recipe and declaration hash. The compiled `serve` owner selects recipe v6;
+legacy stores select v5. Changing the recipe creates a distinct identity and
+preserves earlier receipts. Public
 assessment POSTs reject that prefix. A committed retry reuses the same record
 without sampling a new owner issuance clock. Concurrent cycles cannot create
 multiple records, and a lost acknowledgement can be reconciled by reading that
@@ -300,8 +341,8 @@ substituted or self-rehashed source pins fail actual owner replay, including
 through allocation, admission-review and attribution callers. Clock-floor paths
 check retained envelopes only; they do not attest evaluation or economic results.
 Legacy v1-v4 assessment payloads keep their old methods, bytes and hashes and do
-not acquire a retrospective source inventory. The automatic worker's new identity
-uses recipe v5; old worker receipts remain retained.
+not acquire a retrospective source inventory. Schema 72 introduced the automatic worker's recipe-v5 identity; schema 75
+adds recipe v6 for the compiled portfolio owner. Old worker receipts remain retained.
 
 ### Inspecting a retained source cut
 

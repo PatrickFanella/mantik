@@ -282,7 +282,7 @@ func (p *Postgres) PaperEvaluationEvidence(ctx context.Context, id string, now f
 		return PaperEvaluationEvidence{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe)
+	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return PaperEvaluationEvidence{}, err
 	}

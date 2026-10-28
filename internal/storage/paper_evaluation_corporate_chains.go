@@ -204,7 +204,7 @@ func (p *Postgres) PaperEvaluationCorporatePageChain(ctx context.Context, id, ro
 		return PaperEvaluationCorporateChain{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe)
+	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return PaperEvaluationCorporateChain{}, err
 	}

@@ -160,7 +160,7 @@ func corporatePlanMigration(t *testing.T, p *Postgres) {
 	if err := p.pool.QueryRow(ctx, q).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version=74; COMMENT ON TABLE mantik_paper_evaluation_declarations IS 'predeclaration rollback marker'; CREATE FUNCTION reject_plan_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=74 THEN RAISE EXCEPTION 'manufactured plan migration failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_plan_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_plan_migration()`); err != nil {
+	if _, err := p.pool.Exec(ctx, `DELETE FROM mantik_schema WHERE version>=74; COMMENT ON TABLE mantik_paper_evaluation_declarations IS 'predeclaration rollback marker'; CREATE FUNCTION reject_plan_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=74 THEN RAISE EXCEPTION 'manufactured plan migration failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_plan_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_plan_migration()`); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.migrate(ctx); err == nil {

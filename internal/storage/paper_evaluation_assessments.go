@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
@@ -47,6 +48,7 @@ type PaperEvaluationCheck struct {
 	ReasonCode string `json:"reason_code"`
 }
 type PaperEvaluationAssessment struct {
+	Portfolio           *PaperEvaluationPortfolio           `json:"portfolio,omitempty"`
 	CorporateSourceCut  *PaperEvaluationCorporateSourceCut  `json:"corporate_source_cut,omitempty"`
 	ForecastCalibration *PaperEvaluationForecastCalibration `json:"forecast_calibration,omitempty"`
 	WarmUp              *PaperEvaluationWarmUp              `json:"warm_up,omitempty"`
@@ -123,13 +125,16 @@ func newPaperEvaluationAssessment(c PaperEvaluationAssessmentCommand, e PaperEva
 // permits later source records without changing old assessments. Source writers
 // serialize their strictly later timestamps against every issued assessment.
 type paperEvaluationSources struct {
-	corporateSources []CorporateActionSourceRecord
-	declarations     PaperEvaluationDeclarationCatalog
-	decisions        PaperDecisionCatalog
-	outcomes         PaperOutcomeCatalog
-	retained         map[string]retainedPaperDecision
-	sourceClock      time.Time
-	strategies       paperstrategy.Catalog
+	policies           allocation.PolicyCatalog
+	retainedOutcomes   map[string]retainedPaperOutcome
+	portfolioEvaluator PaperPortfolioEvaluator
+	corporateSources   []CorporateActionSourceRecord
+	declarations       PaperEvaluationDeclarationCatalog
+	decisions          PaperDecisionCatalog
+	outcomes           PaperOutcomeCatalog
+	retained           map[string]retainedPaperDecision
+	sourceClock        time.Time
+	strategies         paperstrategy.Catalog
 }
 
 func (s paperEvaluationSources) evidence(ctx context.Context, id string, at time.Time) (PaperEvaluationEvidence, error) {
@@ -158,9 +163,9 @@ func (m *Memory) paperEvaluationSourcesLocked(de PaperDecisionEvaluator, oe Pape
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	return paperEvaluationSources{corporate.Records, declarations, decisions, outcomes, m.paperDecisions, m.collectors.LastClock, strategies}, nil
+	return paperEvaluationSources{corporateSources: corporate.Records, declarations: declarations, decisions: decisions, outcomes: outcomes, retained: m.paperDecisions, sourceClock: m.collectors.LastClock, strategies: strategies, policies: policies, retainedOutcomes: m.paperOutcomes, portfolioEvaluator: m.portfolioEvaluator}, nil
 }
-func readPaperEvaluationSources(ctx context.Context, tx pgx.Tx, write bool, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (paperEvaluationSources, error) {
+func readPaperEvaluationSources(ctx context.Context, tx pgx.Tx, write bool, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolioEval PaperPortfolioEvaluator) (paperEvaluationSources, error) {
 	feed, err := readFeedEvidence(ctx, tx, write)
 	if err != nil {
 		return paperEvaluationSources{}, err
@@ -218,7 +223,7 @@ func readPaperEvaluationSources(ctx context.Context, tx pgx.Tx, write bool, de P
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	return paperEvaluationSources{corporate.Records, declarations, decisions, outcomes, retained, feed.Collectors.LastClock, strategies}, nil
+	return paperEvaluationSources{corporateSources: corporate.Records, declarations: declarations, decisions: decisions, outcomes: outcomes, retained: retained, sourceClock: feed.Collectors.LastClock, strategies: strategies, policies: policies, retainedOutcomes: all, portfolioEvaluator: portfolioEval}, nil
 }
 func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, s paperEvaluationSources) (PaperEvaluationAssessmentCatalog, error) {
 	out := PaperEvaluationAssessmentCatalog{ReceiverID: owner, Records: []PaperEvaluationAssessment{}}
@@ -238,7 +243,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
 		var warmup *PaperEvaluationWarmUp
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v2" || r.Schema == "mantik-owned-paper-evaluation-assessment-v3" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v4" || r.Schema == "mantik-owned-paper-evaluation-assessment-v5") {
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v2" || r.Schema == "mantik-owned-paper-evaluation-assessment-v3" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v4" || r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || r.Schema == "mantik-owned-paper-evaluation-assessment-v6") {
 			value, e := ownedNativeWarmUp(e.Declaration, s.strategies)
 			if e != nil {
 				return PaperEvaluationAssessmentCatalog{}, e
@@ -246,14 +251,21 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			warmup = &value
 		}
 		var cut *PaperEvaluationCorporateSourceCut
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v5" {
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || r.Schema == "mantik-owned-paper-evaluation-assessment-v6" {
 			value, err := ownedCorporateEvaluationCut(ctx, e, s.corporateSources)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
 			}
 			cut = &value
 		}
-		want, err := paperEvaluationAssessmentWithSources(r.Command, e, warmup, cut, r.Schema)
+		var portfolio *PaperEvaluationPortfolio
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v6" {
+			portfolio, err = ownedPortfolioEvaluation(ctx, e, s)
+			if err != nil {
+				return PaperEvaluationAssessmentCatalog{}, err
+			}
+		}
+		want, err := paperAssessmentWithPortfolio(r.Command, e, warmup, cut, portfolio, r.Schema)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) {
 			return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentInvalid
 		}
@@ -274,7 +286,7 @@ func paperEvaluationSourceClock(owner string, all map[string]PaperEvaluationAsse
 		return ErrPaperEvaluationAssessmentInvalid
 	}
 	for id, r := range all {
-		want, err := paperEvaluationAssessmentWithSources(r.Command, r.Evidence, r.WarmUp, r.CorporateSourceCut, r.Schema)
+		want, err := paperAssessmentWithPortfolio(r.Command, r.Evidence, r.WarmUp, r.CorporateSourceCut, r.Portfolio, r.Schema)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) {
 			return ErrPaperEvaluationAssessmentInvalid
 		}
@@ -348,7 +360,16 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}
-	record, err := paperEvaluationAssessmentWithSources(c, e, &warmup, &cut, "mantik-owned-paper-evaluation-assessment-v5")
+	schema := "mantik-owned-paper-evaluation-assessment-v5"
+	var portfolio *PaperEvaluationPortfolio
+	if s.portfolioEvaluator != nil {
+		schema = "mantik-owned-paper-evaluation-assessment-v6"
+		portfolio, err = ownedPortfolioEvaluation(ctx, e, s)
+		if err != nil {
+			return PaperEvaluationAssessmentReceipt{}, err
+		}
+	}
+	record, err := paperAssessmentWithPortfolio(c, e, &warmup, &cut, portfolio, schema)
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}
@@ -429,7 +450,7 @@ func (p *Postgres) paperEvaluationAssessmentAccess(ctx context.Context, write bo
 		return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, write, de, oe)
+	s, err := readPaperEvaluationSources(ctx, tx, write, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, err
 	}

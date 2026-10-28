@@ -25,7 +25,11 @@ type PaperEvaluationWorkerStore interface {
 // This identity seals one necessary-check assessment per immutable declaration
 // and compiled recipe. It is not a qualified evaluation or admission identity.
 func AutomaticPaperEvaluationID(d storage.PaperEvaluationDeclaration) string {
-	return AutomaticPaperEvaluationPrefix + workerplan.Hash(struct{ Recipe, DeclarationSHA256 string }{automaticPaperEvaluationRecipe, d.SHA256})
+	return automaticEvaluationIDForRecipe(d, automaticPaperEvaluationRecipe)
+}
+
+func automaticEvaluationIDForRecipe(d storage.PaperEvaluationDeclaration, recipe string) string {
+	return AutomaticPaperEvaluationPrefix + workerplan.Hash(struct{ Recipe, DeclarationSHA256 string }{recipe, d.SHA256})
 }
 func reservedPaperEvaluationID(id string) bool {
 	return strings.HasPrefix(id, AutomaticPaperEvaluationPrefix)
@@ -50,6 +54,13 @@ func RunPaperEvaluationCycle(ctx context.Context, store PaperEvaluationWorkerSto
 	if err != nil {
 		return err
 	}
+	recipe := automaticPaperEvaluationRecipe
+	if configured, ok := store.(interface{ PaperEvaluationAssessmentRecipe() string }); ok {
+		recipe = configured.PaperEvaluationAssessmentRecipe()
+		if recipe != automaticPaperEvaluationRecipe && recipe != storage.PaperPortfolioAssessmentRecipe {
+			return storage.ErrPaperEvaluationAssessmentInvalid
+		}
+	}
 	var failures []error
 	for _, d := range declarations.Records {
 		if err := cycleCtx.Err(); err != nil {
@@ -62,7 +73,7 @@ func RunPaperEvaluationCycle(ctx context.Context, store PaperEvaluationWorkerSto
 		if !at.After(deadline) {
 			continue
 		}
-		command := storage.PaperEvaluationAssessmentCommand{ID: AutomaticPaperEvaluationID(d), ReceiverID: declarations.ReceiverID, DeclarationID: d.Command.ID, DeclarationSHA256: d.SHA256}
+		command := storage.PaperEvaluationAssessmentCommand{ID: automaticEvaluationIDForRecipe(d, recipe), ReceiverID: declarations.ReceiverID, DeclarationID: d.Command.ID, DeclarationSHA256: d.SHA256}
 		assessmentClock := func() time.Time {
 			now := clock.Now().UTC()
 			if now.Before(at) || !now.After(deadline) {
@@ -73,7 +84,7 @@ func RunPaperEvaluationCycle(ctx context.Context, store PaperEvaluationWorkerSto
 		receipt, err := store.AssessPaperEvaluation(cycleCtx, command, assessmentClock, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err == nil {
 			r := receipt.Record
-			if r.Command != command || r.Recipe != automaticPaperEvaluationRecipe || !r.AssessedAt.After(deadline) || r.Evidence.Phase != "outcome_deadline_elapsed" || (r.Status != "blocked" && r.Status != "incomplete") || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
+			if r.Command != command || r.Recipe != recipe || !r.AssessedAt.After(deadline) || r.Evidence.Phase != "outcome_deadline_elapsed" || (r.Status != "blocked" && r.Status != "incomplete") || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 				err = storage.ErrPaperEvaluationAssessmentConflict
 			}
 		}

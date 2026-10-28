@@ -568,7 +568,7 @@ resolves query, revision and pagination metadata from the retained owner cut.
 `GET /v1/paper-evaluation-assessments/{id}/corporate-page-chains/{source-id}`
 inspects causal cursor links within that same cut, preserving ambiguity and
 missing acquisition evidence without granting coverage or economic authority.
-New v5 evaluation assessments pin the actual custody inventory at issuance and
+Evaluation assessments from v5 onward pin the actual custody inventory at issuance and
 reject later backdated source writes. Economic source selection and passive
 benchmark accounting remain unfinished; quote/calendar publication keeps its
 existing capability boundary.
@@ -862,6 +862,15 @@ observations, planned checks and retained assessment results. They accept no
 replacement evidence or financial instructions. See the
 [supervision tool contract](docs/reference/supervision-tools.md).
 
+
+The compiled `serve` assessment owner now retains v6 base/stress portfolio
+accounting from its actual policy, source cut and verified counterfactual books:
+cash, whole-share cost basis, realized net proceeds, observed bid equity and
+event-path drawdown. Stale marks remain unavailable and open positions are not
+liquidated for reporting. Historical recipes keep their original bytes and hashes.
+Corporate entitlements, passive total return and complete statistical evaluation
+remain unfinished; this accounting grants no admission, execution or qualification.
+See [retained observed portfolio accounting](docs/reference/paper-evaluation-assessments.md#retained-observed-portfolio-accounting).
 
 `serve --automatic-paper-evaluations` optionally retains the existing necessary
 checks once a predeclared outcome deadline has closed. It uses stable owner

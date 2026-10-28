@@ -128,7 +128,7 @@ func (p *Postgres) PaperEvaluationCorporateInspection(ctx context.Context, id st
 		return PaperEvaluationCorporateInspection{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe)
+	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return PaperEvaluationCorporateInspection{}, err
 	}

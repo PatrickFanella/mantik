@@ -42,6 +42,10 @@ func evaluationEntrySources(ctx context.Context, id string, now func() time.Time
 	if err != nil {
 		return PaperEvaluationEntrySources{}, err
 	}
+	return evaluationEntrySourcesForEvidence(ctx, e, s.strategies, policies, retainedOutcomes)
+}
+
+func evaluationEntrySourcesForEvidence(ctx context.Context, e PaperEvaluationEvidence, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, retainedOutcomes map[string]retainedPaperOutcome) (PaperEvaluationEntrySources, error) {
 	out := PaperEvaluationEntrySources{Evidence: e, Rows: []PaperEvaluationEntrySource{}}
 	for _, p := range policies.Records {
 		if p.Command.Policy.ID == e.Declaration.Command.PolicyID && p.SHA256 == e.Declaration.Command.PolicySHA256 {
@@ -55,7 +59,7 @@ func evaluationEntrySources(ctx context.Context, id string, now func() time.Time
 		if row.Status != "selected_research_evidence" {
 			continue
 		}
-		strategy, err := paperstrategy.Select(s.strategies, row.Decision.Command.StrategyID)
+		strategy, err := paperstrategy.Select(strategies, row.Decision.Command.StrategyID)
 		if err != nil || strategy.SHA256 != row.Decision.Command.StrategySHA256 {
 			return PaperEvaluationEntrySources{}, ErrPaperEvaluationEvidenceInvalid
 		}
@@ -118,7 +122,7 @@ func (p *Postgres) PaperEvaluationEntrySources(ctx context.Context, id string, n
 		return PaperEvaluationEntrySources{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe)
+	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return PaperEvaluationEntrySources{}, err
 	}
