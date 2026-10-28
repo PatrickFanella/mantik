@@ -867,7 +867,9 @@ The compiled `serve` assessment owner now retains v6 base/stress portfolio
 accounting from its actual policy, source cut and verified counterfactual books:
 cash, whole-share cost basis, realized net proceeds, observed bid equity and
 event-path drawdown. Stale marks remain unavailable and open positions are not
-liquidated for reporting. Historical recipes keep their original bytes and hashes.
+liquidated for reporting. Studies containing quotes received after their command
+clock are rejected before valuation or benchmark comparison. Causal historical
+studies keep their original bytes and hashes.
 Corporate entitlements, passive total return and complete statistical evaluation
 remain unfinished; this accounting grants no admission, execution or qualification.
 See [retained observed portfolio accounting](docs/reference/paper-evaluation-assessments.md#retained-observed-portfolio-accounting).

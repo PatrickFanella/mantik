@@ -136,6 +136,13 @@ func Evaluate(ctx context.Context, in Input) (Result, error) {
 			}
 			point := get(e.Command.At)
 			if q := e.Command.Quote; q != nil {
+				// Fill books can retain rejected future-received observations for
+				// inspection. They are not a causal portfolio source path: marking
+				// inventory from them would use a price not yet available. Refuse
+				// the study rather than turn a rejected quote into economic evidence.
+				if q.ReceivedAt.After(e.Command.At) {
+					return Result{}, ErrInvalid
+				}
 				if old, ok := quotesByID[q.ID]; ok && !reflect.DeepEqual(old, *q) {
 					return Result{}, ErrInvalid
 				}
