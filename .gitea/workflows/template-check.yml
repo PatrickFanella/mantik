@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   verify:
-    timeout-minutes: 30
+    # Verification and race checks precede bounded disposable integration.
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
