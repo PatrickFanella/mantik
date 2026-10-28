@@ -132,9 +132,11 @@ func TestHoldoutPublicationMustResolveExactOriginal(t *testing.T) {
 		t.Fatal("publication clock omitted", got, err)
 	}
 	mutated := input
-	mutated.PriceCents++
+	changedProvenance := *input.Provenance
+	changedProvenance.RecordKey += "-other"
+	mutated.Provenance = &changedProvenance
 	if _, err := holdoutFeaturePublishedAt(t.Context(), feed, decision, mutated); !errors.Is(err, ErrPaperEvaluationAssessmentInvalid) {
-		t.Fatal("mismatched normalized input accepted", err)
+		t.Fatal("mismatched capture identity accepted", err)
 	}
 	if _, err := holdoutFeaturePublishedAt(t.Context(), FeedEvidenceSnapshot{Records: map[string]FeedEvidenceRecord{}}, decision, input); !errors.Is(err, ErrPaperEvaluationAssessmentInvalid) {
 		t.Fatal("missing publication manufactured fallback", err)

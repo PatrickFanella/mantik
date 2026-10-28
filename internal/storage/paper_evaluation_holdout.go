@@ -3,9 +3,11 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"slices"
+	"strings"
 	"time"
 
-	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
+	"git.subcult.tv/subculture-collective/mantik/internal/alpacarecord"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
@@ -260,11 +262,11 @@ func paperAssessmentWithHoldout(c PaperEvaluationAssessmentCommand, e PaperEvalu
 	return r, nil
 }
 
-// Resolve the selected feature against the actual immutable recording. Receipt
-// and admission precede availability when publication occurs later. A missing,
-// ambiguous or mismatched publication cannot supply a fallback clock.
+// The service already normalized and digest-checked the input during source
+// owner replay. Storage resolves its immutable publication envelope here, using
+// the low-level recording contract without a collector/service dependency.
 func holdoutFeaturePublishedAt(ctx context.Context, feed FeedEvidenceSnapshot, decision PaperDecisionRecord, input domain.RoutingInput) (time.Time, error) {
-	if input.Provenance == nil {
+	if input.Provenance == nil || input.Kind != "quote" {
 		return time.Time{}, ErrPaperEvaluationAssessmentInvalid
 	}
 	selected := time.Time{}
@@ -279,30 +281,18 @@ func holdoutFeaturePublishedAt(ctx context.Context, feed FeedEvidenceSnapshot, d
 		if publication.PublishedAt.IsZero() || publication.PublishedAt.After(decision.FinalizedAt) {
 			return time.Time{}, ErrPaperEvaluationAssessmentInvalid
 		}
-		var recording alpaca.Recording
+		var recording alpacarecord.Recording
 		if json.Unmarshal(publication.Recording, &recording) != nil {
 			return time.Time{}, ErrPaperEvaluationAssessmentInvalid
 		}
-		if recording.SHA256 != input.Provenance.SHA256 || recording.RawRef != input.Provenance.RawRef || recording.Revision != input.Provenance.Revision {
+		if recording.SHA256 != input.Provenance.SHA256 || recording.RawRef != input.Provenance.RawRef || recording.Revision != input.Provenance.Revision || input.Provenance.RecordKey != recording.CaptureID+"-"+input.Symbol+"-quote" {
 			continue
 		}
-		if publication.PublishedAt.Before(recording.ReceivedAt) {
+		if alpacarecord.ValidateBase(recording) != nil || recording.Capability != "latest_quotes" || !slices.Contains(recording.Symbols, input.Symbol) || input.Provenance.SourceSymbol != input.Symbol || recording.EvidenceClass != input.EvidenceClass || recording.AccessRef != input.Provenance.AccessRef || !recording.ReceivedAt.Equal(input.ReceivedAt) || input.Source != "alpaca-"+strings.ReplaceAll(recording.Feed, "_", "-") || publication.PublishedAt.Before(recording.ReceivedAt) {
 			return time.Time{}, ErrPaperEvaluationAssessmentInvalid
 		}
-		normalized, err := alpaca.Normalize(recording)
-		if err != nil {
-			return time.Time{}, ErrPaperEvaluationAssessmentInvalid
-		}
-		for _, candidate := range normalized.Inputs {
-			if candidate.ID != input.ID {
-				continue
-			}
-			if feedcollector.InputDigest(candidate) != feedcollector.InputDigest(input) {
-				return time.Time{}, ErrPaperEvaluationAssessmentInvalid
-			}
-			matches++
-			selected = publication.PublishedAt
-		}
+		matches++
+		selected = publication.PublishedAt
 	}
 	if matches != 1 {
 		return time.Time{}, ErrPaperEvaluationAssessmentInvalid
