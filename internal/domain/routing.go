@@ -118,12 +118,41 @@ type RetainedRoutingInput struct {
 }
 
 type RoutingState struct {
-	InputContract string                          `json:"input_contract"`
-	Definitions   []TriggerDefinition             `json:"definitions"`
-	Runtime       map[string]TriggerRuntime       `json:"runtime"`
-	Cases         []RoutingCase                   `json:"cases"`
-	Inputs        map[string]RetainedRoutingInput `json:"inputs"`
-	Timers        *TimerState                     `json:"timers"`
+	SocialDispatches []SocialResearchDispatch        `json:"social_dispatches,omitempty"`
+	InputContract    string                          `json:"input_contract"`
+	Definitions      []TriggerDefinition             `json:"definitions"`
+	Runtime          map[string]TriggerRuntime       `json:"runtime"`
+	Cases            []RoutingCase                   `json:"cases"`
+	Inputs           map[string]RetainedRoutingInput `json:"inputs"`
+	Timers           *TimerState                     `json:"timers"`
+}
+
+// Social dispatch selects an owner-retained assertion, never supplied content,
+// a provider attestation, a decision or a financial instruction.
+type SocialResearchDispatchCommand struct {
+	ReceiverID    string `json:"receiver_id"`
+	RequestID     string `json:"request_id"`
+	RequestSHA256 string `json:"request_sha256"`
+}
+type SocialResearchDispatchLink struct {
+	Symbol       string `json:"symbol"`
+	DefinitionID string `json:"definition_id"`
+	InputID      string `json:"input_id"`
+	CaseID       string `json:"case_id"`
+}
+type SocialResearchDispatch struct {
+	Schema                    string                        `json:"schema"`
+	Command                   SocialResearchDispatchCommand `json:"command"`
+	At                        time.Time                     `json:"at"`
+	SocialHeadSHA256          string                        `json:"social_head_sha256"`
+	Links                     []SocialResearchDispatchLink  `json:"links"`
+	Authority                 string                        `json:"authority"`
+	ProviderAccessVerified    bool                          `json:"provider_access_verified"`
+	IndependentEvidenceCredit bool                          `json:"independent_evidence_credit"`
+	AdmissionAvailable        bool                          `json:"admission_available"`
+	ExecutionAvailable        bool                          `json:"execution_available"`
+	QualificationCredit       bool                          `json:"qualification_credit"`
+	SHA256                    string                        `json:"sha256"`
 }
 
 // ResearchSnapshot binds retained research inputs to a logical storage receiver.

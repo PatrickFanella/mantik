@@ -922,3 +922,5 @@ inspection and retains private request/result receipts. `--allow-writes` exposes
 only the existing bounded supervision operations; financial authority remains
 with the existing service owners. Actual conversation and model-outage release
 acceptance remain unfinished.
+
+Social and copy source research requests can be explicitly dispatched into owner-bound research cases; see [social watches](docs/reference/owned-social-watches.md). Source assertions retain their unverified status and confer no financial authority.

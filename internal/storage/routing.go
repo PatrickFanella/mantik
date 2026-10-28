@@ -40,6 +40,9 @@ func (m *Memory) RouteInput(ctx context.Context, i domain.RoutingInput) (domain.
 	return m.routeInput(ctx, "", i)
 }
 func (m *Memory) routeInput(ctx context.Context, receiver string, i domain.RoutingInput) (domain.RoutingReceipt, error) {
+	if i.Source == routing.OwnedSocialResearchSource {
+		return domain.RoutingReceipt{}, routing.ErrInvalid
+	}
 	if err := ctx.Err(); err != nil {
 		return domain.RoutingReceipt{}, err
 	}
@@ -136,6 +139,9 @@ func (p *Postgres) RouteInput(ctx context.Context, i domain.RoutingInput) (domai
 	return p.routeInput(ctx, "", i)
 }
 func (p *Postgres) routeInput(ctx context.Context, receiver string, i domain.RoutingInput) (domain.RoutingReceipt, error) {
+	if i.Source == routing.OwnedSocialResearchSource {
+		return domain.RoutingReceipt{}, routing.ErrInvalid
+	}
 	value, err := p.routingMutationForReceiver(ctx, receiver, func(s *domain.RoutingState) (*domain.RoutingState, any, error) {
 		next, receipt, err := routing.Apply(s, i)
 		return next, receipt, err

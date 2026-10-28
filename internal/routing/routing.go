@@ -137,11 +137,19 @@ func validateLeaf(c domain.Condition) error {
 }
 
 func Register(s *domain.RoutingState, d domain.TriggerDefinition) (*domain.RoutingState, error) {
+	return register(s, d, false)
+}
+
+func register(s *domain.RoutingState, d domain.TriggerDefinition, ownedSocial bool) (*domain.RoutingState, error) {
 	d.ValidFrom, d.ValidUntil = d.ValidFrom.UTC(), d.ValidUntil.UTC()
 	if !d.Condition.DueAt.IsZero() {
 		d.Condition.DueAt = d.Condition.DueAt.UTC()
 	}
-	if err := ValidateOperatorDefinition(d); err != nil {
+	validate := ValidateOperatorDefinition
+	if ownedSocial {
+		validate = ValidateDefinition
+	}
+	if err := validate(d); err != nil {
 		return s, fmt.Errorf("%w: %s", ErrInvalid, err)
 	}
 	next, err := copyState(s)
@@ -178,7 +186,7 @@ func ValidateOperatorDefinition(d domain.TriggerDefinition) error {
 	if err := ValidateDefinition(d); err != nil {
 		return err
 	}
-	if d.Behavior == "act" || d.Owner == "operations" || d.SourceDecisionID != "" || d.SubjectCaseID != "" || strings.HasPrefix(d.ID, "future-") {
+	if d.Behavior == "act" || d.Owner == "operations" || d.Owner == OwnedSocialResearchSource || d.Requirements.Source == OwnedSocialResearchSource || d.SourceDecisionID != "" || d.SubjectCaseID != "" || strings.HasPrefix(d.ID, "future-") || strings.HasPrefix(d.ID, "social-owned-") {
 		return errors.New("operator triggers cannot create action authority or use its reserved identities")
 	}
 	return nil
