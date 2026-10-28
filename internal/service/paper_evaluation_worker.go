@@ -73,7 +73,11 @@ func RunPaperEvaluationCycle(ctx context.Context, store PaperEvaluationWorkerSto
 		if !at.After(deadline) {
 			continue
 		}
-		command := storage.PaperEvaluationAssessmentCommand{ID: automaticEvaluationIDForRecipe(d, recipe), ReceiverID: declarations.ReceiverID, DeclarationID: d.Command.ID, DeclarationSHA256: d.SHA256}
+		selectedRecipe := recipe
+		if d.Command.Recipe == storage.PaperHoldoutEvaluationRecipe && d.Command.Plan.Holdout != nil {
+			selectedRecipe = storage.PaperHoldoutAssessmentRecipe
+		}
+		command := storage.PaperEvaluationAssessmentCommand{ID: automaticEvaluationIDForRecipe(d, selectedRecipe), ReceiverID: declarations.ReceiverID, DeclarationID: d.Command.ID, DeclarationSHA256: d.SHA256}
 		assessmentClock := func() time.Time {
 			now := clock.Now().UTC()
 			if now.Before(at) || !now.After(deadline) {
@@ -84,7 +88,7 @@ func RunPaperEvaluationCycle(ctx context.Context, store PaperEvaluationWorkerSto
 		receipt, err := store.AssessPaperEvaluation(cycleCtx, command, assessmentClock, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err == nil {
 			r := receipt.Record
-			if r.Command != command || r.Recipe != recipe || !r.AssessedAt.After(deadline) || r.Evidence.Phase != "outcome_deadline_elapsed" || (r.Status != "blocked" && r.Status != "incomplete") || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
+			if r.Command != command || r.Recipe != selectedRecipe || !r.AssessedAt.After(deadline) || r.Evidence.Phase != "outcome_deadline_elapsed" || (r.Status != "blocked" && r.Status != "incomplete") || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 				err = storage.ErrPaperEvaluationAssessmentConflict
 			}
 		}

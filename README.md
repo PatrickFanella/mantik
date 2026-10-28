@@ -872,6 +872,13 @@ Corporate entitlements, passive total return and complete statistical evaluation
 remain unfinished; this accounting grants no admission, execution or qualification.
 See [retained observed portfolio accounting](docs/reference/paper-evaluation-assessments.md#retained-observed-portfolio-accounting).
 
+Prospective [training/holdout plans](docs/reference/paper-evaluation-declarations.md#prospective-training-and-holdout-partitions)
+now retain owner-derived temporal partitions. Horizons or labels crossing the
+split and quotes carried into holdout are excluded with the declared embargo.
+Closed partitions below their declared occurrence minima block the necessary
+out-of-sample check; sufficient counts do not establish independence or performance.
+Original plans and historical assessments keep their methods and hashes.
+
 `serve --automatic-paper-evaluations` optionally retains the existing necessary
 checks once a predeclared outcome deadline has closed. It uses stable owner
 identities, live write clocks and atomic assessment storage; failed or incomplete

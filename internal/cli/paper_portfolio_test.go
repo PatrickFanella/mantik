@@ -53,7 +53,10 @@ func TestOwnedPortfolioAssessmentHTTP(t *testing.T) {
 
 // These are manufactured captures submitted through the actual owners and
 // public handler. Their prospective labels do not give them qualification credit.
-func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend) storage.PaperEvaluationAssessment {
+func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldout ...bool) storage.PaperEvaluationAssessment {
+	holdout := len(useHoldout) > 0 && useHoldout[0]
+	delayed := len(useHoldout) > 1 && useHoldout[1]
+	var referencePublishedAt time.Time
 	t.Helper()
 	ctx := context.Background()
 	clock := &ownedDecisionClock{at: time.Date(2026, 10, 21, 14, 0, 0, 0, time.UTC)}
@@ -106,8 +109,13 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend) storage.
 	start := clock.at.Add(10 * time.Second)
 	stress := model
 	stress.FeeBPS = 1
-	declaration, err := s.DeclarePaperEvaluation(ctx, storage.PaperEvaluationDeclarationCommand{ID: "portfolio-plan", ReceiverID: owner, Recipe: storage.PaperEvaluationRecipe, PolicyID: policy.Record.Command.Policy.ID, PolicySHA256: policy.Record.SHA256, Plan: storage.PaperEvaluationPlan{FamilyID: "portfolio-family", Variants: []storage.PaperEvaluationVariant{{ID: d.ID, SHA256: strategy.Record.SHA256}}, WindowStart: start, WindowEnd: start.Add(40 * time.Second), OutcomeDeadline: start.Add(110 * time.Second), MinIndependentDecisions: 2, MaximumDrawdownCents: 1000, AdmissionTTLSeconds: 60, Benchmarks: []string{"cash_no_action", "passive_same_symbol"}, StressModel: stress}}, clock.Now)
-	if err != nil {
+	plan := storage.PaperEvaluationDeclarationCommand{ID: "portfolio-plan", ReceiverID: owner, Recipe: storage.PaperEvaluationRecipe, PolicyID: policy.Record.Command.Policy.ID, PolicySHA256: policy.Record.SHA256, Plan: storage.PaperEvaluationPlan{FamilyID: "portfolio-family", Variants: []storage.PaperEvaluationVariant{{ID: d.ID, SHA256: strategy.Record.SHA256}}, WindowStart: start, WindowEnd: start.Add(40 * time.Second), OutcomeDeadline: start.Add(110 * time.Second), MinIndependentDecisions: 2, MaximumDrawdownCents: 1000, AdmissionTTLSeconds: 60, Benchmarks: []string{"cash_no_action", "passive_same_symbol"}, StressModel: stress}}
+	if holdout {
+		plan.Recipe = storage.PaperHoldoutEvaluationRecipe
+		plan.Plan.Holdout = &storage.PaperEvaluationHoldoutPlan{Method: storage.PaperHoldoutMethod, SplitAt: start.Add(20 * time.Second), EmbargoSeconds: 2, MinimumTrainingOccurrences: 2, MinimumHoldoutOccurrences: 2}
+	}
+	var declaration storage.PaperEvaluationDeclarationReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", plan, 201), &declaration); err != nil {
 		t.Fatal(err)
 	}
 	reg := feedcollector.Registration{ID: "portfolio-spy", Provider: "alpaca", Feed: "iex", Symbol: "SPY", EvidenceClass: d.InputEvidenceClass, JournalID: "journal-portfolio", AccessRef: "manufactured-only", LeaseSeconds: 300}
@@ -135,7 +143,13 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend) storage.
 				t.Fatal(err)
 			}
 		}
+		if delayed {
+			clock.at = clock.at.Add(100 * time.Millisecond)
+		}
 		request("POST", "/v1/feed-evidence", map[string]any{"receiver_id": owner, "fence": fence, "recording": r}, 200)
+		if id == "reference" {
+			referencePublishedAt = clock.at
+		}
 	}
 	clock.at = start
 	publish("calendar", 99, 100, true)
@@ -159,8 +173,20 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend) storage.
 		t.Fatal(err)
 	}
 	r := got.Record
-	if r.Schema != "mantik-owned-paper-evaluation-assessment-v6" || r.Recipe != storage.PaperPortfolioAssessmentRecipe || r.Portfolio == nil || len(r.Portfolio.Variants) != 1 || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
+	wantSchema, wantRecipe := "mantik-owned-paper-evaluation-assessment-v6", storage.PaperPortfolioAssessmentRecipe
+	if holdout {
+		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v7", storage.PaperHoldoutAssessmentRecipe
+	}
+	if r.Schema != wantSchema || r.Recipe != wantRecipe || r.Portfolio == nil || len(r.Portfolio.Variants) != 1 || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 		t.Fatal(r)
+	}
+	if holdout {
+		if declaration.Record.Schema != "mantik-owned-paper-evaluation-declaration-v4" || r.Holdout == nil || len(r.Holdout.Variants) != 1 || r.Holdout.Variants[0].TrainingOccurrenceUpperBound != 1 || r.Holdout.Variants[0].HoldoutOccurrenceUpperBound != 0 || r.Holdout.Variants[0].Status != "failed" || r.Holdout.IndependenceEstablished || r.Holdout.OutOfSamplePerformanceAvailable {
+			t.Fatal("owner-derived holdout partition", r.Holdout)
+		}
+	}
+	if delayed && !r.Holdout.Rows[0].FeatureAvailableAt.Equal(referencePublishedAt) {
+		t.Fatalf("holdout availability predates owner publication: retained=%s published=%s", r.Holdout.Rows[0].FeatureAvailableAt, referencePublishedAt)
 	}
 	v := r.Portfolio.Variants[0]
 	if v.Base == nil || v.Stress == nil || v.Base.EndingCashCents != 193000 || v.Base.RealizedNetCents != -7000 || v.Base.ClosedNetCents == nil || *v.Base.ClosedNetCents != -7000 || v.Base.ObservedMaximumDrawdownCents != 7000 || v.Base.TotalReturnAvailable || v.Stress.EndingCashCents >= v.Base.EndingCashCents {
@@ -187,6 +213,13 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend) storage.
 		})
 	}
 	retries.Wait()
+	if holdout {
+		changed := plan
+		profile := *plan.Plan.Holdout
+		profile.MinimumHoldoutOccurrences++
+		changed.Plan.Holdout = &profile
+		request("POST", "/v1/paper-evaluation-declarations", changed, 409)
+	}
 	clock.panicRead = false
 	clock.at = clock.at.Add(time.Second)
 	if err := service.RunPaperEvaluationCycle(ctx, s, clock); err != nil {
@@ -197,7 +230,7 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend) storage.
 		t.Fatal(all, err)
 	}
 	for _, a := range all.Records {
-		if a.Command.ID != c.ID && (a.Recipe != storage.PaperPortfolioAssessmentRecipe || a.Command.ID == service.AutomaticPaperEvaluationID(declaration.Record) || !strings.HasPrefix(a.Command.ID, service.AutomaticPaperEvaluationPrefix)) {
+		if a.Command.ID != c.ID && (a.Recipe != wantRecipe || a.Command.ID == service.AutomaticPaperEvaluationID(declaration.Record) || !strings.HasPrefix(a.Command.ID, service.AutomaticPaperEvaluationPrefix)) {
 			t.Fatal("worker reused legacy recipe identity", a)
 		}
 	}
@@ -211,6 +244,19 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend) storage.
 }
 
 func TestPostgresContractsOwnedPortfolioAssessmentHTTP(t *testing.T) {
+	postgresPortfolioAssessmentHTTP(t, false)
+}
+func TestPostgresContractsOwnedHoldoutAssessmentHTTP(t *testing.T) {
+	postgresPortfolioAssessmentHTTP(t, true)
+}
+func TestOwnedHoldoutAssessmentHTTP(t *testing.T) {
+	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPortfolioAssessmentHTTP(t, m, true)
+}
+func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool) {
 	base := os.Getenv("MANTIK_TEST_DATABASE_URL")
 	if base == "" {
 		t.Skip("use make test-integration")
@@ -242,7 +288,7 @@ func TestPostgresContractsOwnedPortfolioAssessmentHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := ownedPortfolioAssessmentHTTP(t, s)
+	expected := ownedPortfolioAssessmentHTTP(t, s, holdout, holdout)
 	s.Close()
 	legacy, err := storage.OpenPostgres(ctx, u.String())
 	if err != nil {
@@ -326,23 +372,70 @@ func TestPostgresContractsOwnedPortfolioAssessmentHTTP(t *testing.T) {
 	if _, err := data.Exec(ctx, "UPDATE mantik_paper_evaluation_assessments SET payload=$1 WHERE id=$2", original, expected.Command.ID); err != nil {
 		t.Fatal(err)
 	}
+	if holdout {
+		for _, tc := range []struct {
+			name   string
+			change func(*storage.PaperEvaluationAssessment)
+		}{
+			{"changed-horizon", func(r *storage.PaperEvaluationAssessment) {
+				r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+			}},
+			{"legacy-downgrade", func(r *storage.PaperEvaluationAssessment) {
+				r.Schema = "mantik-owned-paper-evaluation-assessment-v6"
+				r.Recipe = storage.PaperPortfolioAssessmentRecipe
+				r.Holdout = nil
+			}},
+			{"omit-portfolio", func(r *storage.PaperEvaluationAssessment) { r.Portfolio = nil }},
+		} {
+			var forged storage.PaperEvaluationAssessment
+			if err := json.Unmarshal(original, &forged); err != nil {
+				t.Fatal(err)
+			}
+			tc.change(&forged)
+			if forged.Holdout != nil {
+				forged.Holdout.SHA256 = ""
+				forged.Holdout.SHA256 = workerplan.Hash(*forged.Holdout)
+			}
+			forged.SHA256 = ""
+			forged.SHA256 = workerplan.Hash(forged)
+			fabricated, _ := json.Marshal(forged)
+			if _, err := data.Exec(ctx, "UPDATE mantik_paper_evaluation_assessments SET payload=$1 WHERE id=$2", fabricated, expected.Command.ID); err != nil {
+				t.Fatal(err)
+			}
+			rejected, err := http.DefaultClient.Do(req.Clone(ctx))
+			if err != nil {
+				t.Fatal(err)
+			}
+			rejected.Body.Close()
+			if rejected.StatusCode != 422 {
+				t.Fatal(tc.name, "self-rehashed alteration accepted", rejected.StatusCode)
+			}
+			if _, err := data.Exec(ctx, "UPDATE mantik_paper_evaluation_assessments SET payload=$1 WHERE id=$2", original, expected.Command.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	migration := 75
+	if holdout {
+		migration = 76
+	}
 	var hash string
-	if err := data.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=75").Scan(&hash); err != nil {
+	if err := data.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=$1", migration).Scan(&hash); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := data.Exec(ctx, "UPDATE mantik_schema SET sha256='damaged' WHERE version=75"); err != nil {
+	if _, err := data.Exec(ctx, "UPDATE mantik_schema SET sha256='damaged' WHERE version=$1", migration); err != nil {
 		t.Fatal(err)
 	}
 	if broken, err := storage.OpenPostgresWithPortfolioEvaluator(ctx, u.String(), service.EvaluateOwnedPaperPortfolio); err == nil || broken != nil {
 		t.Fatal("damaged migration accepted", err)
 	}
-	if _, err := data.Exec(ctx, "UPDATE mantik_schema SET sha256=$1 WHERE version=75", hash); err != nil {
+	if _, err := data.Exec(ctx, "UPDATE mantik_schema SET sha256=$1 WHERE version=$2", hash, migration); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := data.Exec(ctx, `DELETE FROM mantik_schema WHERE version=75;
+	if _, err := data.Exec(ctx, fmt.Sprintf(`DELETE FROM mantik_schema WHERE version>=%d;
 COMMENT ON TABLE mantik_paper_evaluation_assessments IS 'pre-portfolio-migration';
-CREATE FUNCTION reject_portfolio_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=75 THEN RAISE EXCEPTION 'manufactured migration failure'; END IF; RETURN NEW; END $$;
-CREATE TRIGGER reject_portfolio_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_portfolio_migration()`); err != nil {
+CREATE FUNCTION reject_portfolio_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=%d THEN RAISE EXCEPTION 'manufactured migration failure'; END IF; RETURN NEW; END $$;
+CREATE TRIGGER reject_portfolio_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_portfolio_migration()`, migration, migration)); err != nil {
 		t.Fatal(err)
 	}
 	if failed, err := storage.OpenPostgresWithPortfolioEvaluator(ctx, u.String(), service.EvaluateOwnedPaperPortfolio); err == nil || failed != nil {
@@ -408,4 +501,12 @@ CREATE TRIGGER reject_portfolio_migration BEFORE INSERT ON mantik_schema FOR EAC
 	if err := json.NewDecoder(restoredResponse.Body).Decode(&restoredRecord); err != nil || restoredResponse.StatusCode != 200 || !reflect.DeepEqual(restoredRecord, expected) {
 		t.Fatal("restored database lost source-bound accounting", restoredRecord, err)
 	}
+}
+
+func TestHoldoutDelayedPublicationAvailability(t *testing.T) {
+	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPortfolioAssessmentHTTP(t, m, true, true)
 }
