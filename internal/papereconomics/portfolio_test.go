@@ -106,3 +106,48 @@ func TestInvalidBooksAndUnfundedStudyFail(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPortfolioRejectsFutureReceivedQuoteInEitherBook(t *testing.T) {
+	for _, side := range []string{"entry", "exit"} {
+		t.Run(side, func(t *testing.T) {
+			in := study(t, 1, 3*time.Second)
+			book := &in.EntryBook
+			if side == "exit" {
+				book = in.ExitBook
+			}
+			root, err := paperfill.RootBook(*book)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, entry := range book.Entries {
+				command := entry.Command
+				if i == len(book.Entries)-1 {
+					quote := *command.Quote
+					quote.ID += "-future"
+					quote.ReceivedAt = command.At.Add(time.Nanosecond)
+					command.Quote = &quote
+				}
+				root, _, _, err = paperfill.ApplyBook(t.Context(), root, command)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			*book = root
+			// This is an authentic replayable book, including its rejected quote;
+			// merely verifying its journal is insufficient for economic marking.
+			if _, err = paperfill.ReplayBook(t.Context(), root); err != nil {
+				t.Fatal(err)
+			}
+			before := workerplan.Hash(in)
+			if result, err := Evaluate(t.Context(), in); !errors.Is(err, ErrInvalid) || !reflect.DeepEqual(result, Result{}) {
+				t.Fatal("future-received quote became economic evidence", result, err)
+			}
+			if result, err := EvaluateBenchmarks(t.Context(), in); !errors.Is(err, ErrInvalid) || !reflect.DeepEqual(result, Benchmarks{}) {
+				t.Fatal("future-received quote entered benchmark comparison", result, err)
+			}
+			if workerplan.Hash(in) != before {
+				t.Fatal("rejection changed retained books")
+			}
+		})
+	}
+}

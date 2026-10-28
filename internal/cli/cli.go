@@ -260,11 +260,12 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest, feedPolicyPath, corporateJournalPath, corporateJournalID string
-	var exportDataset, automaticOutcomes, automaticEvaluations bool
+	var exportDataset, automaticOutcomes, automaticEvaluations, automaticSocialResearch bool
 	switch args[0] {
 	case "serve":
 		fs.StringVar(&corporateJournalPath, "corporate-source-journal", "", "optional existing private journal for verified corporate acquisition reads")
 		fs.StringVar(&corporateJournalID, "corporate-source-journal-id", "", "expected identity of the configured corporate acquisition journal")
+		fs.BoolVar(&automaticSocialResearch, "automatic-social-research", false, "dispatch retained social/copy requests into research-only cases; no provider or financial authority")
 		fs.BoolVar(&automaticEvaluations, "automatic-paper-evaluations", false, "automatically retain post-deadline necessary-check assessments; no admission authority")
 		fs.BoolVar(&automaticOutcomes, "automatic-paper-outcomes", false, "automatically retain sealed forward quote outcomes; no admission authority")
 		fs.StringVar(&feedPolicyPath, "feed-readiness-policy", "", "optional receiver-bound feed readiness policy JSON file")
@@ -294,7 +295,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	if args[0] == "serve" {
-		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, corporateJournalPath, corporateJournalID)
+		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, automaticSocialResearch, corporateJournalPath, corporateJournalID)
 	}
 	if args[0] == "replay" {
 		if exportDataset {
@@ -416,7 +417,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	return nil
 }
 
-func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations bool, corporateJournalPath, corporateJournalID string) error {
+func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations, automaticSocialResearch bool, corporateJournalPath, corporateJournalID string) error {
 	var acquisitions *service.CorporateAcquisitionReader
 	if corporateJournalPath != "" || corporateJournalID != "" {
 		var err error
@@ -511,7 +512,23 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 	} else {
 		close(evaluationDone)
 	}
-	defer func() { stopWorker(); <-workerDone; <-actionDone; <-outcomeDone; <-evaluationDone }()
+	socialDone := make(chan struct{})
+	if automaticSocialResearch {
+		go func() {
+			defer close(socialDone)
+			service.RunSocialResearchWorker(workerCtx, store, workerID+"-social", service.WallClock{})
+		}()
+	} else {
+		close(socialDone)
+	}
+	defer func() {
+		stopWorker()
+		<-workerDone
+		<-actionDone
+		<-outcomeDone
+		<-evaluationDone
+		<-socialDone
+	}()
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	finished := make(chan error, 1)
 	go func() { finished <- server.Serve(listener) }()

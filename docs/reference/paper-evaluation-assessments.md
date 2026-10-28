@@ -71,6 +71,14 @@ for a deterministic mark, not an inferred intratick path. An open position stays
 open; no terminal liquidation is invented. A fully closed book exposes its
 counterfactual closed net proceeds separately from observed marked equity.
 
+Portfolio accounting rejects a study if an entry or exit book contains a quote
+received after that quote command's evaluation time. Fill journals can retain
+such rejected observations for inspection, but replay validity alone does not
+make their prices available for valuation. Rejection returns no portfolio or
+benchmark result and preserves the original books. Causal studies retain their
+existing method identities and hashes; this guard adds no evaluation or admission
+credit.
+
 This accounting does not interpret corporate entitlements, establish complete
 coverage, compute passive total return, prove independent samples, or complete
 out-of-sample, sensitivity and search controls. Its total-return, evaluation,

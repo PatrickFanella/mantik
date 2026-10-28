@@ -271,6 +271,7 @@ func TestPostgresContractsOwnedSocialHTTP(t *testing.T) {
 	ownedSocialHTTP(t, s)
 	copySupervisionMCP(t, s)
 	ownedSocialResearchHTTP(t, s)
+	automaticSocialResearchOwner(t, s)
 
 }
 

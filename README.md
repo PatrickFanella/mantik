@@ -867,7 +867,9 @@ The compiled `serve` assessment owner now retains v6 base/stress portfolio
 accounting from its actual policy, source cut and verified counterfactual books:
 cash, whole-share cost basis, realized net proceeds, observed bid equity and
 event-path drawdown. Stale marks remain unavailable and open positions are not
-liquidated for reporting. Historical recipes keep their original bytes and hashes.
+liquidated for reporting. Studies containing quotes received after their command
+clock are rejected before valuation or benchmark comparison. Causal historical
+studies keep their original bytes and hashes.
 Corporate entitlements, passive total return and complete statistical evaluation
 remain unfinished; this accounting grants no admission, execution or qualification.
 See [retained observed portfolio accounting](docs/reference/paper-evaluation-assessments.md#retained-observed-portfolio-accounting).
@@ -924,3 +926,5 @@ with the existing service owners. Actual conversation and model-outage release
 acceptance remain unfinished.
 
 Social and copy source research requests can be explicitly dispatched into owner-bound research cases; see [social watches](docs/reference/owned-social-watches.md). Source assertions retain their unverified status and confer no financial authority.
+
+`mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

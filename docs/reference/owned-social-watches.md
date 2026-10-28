@@ -319,5 +319,28 @@ requires currently applicable source material; stale, changed or deleted sources
 are rejected. Reserved source and trigger identities cannot be supplied through
 public routing commands. Case inspection uses the existing `/v1/cases` routes.
 
-The dispatch is an explicit bounded operation. An automatic polling worker and
-verified provider acquisition are separate unfinished acceptance work.
+Explicit dispatch remains available. `mantik serve --automatic-social-research`
+opts this process into immediate recovery and a 30-second polling cycle. The
+worker uses only retained research requests, dispatches at most eight per cycle,
+and enforces a 20-second cycle deadline. Its attempt window rotates each polling
+interval so a failing prefix cannot monopolize every cycle. It skips stale, changed, deleted,
+not-yet-available and synthetic sources; the owner rechecks applicability in its
+write transaction. Completed request identities are not reopened after restart.
+Scoped failures are aggregated after unrelated eligible requests are attempted.
+
+The worker is disabled by default. Its separate `social_research_dispatch`
+readiness scope reports cycle failures, recovery, stale heartbeats and stop state.
+A healthy dispatch worker does not establish provider availability, completed
+research, financial protection or qualification. Verified provider acquisition
+remains unfinished acceptance work.
+
+Inspect this worker with `mantik readiness --scope social_research_dispatch`
+and the existing `operations` view. Turning off the startup flag stops automatic
+dispatch on the next service start; it does not erase receipts or close research
+cases. Explicit dispatch remains available through its authenticated route.
+
+Schema 79 fences writers that do not understand this worker's persisted health
+scope. The migration changes compatibility metadata without rewriting source or
+dispatch history. Restore a verified pre-upgrade backup into separate resources
+with its matching binary for rollback; do not remove schema markers from a
+running database.
