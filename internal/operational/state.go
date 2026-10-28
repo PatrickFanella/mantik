@@ -209,7 +209,7 @@ func Sync(s *domain.State, now time.Time) []domain.Event {
 // Report persists worker progress and previously unrecordable outage evidence.
 func Report(s *domain.State, r domain.WorkerReport) ([]domain.Event, error) {
 	Normalize(s)
-	if !slices.Contains([]string{"action_delivery", "protective_monitoring", "paper_outcome_collection", "paper_evaluation_assessment"}, r.Capability) || r.WorkerID == "" || len(r.WorkerID) > 80 || r.At.IsZero() || r.IntervalMillis < 100 || r.IntervalMillis > 60000 {
+	if !slices.Contains([]string{"action_delivery", "protective_monitoring", "paper_outcome_collection", "paper_evaluation_assessment", "social_research_dispatch"}, r.Capability) || r.WorkerID == "" || len(r.WorkerID) > 80 || r.At.IsZero() || r.IntervalMillis < 100 || r.IntervalMillis > 60000 {
 		return nil, errors.New("invalid worker report")
 	}
 	if r.At.Before(s.Operations.Workers[r.Capability].At) {

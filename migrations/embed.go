@@ -247,3 +247,6 @@ var ObservedBenchmarkAssessments string
 
 //go:embed 0078_social_research_dispatch.sql
 var SocialResearchDispatch string
+
+//go:embed 0079_social_research_worker_health.sql
+var SocialResearchWorkerHealth string
