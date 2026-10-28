@@ -128,13 +128,15 @@ def main():
         # Keep packages sequential; each package still exercises its own
         # concurrent transactions and the race detector remains enabled.
         # This is a package-wide budget, not an individual request deadline.
-        # The growing suite can exceed Go's implicit ten minutes on CI runners.
+        # Main run 17333 exhausted 15 minutes across the storage package while
+        # a later test had run for only three seconds. Retain a finite suite
+        # budget without changing transaction/request or recovery deadlines.
         run("docker", "create", "--name", runner, "--network", "container:" + name,
             "-w", "/src", "-e", "MANTIK_TEST_DATABASE_URL=" +
             f"postgres://mantik:fixture-only@127.0.0.1:5432/{database}?sslmode=disable",
             "-e", "MANTIK_RECOVERY_SEED=1",
             "golang:1.26.9", "go", "test", "-race", "-p", "1", "./internal/storage", "./internal/cli",
-            "-run", "TestPostgresContracts", "-count=1", "-timeout=15m", stdout=subprocess.DEVNULL)
+            "-run", "TestPostgresContracts", "-count=1", "-timeout=30m", stdout=subprocess.DEVNULL)
         runner_created = True
         for path in ("go.mod", "go.sum", "internal", "migrations"):
             run("docker", "cp", path, runner + ":/src/" + path)
