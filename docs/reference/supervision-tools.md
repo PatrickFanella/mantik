@@ -6,8 +6,9 @@ available tools and argument contracts. Both use the service's existing bearer
 authentication. They make no network or model requests.
 
 This HTTP adapter and the stdio MCP bridge below are bounded parts of #23.
-Conversation UI, model interpretation of prose and review-case triage remain
-open. Existing strategies and protection do not depend on these adapters.
+The `converse` client below adds bounded prose-to-tool routing. Actual provider
+behavior, assembled conversation/protection runtime and review-case triage
+acceptance remain open. Existing strategies and protection do not depend on these adapters.
 Issue #23 remains open pending its remaining acceptance checks.
 
 Each call is one JSON object with exactly `tool` and `arguments`. Arguments must
@@ -268,3 +269,50 @@ prose or complete conversational acceptance.
 `paper-decision-draft-reconcile` checks the retained intent against the actual
 service review using GET requests only. It preserves the original attempt and
 does not resolve uncertainty by issuing another model or review request.
+
+
+## Conversational tool routing
+
+`mantik converse --api-url http://127.0.0.1:40880 --receiver-id RECEIVER --model-config /absolute/model.json --capture-dir /absolute/new-session`
+reads one operator message per line. It discovers the actual supervision tools,
+asks the configured Switchyard route to select exactly one typed call, verifies
+the receiver again and forwards that call once. Each result is the owner's
+HTTP status and original JSON body. Earlier calls and owner results provide
+conversation context within a 128 KiB request bound. Start a new session when
+the bound is reached; history is never silently discarded.
+
+The private model configuration uses the existing Switchyard contract:
+
+```json
+{"endpoint":"http://127.0.0.1:8080","model":"openai/gpt-6.1-sol","max_tokens":1024,"reasoning_effort":"low"}
+```
+
+Use the actual private literal-IP gateway origin. `MANTIK_API_TOKEN` authenticates
+the service; optional `MANTIK_MODEL_TOKEN` authenticates the gateway. Tokens are
+not command arguments or retained artifacts. Redirects and environment proxies
+are disabled. Requested model settings are not an upstream execution attestation.
+
+Only inspections are available by default. `--allow-writes` also exposes the
+existing bounded watch, research, claim-review and exception-recheck tools.
+Their receiver, request identity, evidence versions, policy compare-and-swap and
+owner validation remain authoritative. The model cannot add financial tools or
+supply a balance, admission, fill or finalized decision. Each operator message
+can select one call; missing identifiers or a request needing several operations
+must be clarified in another message. This client emits no model-generated
+explanation: `decision_explanation` returns the finalized owner's explanation.
+Typed contradiction reviews still use `review_decision_claims`.
+
+Each invocation requires a new private capture directory. Synced, exclusive
+artifacts retain the session contract, exact model request/response bytes and
+hashes, owner intent and owner result. Model-response bytes use JSON's base64
+encoding for byte arrays, preserving invalid or incomplete responses too.
+The client stops on model failure, malformed/ambiguous calls, receiver changes,
+transport uncertainty or artifact failure. It never automatically retries a model
+or owner call. An owner intent without a result means the outcome may be unknown;
+inspect the owner's retained request ID and readback before retrying. Reopening
+that session directory is rejected before any network request.
+
+Model outage does not call or stop service workers. These client checks do not
+prove model interpretation quality, continued financial protection, release
+recovery or natural qualification. Captures can contain operator text and owner
+source data; keep them private and outside Git.

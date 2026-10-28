@@ -906,3 +906,12 @@ Evaluation declarations may predeclare intended corporate-action acquisition
 identities and query scopes. The service resolves those intents through the
 [assessment corporate selection readback](docs/reference/paper-evaluation-assessments.md#predeclared-corporate-source-selection).
 This is source selection only; economic evaluation and admission remain unavailable.
+
+
+The [conversational supervision client](docs/reference/supervision-tools.md#conversational-tool-routing)
+accepts operator messages and routes one typed owner call per message through a
+configured Switchyard model. It displays original owner results, defaults to
+inspection and retains private request/result receipts. `--allow-writes` exposes
+only the existing bounded supervision operations; financial authority remains
+with the existing service owners. Actual conversation and model-outage release
+acceptance remain unfinished.
