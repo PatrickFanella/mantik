@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
+	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
@@ -185,7 +187,12 @@ func ownedEvaluationHoldout(ctx context.Context, e PaperEvaluationEvidence, stra
 		if !ok || feature.Input.Provenance == nil {
 			return nil, ErrPaperEvaluationAssessmentInvalid
 		}
+		publishedAt, err := holdoutFeaturePublishedAt(ctx, basis.Basis.Feed, row.Decision, feature.Input)
+		if err != nil {
+			return nil, err
+		}
 		available := later(feature.Input.ReceivedAt, feature.Input.Provenance.AvailableAt)
+		available = later(available, publishedAt)
 		if admission, ok := basis.Basis.Feed.Collectors.Admissions[row.QuoteInputID]; ok {
 			available = later(available, admission.At)
 		}
@@ -251,4 +258,54 @@ func paperAssessmentWithHoldout(c PaperEvaluationAssessmentCommand, e PaperEvalu
 		return PaperEvaluationAssessment{}, ErrPaperEvaluationAssessmentCapacity
 	}
 	return r, nil
+}
+
+// Resolve the selected feature against the actual immutable recording. Receipt
+// and admission precede availability when publication occurs later. A missing,
+// ambiguous or mismatched publication cannot supply a fallback clock.
+func holdoutFeaturePublishedAt(ctx context.Context, feed FeedEvidenceSnapshot, decision PaperDecisionRecord, input domain.RoutingInput) (time.Time, error) {
+	if input.Provenance == nil {
+		return time.Time{}, ErrPaperEvaluationAssessmentInvalid
+	}
+	selected := time.Time{}
+	matches := 0
+	for _, publication := range feed.Records {
+		if err := ctx.Err(); err != nil {
+			return time.Time{}, err
+		}
+		if publication.RegistrationID != decision.Command.RegistrationID {
+			continue
+		}
+		if publication.PublishedAt.IsZero() || publication.PublishedAt.After(decision.FinalizedAt) {
+			return time.Time{}, ErrPaperEvaluationAssessmentInvalid
+		}
+		var recording alpaca.Recording
+		if json.Unmarshal(publication.Recording, &recording) != nil {
+			return time.Time{}, ErrPaperEvaluationAssessmentInvalid
+		}
+		if recording.SHA256 != input.Provenance.SHA256 || recording.RawRef != input.Provenance.RawRef || recording.Revision != input.Provenance.Revision {
+			continue
+		}
+		if publication.PublishedAt.Before(recording.ReceivedAt) {
+			return time.Time{}, ErrPaperEvaluationAssessmentInvalid
+		}
+		normalized, err := alpaca.Normalize(recording)
+		if err != nil {
+			return time.Time{}, ErrPaperEvaluationAssessmentInvalid
+		}
+		for _, candidate := range normalized.Inputs {
+			if candidate.ID != input.ID {
+				continue
+			}
+			if feedcollector.InputDigest(candidate) != feedcollector.InputDigest(input) {
+				return time.Time{}, ErrPaperEvaluationAssessmentInvalid
+			}
+			matches++
+			selected = publication.PublishedAt
+		}
+	}
+	if matches != 1 {
+		return time.Time{}, ErrPaperEvaluationAssessmentInvalid
+	}
+	return selected, nil
 }

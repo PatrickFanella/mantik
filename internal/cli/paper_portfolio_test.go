@@ -55,6 +55,8 @@ func TestOwnedPortfolioAssessmentHTTP(t *testing.T) {
 // public handler. Their prospective labels do not give them qualification credit.
 func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldout ...bool) storage.PaperEvaluationAssessment {
 	holdout := len(useHoldout) > 0 && useHoldout[0]
+	delayed := len(useHoldout) > 1 && useHoldout[1]
+	var referencePublishedAt time.Time
 	t.Helper()
 	ctx := context.Background()
 	clock := &ownedDecisionClock{at: time.Date(2026, 10, 21, 14, 0, 0, 0, time.UTC)}
@@ -141,7 +143,13 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 				t.Fatal(err)
 			}
 		}
+		if delayed {
+			clock.at = clock.at.Add(100 * time.Millisecond)
+		}
 		request("POST", "/v1/feed-evidence", map[string]any{"receiver_id": owner, "fence": fence, "recording": r}, 200)
+		if id == "reference" {
+			referencePublishedAt = clock.at
+		}
 	}
 	clock.at = start
 	publish("calendar", 99, 100, true)
@@ -176,6 +184,9 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 		if declaration.Record.Schema != "mantik-owned-paper-evaluation-declaration-v4" || r.Holdout == nil || len(r.Holdout.Variants) != 1 || r.Holdout.Variants[0].TrainingOccurrenceUpperBound != 1 || r.Holdout.Variants[0].HoldoutOccurrenceUpperBound != 0 || r.Holdout.Variants[0].Status != "failed" || r.Holdout.IndependenceEstablished || r.Holdout.OutOfSamplePerformanceAvailable {
 			t.Fatal("owner-derived holdout partition", r.Holdout)
 		}
+	}
+	if delayed && !r.Holdout.Rows[0].FeatureAvailableAt.Equal(referencePublishedAt) {
+		t.Fatalf("holdout availability predates owner publication: retained=%s published=%s", r.Holdout.Rows[0].FeatureAvailableAt, referencePublishedAt)
 	}
 	v := r.Portfolio.Variants[0]
 	if v.Base == nil || v.Stress == nil || v.Base.EndingCashCents != 193000 || v.Base.RealizedNetCents != -7000 || v.Base.ClosedNetCents == nil || *v.Base.ClosedNetCents != -7000 || v.Base.ObservedMaximumDrawdownCents != 7000 || v.Base.TotalReturnAvailable || v.Stress.EndingCashCents >= v.Base.EndingCashCents {
@@ -277,7 +288,7 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := ownedPortfolioAssessmentHTTP(t, s, holdout)
+	expected := ownedPortfolioAssessmentHTTP(t, s, holdout, holdout)
 	s.Close()
 	legacy, err := storage.OpenPostgres(ctx, u.String())
 	if err != nil {
@@ -490,4 +501,12 @@ CREATE TRIGGER reject_portfolio_migration BEFORE INSERT ON mantik_schema FOR EAC
 	if err := json.NewDecoder(restoredResponse.Body).Decode(&restoredRecord); err != nil || restoredResponse.StatusCode != 200 || !reflect.DeepEqual(restoredRecord, expected) {
 		t.Fatal("restored database lost source-bound accounting", restoredRecord, err)
 	}
+}
+
+func TestHoldoutDelayedPublicationAvailability(t *testing.T) {
+	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPortfolioAssessmentHTTP(t, m, true, true)
 }

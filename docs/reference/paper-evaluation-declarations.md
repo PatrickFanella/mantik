@@ -91,7 +91,10 @@ from zero to 86,400 seconds. Each partition minimum ranges from 2 to 1,000,000.
 These are necessary occurrence bounds, not sufficient independent-sample sizes.
 
 The assessment owner derives horizons from the actual pinned strategy and
-feature clocks from retained decision sources. Training requires the holding
+feature clocks from retained decision sources. Feature availability includes the
+matching original recording’s durable publication clock as well as receipt and
+admission clocks. Missing, ambiguous or mismatched publications reject replay
+and issuance. Training requires the holding
 horizon and observed label availability to be strictly before the split minus
 the embargo. Label availability includes retained outcome creation time, so
 an earlier quote cannot make a later-created label available for training.

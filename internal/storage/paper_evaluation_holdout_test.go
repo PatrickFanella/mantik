@@ -1,7 +1,11 @@
 package storage
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
+	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"strings"
 	"testing"
 	"time"
@@ -96,5 +100,58 @@ func TestHoldoutDeclarationChoicesAreProspectiveAndVersioned(t *testing.T) {
 	c.Plan.Holdout.SplitAt = c.Plan.WindowStart
 	if c.Validate() == nil {
 		t.Fatal("empty training window accepted")
+	}
+}
+
+func TestHoldoutPublicationMustResolveExactOriginal(t *testing.T) {
+	at := time.Date(2026, 10, 21, 14, 0, 0, 0, time.UTC)
+	recording := alpaca.Recording{Schema: alpaca.RecordingSchema, Currency: "USD", CaptureID: "publication-reference", Capability: "latest_quotes", Feed: "iex", Symbols: []string{"SPY"}, Revision: 1, ReceivedAt: at, EvidenceClass: "prospective_market_unqualified", AccessRef: "manufactured-only", RawRef: "journal:journal-publication:capture-publication-reference-r1.json", MaxQuoteAgeSeconds: 60, Original: `{"quotes":{"SPY":{"t":"2026-10-21T14:00:00Z","ap":100,"bp":99,"as":10,"bs":10}}}`}
+	recording.SHA256 = alpaca.Digest(recording.Original)
+	normalized, err := alpaca.Normalize(recording)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var input domain.RoutingInput
+	for _, candidate := range normalized.Inputs {
+		if candidate.Kind == "quote" {
+			input = candidate
+		}
+	}
+	if input.ID == "" {
+		t.Fatal("manufactured quote missing")
+	}
+	raw, err := json.Marshal(recording)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publication := FeedEvidenceRecord{RegistrationID: "reg-one", Key: "publication-reference-r1", PublishedAt: at.Add(2 * time.Second), Recording: raw}
+	feed := FeedEvidenceSnapshot{Records: map[string]FeedEvidenceRecord{"reg-one:publication-reference-r1": publication}}
+	decision := PaperDecisionRecord{Command: PaperDecisionCommand{RegistrationID: "reg-one"}, FinalizedAt: at.Add(3 * time.Second)}
+	got, err := holdoutFeaturePublishedAt(t.Context(), feed, decision, input)
+	if err != nil || !got.Equal(publication.PublishedAt) {
+		t.Fatal("publication clock omitted", got, err)
+	}
+	mutated := input
+	mutated.PriceCents++
+	if _, err := holdoutFeaturePublishedAt(t.Context(), feed, decision, mutated); !errors.Is(err, ErrPaperEvaluationAssessmentInvalid) {
+		t.Fatal("mismatched normalized input accepted", err)
+	}
+	if _, err := holdoutFeaturePublishedAt(t.Context(), FeedEvidenceSnapshot{Records: map[string]FeedEvidenceRecord{}}, decision, input); !errors.Is(err, ErrPaperEvaluationAssessmentInvalid) {
+		t.Fatal("missing publication manufactured fallback", err)
+	}
+	feed.Records["alias"] = publication
+	if _, err := holdoutFeaturePublishedAt(t.Context(), feed, decision, input); !errors.Is(err, ErrPaperEvaluationAssessmentInvalid) {
+		t.Fatal("ambiguous publication accepted", err)
+	}
+	delete(feed.Records, "alias")
+	publication.PublishedAt = decision.FinalizedAt.Add(time.Second)
+	feed.Records["reg-one:publication-reference-r1"] = publication
+	if _, err := holdoutFeaturePublishedAt(t.Context(), feed, decision, input); !errors.Is(err, ErrPaperEvaluationAssessmentInvalid) {
+		t.Fatal("post-decision publication accepted", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := holdoutFeaturePublishedAt(ctx, feed, decision, input); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
 	}
 }

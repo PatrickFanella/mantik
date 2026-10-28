@@ -90,7 +90,8 @@ These are manufactured fixtures and do not qualify funded recovery or a release.
 A plan using `native-threshold-purged-holdout-plan-v2` issues assessment schema
 v7 with recipe `native-predeclared-holdout-necessary-checks-v7`. Its retained
 `holdout` result binds the declaration and evidence hashes to the actual
-strategy horizons, feature input hashes and clocks, and observed outcome hashes
+strategy horizons, feature input hashes and receipt/admission/publication clocks,
+and observed outcome hashes
 and availability clocks. Callers cannot submit partition rows, counts or results.
 The same owner snapshot derives the result during issuance and catalogue replay,
 including allocation, admission-review and attribution reads.
