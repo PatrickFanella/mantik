@@ -17,6 +17,9 @@ var symbolPattern = regexp.MustCompile(`^[A-Z][A-Z0-9.-]{0,19}$`)
 var digestPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func validSource(source, symbol, evidence string) bool {
+	if source == OwnedSocialResearchSource {
+		return symbolPattern.MatchString(symbol) && slices.Contains([]string{"recorded_social_unqualified", "recorded_copy_unqualified"}, evidence)
+	}
 	if source == "fixture" {
 		return symbol == "DEMO" && evidence == "synthetic_unqualified"
 	}

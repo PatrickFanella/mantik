@@ -244,3 +244,6 @@ var PredeclaredHoldoutAssessments string
 
 //go:embed 0077_observed_benchmark_assessments.sql
 var ObservedBenchmarkAssessments string
+
+//go:embed 0078_social_research_dispatch.sql
+var SocialResearchDispatch string

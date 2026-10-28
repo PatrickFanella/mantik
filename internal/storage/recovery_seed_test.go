@@ -153,6 +153,17 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 		t.Fatal("research recovery seed", got, err)
 	}
 
+	history, err = s.SocialHistory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range history.ResearchRequests {
+		dispatched, e := s.DispatchSocialResearch(ctx, SocialResearchDispatchCommand{ReceiverID: history.ReceiverID, RequestID: request.ID, RequestSHA256: request.SHA256}, researchClock)
+		if e != nil || len(dispatched.Record.Links) != 1 || dispatched.Record.AdmissionAvailable {
+			t.Fatal("dispatch recovery seed", dispatched, e)
+		}
+	}
+
 }
 
 // Shared by source seeding and restore replay. This compiled storage fixture
@@ -215,6 +226,21 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 			t.Fatal("restored research grant or unknown source", request)
 		}
 	}
+
+	dispatches, err := s.SocialResearchDispatches(ctx)
+	if err != nil || len(dispatches.Records) != 2 {
+		t.Fatal("restored research dispatches", dispatches, err)
+	}
+	for _, record := range dispatches.Records {
+		if record.ProviderAccessVerified || record.IndependentEvidenceCredit || record.AdmissionAvailable || record.ExecutionAvailable || record.QualificationCredit || len(record.Links) != 1 {
+			t.Fatal("restored dispatch gained authority", record)
+		}
+		duplicate, e := s.DispatchSocialResearch(ctx, record.Command, func() time.Time { panic("restore dispatch retry clock") })
+		if e != nil || !duplicate.Duplicate || !reflect.DeepEqual(duplicate.Record, record) {
+			t.Fatal("restored dispatch retry", duplicate, e)
+		}
+	}
+	t.Logf("social dispatch restore preserved receipts=%s", workerplan.Hash(dispatches))
 	t.Logf("owner replay preserved allocation=%s safety=%s ledger=%s social=%s", r.SHA256, r.ExecutionSafety[0].SHA256, r.LedgerSHA256, workerplan.Hash(history))
 }
 

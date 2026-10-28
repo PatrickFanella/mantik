@@ -298,3 +298,26 @@ A pending copy research request is not a verified trade, independent observation
 instrument mapping, normalized quantity, bounded follow instruction or financial
 effect. Research consumers must inspect the retained source and its current
 applicability before using it. This operation invokes no worker or provider.
+
+
+## Source-bound research case dispatch
+
+`POST /v1/social-research-dispatches` selects only `receiver_id`, `request_id`
+and `request_sha256` from a retained pending social or copy research request.
+The owner checks the current canonical capture, repost lineage and watch policy,
+and opens one research routing case per asserted symbol in the same transaction
+as its immutable dispatch receipt and routing inputs. Synthetic recordings cannot
+use this path. Recorded assertions remain unverified: this does not establish
+provider authenticity, instrument mapping, independent evidence, completed
+research, admission, execution or qualification.
+
+`GET /v1/social-research-dispatches` replays each receipt against its exact social
+journal prefix and checks its actual retained routing inputs, definitions and
+cases. Exact retries return the original receipt without reopening work or
+sampling the clock, including after a later source deletion. A fresh dispatch
+requires currently applicable source material; stale, changed or deleted sources
+are rejected. Reserved source and trigger identities cannot be supplied through
+public routing commands. Case inspection uses the existing `/v1/cases` routes.
+
+The dispatch is an explicit bounded operation. An automatic polling worker and
+verified provider acquisition are separate unfinished acceptance work.

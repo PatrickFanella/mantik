@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
+	"git.subcult.tv/subculture-collective/mantik/internal/routing"
 	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
@@ -14,9 +15,9 @@ import (
 
 func socialWatchError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, socialwatch.ErrInvalid):
+	case errors.Is(err, socialwatch.ErrInvalid), errors.Is(err, routing.ErrInvalid):
 		write(w, 422, map[string]string{"error": err.Error()})
-	case errors.Is(err, socialwatch.ErrConflict), errors.Is(err, socialwatch.ErrCapacity), errors.Is(err, storage.ErrReceiverMismatch):
+	case errors.Is(err, routing.ErrConflict), errors.Is(err, socialwatch.ErrConflict), errors.Is(err, socialwatch.ErrCapacity), errors.Is(err, storage.ErrReceiverMismatch):
 		write(w, 409, map[string]string{"error": err.Error()})
 	case errors.Is(err, socialwatch.ErrNotFound):
 		write(w, 404, map[string]string{"error": err.Error()})
@@ -25,6 +26,48 @@ func socialWatchError(w http.ResponseWriter, err error) {
 	}
 }
 func socialWatchRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
+	if dispatcher, ok := store.(storage.SocialResearchDispatchStore); ok {
+		mux.HandleFunc("POST /v1/social-research-dispatches", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.RawQuery != "" || r.URL.ForceQuery {
+				socialWatchError(w, socialwatch.ErrInvalid)
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 4096)
+			defer r.Body.Close()
+			raw, err := io.ReadAll(r.Body)
+			var c storage.SocialResearchDispatchCommand
+			if err != nil || workerplan.ReadBoundedShape(raw, &c, 4096) != nil {
+				socialWatchError(w, socialwatch.ErrInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			v, err := dispatcher.DispatchSocialResearch(ctx, c, clock.Now)
+			if err != nil {
+				socialWatchError(w, err)
+				return
+			}
+			code := 201
+			if v.Duplicate {
+				code = 200
+			}
+			write(w, code, v)
+		})
+		mux.HandleFunc("GET /v1/social-research-dispatches", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.RawQuery != "" || r.URL.ForceQuery {
+				socialWatchError(w, socialwatch.ErrInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			v, err := dispatcher.SocialResearchDispatches(ctx)
+			if err != nil {
+				socialWatchError(w, err)
+				return
+			}
+			write(w, 200, v)
+		})
+	}
 	backend, ok := store.(storage.SocialWatchStore)
 	if !ok {
 		return
