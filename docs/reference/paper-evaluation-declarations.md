@@ -14,9 +14,10 @@ The existing bearer authentication protects:
 - `GET /v1/paper-evaluation-declarations`
 - `GET /v1/paper-evaluation-declarations/{id}`
 
-A command contains `id`, `receiver_id`, the fixed recipe
-`native-threshold-paper-evaluation-plan-v1`, `policy_id`, `policy_sha256` and
-`plan`. Callers cannot supply an account, balance, clock, finalized decision,
+A command contains `id`, `receiver_id`, a versioned recipe, `policy_id`, `policy_sha256` and
+`plan`. The original recipe is `native-threshold-paper-evaluation-plan-v1`;
+`native-threshold-purged-holdout-plan-v2` adds the prospective partition choices
+described below. Callers cannot supply an account, balance, clock, finalized decision,
 check result, effect, admission or qualification assertion. Unknown/duplicate
 fields, trailing JSON and query strings fail. The POST limit is 16 KiB.
 
@@ -37,7 +38,8 @@ an execution model. Both source owners must predate the declaration. The source
 hash binds those complete records, including their immutable funding/model
 configuration. Input classes remain their original unqualified classes.
 
-New records use `mantik-owned-paper-evaluation-declaration-v2`. Their
+Without corporate-source or holdout choices, new records use
+`mantik-owned-paper-evaluation-declaration-v2`. Their
 `variant_configurations` bind each actual strategy ID and record hash to the
 versioned `native-definition-without-id-v1` digest. This digest covers every
 native definition field except its ID: method, symbol, feed, evidence class,
@@ -65,6 +67,51 @@ backup and binary on separate resources; do not remove migration rows from a
 running service. Verification covers actual Memory/PostgreSQL alias rejection,
 distinct configuration pins, concurrent retries, self-rehashed substitution,
 legacy bytes/reopen and migration rollback, checksum and payload preservation.
+
+## Prospective training and holdout partitions
+
+Recipe `native-threshold-purged-holdout-plan-v2` requires `plan.holdout` and
+retains declaration schema v4. The original recipe rejects that field. The
+choices must exist before the observation window starts and cannot be added
+or changed by retrying an existing declaration or family.
+
+```json
+"holdout": {
+  "method": "predeclared-purged-label-availability-holdout-v1",
+  "split_at": "2026-11-12T15:00:00Z",
+  "embargo_seconds": 60,
+  "minimum_training_occurrences": 20,
+  "minimum_holdout_occurrences": 20
+}
+```
+
+The split minus the embargo must be strictly after `window_start`; the split
+plus the embargo must be strictly before `window_end`. Embargo values range
+from zero to 86,400 seconds. Each partition minimum ranges from 2 to 1,000,000.
+These are necessary occurrence bounds, not sufficient independent-sample sizes.
+
+The assessment owner derives horizons from the actual pinned strategy and
+feature clocks from retained decision sources. Training requires the holding
+horizon and observed label availability to be strictly before the split minus
+the embargo. Label availability includes retained outcome creation time, so
+an earlier quote cannot make a later-created label available for training.
+Holdout decisions, feature occurrences and feature availability must all be
+at or after the split plus the embargo. Rows overlapping these boundaries are
+purged from the partition counts. Waiting or unavailable outcomes supply no
+observed label. Existing duplicate, synthetic and other evidence exclusions
+continue to apply before partitioning.
+
+V7 assessments retain the source pins, partition rows and per-variant bounds.
+Before the deadline the necessary out-of-sample check is pending; after it, a
+partition below its predeclared minimum fails. Meeting the bounds leaves the
+check unavailable because temporal separation does not prove independence or
+holdout performance. No evaluation, admission, execution or qualification grant
+is produced. See [retained holdout checks](paper-evaluation-assessments.md#predeclared-holdout-checks).
+
+Schema 76 fences old writers without rewriting legacy declarations or
+assessments. Existing v1-v3 declarations and v1-v6 assessments keep their bytes,
+hashes, methods and exact retries. The worker uses a separate v7 recipe identity
+for holdout plans; ordinary plans retain their existing v5/v6 worker identities.
 
 ## Time, family and sample boundaries
 

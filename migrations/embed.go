@@ -238,3 +238,6 @@ var PredeclaredCorporateSelection string
 
 //go:embed 0075_observed_portfolio_assessments.sql
 var ObservedPortfolioAssessments string
+
+//go:embed 0076_predeclared_holdout_assessments.sql
+var PredeclaredHoldoutAssessments string

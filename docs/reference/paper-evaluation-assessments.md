@@ -22,7 +22,7 @@ are rejected. There is no new offline command or financial write route.
 The service replays the actual strategy, policy, declaration, finalized-decision
 and outcome owners in one consistent snapshot. Issuance takes the existing
 collector → state → receiver lock order in PostgreSQL; Memory uses its aggregate
-mutex. The compiled `serve` owner issues
+mutex. For original plans, the compiled `serve` owner issues
 `mantik-owned-paper-evaluation-assessment-v6` with recipe
 `native-predeclared-observed-portfolio-v6`. Records retain the command, service clock,
 complete selected evidence, individual check states, native warm-up and
@@ -84,6 +84,32 @@ compiled evaluator. A coherently rehashed fabricated result fails replay.
 Disposable HTTP tests cover retries, worker recipe identity, PostgreSQL reopen,
 tamper rejection, migration failure rollback and closed-database copy/reopen.
 These are manufactured fixtures and do not qualify funded recovery or a release.
+
+## Predeclared holdout checks
+
+A plan using `native-threshold-purged-holdout-plan-v2` issues assessment schema
+v7 with recipe `native-predeclared-holdout-necessary-checks-v7`. Its retained
+`holdout` result binds the declaration and evidence hashes to the actual
+strategy horizons, feature input hashes and clocks, and observed outcome hashes
+and availability clocks. Callers cannot submit partition rows, counts or results.
+The same owner snapshot derives the result during issuance and catalogue replay,
+including allocation, admission-review and attribution reads.
+
+The [prospective plan](paper-evaluation-declarations.md#prospective-training-and-holdout-partitions)
+defines the split, embargo and necessary occurrence minima. Straddling horizons,
+late-created training labels, quotes carried across the split and embargo rows
+cannot count toward the affected partitions. Waiting outcomes are not labels.
+A closed partition below its minimum makes the necessary out-of-sample check
+`failed` and the assessment `blocked`. Counts meeting both minima leave the check
+`unavailable`; no statistical independence or holdout performance is established.
+Other failed checks remain failed. Full economic, benchmark and statistical
+acceptance is still required before any complete applicable evaluation exists.
+
+The automatic worker derives the v7 identity for these declarations, preserving
+old worker identities for original plans. Exact retries return the original
+record without sampling a clock. A coherently rehashed horizon or label edit
+fails owner replay. Migration 76 changes compatibility metadata without rewriting
+historical payloads. These contracts grant no admission, execution or qualification.
 
 ## Known source-unavailability leakage
 
@@ -279,8 +305,8 @@ occupying the automatic identity. Current owner sources are replayed inside the
 write, while earlier committed assessments remain immutable.
 
 The reserved ID is `automatic-evaluation-` followed by the hash of the owner
-recipe and declaration hash. The compiled `serve` owner selects recipe v6;
-legacy stores select v5. Changing the recipe creates a distinct identity and
+recipe and declaration hash. For original plans the compiled `serve` owner selects recipe v6 and
+legacy stores select v5; predeclared holdout plans select recipe v7. Changing the recipe creates a distinct identity and
 preserves earlier receipts. Public
 assessment POSTs reject that prefix. A committed retry reuses the same record
 without sampling a new owner issuance clock. Concurrent cycles cannot create
