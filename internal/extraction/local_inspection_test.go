@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +18,7 @@ import (
 
 func inspectionReceipts(t *testing.T, status int, body []byte) (LocalReceipt, LocalReceipt) {
 	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status); w.Write(body) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status); w.Write(body) })))
 	defer server.Close()
 	var all []LocalReceipt
 	_, err := RunLocal(context.Background(), news.FixtureArticle(), "event", LocalConfig{Endpoint: server.URL, Model: "ollama/fixture", MaxTokens: 512}, "", func(r LocalReceipt) error { all = append(all, r); return nil })

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
@@ -102,7 +103,7 @@ func TestDecisionInspectionRejectsSubstitution(t *testing.T) {
 	t.Setenv("MANTIK_API_TOKEN", "terminal-token")
 	for _, kind := range []string{"e", "m"} {
 		for _, field := range []string{"decision", "basis", "owner", "authority", "hash"} {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != "GET" || r.Header.Get("Authorization") != "Bearer terminal-token" || r.ContentLength != 0 {
 					t.Error("unexpected request", r.Method, r.ContentLength)
 				}
@@ -141,7 +142,7 @@ func TestDecisionInspectionRejectsSubstitution(t *testing.T) {
 					}
 					_ = emit(w, v)
 				}
-			}))
+			})))
 			value, err := fetchDecisionInspection(context.Background(), srv.URL, d, kind)
 			srv.Close()
 			if !errors.Is(err, errDecisionReadback) || value != nil {

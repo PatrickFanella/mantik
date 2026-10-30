@@ -11,13 +11,14 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
 
 func TestLibraryCLIServiceParity(t *testing.T) {
 	ctx := context.Background()
-	server := httptest.NewServer(service.Handler(storage.NewMemory(), "library-cli"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(storage.NewMemory(), "library-cli")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "library-cli")
 	var out bytes.Buffer
@@ -55,12 +56,12 @@ func TestLibraryCLIServiceParity(t *testing.T) {
 }
 
 func TestLibraryCLIDoesNotSubstituteLocalMethods(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" || r.URL.Path != "/v1/library" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		http.Error(w, "unavailable", 503)
-	}))
+	})))
 	defer s.Close()
 	var out bytes.Buffer
 	if err := Run(context.Background(), []string{"library", "--api-url", s.URL}, &out, &out); err == nil || strings.Contains(out.String(), "demo-threshold-v1") {

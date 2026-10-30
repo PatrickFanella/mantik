@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
@@ -23,19 +24,19 @@ func TestConversationOwnerReadbackRetriesAndModelOutage(t *testing.T) {
 	receiver, _ := store.ResearchSnapshot(t.Context())
 	var posts atomic.Int64
 	h := service.Handler(store, "operator")
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	api := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/supervision/calls" {
 			posts.Add(1)
 		}
 		h.ServeHTTP(w, r)
-	}))
+	})))
 	defer api.Close()
 	policy := map[string]any{"id": "conversation-command", "receiver_id": receiver.ID, "previous_sha256": "", "policy": map[string]any{"id": "conversation-watch", "provider": "fixture", "account_id": "example", "symbols": []string{"SPY"}, "behavior": "research", "rule_id": "", "max_observation_delay_seconds": 60, "enabled": true}}
 	call := conversationCall{Tool: "change_watch_policy"}
 	call.Arguments, _ = json.Marshal(policy)
 	inspect := conversationCall{Tool: "inspect_record", Arguments: json.RawMessage(`{"kind":"watch","id":"conversation-watch"}`)}
 	var requests atomic.Int64
-	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	model := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer model-secret" {
 			t.Error("wrong model transport")
 		}
@@ -59,7 +60,7 @@ func TestConversationOwnerReadbackRetriesAndModelOutage(t *testing.T) {
 		}
 		content, _ := json.Marshal(selected)
 		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": string(content)}}}})
-	}))
+	})))
 	defer model.Close()
 	parent := t.TempDir()
 	config := filepath.Join(parent, "model.json")
@@ -112,16 +113,16 @@ func TestConversationRejectsModelAuthorityAndAmbiguity(t *testing.T) {
 			receiver, _ := store.ResearchSnapshot(t.Context())
 			var posts atomic.Int64
 			h := service.Handler(store, "operator")
-			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			api := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/v1/supervision/calls" {
 					posts.Add(1)
 				}
 				h.ServeHTTP(w, r)
-			}))
+			})))
 			defer api.Close()
-			model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			model := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": tc.content}}}})
-			}))
+			})))
 			defer model.Close()
 			parent := t.TempDir()
 			config := filepath.Join(parent, "model.json")
@@ -144,7 +145,7 @@ func TestConversationRetainsUncertainCommittedOwnerCall(t *testing.T) {
 	receiver, _ := store.ResearchSnapshot(t.Context())
 	h := service.Handler(store, "operator")
 	var posts atomic.Int64
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	api := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/supervision/calls" {
 			h.ServeHTTP(w, r)
 			return
@@ -161,12 +162,12 @@ func TestConversationRetainsUncertainCommittedOwnerCall(t *testing.T) {
 			return
 		}
 		conn.Close()
-	}))
+	})))
 	defer api.Close()
-	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	model := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		content, _ := json.Marshal(map[string]any{"tool": "change_watch_policy", "arguments": map[string]any{"id": "uncertain-command", "receiver_id": receiver.ID, "previous_sha256": "", "policy": map[string]any{"id": "uncertain-watch", "provider": "fixture", "account_id": "example", "symbols": []string{"SPY"}, "behavior": "research", "rule_id": "", "max_observation_delay_seconds": 60, "enabled": true}}})
 		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": string(content)}}}})
-	}))
+	})))
 	defer model.Close()
 	parent := t.TempDir()
 	config := filepath.Join(parent, "model.json")

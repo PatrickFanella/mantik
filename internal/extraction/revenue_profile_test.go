@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -54,7 +55,7 @@ func TestRevenueProfileRetainsAndReplaysEveryOutcome(t *testing.T) {
 			q := revenueQuoteFixture()
 			tc.change(&q)
 			var calls atomic.Int32
-			model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			model := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				var req map[string]any
 				if json.NewDecoder(r.Body).Decode(&req) != nil {
@@ -70,7 +71,7 @@ func TestRevenueProfileRetainsAndReplaysEveryOutcome(t *testing.T) {
 				}
 				w.WriteHeader(tc.status)
 				_, _ = w.Write(localReply(SwitchyardModel, string(quoteJSON(q)), "stop"))
-			}))
+			})))
 			defer model.Close()
 			var receipts []SwitchyardReceipt
 			a := diagnosticSource()
@@ -130,7 +131,7 @@ func TestRevenueProfileRetainsAndReplaysEveryOutcome(t *testing.T) {
 
 func TestRevenueProfileRefusesUnsupportedContextBeforeRequest(t *testing.T) {
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) })))
 	defer server.Close()
 	config := SwitchyardConfig{Endpoint: server.URL, Model: SwitchyardModel, MaxTokens: 1024, ReasoningEffort: "low", Profile: RevenueProfile}
 	for _, mutate := range []func(*SwitchyardConfig){func(c *SwitchyardConfig) { c.Profile = "unknown" }, func(c *SwitchyardConfig) { c.MaxTokens = 512 }} {

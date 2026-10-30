@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
@@ -22,7 +23,7 @@ func TestExceptionsCLI(t *testing.T) {
 	if err := m.ReportWorker(ctx, domain.WorkerReport{WorkerHealth: domain.WorkerHealth{Capability: "action_delivery", WorkerID: "fixture-worker", At: at, IntervalMillis: 1000, ErrorCode: "fixture_failure"}}); err != nil {
 		t.Fatal(err)
 	}
-	s := httptest.NewServer(service.Handler(m, "exception-cli"))
+	s := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(m, "exception-cli")))
 	defer s.Close()
 	t.Setenv("MANTIK_API_TOKEN", "exception-cli")
 	var out bytes.Buffer

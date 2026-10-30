@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -26,7 +27,7 @@ func ownedSocialResearchHTTP(t *testing.T, s socialHTTPBackend) {
 		t.Fatal(err)
 	}
 	clock := &ownedDecisionClock{at: time.Now().UTC().Add(time.Hour)}
-	server := httptest.NewServer(service.HandlerWithClock(s, "research-fixture-token", clock))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(s, "research-fixture-token", clock)))
 	defer server.Close()
 	request := func(method, path string, body any, want int) []byte {
 		t.Helper()

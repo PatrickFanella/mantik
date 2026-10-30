@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -33,14 +34,14 @@ func TestDiagnosticPublicationCLIStaysOfflineAfterCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	var calls atomic.Int32
-	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	model := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		var req map[string]any
 		if json.NewDecoder(r.Body).Decode(&req) != nil || req["max_tokens"] != float64(1024) || req["reasoning_effort"] != "low" {
 			t.Error("request bounds")
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": "fixture", "object": "chat.completion", "created": 1, "usage": map[string]int{}, "model": extraction.SwitchyardModel, "choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": `{"outcome":"abstain","reason_code":"ambiguous_source","claims":[]}`}}}})
-	}))
+	})))
 	defer model.Close()
 	dir := filepath.Join(root, "capture")
 	var out, errs bytes.Buffer
@@ -74,7 +75,7 @@ func TestDiagnosticPublicationCLIStaysOfflineAfterCapture(t *testing.T) {
 		t.Fatal("evaluation counts", report.Counts)
 	}
 	var requests atomic.Int32
-	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); w.WriteHeader(500) }))
+	service := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); w.WriteHeader(500) })))
 	defer service.Close()
 	out.Reset()
 	if err := Run(ctx, []string{"news-switchyard-import", "--api-url", service.URL, "--receiver-id", "receiver-abcdefghijklmnop", "--id", "diagnostic", "--dir", dir}, &out, &errs); err == nil || out.Len() != 0 || requests.Load() != 0 {

@@ -3,6 +3,7 @@ package extraction
 import (
 	"context"
 	"errors"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"net/http"
 	"net/http/httptest"
@@ -54,10 +55,10 @@ func TestSwitchyardCaptureImmutableReplayAndHistory(t *testing.T) {
 
 func switchyardCaptureReceipts(t *testing.T) (SwitchyardReceipt, SwitchyardReceipt) {
 	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(503)
 		_, _ = w.Write([]byte("retained failure"))
-	}))
+	})))
 	defer server.Close()
 	var receipts []SwitchyardReceipt
 	_, err := RunSwitchyard(context.Background(), news.FixtureArticle(), "event", SwitchyardConfig{Endpoint: server.URL, Model: SwitchyardModel, MaxTokens: 1024, ReasoningEffort: "low"}, "", func(r SwitchyardReceipt) error { receipts = append(receipts, r); return nil })

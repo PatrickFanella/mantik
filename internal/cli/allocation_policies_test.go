@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -47,7 +48,7 @@ func allocationPolicyHTTP(t *testing.T, s policyHTTPBackend) {
 	if err = os.WriteFile(file, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(service.Handler(s, "policy-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "policy-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "policy-token")
 	run := func(args ...string) []byte {
@@ -116,7 +117,7 @@ func allocationPolicyHTTP(t *testing.T, s policyHTTPBackend) {
 	wrong.Command.Policy.ID = "other"
 	wrong, _ = allocation.NewPolicyRecord(wrong.Command, wrong.Account, wrong.RegisteredAt)
 	for _, payload := range []any{allocation.PolicyReceipt{Record: wrong}, map[string]any{"record": first.Record, "duplicate": false, "extra": true}} {
-		host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(payload) }))
+		host := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(payload) })))
 		var out, diag bytes.Buffer
 		err := Run(ctx, append(args, "--api-url", host.URL, "--receiver-id", receiver.ID), &out, &diag)
 		host.Close()

@@ -8,6 +8,7 @@ import (
 	"reflect"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -202,6 +203,9 @@ func TestRegularCollectorRealDeadlineBoundsWholeRun(t *testing.T) {
 				quotes.Add(1)
 				_, _ = fmt.Fprint(w, freshQuote())
 			})
+			if status, err := loopbacktest.Probe(context.Background(), client.dataOrigin); err != nil || status != http.StatusNotFound || quotes.Load() != 0 || calendars.Load() != 0 {
+				t.Fatal("unrelated loopback client counted as acquisition", status, err)
+			}
 			out, err := j.RunCollector(context.Background(), client, s, control, receiver)
 			// The deadline starts at intent, so a loaded machine may expire during
 			// calendar acquisition/publication, before any quote. Progress is not a

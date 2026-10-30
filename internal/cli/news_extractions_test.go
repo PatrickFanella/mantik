@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -22,7 +23,7 @@ func TestRetainedExtractionCLIAndStrictHTTP(t *testing.T) {
 	ctx := context.Background()
 	s := storage.NewMemory()
 	receiver, _ := s.ResearchSnapshot(ctx)
-	server := httptest.NewServer(service.Handler(s, "extraction-test-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "extraction-test-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "extraction-test-token")
 	dir := t.TempDir()
@@ -107,7 +108,7 @@ func TestRetainedExtractionCLIAndStrictHTTP(t *testing.T) {
 	// A hash-valid-looking but altered server result must not reach CLI output.
 	bad := done
 	bad.Result.QualificationCredit = true
-	corrupt := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(bad) }))
+	corrupt := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(bad) })))
 	defer corrupt.Close()
 	out.Reset()
 	if e := Run(ctx, []string{"news-extraction", "--id", "one", "--api-url", corrupt.URL}, &out, &errs); e == nil || out.Len() != 0 {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidategeneration"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"io"
@@ -284,7 +285,7 @@ func TestGenerationOutcomeClientRejectsForgedResponses(t *testing.T) {
 				}
 			}
 			var posts atomic.Int32
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				if req.Method == "POST" {
 					posts.Add(1)
 				}
@@ -299,7 +300,7 @@ func TestGenerationOutcomeClientRejectsForgedResponses(t *testing.T) {
 					return
 				}
 				_, _ = w.Write(body)
-			}))
+			})))
 			defer server.Close()
 			var out, diag bytes.Buffer
 			args = append(args, "--api-url", server.URL, "--receiver-id", pub.ReceiverID)
@@ -312,7 +313,7 @@ func TestGenerationOutcomeClientRejectsForgedResponses(t *testing.T) {
 		})
 	}
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { calls.Add(1); w.WriteHeader(500) })))
 	defer server.Close()
 	for _, args := range [][]string{{"candidate-generation-outcome-report", "--id", r.RequestID, "--intent-sha256", i.SHA256, "--plan-sha256", p.SHA256, "--recording-sha256", strings.Repeat("f", 64), "--recording", file}, {"candidate-generation-outcome", "--id", r.RequestID}, {"candidate-generation-outcomes", "--id", "filtered"}, {"candidate-generation-outcome-report", "unexpected"}} {
 		var out, diag bytes.Buffer

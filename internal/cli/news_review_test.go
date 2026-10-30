@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
@@ -29,7 +30,7 @@ func TestRetainedReviewCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(service.Handler(s, "review-cli-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "review-cli-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "review-cli-token")
 	var out bytes.Buffer
@@ -126,9 +127,9 @@ func TestRetainedReviewCLI(t *testing.T) {
 }
 
 func TestReviewHistoryCLIRejectsCorruptReceipt(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"schema":"mantik-case-review-history-v1","attempts":[],"qualification_credit":true}`))
-	}))
+	})))
 	defer server.Close()
 	var out bytes.Buffer
 	if err := Run(context.Background(), []string{"news-reviews", "--case", "news-case-" + strings.Repeat("0", 64), "--api-url", server.URL}, &out, &out); err == nil || out.Len() != 0 {

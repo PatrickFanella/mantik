@@ -10,11 +10,13 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 )
 
 func testClient(t *testing.T, h http.HandlerFunc) *Client {
 	t.Helper()
-	server := httptest.NewServer(h)
+	server := httptest.NewServer(loopbacktest.GoClientOnly(h))
 	t.Cleanup(server.Close)
 	c, err := NewClient("manufactured-key", "manufactured-secret", "iex")
 	if err != nil {

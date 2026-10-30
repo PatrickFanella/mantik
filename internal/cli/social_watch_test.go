@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -32,7 +33,7 @@ func ownedSocialHTTP(t *testing.T, s socialHTTPBackend) {
 	t.Helper()
 	ctx := context.Background()
 	clock := &ownedDecisionClock{at: time.Date(2026, 10, 22, 14, 0, 0, 0, time.UTC)}
-	server := httptest.NewServer(service.HandlerWithClock(s, "social-fixture-token", clock))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(s, "social-fixture-token", clock)))
 	defer server.Close()
 	request := func(method, path string, body any, want int) []byte {
 		t.Helper()

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateattempt"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateevidence"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"io"
@@ -32,7 +33,7 @@ func (c outcomeHTTPClock) Now() time.Time { return c.at }
 func candidateOutcomeHTTP(t *testing.T, s candidateHTTPBackend, i candidateattempt.Intent) (candidateevidence.OutcomeRecord, candidateevidence.Capture) {
 	t.Helper()
 	c := cliCaptureForIntent(t, i)
-	server := httptest.NewServer(service.HandlerWithClock(s, "candidate-http-token", outcomeHTTPClock{at: i.CreatedAt.Add(time.Minute)}))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(s, "candidate-http-token", outcomeHTTPClock{at: i.CreatedAt.Add(time.Minute)})))
 	defer server.Close()
 	raw, _ := json.Marshal(c)
 	file := filepath.Join(t.TempDir(), "capture.json")
@@ -230,7 +231,7 @@ func TestCandidateOutcomeClientPinsAndStrictResponses(t *testing.T) {
 			case "oversized":
 				body = append(body, bytes.Repeat([]byte(" "), candidateevidence.MaxOutcomeBytes)...)
 			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) })))
 			defer server.Close()
 			pins := map[string]string{"--intent-sha256": i.SHA256, "--capture-sha256": c.SHA256, "--receiver-id": r.ReceiverID, "--id": r.RequestID, "--outcome-sha256": r.SHA256}
 			for name, flag := range map[string]string{"receipt-sha": "--outcome-sha256", "intent-pin": "--intent-sha256", "capture-pin": "--capture-sha256", "receiver-pin": "--receiver-id", "request-pin": "--id"} {
@@ -255,7 +256,7 @@ func TestCandidateOutcomeClientPinsAndStrictResponses(t *testing.T) {
 		})
 	}
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls.Add(1); w.WriteHeader(500) })))
 	defer server.Close()
 	for _, kind := range []string{"capture", "receiver", "request", "intent"} {
 		receiver, id, intentSHA, captureSHA := r.ReceiverID, r.RequestID, r.IntentSHA256, c.SHA256

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
@@ -48,7 +49,7 @@ func TestDraftRetainsBeforeRequestAndRejectsInvalidOutcomesWithoutRetry(t *testi
 		t.Run(test.name, func(t *testing.T) {
 			var calls atomic.Int32
 			history := []Receipt{}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				if len(history) != 2 || history[0].Status != "prepared" || history[1].Status != "request_started" {
 					t.Error("request not retained first")
@@ -58,7 +59,7 @@ func TestDraftRetainsBeforeRequestAndRejectsInvalidOutcomesWithoutRetry(t *testi
 				}
 				w.WriteHeader(test.status)
 				_, _ = fmt.Fprint(w, test.raw)
-			}))
+			})))
 			defer server.Close()
 			c := Config{Endpoint: server.URL, Model: "ollama/manufactured-model", MaxTokens: 512}
 			d := manufacturedDecision()
@@ -81,7 +82,7 @@ func TestDraftRetainsBeforeRequestAndRejectsInvalidOutcomesWithoutRetry(t *testi
 }
 func TestDraftPersistenceFailureAndCancellationPreventTransport(t *testing.T) {
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1) })))
 	defer server.Close()
 	c := Config{Endpoint: server.URL, Model: "ollama/manufactured-model", MaxTokens: 512}
 	d := manufacturedDecision()

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"testing"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/newscase"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
@@ -18,7 +19,7 @@ import (
 func TestNewsServiceCLI(t *testing.T) {
 	ctx := context.Background()
 	backend := storage.NewMemory()
-	server := httptest.NewServer(service.Handler(backend, "cli-test-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(backend, "cli-test-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "cli-test-token")
 	path := filepath.Join(t.TempDir(), "journal")

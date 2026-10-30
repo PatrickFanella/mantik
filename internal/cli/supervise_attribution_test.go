@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
@@ -31,13 +32,13 @@ func TestDecisionAttributionInspectionNavigation(t *testing.T) {
 	one, two := decisionViewFixture("one"), decisionViewFixture("two")
 	row := attributionViewFixture(two)
 	requests := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		if r.Method != "GET" || r.URL.Path != "/v1/paper-attribution/two" || r.URL.RawQuery != "" || r.ContentLength != 0 || r.Header.Get("Authorization") != "Bearer attribution-view-token" {
 			t.Error("unexpected attribution request", r.Method, r.URL.Path, r.ContentLength)
 		}
 		_ = json.NewEncoder(w).Encode(row)
-	}))
+	})))
 	defer server.Close()
 	fetches := 0
 	fetch := func(context.Context) (storage.PaperDecisionCatalog, error) {
@@ -83,7 +84,7 @@ func TestDecisionAttributionInspectionRejectsSubstitution(t *testing.T) {
 			row.Decision.SHA256 = workerplan.Hash(row.Decision)
 			row.SHA256 = ""
 			row.SHA256 = workerplan.Hash(row)
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(row) }))
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(row) })))
 			defer server.Close()
 			result, err := fetchDecisionInspection(context.Background(), server.URL, d, "a")
 			if !errors.Is(err, errDecisionReadback) || result != nil {
@@ -94,7 +95,7 @@ func TestDecisionAttributionInspectionRejectsSubstitution(t *testing.T) {
 	// A valid response is detached and returned in full, including explicit null
 	// economics and empty history. It is still a synthetic UI fixture.
 	row := attributionViewFixture(d)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(row) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(row) })))
 	defer server.Close()
 	got, err := fetchDecisionInspection(context.Background(), server.URL, d, "a")
 	if err != nil || !reflect.DeepEqual(got, row) {
@@ -105,10 +106,10 @@ func TestDecisionAttributionInspectionTransportFailures(t *testing.T) {
 	t.Setenv("MANTIK_API_TOKEN", "attribution-view-token")
 	d := decisionViewFixture("one")
 	for _, status := range []int{401, 404, 503} {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(status)
 			_ = json.NewEncoder(w).Encode(attributionViewFixture(d))
-		}))
+		})))
 		got, err := fetchDecisionInspection(context.Background(), server.URL, d, "a")
 		server.Close()
 		if err == nil || got != nil {
@@ -117,7 +118,7 @@ func TestDecisionAttributionInspectionTransportFailures(t *testing.T) {
 	}
 	raw, _ := json.Marshal(attributionViewFixture(d))
 	for _, body := range []string{string(raw) + `{}`, strings.TrimSuffix(string(raw), "}") + `,"unexpected":true}`, strings.Repeat(" ", storage.MaxPaperAttributionBytes+1)} {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, body) }))
+		server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, body) })))
 		got, err := fetchDecisionInspection(context.Background(), server.URL, d, "a")
 		server.Close()
 		if err == nil || got != nil {
@@ -136,7 +137,7 @@ func TestDecisionAttributionInspectionCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	started := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(started); <-r.Context().Done() }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(started); <-r.Context().Done() })))
 	defer server.Close()
 	d := decisionViewFixture("one")
 	var out bytes.Buffer

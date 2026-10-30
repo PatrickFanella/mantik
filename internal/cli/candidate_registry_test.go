@@ -26,6 +26,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/generatedcandidate"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/investigation"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -137,7 +138,7 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 	ownedPaperDecisionHTTP(t, s.(ownedDecisionHTTPBackend))
 	p, raw, pub := candidateHTTPFixture(t, s)
 	before, _ := s.Snapshot(ctx)
-	server := httptest.NewServer(service.Handler(s, "candidate-http-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "candidate-http-token")))
 	defer func() { server.Close() }()
 	t.Setenv("MANTIK_API_TOKEN", "candidate-http-token")
 	dir := t.TempDir()
@@ -209,7 +210,7 @@ func candidateHTTPContracts(t *testing.T, s candidateHTTPBackend, reopen func() 
 	if reopen != nil {
 		server.Close()
 		s = reopen()
-		server = httptest.NewServer(service.Handler(s, "candidate-http-token"))
+		server = httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "candidate-http-token")))
 		if err := json.Unmarshal(run(inspect...), &retry); err != nil || !reflect.DeepEqual(first, retry) {
 			t.Fatal("HTTP restart changed registration", err)
 		}
@@ -388,7 +389,7 @@ func TestCandidateRegistryClientRejectsWrongPins(t *testing.T) {
 					body = []byte(strings.Replace(string(body), `"schema":`, `"schema":"duplicate","schema":`, 1))
 				}
 			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { _, _ = w.Write(body) }))
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { _, _ = w.Write(body) })))
 			defer server.Close()
 			var out, diagnostics bytes.Buffer
 			args = append(args, "--api-url", server.URL, "--receiver-id", pub.ReceiverID)
@@ -398,7 +399,7 @@ func TestCandidateRegistryClientRejectsWrongPins(t *testing.T) {
 		})
 	}
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) })))
 	defer server.Close()
 	for _, args := range [][]string{{"candidate-register", "--id", "bad"}, {"candidate-dataset", "--id", "root", "--registration-sha256", "wrong"}, {"candidate-registrations", "--api-url", "http://user:secret@localhost"}} {
 		var out, diagnostics bytes.Buffer

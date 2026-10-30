@@ -18,6 +18,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/investigation"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/replay"
 	"git.subcult.tv/subculture-collective/mantik/internal/researchhistory"
@@ -69,7 +70,7 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(service.Handler(s, "trial-cli-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "trial-cli-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "trial-cli-token")
 	file := filepath.Join(t.TempDir(), "recipe.json")
@@ -180,7 +181,7 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 			t.Error(err)
 		}
 	}}
-	changedServer := httptest.NewServer(service.Handler(changing, "trial-cli-token"))
+	changedServer := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(changing, "trial-cli-token")))
 	defer changedServer.Close()
 	var changedOut bytes.Buffer
 	if err = Run(ctx, []string{"trial-assessments", "--api-url", changedServer.URL, "--id", first.ID}, &changedOut, &changedOut); err == nil || !strings.Contains(err.Error(), "HTTP 409") || changedOut.Len() != 0 {
@@ -192,7 +193,7 @@ func TestTrialRegistrationCLIAndAPI(t *testing.T) {
 			t.Error(err)
 		}
 	}}
-	changedQuestionServer := httptest.NewServer(service.Handler(changingQuestion, "trial-cli-token"))
+	changedQuestionServer := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(changingQuestion, "trial-cli-token")))
 	defer changedQuestionServer.Close()
 	changedOut.Reset()
 	if err = Run(ctx, []string{"hypothesis-assessments", "--api-url", changedQuestionServer.URL, "--id", publication.Sealed.ID}, &changedOut, &changedOut); err == nil || !strings.Contains(err.Error(), "HTTP 409") || changedOut.Len() != 0 {

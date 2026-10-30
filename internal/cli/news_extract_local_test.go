@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -35,7 +36,7 @@ func TestLocalExtractionCLIPrivateEvidenceAndNoImplicitRetry(t *testing.T) {
 		quoted.Claims = append(quoted.Claims, q)
 	}
 	content, _ := json.Marshal(quoted)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if _, err := os.Stat(filepath.Join(dir, "prepared.json")); err != nil {
 			t.Error("request before prepared file")
@@ -44,7 +45,7 @@ func TestLocalExtractionCLIPrivateEvidenceAndNoImplicitRetry(t *testing.T) {
 			t.Error("missing token")
 		}
 		json.NewEncoder(w).Encode(map[string]any{"id": "fixture", "object": "chat.completion", "created": 1, "model": "ollama/fixture", "usage": map[string]int{}, "choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": string(content)}}}})
-	}))
+	})))
 	defer server.Close()
 	t.Setenv("MANTIK_LOCAL_MODEL_TOKEN", "local-private-token")
 	args := []string{"news-extract-local", "--article", article, "--endpoint", server.URL, "--model", "ollama/fixture", "--event-key", "event", "--output-dir", dir}

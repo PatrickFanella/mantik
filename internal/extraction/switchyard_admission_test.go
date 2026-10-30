@@ -2,6 +2,7 @@ package extraction
 
 import (
 	"context"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/newscase"
 	"net/http"
@@ -114,7 +115,7 @@ func TestSwitchyardAdmissionBindsCallerReportedProvenance(t *testing.T) {
 
 func switchyardAdmissionReceipts(t *testing.T, status int, body []byte) (SwitchyardReceipt, SwitchyardReceipt) {
 	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status); _, _ = w.Write(body) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status); _, _ = w.Write(body) })))
 	defer server.Close()
 	var all []SwitchyardReceipt
 	_, err := RunSwitchyard(context.Background(), news.FixtureArticle(), "event", SwitchyardConfig{Endpoint: server.URL, Model: SwitchyardModel, MaxTokens: 1024, ReasoningEffort: "low"}, "", func(r SwitchyardReceipt) error { all = append(all, r); return nil })

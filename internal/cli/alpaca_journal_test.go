@@ -14,6 +14,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
@@ -23,7 +24,7 @@ func TestJournalCLIReconcilesLostHTTPResponse(t *testing.T) {
 	store := storage.NewMemory()
 	handler := service.Handler(store, "journal-cli-token")
 	var posts atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/research-inputs" && posts.Add(1) == 1 {
 			recorded := httptest.NewRecorder()
 			handler.ServeHTTP(recorded, r)
@@ -39,7 +40,7 @@ func TestJournalCLIReconcilesLostHTTPResponse(t *testing.T) {
 			return
 		}
 		handler.ServeHTTP(w, r)
-	}))
+	})))
 	defer server.Close()
 	raw := `{"quotes":{"SPY":{"t":"2026-10-14T15:00:00Z","ap":100,"bp":99.99,"as":10,"bs":10}}}`
 	record := alpaca.Recording{Schema: alpaca.RecordingSchema, Currency: "USD", CaptureID: "cli-journal", Capability: "latest_quotes", Feed: "iex", Symbols: []string{"SPY"}, Revision: 1, ReceivedAt: time.Date(2026, 10, 14, 15, 0, 1, 0, time.UTC), EvidenceClass: "synthetic_unqualified", AccessRef: "manufactured-fixture", RawRef: "artifact:journal-cli", Original: raw, SHA256: alpaca.Digest(raw), MaxQuoteAgeSeconds: 60}

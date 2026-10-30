@@ -19,6 +19,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateexec"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidatelineage"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidatetest"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
@@ -197,7 +198,7 @@ func TestCandidateIntentClientRejectsForgedReceipts(t *testing.T) {
 					body = []byte(strings.Replace(string(body), `"schema":`, `"schema":"duplicate","schema":`, 1))
 				}
 			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) }))
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) })))
 			defer server.Close()
 			var out, diag bytes.Buffer
 			args = append(args, "--api-url", server.URL, "--receiver-id", r.ReceiverID)
@@ -207,7 +208,7 @@ func TestCandidateIntentClientRejectsForgedReceipts(t *testing.T) {
 		})
 	}
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) })))
 	defer server.Close()
 	file := filepath.Join(t.TempDir(), "job.json")
 	encoded, _ := json.Marshal(j)

@@ -15,6 +15,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/investigation"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/question"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
@@ -31,7 +32,7 @@ func TestHypothesisPublicationCLIAndAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(service.Handler(s, "publication-test-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "publication-test-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "publication-test-token")
 	run := func(args ...string) []byte {
@@ -240,9 +241,9 @@ func TestHypothesisCatalogueCLIRejectsInvalidReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.PublicationCount = 1
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(c)
-	}))
+	})))
 	defer server.Close()
 	var out bytes.Buffer
 	if err = Run(context.Background(), []string{"hypotheses", "--api-url", server.URL}, &out, &out); err == nil || out.Len() != 0 {

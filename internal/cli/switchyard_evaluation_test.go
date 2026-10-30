@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"net/http"
 	"net/http/httptest"
@@ -34,7 +35,7 @@ func TestSwitchyardEvaluationCLIPrivateManifestAndNoNetworkOrWrites(t *testing.T
 		q.Claims = append(q.Claims, claim)
 	}
 	content, _ := json.Marshal(q)
-	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	model := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
 		if status.Load() != 200 {
 			w.WriteHeader(503)
@@ -42,7 +43,7 @@ func TestSwitchyardEvaluationCLIPrivateManifestAndNoNetworkOrWrites(t *testing.T
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": "fixture", "object": "chat.completion", "created": 1, "model": extraction.SwitchyardModel, "usage": map[string]int{}, "choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": string(content)}}}})
-	}))
+	})))
 	defer model.Close()
 	capture := func(name string) string {
 		t.Helper()

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/routing"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -20,7 +21,7 @@ import (
 func TestMarketRoutingCLIProvenance(t *testing.T) {
 	t.Setenv("MANTIK_API_TOKEN", "market-test-token")
 	store := storage.NewMemory()
-	server := httptest.NewServer(service.Handler(store, "market-test-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(store, "market-test-token")))
 	defer server.Close()
 	at := time.Date(2026, 1, 5, 15, 0, 0, 0, time.UTC)
 	d := domain.TriggerDefinition{ID: "market-cli", Owner: "operator", CaseKey: "market-cli", Behavior: "research", Condition: domain.Condition{Kind: "event", EventName: "market_open"}, ValidFrom: at.Add(-time.Minute), ValidUntil: at.Add(time.Hour), RepeatPolicy: "coalesce", Requirements: domain.SourceRequirements{Source: "example-feed", Symbol: "SPY", EvidenceClass: "synthetic_unqualified", MaxAgeSeconds: 60}}

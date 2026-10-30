@@ -27,5 +27,9 @@ for storage/schema changes. Integration uses new disposable containers and
 must never use a development or production database. Run `make compose-build`
 when application dependencies or container behavior change.
 
+Wrap new `httptest` servers with `loopbacktest.GoClientOnly`: other local
+processes, such as T3 port detection, connect to loopback test servers, and an
+unwrapped fake can count or reject their requests as if Mantik sent them.
+
 Update README and maintained docs when contracts, commands, or boundaries
 change. Use ordinary feature branches and reviewable PRs on the Gitea origin.

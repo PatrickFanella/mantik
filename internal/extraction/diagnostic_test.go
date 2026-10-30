@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -24,10 +25,10 @@ func diagnosticSource() news.Article {
 
 func TestSwitchyardDiagnosticCaptureReplayEvaluationAndServiceFence(t *testing.T) {
 	var calls atomic.Int32
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		_, _ = w.Write(localReply(SwitchyardModel, string(quoteJSON(quoteFixture())), "stop"))
-	}))
+	})))
 	defer s.Close()
 	ctx := context.Background()
 	a := diagnosticSource()

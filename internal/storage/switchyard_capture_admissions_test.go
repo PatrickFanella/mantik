@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/newscase"
 )
@@ -273,9 +274,9 @@ func importSwitchyardAdmissionFixture(t *testing.T, s SwitchyardCaptureStore, re
 		}
 		content, _ = json.Marshal(q)
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": "fixture", "object": "chat.completion", "created": 1, "model": "openai/gpt-6.1-sol", "usage": map[string]int{}, "choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": string(content)}}}})
-	}))
+	})))
 	defer server.Close()
 	var all []extraction.SwitchyardReceipt
 	_, err := extraction.RunSwitchyard(context.Background(), article, key, extraction.SwitchyardConfig{Endpoint: server.URL, Model: "openai/gpt-6.1-sol", MaxTokens: 1024, ReasoningEffort: "low"}, "", func(r extraction.SwitchyardReceipt) error { all = append(all, r); return nil })

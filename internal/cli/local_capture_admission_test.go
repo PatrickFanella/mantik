@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -23,7 +24,7 @@ func TestReviewedLocalCaptureAdmissionCLI(t *testing.T) {
 	receiver, _ := s.ResearchSnapshot(ctx)
 	article := news.FixtureArticle()
 	a := localAdmissionCLIFixture(t, s, receiver.ID, article)
-	server := httptest.NewServer(service.Handler(s, "admission-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "admission-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "admission-token")
 	args := []string{"news-local-admit", "--api-url", server.URL, "--id", a.ID, "--receiver-id", receiver.ID, "--capture-sha", a.SHA256, "--result-sha", a.Finished.Result.SHA256}
@@ -91,7 +92,7 @@ func TestReviewedLocalCaptureAdmissionCLI(t *testing.T) {
 	forged.SHA256 = ""
 	sealed, _ := json.Marshal(forged)
 	forged.SHA256 = news.SHA256(string(sealed))
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	bad := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/news-local-captures/reviewed/admission":
 			_ = json.NewEncoder(w).Encode(forged)
@@ -100,7 +101,7 @@ func TestReviewedLocalCaptureAdmissionCLI(t *testing.T) {
 		default:
 			_ = json.NewEncoder(w).Encode(jsonNewsInspection{RecordKey: approval.NewsReceipt.RecordKey, Result: record.Result, Receipt: record.Receipt})
 		}
-	}))
+	})))
 	defer bad.Close()
 	out.Reset()
 	if e := Run(ctx, []string{"news-local-admission", "--api-url", bad.URL, "--id", a.ID}, &out, &errs); e == nil || out.Len() != 0 {
@@ -120,9 +121,9 @@ func localAdmissionCLIFixture(t *testing.T, s *storage.Memory, receiver string, 
 		q.Claims = append(q.Claims, claim)
 	}
 	content, _ := json.Marshal(q)
-	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	model := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": "fixture", "object": "chat.completion", "created": 1, "model": "ollama/fixture", "usage": map[string]int{}, "choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": string(content)}}}})
-	}))
+	})))
 	var all []extraction.LocalReceipt
 	_, e := extraction.RunLocal(context.Background(), article, "reviewed-event", extraction.LocalConfig{Endpoint: model.URL, Model: "ollama/fixture", MaxTokens: 512}, "", func(r extraction.LocalReceipt) error { all = append(all, r); return nil })
 	model.Close()

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -27,7 +28,7 @@ func TestLocalExtractionRetainsBeforeSendAndChecksCandidates(t *testing.T) {
 	var prepared atomic.Bool
 	content, _ := json.Marshal(quoteFixture())
 	envelope := localReply(model, string(content), "stop")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if !prepared.Load() {
 			t.Error("request preceded durable intent")
@@ -47,7 +48,7 @@ func TestLocalExtractionRetainsBeforeSendAndChecksCandidates(t *testing.T) {
 			t.Error("gold annotation leaked into prompt")
 		}
 		w.Write(envelope)
-	}))
+	})))
 	defer server.Close()
 	var receipts []LocalReceipt
 	result, err := RunLocal(context.Background(), news.FixtureArticle(), "fixture-event", LocalConfig{Endpoint: server.URL, Model: model, MaxTokens: 512}, "private-token", func(r LocalReceipt) error { receipts = append(receipts, copyJSON(r)); prepared.Store(true); return nil })
@@ -124,12 +125,12 @@ func TestLocalExtractionFailureEvidenceAndNoRetries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var calls atomic.Int32
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				w.Header().Set("Location", "http://127.0.0.1:1/leak")
 				w.WriteHeader(tt.status)
 				w.Write(tt.body)
-			}))
+			})))
 			defer server.Close()
 			var saved []LocalReceipt
 			r, err := RunLocal(context.Background(), news.FixtureArticle(), "event", LocalConfig{Endpoint: server.URL, Model: model, MaxTokens: 64}, "", func(r LocalReceipt) error { saved = append(saved, r); return nil })
@@ -176,14 +177,14 @@ func TestLocalExtractionRejectsRemoteAndCloudConfiguration(t *testing.T) {
 
 func TestLocalExtractionCooperativeDeadline(t *testing.T) {
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		_, _ = io.Copy(io.Discard, r.Body)
 		select {
 		case <-r.Context().Done():
 		case <-time.After(time.Second):
 		}
-	}))
+	})))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
