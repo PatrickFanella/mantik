@@ -9,13 +9,18 @@ import (
 // V8 is selected only by the prospectively declared benchmark recipe. Older
 // declarations and assessments retain their original accounting and hashes.
 func paperAssessmentWithBenchmarks(c PaperEvaluationAssessmentCommand, e PaperEvaluationEvidence, w *PaperEvaluationWarmUp, cut *PaperEvaluationCorporateSourceCut, p *PaperEvaluationPortfolio, h *PaperEvaluationHoldout, schema string) (PaperEvaluationAssessment, error) {
-	if schema != "mantik-owned-paper-evaluation-assessment-v8" {
+	causal := schema == "mantik-owned-paper-evaluation-assessment-v9"
+	if !causal && schema != "mantik-owned-paper-evaluation-assessment-v8" {
 		if e.Declaration.Command.Plan.BenchmarkMethod != "" {
 			return PaperEvaluationAssessment{}, ErrPaperEvaluationAssessmentInvalid
 		}
 		return paperAssessmentWithHoldout(c, e, w, cut, p, h, schema)
 	}
-	if e.Declaration.Command.Recipe != PaperBenchmarkEvaluationRecipe || e.Declaration.Command.Plan.BenchmarkMethod == "" || p == nil || p.Method != PaperBenchmarkPortfolioMethod || h == nil {
+	expectedRecipe := PaperBenchmarkEvaluationRecipe
+	if causal {
+		expectedRecipe = PaperCausalEvaluationRecipe
+	}
+	if causal != (e.Declaration.Command.Plan.FeatureCausalityMethod != "") || e.Declaration.Command.Recipe != expectedRecipe || e.Declaration.Command.Plan.BenchmarkMethod == "" || p == nil || p.Method != PaperBenchmarkPortfolioMethod || h == nil {
 		return PaperEvaluationAssessment{}, ErrPaperEvaluationAssessmentInvalid
 	}
 	r, err := paperAssessmentWithHoldout(c, e, w, cut, p, h, "mantik-owned-paper-evaluation-assessment-v7")
@@ -30,6 +35,10 @@ func paperAssessmentWithBenchmarks(c PaperEvaluationAssessmentCommand, e PaperEv
 		if check.Name == "benchmark_comparison" && check.Status == "unavailable" {
 			r.Checks[i].ReasonCode = "observed_price_benchmarks_do_not_establish_total_return_or_corporate_coverage"
 		}
+	}
+	if causal {
+		r.Recipe = PaperCausalAssessmentRecipe
+		applyNativeFeatureCausality(&r)
 	}
 	r.SHA256 = ""
 	r.SHA256 = workerplan.Hash(r)

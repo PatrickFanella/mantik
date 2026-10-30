@@ -250,3 +250,6 @@ var SocialResearchDispatch string
 
 //go:embed 0079_social_research_worker_health.sql
 var SocialResearchWorkerHealth string
+
+//go:embed 0080_native_feature_causality.sql
+var NativeFeatureCausality string
