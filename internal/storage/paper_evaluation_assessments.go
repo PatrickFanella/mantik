@@ -48,6 +48,7 @@ type PaperEvaluationCheck struct {
 	ReasonCode string `json:"reason_code"`
 }
 type PaperEvaluationAssessment struct {
+	SearchHistory       *PaperEvaluationSearchHistory       `json:"search_history,omitempty"`
 	SampleDesign        *PaperEvaluationSampleDesign        `json:"sample_design,omitempty"`
 	Holdout             *PaperEvaluationHoldout             `json:"holdout,omitempty"`
 	Portfolio           *PaperEvaluationPortfolio           `json:"portfolio,omitempty"`
@@ -244,7 +245,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 		if err != nil {
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
-		hasHoldout := slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v7", "mantik-owned-paper-evaluation-assessment-v8", "mantik-owned-paper-evaluation-assessment-v9", "mantik-owned-paper-evaluation-assessment-v10"}, r.Schema)
+		hasHoldout := slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v7", "mantik-owned-paper-evaluation-assessment-v8", "mantik-owned-paper-evaluation-assessment-v9", "mantik-owned-paper-evaluation-assessment-v10", "mantik-owned-paper-evaluation-assessment-v11"}, r.Schema)
 		hasPortfolio := r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || hasHoldout
 		hasCorporate := r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || hasPortfolio
 		var warmup *PaperEvaluationWarmUp
@@ -277,7 +278,15 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 				return PaperEvaluationAssessmentCatalog{}, err
 			}
 		}
-		want, err := paperAssessmentWithBenchmarks(r.Command, e, warmup, cut, portfolio, holdout, r.Schema)
+		var search *PaperEvaluationSearchHistory
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v11" {
+			value, err := ownedSearchHistory(e, s.strategies, r.AssessedAt)
+			if err != nil {
+				return PaperEvaluationAssessmentCatalog{}, err
+			}
+			search = &value
+		}
+		want, err := paperAssessmentWithBenchmarks(r.Command, e, warmup, cut, portfolio, holdout, search, r.Schema)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) {
 			return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentInvalid
 		}
@@ -298,7 +307,7 @@ func paperEvaluationSourceClock(owner string, all map[string]PaperEvaluationAsse
 		return ErrPaperEvaluationAssessmentInvalid
 	}
 	for id, r := range all {
-		want, err := paperAssessmentWithBenchmarks(r.Command, r.Evidence, r.WarmUp, r.CorporateSourceCut, r.Portfolio, r.Holdout, r.Schema)
+		want, err := paperAssessmentWithBenchmarks(r.Command, r.Evidence, r.WarmUp, r.CorporateSourceCut, r.Portfolio, r.Holdout, r.SearchHistory, r.Schema)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) {
 			return ErrPaperEvaluationAssessmentInvalid
 		}
@@ -398,7 +407,23 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 	if e.Declaration.Command.Plan.SampleDesign != nil {
 		schema = "mantik-owned-paper-evaluation-assessment-v10"
 	}
-	record, err := paperAssessmentWithBenchmarks(c, e, &warmup, &cut, portfolio, holdout, schema)
+	var search *PaperEvaluationSearchHistory
+	if e.Declaration.Command.Plan.SearchMultiplicity != nil {
+		schema = "mantik-owned-paper-evaluation-assessment-v11"
+		// The registered search cut cannot silently omit a strategy that already
+		// exists; later registrations must be strictly after this assessment.
+		for _, strategy := range s.strategies.Records {
+			if strategy.RegisteredAt.After(at) {
+				return PaperEvaluationAssessmentReceipt{}, ErrPaperEvaluationAssessmentInvalid
+			}
+		}
+		value, err := ownedSearchHistory(e, s.strategies, at)
+		if err != nil {
+			return PaperEvaluationAssessmentReceipt{}, err
+		}
+		search = &value
+	}
+	record, err := paperAssessmentWithBenchmarks(c, e, &warmup, &cut, portfolio, holdout, search, schema)
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}

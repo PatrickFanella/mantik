@@ -807,6 +807,12 @@ owners. Overlapping episodes cannot satisfy its declared disjoint minimum by
 increasing the raw occurrence count. Meeting the structural count leaves
 statistical independence and complete evaluation unavailable.
 
+A [predeclared registered-search bound](docs/reference/paper-evaluation-assessments.md#registered-search-history)
+counts every strategy the receiver registered by the assessment clock, declared
+or not. Exceeding the bound fails the search-multiplicity check and blocks the
+assessment. Staying within it leaves the check unavailable: a count is not a
+multiplicity-adjusted result.
+
 New v10 comparison records retain v4 admission readiness with the exact failed
 checks of each latest owner-replayed assessment for the selected variant. For
 selected decision evidence, any retained necessary failure dominates pending

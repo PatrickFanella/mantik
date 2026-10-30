@@ -256,3 +256,6 @@ var NativeFeatureCausality string
 
 //go:embed 0081_disjoint_sample_design.sql
 var DisjointSampleDesign string
+
+//go:embed 0082_search_history_multiplicity.sql
+var SearchHistoryMultiplicity string

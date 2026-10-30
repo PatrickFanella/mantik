@@ -53,6 +53,11 @@ func (m *Memory) RegisterPaperStrategy(ctx context.Context, c paperstrategy.Comm
 	if err != nil {
 		return paperstrategy.Receipt{}, err
 	}
+	if !r.Duplicate {
+		if err := paperStrategySearchClock(m.receiverID, m.evaluationAssessments, r.Record.RegisteredAt); err != nil {
+			return paperstrategy.Receipt{}, err
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return paperstrategy.Receipt{}, err
 	}
@@ -126,6 +131,14 @@ func (p *Postgres) RegisterPaperStrategy(ctx context.Context, c paperstrategy.Co
 		return paperstrategy.Receipt{}, err
 	}
 	if !r.Duplicate {
+		// Assessment issuance holds this receiver lock while retaining its cut.
+		assessments, err := readPaperEvaluationAssessments(ctx, tx)
+		if err != nil {
+			return paperstrategy.Receipt{}, err
+		}
+		if err = paperStrategySearchClock(owner, assessments, r.Record.RegisteredAt); err != nil {
+			return paperstrategy.Receipt{}, err
+		}
 		raw, err := json.Marshal(r.Record)
 		if err != nil {
 			return paperstrategy.Receipt{}, err

@@ -652,3 +652,43 @@ Schema 81 fences earlier writers through compatibility metadata without rewritin
 retained records. Migration failure rolls back its metadata and marker together.
 Use the verified backup and matching binary in separate resources for rollback;
 keep the newer source and assessment evidence intact.
+
+## Registered search history
+
+A plan using `native-threshold-search-history-plan-v6` issues assessment v11
+with recipe `native-predeclared-search-history-v11`. Its `search_history` result
+binds the declaration hash, declared bound and assessment clock to every strategy
+the receiver registered at or before that clock. Each entry keeps the strategy
+ID, record hash, registration time and whether this declaration selected it.
+HTTP assessment commands still contain only owner identities and pins; callers
+cannot supply the inventory, count, status or result.
+
+The search includes undeclared registered configurations, configurations
+declared by other families and registrations after this declaration. Declared
+family IDs cannot narrow it. A count above the predeclared bound makes
+`search_multiplicity` `failed` with `registered_search_exceeds_predeclared_bound`
+and the assessment `blocked`, including before the outcome deadline. The
+registry only grows, so a later cut cannot cure the failure. A count within the
+bound leaves the check `unavailable` with
+`search_count_without_multiplicity_adjusted_statistic`. A count is not a
+multiplicity-adjusted test statistic, and searches outside this receiver's
+registry remain unobserved.
+
+New issuance rejects a clock earlier than any retained strategy registration,
+so it cannot silently omit one. A strategy registration must be strictly later
+than every retained v11 assessment. A registration at an equal or earlier clock
+returns 409 and leaves its ID available. PostgreSQL serializes both writers on
+the receiver row lock; Memory uses its aggregate mutex. Older assessment
+versions do not select the registry and do not constrain strategy clocks.
+
+`multiplicity_adjusted`, evaluation-complete, admission, execution and
+qualification flags stay false. Other checks keep their own outcomes. Coherently
+rehashed omissions and schema downgrades fail replay against the actual strategy
+owner. Exact retries and later registrations leave the retained result
+unchanged. The automatic worker uses its own recipe-derived identity; legacy
+identities and v1–v10 results are unchanged.
+
+Schema 82 fences earlier writers, including strategy writers without the clock
+floor, through compatibility metadata. It rewrites no retained record. Use the
+verified backup and matching binary in separate resources for rollback; keep
+newer source and assessment evidence intact.

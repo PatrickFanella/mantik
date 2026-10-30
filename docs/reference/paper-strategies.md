@@ -57,6 +57,9 @@ duplicate or differently cased JSON fields, unknown fields, nulls, trailing
 objects and account/admission/source injection are rejected. Invalid input is
 422, conflicts or capacity 409, missing IDs 404 and storage unavailability 503.
 Backend requests retain the existing five-second deadline.
+A new registration must be strictly later than every retained
+[search-history assessment](paper-evaluation-assessments.md#registered-search-history);
+an equal or earlier clock returns 409. Exact retries are unaffected.
 
 ```sh
 ./bin/mantik paper-strategy-register --api-url "$api" \

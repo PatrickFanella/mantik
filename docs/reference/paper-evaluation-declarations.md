@@ -353,3 +353,21 @@ Existing declarations retain their earlier rules and exact hashes.
 The compiled assessment derives each selected decision's observation interval
 from retained owners. See [disjoint sample design](paper-evaluation-assessments.md#disjoint-sample-design)
 for closed-window selection, missing labels and the statistical boundary.
+
+## Prospective registered-search bound
+
+Recipe `native-threshold-search-history-plan-v6` retains declaration v8. It
+requires the disjoint-sample recipe's existing choices and a
+`search_multiplicity` object with `method:
+native-receiver-strategy-registry-history-v1` and
+`maximum_searched_strategies`. The bound must be at least the number of declared
+variants and no greater than the 64-definition strategy registry capacity. It is
+a prospective upper limit on the receiver's actual registered search, not a
+supplied count, significance level or result. Earlier recipes reject the object;
+the new recipe requires it. Unknown methods and schema downgrades fail.
+
+The declaration does not inspect the registry beyond its pinned variants. The
+assessment owner counts the search at its own clock, including strategies
+registered after the declaration. See [registered search history](paper-evaluation-assessments.md#registered-search-history)
+for the count, failure and statistical boundary. Existing declarations keep
+their earlier rules and exact hashes.
