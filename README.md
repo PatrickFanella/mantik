@@ -276,6 +276,10 @@ from the journal without configuring global readiness.
 [issuer distribution document](docs/reference/issuer-distribution-documents.md)
 into a separate private journal, and `issuer-document` inspects its rederived
 parse. Retained documents establish no coverage or economic effect.
+`polygon-corporate-collect` acquires one complete
+[Polygon dividend or split query](docs/reference/polygon-corporate-actions.md)
+with a private credentials file, and `polygon-corporate-collection` inspects its
+rederived snapshot. Snapshots establish no coverage or economic effect.
 The [feed-collector API](docs/reference/feed-collectors.md) retains immutable
 registrations and fenced ownership leases. It does not start a collector or
 configure feed readiness.
