@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -54,14 +55,14 @@ func TestOwnedPortfolioAssessmentHTTP(t *testing.T) {
 
 // These are manufactured captures submitted through the actual owners and
 // public handler. Their prospective labels do not give them qualification credit.
-type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign bool }
+type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign, search bool }
 
 func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options ...portfolioFixtureOptions) storage.PaperEvaluationAssessment {
 	var mode portfolioFixtureOptions
 	if len(options) > 0 {
 		mode = options[0]
 	}
-	holdout, delayed, benchmarks, causal, sampleDesign := mode.holdout, mode.delayed, mode.benchmarks, mode.causal, mode.sampleDesign
+	holdout, delayed, benchmarks, causal, sampleDesign, search := mode.holdout, mode.delayed, mode.benchmarks, mode.causal, mode.sampleDesign, mode.search
 	var referencePublishedAt time.Time
 	t.Helper()
 	ctx := context.Background()
@@ -132,9 +133,23 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		plan.Recipe = storage.PaperSampleDesignEvaluationRecipe
 		plan.Plan.SampleDesign = &storage.PaperEvaluationSampleDesignPlan{Method: storage.PaperDisjointSampleMethod, MinimumDisjointOccurrences: 2}
 	}
+	if search {
+		plan.Recipe = storage.PaperSearchHistoryEvaluationRecipe
+		plan.Plan.SearchMultiplicity = &storage.PaperEvaluationSearchPlan{Method: storage.PaperSearchHistoryMethod, MaximumSearchedStrategies: 1}
+	}
 	var declaration storage.PaperEvaluationDeclarationReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", plan, 201), &declaration); err != nil {
 		t.Fatal(err)
+	}
+	registerSearch := func(id string, want int) {
+		t.Helper()
+		other := strategyHTTPDefinition()
+		other.ID = id
+		request("POST", "/v1/paper-strategies", paperstrategy.Command{ReceiverID: owner, Definition: other}, want)
+	}
+	if search {
+		// An undeclared registered configuration is part of the actual search.
+		registerSearch("undeclared-search", 201)
 	}
 	reg := feedcollector.Registration{ID: "portfolio-spy", Provider: "alpaca", Feed: "iex", Symbol: "SPY", EvidenceClass: d.InputEvidenceClass, JournalID: "journal-portfolio", AccessRef: "manufactured-only", LeaseSeconds: 300}
 	for _, c := range []feedcollector.Command{{RequestID: "register", Operation: "register", RegistrationID: reg.ID, Registration: &reg}, {RequestID: "claim", Operation: "claim", RegistrationID: reg.ID, OwnerID: "worker"}} {
@@ -234,6 +249,20 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	if sampleDesign {
 		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v10", storage.PaperSampleDesignAssessmentRecipe
 	}
+	if search {
+		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v11", storage.PaperSearchHistoryAssessmentRecipe
+		h := r.SearchHistory
+		if h == nil || h.SearchedStrategies != 2 || h.Status != "failed" || h.ReasonCode != "registered_search_exceeds_predeclared_bound" || h.MultiplicityAdjusted || h.EvaluationComplete || h.AdmissionAvailable || h.ExecutionAvailable || h.QualificationCredit || r.Status != "blocked" {
+			t.Fatal("undeclared registered search was omitted", h, r.Status)
+		}
+		for _, check := range r.Checks {
+			if check.Name == "search_multiplicity" && (check.Status != "failed" || check.ReasonCode != h.ReasonCode) {
+				t.Fatal("search bound failure was not retained", check)
+			}
+		}
+		// A strategy written at the retained cut would change historical replay.
+		registerSearch("same-clock-search", 409)
+	}
 	if r.Schema != wantSchema || r.Recipe != wantRecipe || r.Portfolio == nil || len(r.Portfolio.Variants) != 1 || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 		t.Fatal(r)
 	}
@@ -247,6 +276,9 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		}
 		if sampleDesign {
 			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v7"
+		}
+		if search {
+			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v8"
 		}
 		expectedTraining := 1
 		if sampleDesign {
@@ -327,6 +359,9 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		t.Fatalf("owner-pinned known economics: base=%+v stress=%+v", v.Base, v.Stress)
 	}
 	clock.at = clock.at.Add(time.Second)
+	if search {
+		registerSearch("later-search", 201)
+	}
 	publish("later-source", 90, 91, false)
 	clock.panicRead = true
 	var again storage.PaperEvaluationAssessmentReceipt
@@ -395,7 +430,7 @@ func TestOwnedHoldoutAssessmentHTTP(t *testing.T) {
 	ownedPortfolioAssessmentHTTP(t, m, portfolioFixtureOptions{holdout: true})
 }
 func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions) {
-	holdout, benchmarks, causal, sampleDesign := mode.holdout, mode.benchmarks, mode.causal, mode.sampleDesign
+	holdout, benchmarks, causal, sampleDesign, search := mode.holdout, mode.benchmarks, mode.causal, mode.sampleDesign, mode.search
 	base := os.Getenv("MANTIK_TEST_DATABASE_URL")
 	if base == "" {
 		t.Skip("use make test-integration")
@@ -553,6 +588,32 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions)
 					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 				}
 			}},
+			{"search-history-omission", func(r *storage.PaperEvaluationAssessment) {
+				if search {
+					// A coherent forgery that hides the undeclared search.
+					h := r.SearchHistory
+					h.Strategies = slices.DeleteFunc(h.Strategies, func(s storage.PaperEvaluationSearchedStrategy) bool { return !s.Declared })
+					h.SearchedStrategies, h.Status, h.ReasonCode = len(h.Strategies), "unavailable", "search_count_without_multiplicity_adjusted_statistic"
+					h.SHA256 = ""
+					h.SHA256 = workerplan.Hash(*h)
+					for i := range r.Checks {
+						if r.Checks[i].Name == "search_multiplicity" {
+							r.Checks[i].Status, r.Checks[i].ReasonCode = h.Status, h.ReasonCode
+						}
+					}
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
+			{"search-history-downgrade", func(r *storage.PaperEvaluationAssessment) {
+				if search {
+					r.Schema = "mantik-owned-paper-evaluation-assessment-v10"
+					r.Recipe = storage.PaperSampleDesignAssessmentRecipe
+					r.SearchHistory = nil
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
 			{"changed-horizon", func(r *storage.PaperEvaluationAssessment) {
 				r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 			}},
@@ -623,6 +684,9 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions)
 	}
 	if sampleDesign {
 		migration = 81
+	}
+	if search {
+		migration = 82
 	}
 	var hash string
 	if err := data.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=$1", migration).Scan(&hash); err != nil {
@@ -747,4 +811,15 @@ func TestOwnedDisjointSampleAssessmentHTTP(t *testing.T) {
 }
 func TestPostgresContractsOwnedDisjointSampleAssessmentHTTP(t *testing.T) {
 	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true})
+}
+
+func TestOwnedSearchHistoryAssessmentHTTP(t *testing.T) {
+	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPortfolioAssessmentHTTP(t, m, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true})
+}
+func TestPostgresContractsOwnedSearchHistoryAssessmentHTTP(t *testing.T) {
+	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true})
 }

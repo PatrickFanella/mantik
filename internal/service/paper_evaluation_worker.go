@@ -86,6 +86,9 @@ func RunPaperEvaluationCycle(ctx context.Context, store PaperEvaluationWorkerSto
 		if d.Command.Recipe == storage.PaperSampleDesignEvaluationRecipe && d.Command.Plan.SampleDesign != nil {
 			selectedRecipe = storage.PaperSampleDesignAssessmentRecipe
 		}
+		if d.Command.Recipe == storage.PaperSearchHistoryEvaluationRecipe && d.Command.Plan.SearchMultiplicity != nil {
+			selectedRecipe = storage.PaperSearchHistoryAssessmentRecipe
+		}
 		command := storage.PaperEvaluationAssessmentCommand{ID: automaticEvaluationIDForRecipe(d, selectedRecipe), ReceiverID: declarations.ReceiverID, DeclarationID: d.Command.ID, DeclarationSHA256: d.SHA256}
 		assessmentClock := func() time.Time {
 			now := clock.Now().UTC()

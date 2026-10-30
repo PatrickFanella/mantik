@@ -17,7 +17,7 @@ func paperStrategyError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, paperstrategy.ErrInvalid), errors.Is(err, paperaccount.ErrInvalid):
 		write(w, 422, map[string]string{"error": "invalid paper strategy definition"})
-	case errors.Is(err, paperstrategy.ErrConflict), errors.Is(err, paperstrategy.ErrCapacity), errors.Is(err, storage.ErrReceiverMismatch):
+	case errors.Is(err, paperstrategy.ErrConflict), errors.Is(err, paperstrategy.ErrCapacity), errors.Is(err, storage.ErrReceiverMismatch), errors.Is(err, storage.ErrPaperEvaluationAssessmentConflict):
 		write(w, 409, map[string]string{"error": err.Error()})
 	case errors.Is(err, paperstrategy.ErrNotFound):
 		write(w, 404, map[string]string{"error": err.Error()})

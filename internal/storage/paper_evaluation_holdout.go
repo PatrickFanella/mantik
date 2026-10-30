@@ -49,6 +49,12 @@ func validHoldoutRecipe(c PaperEvaluationDeclarationCommand) bool {
 		}
 		expected = PaperSampleDesignEvaluationRecipe
 	}
+	if c.Plan.SearchMultiplicity != nil {
+		if !validSearchPlan(c) {
+			return false
+		}
+		expected = PaperSearchHistoryEvaluationRecipe
+	}
 	if h == nil {
 		return c.Plan.BenchmarkMethod == "" && c.Recipe == PaperEvaluationRecipe
 	}
