@@ -795,6 +795,12 @@ Owned evaluation recipe v4 also retains known temporal-source leakage failures;
 [assessment semantics](docs/reference/paper-evaluation-assessments.md#known-source-unavailability-leakage)
 remain failure-only and grant no admission or economic authority.
 
+A prospectively selected [native feature-causality recipe](docs/reference/paper-evaluation-assessments.md#native-feature-causality)
+now derives a passing leakage check for owner-replayed, causally available inputs
+to the fixed native threshold predicate. Empty evidence remains unavailable and
+known leakage remains failed. The other economic/statistical checks still gate
+complete evaluation and paper eligibility.
+
 New v10 comparison records retain v4 admission readiness with the exact failed
 checks of each latest owner-replayed assessment for the selected variant. For
 selected decision evidence, any retained necessary failure dominates pending

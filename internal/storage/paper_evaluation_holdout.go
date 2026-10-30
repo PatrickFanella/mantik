@@ -36,6 +36,12 @@ func validHoldoutRecipe(c PaperEvaluationDeclarationCommand) bool {
 		}
 		expected = PaperBenchmarkEvaluationRecipe
 	}
+	if c.Plan.FeatureCausalityMethod != "" {
+		if c.Plan.FeatureCausalityMethod != PaperFeatureCausalityMethod || c.Plan.BenchmarkMethod == "" {
+			return false
+		}
+		expected = PaperCausalEvaluationRecipe
+	}
 	if h == nil {
 		return c.Plan.BenchmarkMethod == "" && c.Recipe == PaperEvaluationRecipe
 	}

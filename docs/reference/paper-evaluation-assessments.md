@@ -555,3 +555,51 @@ owner replay reconstructs the source cut, books and benchmarks during issuance,
 readback and downstream allocation/admission/attribution. A coherently rehashed
 benchmark edit or schema downgrade is rejected. Local fixtures and database
 reopen/copy tests remain distinct from deployment and funded recovery evidence.
+
+
+## Native feature causality
+
+A prospectively declared `native-threshold-causal-feature-plan-v4` plan issues
+assessment schema v9 with recipe `native-predeclared-feature-causality-v9`.
+The optional declaration field fixes method
+`native-threshold-owner-feature-availability-v1` before observations begin.
+Existing v1–v8 assessments and their automatic worker identities remain unchanged.
+
+This method applies only to the exact registered `native-paper-threshold-v1`
+predicate. Its immutable definition and parameters precede declaration; the
+compiled predicate consumes one quote, with no rolling history, training labels
+or learned state. Under the assessment owner's existing snapshot, the retained
+holdout pins resolve each selected quote to its exact original publication and
+maximum receipt/admission/publication availability. Every selected feature must
+have occurred within the declared window and been available no later than its
+actual finalized decision. The owner rederives these pins on catalogue replay,
+including allocation, admission-review and attribution reads.
+
+For a variant with selected research evidence, those validated native inputs
+produce `leakage: passed` with reason
+`owner_replayed_stateless_native_features_available_at_finalization`. Empty or
+excluded-only variants remain `unavailable`. A known
+`source_unavailable_at_decision` row still makes that variant's leakage check
+`failed` and the assessment `blocked`, even when other rows are causal. The new
+check cannot erase a retained failure or treat a synthetic/excluded row as a
+selected feature. Unknown or trained/stateful methods cannot use this contract.
+
+This is a passing native feature-use check. Holdout performance, sample
+independence, sensitivity, search multiplicity and corporate total-return
+coverage retain their separate requirements. The overall assessment remains
+pending, incomplete or blocked, with evaluation completion, admission,
+execution and qualification flags false. In particular, a causal feature cannot
+make an insufficient holdout or unavailable benchmark pass.
+
+HTTP commands still contain only existing owner identities and pins; callers
+cannot submit feature clocks, check statuses or results. New automatic
+assessments have their own recipe-derived identity. Exact retries remain
+clock-free and preserve the original source cut after later publications.
+Rehashed feature-publication edits, fabricated check results and schema
+downgrades fail owner replay.
+
+Schema 80 fences older writers by updating compatibility metadata; it rewrites
+no retained declarations, assessments or source records. Migration failure
+rolls back the metadata and marker together. Rollback uses a verified backup
+and matching binary in separate resources, preserving the newer evidence;
+deleting schema markers from a running database is not a downgrade procedure.

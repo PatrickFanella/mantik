@@ -315,3 +315,21 @@ inside the retained assessment. It does not declare corporate-action coverage
 or turn a selected counterfactual quote path into continuous observation of the
 whole declared window. See [observed benchmarks](paper-evaluation-assessments.md#retained-observed-benchmarks)
 for the entry clock, costs, expiry, unavailable marks and total-return boundary.
+
+## Prospective native feature causality
+
+Recipe `native-threshold-causal-feature-plan-v4` requires the observed benchmark
+and purged holdout choices above, plus `feature_causality_method` set to
+`native-threshold-owner-feature-availability-v1`. It retains declaration schema
+v6 and fixes the native feature check before the observation window. Earlier
+recipes reject the new field, and the new recipe requires it. Unknown methods,
+missing benchmark/holdout choices and declaration-schema downgrades are invalid.
+Exact retries keep the original declaration; an existing plan cannot gain or
+lose this method after issuance.
+
+The compiled threshold predicate consumes one quote and has no training labels,
+learned state or rolling features. Its strategy definition and parameters are
+owner-pinned before declaration. The assessment replays each selected feature's
+receipt, collector admission and original publication availability against the
+decision's finalization time. See [native feature causality](paper-evaluation-assessments.md#native-feature-causality)
+for check outcomes and the remaining economic/statistical requirements.

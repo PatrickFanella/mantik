@@ -77,8 +77,11 @@ func RunPaperEvaluationCycle(ctx context.Context, store PaperEvaluationWorkerSto
 		if d.Command.Recipe == storage.PaperHoldoutEvaluationRecipe && d.Command.Plan.Holdout != nil {
 			selectedRecipe = storage.PaperHoldoutAssessmentRecipe
 		}
-		if d.Command.Recipe == storage.PaperBenchmarkEvaluationRecipe && d.Command.Plan.BenchmarkMethod != "" {
+		if (d.Command.Recipe == storage.PaperBenchmarkEvaluationRecipe || d.Command.Recipe == storage.PaperCausalEvaluationRecipe) && d.Command.Plan.BenchmarkMethod != "" {
 			selectedRecipe = storage.PaperBenchmarkAssessmentRecipe
+		}
+		if d.Command.Recipe == storage.PaperCausalEvaluationRecipe && d.Command.Plan.FeatureCausalityMethod == storage.PaperFeatureCausalityMethod {
+			selectedRecipe = storage.PaperCausalAssessmentRecipe
 		}
 		command := storage.PaperEvaluationAssessmentCommand{ID: automaticEvaluationIDForRecipe(d, selectedRecipe), ReceiverID: declarations.ReceiverID, DeclarationID: d.Command.ID, DeclarationSHA256: d.SHA256}
 		assessmentClock := func() time.Time {

@@ -55,6 +55,7 @@ func TestOwnedPortfolioAssessmentHTTP(t *testing.T) {
 // These are manufactured captures submitted through the actual owners and
 // public handler. Their prospective labels do not give them qualification credit.
 func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldout ...bool) storage.PaperEvaluationAssessment {
+	causal := len(useHoldout) > 3 && useHoldout[3]
 	holdout := len(useHoldout) > 0 && useHoldout[0]
 	benchmarks := len(useHoldout) > 2 && useHoldout[2]
 	delayed := len(useHoldout) > 1 && useHoldout[1]
@@ -120,6 +121,10 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 		plan.Recipe = storage.PaperBenchmarkEvaluationRecipe
 		plan.Plan.BenchmarkMethod = papereconomics.BenchmarkMethod
 	}
+	if causal {
+		plan.Recipe = storage.PaperCausalEvaluationRecipe
+		plan.Plan.FeatureCausalityMethod = storage.PaperFeatureCausalityMethod
+	}
 	var declaration storage.PaperEvaluationDeclarationReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", plan, 201), &declaration); err != nil {
 		t.Fatal(err)
@@ -157,6 +162,19 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 			referencePublishedAt = clock.at
 		}
 	}
+	if causal {
+		clock.at = clock.at.Add(time.Second)
+		var empty storage.PaperEvaluationAssessmentReceipt
+		command := storage.PaperEvaluationAssessmentCommand{ID: "causal-empty", ReceiverID: owner, DeclarationID: declaration.Record.Command.ID, DeclarationSHA256: declaration.Record.SHA256}
+		if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-assessments", command, 201), &empty); err != nil {
+			t.Fatal(err)
+		}
+		for _, check := range empty.Record.Checks {
+			if check.Name == "leakage" && check.Status != "unavailable" {
+				t.Fatal("empty source cut passed causality", check)
+			}
+		}
+	}
 	clock.at = start
 	publish("calendar", 99, 100, true)
 	publish("reference", 99, 100, false)
@@ -186,6 +204,9 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 	if benchmarks {
 		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v8", storage.PaperBenchmarkAssessmentRecipe
 	}
+	if causal {
+		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v9", storage.PaperCausalAssessmentRecipe
+	}
 	if r.Schema != wantSchema || r.Recipe != wantRecipe || r.Portfolio == nil || len(r.Portfolio.Variants) != 1 || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 		t.Fatal(r)
 	}
@@ -194,12 +215,29 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 		if benchmarks {
 			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v5"
 		}
+		if causal {
+			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v6"
+		}
 		if declaration.Record.Schema != expectedDeclaration || r.Holdout == nil || len(r.Holdout.Variants) != 1 || r.Holdout.Variants[0].TrainingOccurrenceUpperBound != 1 || r.Holdout.Variants[0].HoldoutOccurrenceUpperBound != 0 || r.Holdout.Variants[0].Status != "failed" || r.Holdout.IndependenceEstablished || r.Holdout.OutOfSamplePerformanceAvailable {
 			t.Fatal("owner-derived holdout partition", r.Holdout)
 		}
 	}
 	if delayed && !r.Holdout.Rows[0].FeatureAvailableAt.Equal(referencePublishedAt) {
 		t.Fatalf("holdout availability predates owner publication: retained=%s published=%s", r.Holdout.Rows[0].FeatureAvailableAt, referencePublishedAt)
+	}
+	if causal {
+		found := false
+		for _, check := range r.Checks {
+			if check.Name == "leakage" {
+				found = true
+				if check.Status != "passed" || check.ReasonCode != "owner_replayed_stateless_native_features_available_at_finalization" {
+					t.Fatal("causal native feature did not pass its declared check", check)
+				}
+			}
+		}
+		if !found || r.Status != "blocked" {
+			t.Fatal("causality erased insufficient holdout evidence", r)
+		}
 	}
 	v := r.Portfolio.Variants[0]
 	if benchmarks {
@@ -258,11 +296,15 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 		t.Fatal(err)
 	}
 	var all storage.PaperEvaluationAssessmentCatalog
-	if err := json.Unmarshal(request("GET", "/v1/paper-evaluation-assessments", nil, 200), &all); err != nil || len(all.Records) != 2 {
+	expectedAssessments := 2
+	if causal {
+		expectedAssessments++
+	}
+	if err := json.Unmarshal(request("GET", "/v1/paper-evaluation-assessments", nil, 200), &all); err != nil || len(all.Records) != expectedAssessments {
 		t.Fatal(all, err)
 	}
 	for _, a := range all.Records {
-		if a.Command.ID != c.ID && (a.Recipe != wantRecipe || a.Command.ID == service.AutomaticPaperEvaluationID(declaration.Record) || !strings.HasPrefix(a.Command.ID, service.AutomaticPaperEvaluationPrefix)) {
+		if a.Command.ID != c.ID && a.Command.ID != "causal-empty" && (a.Recipe != wantRecipe || a.Command.ID == service.AutomaticPaperEvaluationID(declaration.Record) || !strings.HasPrefix(a.Command.ID, service.AutomaticPaperEvaluationPrefix)) {
 			t.Fatal("worker reused legacy recipe identity", a)
 		}
 	}
@@ -290,6 +332,7 @@ func TestOwnedHoldoutAssessmentHTTP(t *testing.T) {
 }
 func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool, benchmark ...bool) {
 	benchmarks := len(benchmark) > 0 && benchmark[0]
+	causal := len(benchmark) > 1 && benchmark[1]
 	base := os.Getenv("MANTIK_TEST_DATABASE_URL")
 	if base == "" {
 		t.Skip("use make test-integration")
@@ -321,7 +364,7 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool, benchmark ...bo
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := ownedPortfolioAssessmentHTTP(t, s, holdout, holdout, benchmarks)
+	expected := ownedPortfolioAssessmentHTTP(t, s, holdout, holdout, benchmarks, causal)
 	s.Close()
 	legacy, err := storage.OpenPostgres(ctx, u.String())
 	if err != nil {
@@ -410,6 +453,25 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool, benchmark ...bo
 			name   string
 			change func(*storage.PaperEvaluationAssessment)
 		}{
+			{"changed-feature-publication", func(r *storage.PaperEvaluationAssessment) {
+				r.Holdout.Rows[0].FeatureAvailableAt = r.Holdout.Rows[0].FeatureAvailableAt.Add(-50 * time.Millisecond)
+			}},
+			{"changed-leakage-check", func(r *storage.PaperEvaluationAssessment) {
+				for i := range r.Checks {
+					if r.Checks[i].Name == "leakage" {
+						r.Checks[i].Status = "passed"
+						r.Checks[i].ReasonCode = "fabricated"
+					}
+				}
+			}},
+			{"causality-schema-downgrade", func(r *storage.PaperEvaluationAssessment) {
+				if causal {
+					r.Schema = "mantik-owned-paper-evaluation-assessment-v8"
+					r.Recipe = storage.PaperBenchmarkAssessmentRecipe
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
 			{"changed-horizon", func(r *storage.PaperEvaluationAssessment) {
 				r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 			}},
@@ -474,6 +536,9 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool, benchmark ...bo
 	}
 	if benchmarks {
 		migration = 77
+	}
+	if causal {
+		migration = 80
 	}
 	var hash string
 	if err := data.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=$1", migration).Scan(&hash); err != nil {
@@ -576,4 +641,15 @@ func TestOwnedBenchmarkAssessmentHTTP(t *testing.T) {
 }
 func TestPostgresContractsOwnedBenchmarkAssessmentHTTP(t *testing.T) {
 	postgresPortfolioAssessmentHTTP(t, true, true)
+}
+
+func TestOwnedCausalFeatureAssessmentHTTP(t *testing.T) {
+	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPortfolioAssessmentHTTP(t, m, true, true, true, true)
+}
+func TestPostgresContractsOwnedCausalFeatureAssessmentHTTP(t *testing.T) {
+	postgresPortfolioAssessmentHTTP(t, true, true, true)
 }
