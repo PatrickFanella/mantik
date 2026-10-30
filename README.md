@@ -801,6 +801,12 @@ to the fixed native threshold predicate. Empty evidence remains unavailable and
 known leakage remains failed. The other economic/statistical checks still gate
 complete evaluation and paper eligibility.
 
+A [predeclared disjoint-window sample design](docs/reference/paper-evaluation-assessments.md#disjoint-sample-design)
+now derives closed observation intervals from actual feature, decision and safety
+owners. Overlapping episodes cannot satisfy its declared disjoint minimum by
+increasing the raw occurrence count. Meeting the structural count leaves
+statistical independence and complete evaluation unavailable.
+
 New v10 comparison records retain v4 admission readiness with the exact failed
 checks of each latest owner-replayed assessment for the selected variant. For
 selected decision evidence, any retained necessary failure dominates pending

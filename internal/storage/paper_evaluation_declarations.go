@@ -39,6 +39,7 @@ type PaperEvaluationVariant struct {
 // This is an operator declaration of intended checks, never supplied results.
 // Registration precedes the observation window and pins the whole variant family.
 type PaperEvaluationPlan struct {
+	SampleDesign            *PaperEvaluationSampleDesignPlan     `json:"sample_design,omitempty"`
 	FeatureCausalityMethod  string                               `json:"feature_causality_method,omitempty"`
 	BenchmarkMethod         string                               `json:"benchmark_method,omitempty"`
 	Holdout                 *PaperEvaluationHoldoutPlan          `json:"holdout,omitempty"`
@@ -117,6 +118,9 @@ type PaperEvaluationDeclarationStore interface {
 }
 
 func newPaperEvaluationDeclaration(c PaperEvaluationDeclarationCommand, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, at time.Time) (PaperEvaluationDeclaration, error) {
+	if c.Plan.SampleDesign != nil {
+		return paperEvaluationDeclarationVersion(c, strategies, policies, at, "mantik-owned-paper-evaluation-declaration-v7")
+	}
 	if c.Plan.FeatureCausalityMethod != "" {
 		return paperEvaluationDeclarationVersion(c, strategies, policies, at, "mantik-owned-paper-evaluation-declaration-v6")
 	}
@@ -135,13 +139,14 @@ func newPaperEvaluationDeclaration(c PaperEvaluationDeclarationCommand, strategi
 // Legacy declarations keep their ID-count semantics and original bytes. New
 // declarations cannot label identical native configurations as distinct variants.
 func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, at time.Time, schema string) (PaperEvaluationDeclaration, error) {
-	if schema != "mantik-owned-paper-evaluation-declaration-v1" && schema != "mantik-owned-paper-evaluation-declaration-v2" && schema != "mantik-owned-paper-evaluation-declaration-v3" && schema != "mantik-owned-paper-evaluation-declaration-v4" && schema != "mantik-owned-paper-evaluation-declaration-v5" && schema != "mantik-owned-paper-evaluation-declaration-v6" {
+	if !slices.Contains([]string{"mantik-owned-paper-evaluation-declaration-v1", "mantik-owned-paper-evaluation-declaration-v2", "mantik-owned-paper-evaluation-declaration-v3", "mantik-owned-paper-evaluation-declaration-v4", "mantik-owned-paper-evaluation-declaration-v5", "mantik-owned-paper-evaluation-declaration-v6", "mantik-owned-paper-evaluation-declaration-v7"}, schema) {
 		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
 	}
-	if (schema == "mantik-owned-paper-evaluation-declaration-v5" || schema == "mantik-owned-paper-evaluation-declaration-v6") != (c.Plan.BenchmarkMethod != "") || (schema == "mantik-owned-paper-evaluation-declaration-v4" || schema == "mantik-owned-paper-evaluation-declaration-v5" || schema == "mantik-owned-paper-evaluation-declaration-v6") != (c.Plan.Holdout != nil) || (schema != "mantik-owned-paper-evaluation-declaration-v4" && schema != "mantik-owned-paper-evaluation-declaration-v5" && schema != "mantik-owned-paper-evaluation-declaration-v6" && (schema == "mantik-owned-paper-evaluation-declaration-v3") != (c.Plan.CorporateSources != nil)) {
-		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
-	}
-	if (schema == "mantik-owned-paper-evaluation-declaration-v6") != (c.Plan.FeatureCausalityMethod != "") {
+	sampleDesign := schema == "mantik-owned-paper-evaluation-declaration-v7"
+	causal := schema == "mantik-owned-paper-evaluation-declaration-v6" || sampleDesign
+	benchmarks := schema == "mantik-owned-paper-evaluation-declaration-v5" || causal
+	holdout := schema == "mantik-owned-paper-evaluation-declaration-v4" || benchmarks
+	if sampleDesign != (c.Plan.SampleDesign != nil) || causal != (c.Plan.FeatureCausalityMethod != "") || benchmarks != (c.Plan.BenchmarkMethod != "") || holdout != (c.Plan.Holdout != nil) || (!holdout && (schema == "mantik-owned-paper-evaluation-declaration-v3") != (c.Plan.CorporateSources != nil)) {
 		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
 	}
 	if c.Validate() != nil || !declarationTime(at) || strategies.Validate() != nil || policies.Validate() != nil || strategies.ReceiverID != c.ReceiverID || policies.ReceiverID != c.ReceiverID || !c.Plan.WindowStart.After(at) || c.Plan.WindowStart.Sub(at) > 365*24*time.Hour {
@@ -179,7 +184,10 @@ func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, stra
 		if !matched || d.Method != paperstrategy.Method || c.Plan.OutcomeDeadline.Before(c.Plan.WindowEnd.Add(time.Duration(d.Safety.MaxHoldingSeconds)*time.Second)) {
 			return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationConflict
 		}
-		if schema == "mantik-owned-paper-evaluation-declaration-v2" || schema == "mantik-owned-paper-evaluation-declaration-v3" || schema == "mantik-owned-paper-evaluation-declaration-v4" || schema == "mantik-owned-paper-evaluation-declaration-v5" || schema == "mantik-owned-paper-evaluation-declaration-v6" {
+		if sampleDesign && c.Plan.OutcomeDeadline.Before(c.Plan.WindowEnd.Add(time.Duration(d.Safety.MaxHoldingSeconds+min(int64(60), d.Safety.MaxQuoteAgeSeconds))*time.Second)) {
+			return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationConflict
+		}
+		if schema != "mantik-owned-paper-evaluation-declaration-v1" {
 			configuration := nativeVariantConfiguration(strategy)
 			if seenConfigurations[configuration.ConfigurationSHA256] {
 				return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationConflict

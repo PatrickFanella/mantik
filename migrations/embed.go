@@ -253,3 +253,6 @@ var SocialResearchWorkerHealth string
 
 //go:embed 0080_native_feature_causality.sql
 var NativeFeatureCausality string
+
+//go:embed 0081_disjoint_sample_design.sql
+var DisjointSampleDesign string

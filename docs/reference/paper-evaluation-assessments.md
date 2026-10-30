@@ -603,3 +603,52 @@ no retained declarations, assessments or source records. Migration failure
 rolls back the metadata and marker together. Rollback uses a verified backup
 and matching binary in separate resources, preserving the newer evidence;
 deleting schema markers from a running database is not a downgrade procedure.
+
+
+## Disjoint sample design
+
+A plan using `native-threshold-disjoint-sample-plan-v5` issues assessment v10
+with recipe `native-predeclared-disjoint-samples-v10`. Its `sample_design` result
+binds the declaration, evidence cut, declared method/minimum, variant IDs and
+every selected window's decision and feature hashes. HTTP assessment commands
+still contain only owner identities and pins; callers cannot supply intervals,
+counts, statuses or results.
+
+The design applies to the same fixed native threshold method as feature
+causality. It uses the existing owner-replayed holdout pins and actual immutable
+strategy safety contract. Each closed interval starts at the selected feature's
+occurrence time and ends at decision finalization plus maximum holding seconds
+plus `min(60, max_quote_age_seconds)`. This conservatively retains the full
+allowed observation window, rather than shortening it after seeing a favorable
+outcome. Missing observed labels remain `outcome_unavailable`; an interval ending
+after the source cut remains `window_not_closed_at_cut`. Neither can be counted.
+
+For each variant, eligible windows are sorted by earliest finish, then earliest
+start and decision ID. Greedy selection retains a maximum-cardinality disjoint
+subset. Endpoints are inclusive: a window starting exactly when the preceding
+selected window ends overlaps it. A later start must be strictly greater. All
+eligible and unavailable windows remain in the result, with
+`selected_disjoint_window`, `overlapping_observation_window` or the unavailable
+status. Sorting and tie rules make results independent of input ordering.
+
+The design covers selected research episodes across the declared window.
+Holdout partitioning remains separate: this count does not move purged rows
+into holdout or change its minima. Before the outcome deadline, design status
+is `pending`. At and after the deadline, fewer disjoint windows than the
+predeclared minimum make the design `failed` and the assessment `blocked`,
+including when the raw occurrence minimum was met. Existing necessary failures
+keep their original check reasons. Meeting the design minimum leaves sample
+sufficiency `unavailable`: nonoverlap does not establish statistical independence,
+distributional stability or economic performance.
+
+The result preserves false independence, evaluation-complete, admission,
+execution and qualification flags. Feature causality and all economic/statistical
+checks retain their own outcomes. Rehashed interval/count edits and method/schema
+downgrades fail replay against the actual source owners. Exact retries and
+later-source isolation retain the original result. The automatic worker uses
+its own recipe-derived identity; legacy identities and v1–v9 results are unchanged.
+
+Schema 81 fences earlier writers through compatibility metadata without rewriting
+retained records. Migration failure rolls back its metadata and marker together.
+Use the verified backup and matching binary in separate resources for rollback;
+keep the newer source and assessment evidence intact.

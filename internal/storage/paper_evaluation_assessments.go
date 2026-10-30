@@ -48,6 +48,7 @@ type PaperEvaluationCheck struct {
 	ReasonCode string `json:"reason_code"`
 }
 type PaperEvaluationAssessment struct {
+	SampleDesign        *PaperEvaluationSampleDesign        `json:"sample_design,omitempty"`
 	Holdout             *PaperEvaluationHoldout             `json:"holdout,omitempty"`
 	Portfolio           *PaperEvaluationPortfolio           `json:"portfolio,omitempty"`
 	CorporateSourceCut  *PaperEvaluationCorporateSourceCut  `json:"corporate_source_cut,omitempty"`
@@ -243,8 +244,11 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 		if err != nil {
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
+		hasHoldout := slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v7", "mantik-owned-paper-evaluation-assessment-v8", "mantik-owned-paper-evaluation-assessment-v9", "mantik-owned-paper-evaluation-assessment-v10"}, r.Schema)
+		hasPortfolio := r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || hasHoldout
+		hasCorporate := r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || hasPortfolio
 		var warmup *PaperEvaluationWarmUp
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v2" || r.Schema == "mantik-owned-paper-evaluation-assessment-v3" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v4" || r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v7" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v8" || r.Schema == "mantik-owned-paper-evaluation-assessment-v9"))) {
+		if slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v2", "mantik-owned-paper-evaluation-assessment-v3", "mantik-owned-paper-evaluation-assessment-v4"}, r.Schema) || hasCorporate {
 			value, e := ownedNativeWarmUp(e.Declaration, s.strategies)
 			if e != nil {
 				return PaperEvaluationAssessmentCatalog{}, e
@@ -252,7 +256,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			warmup = &value
 		}
 		var cut *PaperEvaluationCorporateSourceCut
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v7" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v8" || r.Schema == "mantik-owned-paper-evaluation-assessment-v9")) {
+		if hasCorporate {
 			value, err := ownedCorporateEvaluationCut(ctx, e, s.corporateSources)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
@@ -260,14 +264,14 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			cut = &value
 		}
 		var portfolio *PaperEvaluationPortfolio
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v7" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v8" || r.Schema == "mantik-owned-paper-evaluation-assessment-v9")) {
+		if hasPortfolio {
 			portfolio, err = ownedPortfolioEvaluation(ctx, e, s)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
 			}
 		}
 		var holdout *PaperEvaluationHoldout
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v7" || (r.Schema == "mantik-owned-paper-evaluation-assessment-v8" || r.Schema == "mantik-owned-paper-evaluation-assessment-v9") {
+		if hasHoldout {
 			holdout, err = ownedEvaluationHoldout(ctx, e, s.strategies, s.retained)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
@@ -390,6 +394,9 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 	}
 	if e.Declaration.Command.Plan.FeatureCausalityMethod != "" {
 		schema = "mantik-owned-paper-evaluation-assessment-v9"
+	}
+	if e.Declaration.Command.Plan.SampleDesign != nil {
+		schema = "mantik-owned-paper-evaluation-assessment-v10"
 	}
 	record, err := paperAssessmentWithBenchmarks(c, e, &warmup, &cut, portfolio, holdout, schema)
 	if err != nil {
