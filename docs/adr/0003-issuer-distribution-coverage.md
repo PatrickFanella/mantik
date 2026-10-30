@@ -1,6 +1,6 @@
-# ADR-0003: Issuer-documented distribution coverage
+# ADR-0003: Independent corporate-action coverage
 
-Status: accepted for steps 1–3; split source deferred
+Status: accepted
 Date: 2026-10-30
 
 ## Context
@@ -29,65 +29,88 @@ constrain the design:
 
 ## Decision
 
-Treat issuer coverage as a per-instrument, per-window result derived by the
-owner from retained sources. Callers cannot assert coverage, rows or matches.
+Treat coverage as a per-instrument, per-window result derived by the owner from
+retained sources. Callers cannot assert coverage, rows or matches. Two
+independent sources can document a window:
 
-1. **Supported scope.** Coverage applies only to instruments with a registered
-   issuer document method. The first method parses the sponsor workbook for one
-   ticker and CUSIP. Other instruments remain `unsupported_instrument`.
-2. **Custody.** Retain the original document bytes, retrieval URL, retrieval
-   time and hashes in a bounded, append-only owner, following the corporate-source
+- **Polygon** reference data is the market-wide second provider. It reports cash
+  dividends (exact amount, ex/record/pay/declaration dates, type, stable record
+  ID) and splits (execution date, from/to ratio) for any listed instrument.
+- **Issuer documents** are an additional check where a supported issuer method
+  exists, starting with the SPDR sponsor workbook.
+
+1. **Supported scope.** Any instrument Polygon reports can be reconciled. Where
+   a supported issuer method also exists, its document must agree too.
+2. **Custody.** Retain original Polygon responses and issuer document bytes,
+   with request scope, retrieval time and hashes, in a bounded, append-only owner, following the corporate-source
    custody rules: exact retries, no rewriting, later revisions kept separately.
    Only an owner-configured acquisition journal, as for Alpaca imports, can supply
-   coverage-eligible documents. Caller-reported documents stay inspectable and
+   coverage-eligible sources. Caller-reported documents stay inspectable and
    unqualified.
 3. **Parsing.** Decode the workbook with the standard library. Keep every amount
    as its exact decimal string. Select rows by ticker and CUSIP; a duplicate
    ex-date, malformed date or amount, or a changed column header makes the
    document `unparseable` rather than partially used.
-4. **Cash-distribution coverage for a window.** The window is covered only when:
-   - the document was retained after the window end and before the assessment;
-   - it lists an ex-date strictly after the window end, showing the listing
-     extends past the window despite the missing as-of date;
-   - every issuer distribution with an ex-date in the window matches exactly one
-     Alpaca cash-dividend record in the assessment's reconciled page chain on
-     ex-date and total amount, and every such Alpaca record matches an issuer row.
+4. **Coverage for a window.** A window is covered only when:
+   - the Alpaca and Polygon sources were acquired after the window end and
+     retained before the assessment, with every page of each query complete;
+   - every Alpaca cash dividend with an ex-date in the window matches exactly one
+     Polygon cash dividend on ex-date and exact amount, and every Polygon one
+     matches an Alpaca record;
+   - every split in the window matches on execution date and ratio, in both
+     directions;
+   - where a supported issuer document exists, it was retained after the window
+     end, lists an ex-date strictly after the window end (the workbook states no
+     as-of date), and its in-window rows match the reconciled dividends; a row
+     marked `inconsistent_dates` in the window prevents coverage.
 
-   Any unmatched, ambiguous or extra record leaves the window `unreconciled`,
-   with both sides retained for inspection.
-5. **Splits.** Until a documented split source is selected, split coverage is
-   `split_documentation_unavailable`. Positive economic evaluation therefore
-   remains unreachable, and the assessment says why.
-6. **Economic application** of reconciled distributions to positions, cash and
+   A window with no actions is covered only when both providers, queried after
+   it closed, report none. Any unmatched, ambiguous, extra or unsupported record
+   (including action types other than cash dividends and splits) leaves the
+   window `unreconciled`, with every source retained for inspection.
+5. **Splits** are documented by the Polygon/Alpaca reconciliation. The issuer
+   workbook documents no splits and does not contribute to split coverage.
+6. **Economic application** of reconciled dividends and splits to positions, cash and
    total-return benchmarks is a separate step. It uses ex-date entitlement and
-   payable-date cash, with no rounding beyond the retained precision.
+   payable-date cash, and applies split ratios to share quantities, with no
+   rounding beyond the retained precision.
 
 ## Delivery
 
 Each step is a reviewable PR that preserves legacy records and hashes:
 
 1. Issuer document acquisition, custody and parsing.
-2. A prospective recipe whose assessment retains per-window distribution
-   coverage and reconciliation, with split coverage marked unavailable.
-3. Total-return application of reconciled distributions to portfolio and
-   benchmark accounting.
-4. A documented split source, after the open decision below.
+2. Polygon corporate-action acquisition and parsing into a private journal.
+3. Service custody and import of both source kinds from configured journals.
+4. A prospective recipe whose assessment retains per-window coverage and
+   reconciliation across Alpaca, Polygon and any supported issuer document.
+5. Total-return application of reconciled dividends and splits to portfolio
+   and benchmark accounting.
 
 ## Decisions recorded
 
 On 2026-10-30 the user chose:
 
-- **Split source: deferred.** Deliver steps 1–3 now. Split coverage stays
-  `split_documentation_unavailable`, so positive economic evaluation remains
-  unreachable until a documented split source is selected in a later decision.
+- **Split source: deferred**, then resolved the same day by the next decision.
+- **Second provider: Polygon.** The user asked for broad coverage using an
+  existing Augr provider account. Read-only probes on 2026-10-30 found Polygon
+  and FMP serving dividends and splits, Alpha Vantage serving dividends and
+  Finnhub denying both. Polygon was selected for its market-wide dividends and
+  splits, exact amounts and stable record IDs. FMP remains a possible third
+  source.
+- **Credential: reuse Augr's Polygon key.** The user will place it in a private
+  Mantik credentials file (mode 0600, outside Git). Mantik requests share that
+  account's rate limit with Augr; acquisition must stay bounded and explicit.
+  Mantik never reads Augr's configuration or services.
 - **Retention: private only.** Private retention of the sponsor workbook for
   internal research is accepted. Originals never enter Git, public exports or
   documentation; tests use manufactured bytes.
 
 ## Consequences
 
-Coverage stays narrow: one instrument family, cash distributions first.
-Holdout performance, sensitivity and benchmark checks can consume the coverage
+Coverage extends to any instrument both Alpaca and Polygon report, with
+issuer documents strengthening the instruments they cover. Shared provider
+quota limits acquisition volume. Holdout performance, sensitivity and benchmark checks can consume the coverage
 result and fail closed on anything else. No inspection endpoint or caller flag
 substitutes for the reconciliation, and fixtures never receive qualification
 credit.
