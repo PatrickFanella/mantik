@@ -42,6 +42,13 @@ func validHoldoutRecipe(c PaperEvaluationDeclarationCommand) bool {
 		}
 		expected = PaperCausalEvaluationRecipe
 	}
+	if c.Plan.SampleDesign != nil {
+		p := c.Plan.SampleDesign
+		if p.Method != PaperDisjointSampleMethod || p.MinimumDisjointOccurrences < c.Plan.MinIndependentDecisions || p.MinimumDisjointOccurrences > 1000000 || c.Plan.FeatureCausalityMethod != PaperFeatureCausalityMethod {
+			return false
+		}
+		expected = PaperSampleDesignEvaluationRecipe
+	}
 	if h == nil {
 		return c.Plan.BenchmarkMethod == "" && c.Recipe == PaperEvaluationRecipe
 	}

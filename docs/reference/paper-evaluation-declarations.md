@@ -333,3 +333,23 @@ owner-pinned before declaration. The assessment replays each selected feature's
 receipt, collector admission and original publication availability against the
 decision's finalization time. See [native feature causality](paper-evaluation-assessments.md#native-feature-causality)
 for check outcomes and the remaining economic/statistical requirements.
+
+
+## Prospective disjoint observation windows
+
+Recipe `native-threshold-disjoint-sample-plan-v5` retains declaration v7. It
+requires the causal-feature recipe's existing choices and a `sample_design`
+object with `method: native-closed-observation-windows-v1` and
+`minimum_disjoint_occurrences`. The minimum must be at least the existing
+`min_independent_decisions`, and no greater than 1,000,000. These are prospective
+requirements, not supplied counts or results. Original recipes reject the new
+object; the new recipe requires it. Unknown methods and schema downgrades fail.
+
+The deadline must cover the last possible declared decision's maximum holding
+period plus `min(60, max_quote_age_seconds)` for every actual registered variant.
+The owner rejects a plan whose bound omits this final quote acceptance window.
+Existing declarations retain their earlier rules and exact hashes.
+
+The compiled assessment derives each selected decision's observation interval
+from retained owners. See [disjoint sample design](paper-evaluation-assessments.md#disjoint-sample-design)
+for closed-window selection, missing labels and the statistical boundary.

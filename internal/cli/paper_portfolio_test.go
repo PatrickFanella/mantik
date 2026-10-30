@@ -54,11 +54,14 @@ func TestOwnedPortfolioAssessmentHTTP(t *testing.T) {
 
 // These are manufactured captures submitted through the actual owners and
 // public handler. Their prospective labels do not give them qualification credit.
-func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldout ...bool) storage.PaperEvaluationAssessment {
-	causal := len(useHoldout) > 3 && useHoldout[3]
-	holdout := len(useHoldout) > 0 && useHoldout[0]
-	benchmarks := len(useHoldout) > 2 && useHoldout[2]
-	delayed := len(useHoldout) > 1 && useHoldout[1]
+type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign bool }
+
+func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options ...portfolioFixtureOptions) storage.PaperEvaluationAssessment {
+	var mode portfolioFixtureOptions
+	if len(options) > 0 {
+		mode = options[0]
+	}
+	holdout, delayed, benchmarks, causal, sampleDesign := mode.holdout, mode.delayed, mode.benchmarks, mode.causal, mode.sampleDesign
 	var referencePublishedAt time.Time
 	t.Helper()
 	ctx := context.Background()
@@ -125,6 +128,10 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 		plan.Recipe = storage.PaperCausalEvaluationRecipe
 		plan.Plan.FeatureCausalityMethod = storage.PaperFeatureCausalityMethod
 	}
+	if sampleDesign {
+		plan.Recipe = storage.PaperSampleDesignEvaluationRecipe
+		plan.Plan.SampleDesign = &storage.PaperEvaluationSampleDesignPlan{Method: storage.PaperDisjointSampleMethod, MinimumDisjointOccurrences: 2}
+	}
 	var declaration storage.PaperEvaluationDeclarationReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", plan, 201), &declaration); err != nil {
 		t.Fatal(err)
@@ -183,15 +190,32 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 	if err := json.Unmarshal(request("POST", "/v1/paper-decisions", storage.PaperDecisionCommand{ID: "portfolio-decision", ReceiverID: owner, StrategyID: d.ID, StrategySHA256: strategy.Record.SHA256, RegistrationID: reg.ID}, 201), &decision); err != nil || decision.Record.Evaluation.Action != "entry_candidate" {
 		t.Fatal(decision, err)
 	}
+	var secondDecision storage.PaperDecisionReceipt
 	for _, q := range []struct{ seconds, bid, ask int64 }{{2, 99, 100}, {4, 94, 95}, {5, 93, 94}, {12, 95, 96}} {
 		clock.at = start.Add(time.Duration(q.seconds) * time.Second)
 		publish(fmt.Sprintf("quote-%d", q.seconds), q.bid, q.ask, false)
+		if sampleDesign && q.seconds == 2 {
+			clock.at = start.Add(3 * time.Second)
+			command := storage.PaperDecisionCommand{ID: "portfolio-second", ReceiverID: owner, StrategyID: d.ID, StrategySHA256: strategy.Record.SHA256, RegistrationID: reg.ID}
+			if err := json.Unmarshal(request("POST", "/v1/paper-decisions", command, 201), &secondDecision); err != nil || secondDecision.Record.Evaluation.Action != "entry_candidate" {
+				t.Fatal(secondDecision, err)
+			}
+		}
+
+	}
+	if sampleDesign {
+		clock.at = start.Add(14 * time.Second)
+		publish("second-label", 95, 96, false)
 	}
 	request("POST", "/v1/paper-outcomes", storage.PaperOutcomeCommand{ID: "portfolio-outcome", ReceiverID: owner, DecisionID: decision.Record.Command.ID, DecisionSHA256: decision.Record.SHA256}, 201)
+	if sampleDesign {
+		request("POST", "/v1/paper-outcomes", storage.PaperOutcomeCommand{ID: "second-outcome", ReceiverID: owner, DecisionID: secondDecision.Record.Command.ID, DecisionSHA256: secondDecision.Record.SHA256}, 201)
+	}
 	clock.at = declaration.Record.Command.Plan.OutcomeDeadline.Add(time.Second)
 	c := storage.PaperEvaluationAssessmentCommand{ID: "portfolio-assessment", ReceiverID: owner, DeclarationID: declaration.Record.Command.ID, DeclarationSHA256: declaration.Record.SHA256}
 	raw, _ := json.Marshal(c)
 	request("POST", "/v1/paper-evaluation-assessments", strings.Replace(string(raw), `"id":`, `"portfolio":{},"id":`, 1), 422)
+	request("POST", "/v1/paper-evaluation-assessments", strings.Replace(string(raw), `"id":`, `"sample_design":{"disjoint_windows":100},"id":`, 1), 422)
 	var got storage.PaperEvaluationAssessmentReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-assessments", c, 201), &got); err != nil {
 		t.Fatal(err)
@@ -207,6 +231,9 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 	if causal {
 		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v9", storage.PaperCausalAssessmentRecipe
 	}
+	if sampleDesign {
+		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v10", storage.PaperSampleDesignAssessmentRecipe
+	}
 	if r.Schema != wantSchema || r.Recipe != wantRecipe || r.Portfolio == nil || len(r.Portfolio.Variants) != 1 || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 		t.Fatal(r)
 	}
@@ -218,7 +245,14 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 		if causal {
 			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v6"
 		}
-		if declaration.Record.Schema != expectedDeclaration || r.Holdout == nil || len(r.Holdout.Variants) != 1 || r.Holdout.Variants[0].TrainingOccurrenceUpperBound != 1 || r.Holdout.Variants[0].HoldoutOccurrenceUpperBound != 0 || r.Holdout.Variants[0].Status != "failed" || r.Holdout.IndependenceEstablished || r.Holdout.OutOfSamplePerformanceAvailable {
+		if sampleDesign {
+			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v7"
+		}
+		expectedTraining := 1
+		if sampleDesign {
+			expectedTraining = 2
+		}
+		if declaration.Record.Schema != expectedDeclaration || r.Holdout == nil || len(r.Holdout.Variants) != 1 || r.Holdout.Variants[0].TrainingOccurrenceUpperBound != expectedTraining || r.Holdout.Variants[0].HoldoutOccurrenceUpperBound != 0 || r.Holdout.Variants[0].Status != "failed" || r.Holdout.IndependenceEstablished || r.Holdout.OutOfSamplePerformanceAvailable {
 			t.Fatal("owner-derived holdout partition", r.Holdout)
 		}
 	}
@@ -237,6 +271,30 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 		}
 		if !found || r.Status != "blocked" {
 			t.Fatal("causality erased insufficient holdout evidence", r)
+		}
+	}
+	if sampleDesign {
+		if len(r.Evidence.Variants) != 1 || r.Evidence.Variants[0].ObservedOutcomeDecisions != 2 || r.Evidence.Variants[0].SampleBound.Status != "independence_unproven" {
+			t.Fatal("fixture did not meet raw occurrence minimum", r.Evidence.Variants)
+		}
+		if r.SampleDesign == nil || len(r.SampleDesign.Variants) != 1 {
+			t.Fatal(r.SampleDesign)
+		}
+		v := r.SampleDesign.Variants[0]
+		if v.ObservedWindows != 2 || v.DisjointWindows != 1 || v.OverlappingWindows != 1 || v.Status != "failed" || r.SampleDesign.IndependenceEstablished || r.SampleDesign.EvaluationComplete || r.SampleDesign.AdmissionAvailable || r.SampleDesign.ExecutionAvailable || r.SampleDesign.QualificationCredit {
+			t.Fatal("overlapping episodes became independent evidence", r.SampleDesign)
+		}
+		found := false
+		for _, c := range r.Checks {
+			if c.Name == "sample_sufficiency" {
+				found = true
+				if c.Status != "failed" || c.ReasonCode != "disjoint_windows_below_predeclared_minimum" {
+					t.Fatal("raw count bypassed sample design", c)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("missing sample check")
 		}
 	}
 	v := r.Portfolio.Variants[0]
@@ -259,8 +317,14 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 
 	}
 
-	if v.Base == nil || v.Stress == nil || v.Base.EndingCashCents != 193000 || v.Base.RealizedNetCents != -7000 || v.Base.ClosedNetCents == nil || *v.Base.ClosedNetCents != -7000 || v.Base.ObservedMaximumDrawdownCents != 7000 || v.Base.TotalReturnAvailable || v.Stress.EndingCashCents >= v.Base.EndingCashCents {
-		t.Fatal("owner-pinned known economics", v)
+	expectedDrawdown := int64(7000)
+	if sampleDesign {
+		// The second modeled entry buys 1000 shares at 95. Its bid mark at
+		// 93 adds 2000 of temporary drawdown; it later exits at 95.
+		expectedDrawdown = 9000
+	}
+	if v.Base == nil || v.Stress == nil || v.Base.EndingCashCents != 193000 || v.Base.RealizedNetCents != -7000 || v.Base.ClosedNetCents == nil || *v.Base.ClosedNetCents != -7000 || v.Base.ObservedMaximumDrawdownCents != expectedDrawdown || v.Base.TotalReturnAvailable || v.Stress.EndingCashCents >= v.Base.EndingCashCents {
+		t.Fatalf("owner-pinned known economics: base=%+v stress=%+v", v.Base, v.Stress)
 	}
 	clock.at = clock.at.Add(time.Second)
 	publish("later-source", 90, 91, false)
@@ -318,21 +382,20 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, useHoldo
 }
 
 func TestPostgresContractsOwnedPortfolioAssessmentHTTP(t *testing.T) {
-	postgresPortfolioAssessmentHTTP(t, false)
+	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{})
 }
 func TestPostgresContractsOwnedHoldoutAssessmentHTTP(t *testing.T) {
-	postgresPortfolioAssessmentHTTP(t, true)
+	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true})
 }
 func TestOwnedHoldoutAssessmentHTTP(t *testing.T) {
 	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ownedPortfolioAssessmentHTTP(t, m, true)
+	ownedPortfolioAssessmentHTTP(t, m, portfolioFixtureOptions{holdout: true})
 }
-func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool, benchmark ...bool) {
-	benchmarks := len(benchmark) > 0 && benchmark[0]
-	causal := len(benchmark) > 1 && benchmark[1]
+func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions) {
+	holdout, benchmarks, causal, sampleDesign := mode.holdout, mode.benchmarks, mode.causal, mode.sampleDesign
 	base := os.Getenv("MANTIK_TEST_DATABASE_URL")
 	if base == "" {
 		t.Skip("use make test-integration")
@@ -364,7 +427,7 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool, benchmark ...bo
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := ownedPortfolioAssessmentHTTP(t, s, holdout, holdout, benchmarks, causal)
+	expected := ownedPortfolioAssessmentHTTP(t, s, mode)
 	s.Close()
 	legacy, err := storage.OpenPostgres(ctx, u.String())
 	if err != nil {
@@ -472,6 +535,24 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool, benchmark ...bo
 					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 				}
 			}},
+			{"sample-design-substitution", func(r *storage.PaperEvaluationAssessment) {
+				if sampleDesign {
+					r.SampleDesign.Variants[0].DisjointWindows++
+					r.SampleDesign.SHA256 = ""
+					r.SampleDesign.SHA256 = workerplan.Hash(*r.SampleDesign)
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
+			{"sample-design-downgrade", func(r *storage.PaperEvaluationAssessment) {
+				if sampleDesign {
+					r.Schema = "mantik-owned-paper-evaluation-assessment-v9"
+					r.Recipe = storage.PaperCausalAssessmentRecipe
+					r.SampleDesign = nil
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
 			{"changed-horizon", func(r *storage.PaperEvaluationAssessment) {
 				r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 			}},
@@ -539,6 +620,9 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, holdout bool, benchmark ...bo
 	}
 	if causal {
 		migration = 80
+	}
+	if sampleDesign {
+		migration = 81
 	}
 	var hash string
 	if err := data.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=$1", migration).Scan(&hash); err != nil {
@@ -629,7 +713,7 @@ func TestHoldoutDelayedPublicationAvailability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ownedPortfolioAssessmentHTTP(t, m, true, true)
+	ownedPortfolioAssessmentHTTP(t, m, portfolioFixtureOptions{holdout: true, delayed: true})
 }
 
 func TestOwnedBenchmarkAssessmentHTTP(t *testing.T) {
@@ -637,10 +721,10 @@ func TestOwnedBenchmarkAssessmentHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ownedPortfolioAssessmentHTTP(t, s, true, true, true)
+	ownedPortfolioAssessmentHTTP(t, s, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true})
 }
 func TestPostgresContractsOwnedBenchmarkAssessmentHTTP(t *testing.T) {
-	postgresPortfolioAssessmentHTTP(t, true, true)
+	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true})
 }
 
 func TestOwnedCausalFeatureAssessmentHTTP(t *testing.T) {
@@ -648,8 +732,19 @@ func TestOwnedCausalFeatureAssessmentHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ownedPortfolioAssessmentHTTP(t, m, true, true, true, true)
+	ownedPortfolioAssessmentHTTP(t, m, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true})
 }
 func TestPostgresContractsOwnedCausalFeatureAssessmentHTTP(t *testing.T) {
-	postgresPortfolioAssessmentHTTP(t, true, true, true)
+	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true})
+}
+
+func TestOwnedDisjointSampleAssessmentHTTP(t *testing.T) {
+	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPortfolioAssessmentHTTP(t, m, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true})
+}
+func TestPostgresContractsOwnedDisjointSampleAssessmentHTTP(t *testing.T) {
+	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true})
 }
