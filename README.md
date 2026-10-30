@@ -280,6 +280,10 @@ parse. Retained documents establish no coverage or economic effect.
 [Polygon dividend or split query](docs/reference/polygon-corporate-actions.md)
 with a private credentials file, and `polygon-corporate-collection` inspects its
 rederived snapshot. Snapshots establish no coverage or economic effect.
+`serve --polygon-reference-journal` and `--issuer-document-journal` let the
+service [import retained references into custody](docs/reference/corporate-reference-custody.md)
+with their original bytes, reverified on inspection. Custody establishes no
+coverage or economic effect.
 The [feed-collector API](docs/reference/feed-collectors.md) retains immutable
 registrations and fenced ownership leases. It does not start a collector or
 configure feed readiness.

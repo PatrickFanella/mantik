@@ -266,11 +266,16 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest, feedPolicyPath, corporateJournalPath, corporateJournalID string
+	var references referenceJournals
 	var exportDataset, automaticOutcomes, automaticEvaluations, automaticSocialResearch bool
 	switch args[0] {
 	case "serve":
 		fs.StringVar(&corporateJournalPath, "corporate-source-journal", "", "optional existing private journal for verified corporate acquisition reads")
 		fs.StringVar(&corporateJournalID, "corporate-source-journal-id", "", "expected identity of the configured corporate acquisition journal")
+		fs.StringVar(&references.polygonPath, "polygon-reference-journal", "", "optional existing private Polygon reference journal for custody imports")
+		fs.StringVar(&references.polygonID, "polygon-reference-journal-id", "", "expected identity of the configured Polygon reference journal")
+		fs.StringVar(&references.issuerPath, "issuer-document-journal", "", "optional existing private issuer-document journal for custody imports")
+		fs.StringVar(&references.issuerID, "issuer-document-journal-id", "", "expected identity of the configured issuer-document journal")
 		fs.BoolVar(&automaticSocialResearch, "automatic-social-research", false, "dispatch retained social/copy requests into research-only cases; no provider or financial authority")
 		fs.BoolVar(&automaticEvaluations, "automatic-paper-evaluations", false, "automatically retain post-deadline necessary-check assessments; no admission authority")
 		fs.BoolVar(&automaticOutcomes, "automatic-paper-outcomes", false, "automatically retain sealed forward quote outcomes; no admission authority")
@@ -301,7 +306,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	if args[0] == "serve" {
-		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, automaticSocialResearch, corporateJournalPath, corporateJournalID)
+		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, automaticSocialResearch, corporateJournalPath, corporateJournalID, references)
 	}
 	if args[0] == "replay" {
 		if exportDataset {
@@ -423,7 +428,9 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	return nil
 }
 
-func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations, automaticSocialResearch bool, corporateJournalPath, corporateJournalID string) error {
+type referenceJournals struct{ polygonPath, polygonID, issuerPath, issuerID string }
+
+func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations, automaticSocialResearch bool, corporateJournalPath, corporateJournalID string, references referenceJournals) error {
 	var acquisitions *service.CorporateAcquisitionReader
 	if corporateJournalPath != "" || corporateJournalID != "" {
 		var err error
@@ -432,6 +439,15 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 			return err
 		}
 		defer acquisitions.Close()
+	}
+	var referenceReader *service.CorporateReferenceReader
+	if references != (referenceJournals{}) {
+		var err error
+		referenceReader, err = service.OpenCorporateReferenceReader(references.polygonPath, references.polygonID, references.issuerPath, references.issuerID)
+		if err != nil {
+			return err
+		}
+		defer referenceReader.Close()
 	}
 	var policy *service.FeedReadinessPolicy
 	if policyPath != "" {
@@ -481,7 +497,7 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 		return err
 	}
 	defer store.Close()
-	handler, err := service.HandlerWithCorporateAcquisitions(store, token, service.WallClock{}, policy, acquisitions)
+	handler, err := service.HandlerWithJournalReaders(store, token, service.WallClock{}, policy, acquisitions, referenceReader)
 	if err != nil {
 		return err
 	}
