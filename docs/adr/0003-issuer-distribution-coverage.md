@@ -1,6 +1,6 @@
 # ADR-0003: Issuer-documented distribution coverage
 
-Status: proposed
+Status: accepted for steps 1–3; split source deferred
 Date: 2026-10-30
 
 ## Context
@@ -73,13 +73,16 @@ Each step is a reviewable PR that preserves legacy records and hashes:
    benchmark accounting.
 4. A documented split source, after the open decision below.
 
-## Open decisions
+## Decisions recorded
 
-- **Split source.** A documented source for the absence or terms of splits.
-  Candidates: the trust's SEC filings, a second data provider, or another
-  issuer publication. Until chosen, step 5 above blocks positive results.
-- **Retention terms.** Confirm that private retention of the sponsor workbook
-  for internal research is acceptable under its terms of use.
+On 2026-10-30 the user chose:
+
+- **Split source: deferred.** Deliver steps 1–3 now. Split coverage stays
+  `split_documentation_unavailable`, so positive economic evaluation remains
+  unreachable until a documented split source is selected in a later decision.
+- **Retention: private only.** Private retention of the sponsor workbook for
+  internal research is accepted. Originals never enter Git, public exports or
+  documentation; tests use manufactured bytes.
 
 ## Consequences
 
