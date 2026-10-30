@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -42,7 +43,7 @@ func TestOwnedPaperOutcomeHTTP(t *testing.T) { ownedPaperOutcomeHTTP(t, storage.
 func ownedPaperOutcomeHTTP(t testing.TB, s ownedDecisionHTTPBackend) service.PaperOutcomeMarketEvidence {
 	ctx := context.Background()
 	clock := &ownedDecisionClock{at: time.Date(2026, 10, 21, 14, 0, 0, 0, time.UTC)}
-	server := httptest.NewServer(service.HandlerWithClock(s, "owned-decision-token", clock))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(s, "owned-decision-token", clock)))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "owned-decision-token")
 	request := func(method, path string, body any, want int) []byte {
@@ -454,7 +455,7 @@ func TestPostgresContractsOwnedPaperOutcomeHTTP(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer reopened.Close()
-	server := httptest.NewServer(service.HandlerWithClock(reopened, "restart-token", &ownedDecisionClock{panicRead: true}))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(reopened, "restart-token", &ownedDecisionClock{panicRead: true})))
 	defer server.Close()
 	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/paper-outcomes/observed/market-evidence", nil)
 	req.Header.Set("Authorization", "Bearer restart-token")

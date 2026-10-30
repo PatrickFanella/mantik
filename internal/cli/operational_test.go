@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workflow"
@@ -41,7 +42,7 @@ func TestOperationalCLIInspectionAndRecovery(t *testing.T) {
 		}
 	}
 	t.Setenv("MANTIK_API_TOKEN", "operator-token")
-	server := httptest.NewServer(service.HandlerWithClock(store, "operator-token", operationalClock{now}))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(store, "operator-token", operationalClock{now})))
 	defer server.Close()
 	run := func(args ...string) string {
 		var out, errOut bytes.Buffer

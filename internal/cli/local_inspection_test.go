@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -34,10 +35,10 @@ func TestLocalInspectionCLIReadsRetainedEvidenceWithoutNetworkOrWrites(t *testin
 	}
 	content, _ := json.Marshal(q)
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		json.NewEncoder(w).Encode(map[string]any{"id": "fixture", "object": "chat.completion", "created": 1, "model": "ollama/fixture", "usage": map[string]int{}, "choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": string(content)}}}})
-	}))
+	})))
 	_, err := extraction.RunLocal(context.Background(), news.FixtureArticle(), "event", extraction.LocalConfig{Endpoint: server.URL, Model: "ollama/fixture", MaxTokens: 512}, "", func(r extraction.LocalReceipt) error { return retainLocalReceipt(dir, r) })
 	server.Close()
 	if err != nil {

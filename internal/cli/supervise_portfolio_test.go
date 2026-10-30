@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/fixturecapital"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -67,12 +68,12 @@ func TestPortfolioSupervisionHTTPJourney(t *testing.T) {
 	var mu sync.Mutex
 	var requests []string
 	handler := service.Handler(backend, "portfolio-token")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		requests = append(requests, r.Method+" "+r.URL.Path)
 		mu.Unlock()
 		handler.ServeHTTP(w, r)
-	}))
+	})))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "portfolio-token")
 	first, second := p.Capital.Capital.Commitments[0].ActionID, p.Capital.Capital.Commitments[1].ActionID
@@ -107,7 +108,7 @@ func TestPortfolioSupervisionHTTPJourney(t *testing.T) {
 func TestPortfolioUnboundThenExplicitActivation(t *testing.T) {
 	ctx := context.Background()
 	backend := storage.NewQueuedMemory()
-	server := httptest.NewServer(service.Handler(backend, "portfolio-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(backend, "portfolio-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "portfolio-token")
 	reads := 0
@@ -215,13 +216,13 @@ func TestPortfolioUnknownEndpointIsNotUnbound(t *testing.T) {
 	for _, code := range []int{404, 401, 503} {
 		t.Run(http.StatusText(code), func(t *testing.T) {
 			var calls atomic.Int32
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				w.WriteHeader(code)
 				if code != 404 {
 					_, _ = io.WriteString(w, `{"code":"fixture_capital_unbound"}`)
 				}
-			}))
+			})))
 			defer server.Close()
 			p, err := fetchPortfolio(context.Background(), server.URL)
 			if err == nil || p.Unbound || calls.Load() != 1 {

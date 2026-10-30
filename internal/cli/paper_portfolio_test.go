@@ -19,6 +19,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/papereconomics"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
@@ -66,7 +67,7 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	t.Helper()
 	ctx := context.Background()
 	clock := &ownedDecisionClock{at: time.Date(2026, 10, 21, 14, 0, 0, 0, time.UTC)}
-	server := httptest.NewServer(service.HandlerWithClock(s, "portfolio-fixture-token", clock))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(s, "portfolio-fixture-token", clock)))
 	defer server.Close()
 	request := func(method, path string, body any, want int) []byte {
 		t.Helper()
@@ -433,7 +434,7 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacyServer := httptest.NewServer(service.HandlerWithClock(legacy, "legacy-token", &ownedDecisionClock{panicRead: true}))
+	legacyServer := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(legacy, "legacy-token", &ownedDecisionClock{panicRead: true})))
 	legacyRequest, _ := http.NewRequestWithContext(ctx, "GET", legacyServer.URL+"/v1/paper-evaluation-assessments/"+expected.Command.ID, nil)
 	legacyRequest.Header.Set("Authorization", "Bearer legacy-token")
 	legacyResponse, err := http.DefaultClient.Do(legacyRequest)
@@ -453,7 +454,7 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions)
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	server := httptest.NewServer(service.HandlerWithClock(reopened, "reopen-token", &ownedDecisionClock{panicRead: true}))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(reopened, "reopen-token", &ownedDecisionClock{panicRead: true})))
 	defer server.Close()
 	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/paper-evaluation-assessments/"+expected.Command.ID, nil)
 	req.Header.Set("Authorization", "Bearer reopen-token")
@@ -693,7 +694,7 @@ CREATE TRIGGER reject_portfolio_migration BEFORE INSERT ON mantik_schema FOR EAC
 		t.Fatal(err)
 	}
 	defer restored.Close()
-	restoredServer := httptest.NewServer(service.HandlerWithClock(restored, "restored-token", &ownedDecisionClock{panicRead: true}))
+	restoredServer := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(restored, "restored-token", &ownedDecisionClock{panicRead: true})))
 	defer restoredServer.Close()
 	restoredRequest, _ := http.NewRequestWithContext(ctx, "GET", restoredServer.URL+"/v1/paper-evaluation-assessments/"+expected.Command.ID, nil)
 	restoredRequest.Header.Set("Authorization", "Bearer restored-token")

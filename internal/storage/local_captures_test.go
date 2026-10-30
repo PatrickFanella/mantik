@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"net/http"
 	"net/http/httptest"
@@ -23,10 +24,10 @@ type localCaptureBackend interface {
 
 func captureFixture(t *testing.T) (extraction.LocalReceipt, extraction.LocalReceipt) {
 	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(503)
 		_, _ = w.Write([]byte("private failure"))
-	}))
+	})))
 	defer server.Close()
 	var receipts []extraction.LocalReceipt
 	_, err := extraction.RunLocal(context.Background(), news.FixtureArticle(), "event", extraction.LocalConfig{Endpoint: server.URL, Model: "ollama/fixture", MaxTokens: 512}, "", func(r extraction.LocalReceipt) error { receipts = append(receipts, r); return nil })

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidategeneration"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"io"
@@ -227,7 +228,7 @@ func TestGenerationIntentClientRejectsForgedReceipts(t *testing.T) {
 					body = bytes.Repeat([]byte(" "), candidategeneration.MaxIntentArtifactBytes+1)
 				}
 			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) }))
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) })))
 			defer server.Close()
 			var out, diag bytes.Buffer
 			args = append(args, "--api-url", server.URL, "--receiver-id", pub.ReceiverID)
@@ -237,7 +238,7 @@ func TestGenerationIntentClientRejectsForgedReceipts(t *testing.T) {
 		})
 	}
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) })))
 	defer server.Close()
 	dir := t.TempDir()
 	pf, df := filepath.Join(dir, "plan.json"), filepath.Join(dir, "data.json")

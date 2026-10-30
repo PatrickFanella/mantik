@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
@@ -17,7 +18,7 @@ import (
 func TestCasesCLI(t *testing.T) {
 	ctx := context.Background()
 	m := storage.NewMemory()
-	server := httptest.NewServer(service.Handler(m, "case-cli-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(m, "case-cli-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "case-cli-token")
 	var out bytes.Buffer

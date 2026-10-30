@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workflow"
@@ -24,7 +25,7 @@ func TestActivityCLIParity(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s := httptest.NewServer(service.Handler(m, "test-activity"))
+	s := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(m, "test-activity")))
 	defer s.Close()
 	t.Setenv("MANTIK_API_TOKEN", "test-activity")
 	var out, errOut bytes.Buffer
@@ -55,12 +56,12 @@ func TestActivityCLIParity(t *testing.T) {
 }
 
 func TestActivityCLIEscapesTerminalControls(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" || r.URL.Path != "/v1/activity" {
 			t.Errorf("unexpected mutation or path: %s %s", r.Method, r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(domain.ActivityPage{Mode: "paper_fixture", Items: []domain.ActivityEvent{{Sequence: 1, Event: domain.Event{ID: "bad\x1b[2J", Kind: "kind\nforged"}}}})
-	}))
+	})))
 	defer s.Close()
 	var out bytes.Buffer
 	if err := Run(context.Background(), []string{"activity", "--api-url", s.URL}, &out, &out); err != nil {

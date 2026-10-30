@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 )
 
 func TestCollectionCLIRequiresExplicitPrivateCredentialsAndSpec(t *testing.T) {
@@ -95,7 +97,7 @@ func (t collectionTestTransport) RoundTrip(r *http.Request) (*http.Response, err
 func TestCollectionCLICompleteFlowAndFailureInspection(t *testing.T) {
 	var calls atomic.Int32
 	var fail atomic.Bool
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if r.Header.Get("APCA-API-KEY-ID") != "manufactured-key" || r.Header.Get("APCA-API-SECRET-KEY") != "manufactured-secret" {
 			t.Error("credentials not delivered to test provider")
@@ -106,7 +108,7 @@ func TestCollectionCLICompleteFlowAndFailureInspection(t *testing.T) {
 			return
 		}
 		_, _ = fmt.Fprintf(w, `{"quotes":{"SPY":{"t":%q,"ap":100.01,"bp":100,"as":10,"bs":10}}}`, time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano))
-	}))
+	})))
 	defer server.Close()
 	base, _ := url.Parse(server.URL)
 	previous := http.DefaultTransport
@@ -160,15 +162,18 @@ func TestCollectionCLICompleteFlowAndFailureInspection(t *testing.T) {
 func TestSessionCLICompleteFiniteFlowAndStatus(t *testing.T) {
 	var calls atomic.Int32
 	var last atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		now := time.Now().UnixNano()
 		previous := last.Swap(now)
 		if calls.Add(1) > 1 && time.Duration(now-previous) < time.Second {
 			t.Error("finite CLI session violated declared pacing")
 		}
 		_, _ = fmt.Fprintf(w, `{"quotes":{"SPY":{"t":%q,"ap":100.01,"bp":100,"as":10,"bs":10}}}`, time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano))
-	}))
+	})))
 	defer server.Close()
+	if status, err := loopbacktest.Probe(context.Background(), server.URL); err != nil || status != http.StatusNotFound || calls.Load() != 0 {
+		t.Fatal("unrelated loopback client counted as a paced request", status, err)
+	}
 	base, _ := url.Parse(server.URL)
 	previous := http.DefaultTransport
 	http.DefaultTransport = collectionTestTransport{base, previous}

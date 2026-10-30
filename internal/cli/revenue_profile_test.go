@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -34,7 +35,7 @@ func TestRevenueProfileCLIFlagsPrivateReplayAndOfflineFence(t *testing.T) {
 		t.Fatal(err)
 	}
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		var req map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&req)
@@ -43,7 +44,7 @@ func TestRevenueProfileCLIFlagsPrivateReplayAndOfflineFence(t *testing.T) {
 			t.Error("missing profile")
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": "fixture", "object": "chat.completion", "created": 1, "usage": map[string]int{}, "model": extraction.SwitchyardModel, "choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": `{"outcome":"abstain","reason_code":"no_relevant_claims","claims":[]}`}}}})
-	}))
+	})))
 	defer server.Close()
 	var out, errs bytes.Buffer
 	capture := filepath.Join(root, "capture")

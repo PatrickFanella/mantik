@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -73,7 +74,7 @@ func TestSupervisionMCPServiceOwnersAndErrors(t *testing.T) {
 	t.Setenv("MANTIK_API_TOKEN", "mcp-token")
 	store := storage.NewMemory()
 	receiver, _ := store.ResearchSnapshot(context.Background())
-	server := httptest.NewServer(service.Handler(store, "mcp-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(store, "mcp-token")))
 	defer server.Close()
 	s := mcpTestSession(t, server.URL, receiver.ID)
 	if r := s.request(t, "before", "tools/list", map[string]any{}); r["error"] == nil {
@@ -155,7 +156,7 @@ func TestSupervisionMCPCancelNoRetry(t *testing.T) {
 	started := make(chan struct{})
 	cancelled := make(chan struct{})
 	var posts atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/supervision/calls" {
 			posts.Add(1)
 			_, _ = io.Copy(io.Discard, r.Body)
@@ -166,7 +167,7 @@ func TestSupervisionMCPCancelNoRetry(t *testing.T) {
 			return
 		}
 		handler.ServeHTTP(w, r)
-	}))
+	})))
 	defer server.Close()
 	s := mcpTestSession(t, server.URL, receiver.ID)
 	s.init(t)
@@ -202,7 +203,7 @@ func TestSupervisionMCPInvalidTransportAndReceiver(t *testing.T) {
 	t.Setenv("MANTIK_API_TOKEN", "mcp-token")
 	store := storage.NewMemory()
 	receiver, _ := store.ResearchSnapshot(context.Background())
-	server := httptest.NewServer(service.Handler(store, "mcp-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(store, "mcp-token")))
 	defer server.Close()
 	for _, raw := range []string{`{`, `[]`, `{"jsonrpc":"2.0","id":null,"method":"ping"}`, `{"jsonrpc":"2.0","id":1,"id":2,"method":"ping"}`} {
 		var out bytes.Buffer
@@ -233,7 +234,7 @@ func TestSupervisionMCPStdioProcess(t *testing.T) {
 	t.Setenv("MANTIK_API_TOKEN", "mcp-token")
 	store := storage.NewMemory()
 	receiver, _ := store.ResearchSnapshot(context.Background())
-	server := httptest.NewServer(service.Handler(store, "mcp-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(store, "mcp-token")))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -268,7 +269,7 @@ func TestSupervisionMCPRedirectIsToolError(t *testing.T) {
 	receiver, _ := store.ResearchSnapshot(context.Background())
 	handler := service.Handler(store, "mcp-token")
 	var followed atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/unexpected-target" {
 			followed.Add(1)
 			t.Error("redirect followed")
@@ -281,7 +282,7 @@ func TestSupervisionMCPRedirectIsToolError(t *testing.T) {
 			return
 		}
 		handler.ServeHTTP(w, r)
-	}))
+	})))
 	defer server.Close()
 	s := mcpTestSession(t, server.URL, receiver.ID)
 	s.init(t)
@@ -320,7 +321,7 @@ func copySupervisionMCP(t *testing.T, store socialHTTPBackend) {
 	}
 	at := time.Date(2026, 10, 22, 15, 0, 0, 0, time.UTC)
 	clock := &ownedDecisionClock{at: at}
-	server := httptest.NewServer(service.HandlerWithClock(store, "copy-mcp-token", clock))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(store, "copy-mcp-token", clock)))
 	defer server.Close()
 	session := mcpTestSession(t, server.URL, receiver.ReceiverID)
 	session.init(t)

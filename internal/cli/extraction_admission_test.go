@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -30,7 +31,7 @@ func TestReviewedExtractionAdmissionCLI(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	server := httptest.NewServer(service.Handler(s, "admission-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "admission-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "admission-token")
 	args := []string{"news-extraction-admit", "--api-url", server.URL, "--id", a.ID, "--receiver-id", receiver.ID, "--attempt-sha", a.SHA256, "--result-sha", a.Result.SHA256}
@@ -98,7 +99,7 @@ func TestReviewedExtractionAdmissionCLI(t *testing.T) {
 	forged.SHA256 = ""
 	sealed, _ := json.Marshal(forged)
 	forged.SHA256 = news.SHA256(string(sealed))
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	bad := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/news-extractions/reviewed/admission":
 			_ = json.NewEncoder(w).Encode(forged)
@@ -107,7 +108,7 @@ func TestReviewedExtractionAdmissionCLI(t *testing.T) {
 		default:
 			_ = json.NewEncoder(w).Encode(jsonNewsInspection{RecordKey: approval.NewsReceipt.RecordKey, Result: record.Result, Receipt: record.Receipt})
 		}
-	}))
+	})))
 	defer bad.Close()
 	out.Reset()
 	if e := Run(ctx, []string{"news-extraction-admission", "--api-url", bad.URL, "--id", a.ID}, &out, &errs); e == nil || out.Len() != 0 {

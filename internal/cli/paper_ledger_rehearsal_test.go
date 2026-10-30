@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperledger"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
@@ -31,7 +32,7 @@ func TestPaperLedgerRehearsalCLIAndHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(service.HandlerWithClock(s, "ledger-token", rehearsalClock{at.Add(time.Hour)}))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(s, "ledger-token", rehearsalClock{at.Add(time.Hour)})))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "ledger-token")
 	run := func(args ...string) []byte {
@@ -104,9 +105,9 @@ func TestPaperLedgerRehearsalCLIAndHTTP(t *testing.T) {
 	}
 }
 func TestRehearsalClientRefusesInvalidReadback(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"schema":"mantik-paper-ledger-rehearsal-v1","qualification_credit":true}`))
-	}))
+	})))
 	defer server.Close()
 	var out bytes.Buffer
 	if err := Run(context.Background(), []string{"paper-ledger-rehearsal", "--account", "pilot", "--api-url", server.URL}, &out, &out); err == nil || out.Len() != 0 {

@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/decisiondraft"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
 
@@ -30,7 +31,7 @@ func modelDecisionDraftContracts(t *testing.T, base string, d storage.PaperDecis
 	var content string
 	var status int
 	var capture string
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	provider := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if r.Method != "POST" || r.URL.Path != "/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer manufactured-model-token" {
 			t.Error("model transport escaped configured boundary")
@@ -62,8 +63,12 @@ func modelDecisionDraftContracts(t *testing.T, base string, d storage.PaperDecis
 		}
 		raw, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": content}}}})
 		_, _ = w.Write(raw)
-	}))
+	})))
 	defer provider.Close()
+	// Unrelated local clients cannot become model calls or boundary failures.
+	if status, err := loopbacktest.Probe(ctx, provider.URL); err != nil || status != http.StatusNotFound || calls.Load() != 0 {
+		t.Fatal("unrelated loopback client reached the model fake", status, err)
+	}
 	t.Setenv("MANTIK_MODEL_TOKEN", "manufactured-model-token")
 	root := t.TempDir()
 	configPath := filepath.Join(root, "model.json")
@@ -159,7 +164,7 @@ func modelDecisionDraftContracts(t *testing.T, base string, d storage.PaperDecis
 			}
 			return nil
 		}
-		gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gateway := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if unavailable.Load() {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
@@ -172,7 +177,7 @@ func modelDecisionDraftContracts(t *testing.T, base string, d storage.PaperDecis
 				}
 			}
 			proxy.ServeHTTP(w, r)
-		}))
+		})))
 		func() {
 			defer gateway.Close()
 			reviewID := fmt.Sprintf("model-uncertain-%t", committed)

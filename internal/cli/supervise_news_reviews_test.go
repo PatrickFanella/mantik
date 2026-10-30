@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
@@ -35,13 +36,13 @@ func TestNewsSupervisionReviewHistoryHTTP(t *testing.T) {
 	handler := service.Handler(backend, "history-token")
 	t.Setenv("MANTIK_API_TOKEN", "history-token")
 	var paths []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			t.Errorf("mutation: %s", r.Method)
 		}
 		paths = append(paths, r.URL.RequestURI())
 		handler.ServeHTTP(w, r)
-	}))
+	})))
 	defer server.Close()
 	var out bytes.Buffer
 	commands := "a completed-review\nh\nd " + catalog.Cases[1].ID + "\nh\nd " + c.ID + "\na completed-review\nh\na pending-review\na completed-review\na ../escape\na unknown-attempt\nh extra\nn\nh\np\nh\nr\nh\nq\n"

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -21,15 +22,15 @@ func TestLocalCaptureCLIAndStrictHTTP(t *testing.T) {
 	ctx := context.Background()
 	s := storage.NewMemory()
 	receiver, _ := s.ResearchSnapshot(ctx)
-	api := httptest.NewServer(service.Handler(s, "local-capture-token"))
+	api := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "local-capture-token")))
 	defer api.Close()
 	t.Setenv("MANTIK_API_TOKEN", "local-capture-token")
 	var calls atomic.Int32
-	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	model := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
 		w.WriteHeader(503)
 		_, _ = w.Write([]byte("private diagnostic"))
-	}))
+	})))
 	root := t.TempDir()
 	dir := filepath.Join(root, "finished")
 	if e := os.Mkdir(dir, 0700); e != nil {
@@ -142,11 +143,11 @@ func TestLocalCaptureCLIAndStrictHTTP(t *testing.T) {
 	if _, e = s.Extraction(ctx, "one"); e == nil {
 		t.Fatal("import became recorded fixture")
 	}
-	corrupt := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	corrupt := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		bad := done
 		bad.ExecutionAttested = true
 		_ = json.NewEncoder(w).Encode(bad)
-	}))
+	})))
 	defer corrupt.Close()
 	out.Reset()
 	if e = Run(ctx, []string{"news-local-capture", "--id", "one", "--api-url", corrupt.URL}, &out, &errs); e == nil || out.Len() != 0 {

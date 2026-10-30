@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -21,7 +22,7 @@ func TestFixtureCapitalPublicActivation(t *testing.T) {
 	ctx := context.Background()
 	s := storage.NewQueuedMemory()
 	receiver, _ := s.ResearchSnapshot(ctx)
-	server := httptest.NewServer(service.HandlerWithClock(s, "capital-token", rehearsalClock{workflow.Fixtures()[0].ReceivedAt}))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(s, "capital-token", rehearsalClock{workflow.Fixtures()[0].ReceivedAt})))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "capital-token")
 	run := func(ok bool, args ...string) []byte {
@@ -116,7 +117,7 @@ func TestFixtureCapitalCannotAdoptActiveCase(t *testing.T) {
 	if _, err := s.Ingest(ctx, workflow.Fixtures()[1]); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(service.Handler(s, "late-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "late-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "late-token")
 	var out, stderr bytes.Buffer
@@ -150,13 +151,13 @@ func TestFixtureCapitalClientChecksFundingAndReadback(t *testing.T) {
 	} {
 		bad, a := v, r.Account
 		mutate(&bad, &a)
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			if req.URL.Path == "/v1/fixture-capital" {
 				_ = json.NewEncoder(w).Encode(bad)
 			} else {
 				_ = json.NewEncoder(w).Encode(a)
 			}
-		}))
+		})))
 		var out, stderr bytes.Buffer
 		err := Run(ctx, []string{"fixture-capital", "--api-url", server.URL}, &out, &stderr)
 		server.Close()

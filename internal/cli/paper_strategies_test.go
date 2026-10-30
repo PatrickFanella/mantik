@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -38,7 +39,7 @@ func paperStrategyHTTP(t *testing.T, s strategyHTTPBackend) {
 		t.Fatal(err)
 	}
 	before, _ := s.Snapshot(ctx)
-	server := httptest.NewServer(service.Handler(s, "strategy-test-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "strategy-test-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "strategy-test-token")
 	d := strategyHTTPDefinition()
@@ -154,7 +155,7 @@ func TestPaperStrategyClientRejectsSubstitutedOrAmbiguousResponses(t *testing.T)
 			if kind == "unknown-field" {
 				payload = append([]byte(`{"unexpected":true,`), payload[1:]...)
 			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(payload) }))
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(payload) })))
 			defer server.Close()
 			var out, diag bytes.Buffer
 			if err := Run(context.Background(), []string{"paper-strategy-register", "--api-url", server.URL, "--receiver-id", owner, "--file", file}, &out, &diag); err == nil || out.Len() != 0 {

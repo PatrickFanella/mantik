@@ -13,6 +13,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
@@ -31,7 +32,7 @@ func TestCollectorJournalLostReplyAndBinding(t *testing.T) {
 	handler := service.HandlerWithClock(s, "collector-test-token", clock)
 	var posts atomic.Int32
 	var manual atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/research-inputs" {
 			manual.Add(1)
 		}
@@ -50,7 +51,7 @@ func TestCollectorJournalLostReplyAndBinding(t *testing.T) {
 			return
 		}
 		handler.ServeHTTP(w, r)
-	}))
+	})))
 	defer server.Close()
 	root := filepath.Join(t.TempDir(), "journal")
 	j, err := alpaca.OpenJournal(root)

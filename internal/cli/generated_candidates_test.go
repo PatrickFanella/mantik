@@ -7,6 +7,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/candidategeneration"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidatelineage"
 	"git.subcult.tv/subculture-collective/mantik/internal/generatedcandidate"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"io"
@@ -215,7 +216,7 @@ func TestGeneratedCandidateClientRejectsHostileResponses(t *testing.T) {
 			case "oversize":
 				body = append(bytes.Repeat([]byte(" "), generatedcandidate.MaxArtifactBytes), body...)
 			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) }))
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) })))
 			defer server.Close()
 			var out, diag bytes.Buffer
 			if err := Run(ctx, append(args, "--api-url", server.URL), &out, &diag); err == nil || out.Len() != 0 {
@@ -224,7 +225,7 @@ func TestGeneratedCandidateClientRejectsHostileResponses(t *testing.T) {
 		})
 	}
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) })))
 	defer server.Close()
 	for _, args := range [][]string{{"generated-candidate-register", "--id", "missing"}, {"generated-candidate", "--id", "generated"}, {"generated-candidates", "extra"}, append(append([]string{}, inspect...), "--artifact", "dataset"), append(append([]string{}, register...), "--source", "replacement")} {
 		var out, diag bytes.Buffer

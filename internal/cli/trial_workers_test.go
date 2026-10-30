@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/externalplan"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/trial"
 	"git.subcult.tv/subculture-collective/mantik/internal/workertrial"
 )
@@ -178,7 +179,7 @@ func testCombinedResearchHistory(t *testing.T, ctx context.Context, base, receiv
 				t.Error(err)
 			}
 		}}
-		server := httptest.NewServer(service.Handler(changing, "trial-cli-token"))
+		server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(changing, "trial-cli-token")))
 		defer server.Close()
 		requested := job.TrialID
 		if command == "hypothesis-research-history" {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
@@ -137,7 +138,7 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 func TestPaperAttributionCLIEmptyAndFailures(t *testing.T) {
 	t.Setenv("MANTIK_API_TOKEN", "attribution-token")
 	store := storage.NewMemory()
-	server := httptest.NewServer(service.Handler(store, "attribution-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(store, "attribution-token")))
 	defer server.Close()
 	snapshot, err := store.ResearchSnapshot(context.Background())
 	if err != nil {
@@ -167,7 +168,7 @@ func TestPaperAttributionCLIEmptyAndFailures(t *testing.T) {
 		t.Fatal("canceled request accepted")
 	}
 	for _, body := range []string{`{}`, `{"schema":"unknown"}`, strings.Repeat(" ", storage.MaxPaperAttributionBytes+1)} {
-		stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, body) }))
+		stub := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, body) })))
 		out.Reset()
 		err := Run(context.Background(), []string{"paper-attribution", "--api-url", stub.URL, "--receiver-id", receiver}, &out, &diag)
 		stub.Close()
@@ -223,7 +224,7 @@ func assertAttributionReviewPresentation(t *testing.T, owner string, candidate s
 			h.SourceSHA256 = workerplan.Hash(storage.OwnedAdmissionReviewCatalog{ReceiverID: owner, Records: h.Records, CurrentIDs: ids})
 			bad.SHA256 = ""
 			bad.SHA256 = workerplan.Hash(bad)
-			stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(bad) }))
+			stub := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(bad) })))
 			defer stub.Close()
 			var out, diag bytes.Buffer
 			err := Run(context.Background(), []string{"paper-attribution", "--api-url", stub.URL, "--receiver-id", owner, "--id", bad.Decision.Command.ID, "--record-sha256", bad.SHA256}, &out, &diag)

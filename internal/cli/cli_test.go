@@ -14,13 +14,14 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/experiment"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/replay"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
 
 func TestDemoLocalAndRemote(t *testing.T) {
-	server := httptest.NewServer(service.Handler(storage.NewMemory(), ""))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(storage.NewMemory(), "")))
 	defer server.Close()
 	for _, args := range [][]string{{"demo"}, {"demo", "--api-url", server.URL}, {"demo", "--api-url", server.URL}} {
 		var out, errOut bytes.Buffer
@@ -39,7 +40,7 @@ func TestDemoLocalAndRemote(t *testing.T) {
 
 func TestRoutingCLIFlow(t *testing.T) {
 	t.Setenv("MANTIK_API_TOKEN", "owner-token")
-	server := httptest.NewServer(service.Handler(storage.NewMemory(), "owner-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(storage.NewMemory(), "owner-token")))
 	defer server.Close()
 	at := time.Date(2026, 1, 5, 15, 0, 0, 0, time.UTC)
 	d := domain.TriggerDefinition{ID: "cli-event-v1", Owner: "operator", CaseKey: "cli-case", Behavior: "research", Condition: domain.Condition{Kind: "event", EventName: "signal"}, ValidFrom: at.Add(-time.Minute), ValidUntil: at.Add(time.Hour), RepeatPolicy: "reopen", Requirements: domain.SourceRequirements{Source: "fixture", Symbol: "DEMO", EvidenceClass: "synthetic_unqualified", MaxAgeSeconds: 60}}

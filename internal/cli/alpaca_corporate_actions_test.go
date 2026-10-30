@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 )
 
 type corporateActionTransport struct {
@@ -35,13 +36,13 @@ func (t corporateActionTransport) RoundTrip(r *http.Request) (*http.Response, er
 func TestCorporateActionExistingCollectionCLIAndInspection(t *testing.T) {
 	var calls atomic.Int32
 	raw := `{"corporate_actions":{"cash_dividends":[{"id":"incomplete","symbol":"SPY","rate":0.125}]},"next_page_token":null}`
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if r.URL.Query().Get("data_quality") != "all" {
 			t.Error("missing query contract")
 		}
 		_, _ = fmt.Fprint(w, raw)
-	}))
+	})))
 	defer server.Close()
 	base, _ := url.Parse(server.URL)
 	previous := http.DefaultTransport
@@ -103,7 +104,7 @@ func TestCorporateActionExistingCollectionCLIAndInspection(t *testing.T) {
 func TestCorporateActionExistingCLIContinuationRetainsCursorAndIntent(t *testing.T) {
 	var calls atomic.Int32
 	cursor := "cursor+/=&? space"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		token := r.URL.Query().Get("page_token")
 		switch token {
@@ -115,7 +116,7 @@ func TestCorporateActionExistingCLIContinuationRetainsCursorAndIntent(t *testing
 		default:
 			t.Error("cursor changed", token)
 		}
-	}))
+	})))
 	defer server.Close()
 	base, _ := url.Parse(server.URL)
 	previous := http.DefaultTransport

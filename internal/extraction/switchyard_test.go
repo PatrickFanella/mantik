@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -31,7 +32,7 @@ func TestSwitchyardExtractionAndOfflineReplay(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls atomic.Int32
 			var saved []SwitchyardReceipt
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				if len(saved) != 1 || saved[0].Status != "prepared" || r.URL.Path != "/v1/chat/completions" || r.Method != "POST" || r.Header.Get("Authorization") != "Bearer gateway-token" {
 					t.Error("intent/transport contract")
@@ -42,7 +43,7 @@ func TestSwitchyardExtractionAndOfflineReplay(t *testing.T) {
 				}
 				w.WriteHeader(tc.status)
 				_, _ = w.Write(localReply(tc.model, tc.content, tc.finish))
-			}))
+			})))
 			config := SwitchyardConfig{Endpoint: server.URL, Model: SwitchyardModel, MaxTokens: 1024, ReasoningEffort: "low"}
 			r, err := RunSwitchyard(context.Background(), news.FixtureArticle(), "event", config, "gateway-token", func(r SwitchyardReceipt) error { saved = append(saved, copyJSON(r)); return nil })
 			server.Close()
@@ -88,10 +89,10 @@ func TestSwitchyardExtractionAndOfflineReplay(t *testing.T) {
 
 func TestSwitchyardPolicyAndPersistenceFailures(t *testing.T) {
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		_, _ = w.Write(localReply(SwitchyardModel, `{}`, "stop"))
-	}))
+	})))
 	defer server.Close()
 	config := SwitchyardConfig{Endpoint: server.URL, Model: SwitchyardModel, MaxTokens: 1024, ReasoningEffort: "low"}
 	for _, mutate := range []func(*SwitchyardConfig){func(c *SwitchyardConfig) { c.Model = "openai/gpt-5.4-mini" }, func(c *SwitchyardConfig) { c.Model = "ollama/fixture" }, func(c *SwitchyardConfig) { c.Endpoint = "https://api.openai.com" }, func(c *SwitchyardConfig) { c.ReasoningEffort = "none" }, func(c *SwitchyardConfig) { c.MaxTokens = 4097 }} {

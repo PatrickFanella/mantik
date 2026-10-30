@@ -14,6 +14,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
@@ -24,7 +25,7 @@ func TestCapturePublicationCLIRecoversLostReplyAfterStop(t *testing.T) {
 	store := storage.NewMemory()
 	handler := service.Handler(store, "capture-publish-token")
 	var publications atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/feed-evidence" && publications.Add(1) == 1 {
 			recorded := httptest.NewRecorder()
 			handler.ServeHTTP(recorded, r)
@@ -40,7 +41,7 @@ func TestCapturePublicationCLIRecoversLostReplyAfterStop(t *testing.T) {
 			return
 		}
 		handler.ServeHTTP(w, r)
-	}))
+	})))
 	defer server.Close()
 	root := filepath.Join(t.TempDir(), "journal")
 	j, err := alpaca.OpenJournal(root)

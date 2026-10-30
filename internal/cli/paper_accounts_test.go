@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -17,7 +18,7 @@ func TestPaperAccountCLIAndHTTPContracts(t *testing.T) {
 	ctx := context.Background()
 	s := storage.NewMemory()
 	receiver, _ := s.ResearchSnapshot(ctx)
-	server := httptest.NewServer(service.Handler(s, "paper-account-token"))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(s, "paper-account-token")))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "paper-account-token")
 	run := func(args ...string) []byte {
@@ -94,9 +95,9 @@ func TestPaperAccountCLIAndHTTPContracts(t *testing.T) {
 	}
 }
 func TestPaperAccountClientRejectsForgedReadbacks(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"schema":"mantik-paper-account-catalog-v1","receiver_id":"receiver-abcdefghijklmnop","accounts":null}`))
-	}))
+	})))
 	defer server.Close()
 	var out bytes.Buffer
 	if err := Run(context.Background(), []string{"paper-accounts", "--api-url", server.URL}, &out, &out); err == nil || out.Len() != 0 {

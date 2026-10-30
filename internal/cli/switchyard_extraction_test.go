@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 )
 
@@ -35,7 +36,7 @@ func TestSwitchyardCLIPrivateEvidenceAndNoImplicitRetry(t *testing.T) {
 		quoted.Claims = append(quoted.Claims, q)
 	}
 	content, _ := json.Marshal(quoted)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if _, err := os.Stat(filepath.Join(dir, "prepared.json")); err != nil {
 			t.Error("request before prepared file")
@@ -44,7 +45,7 @@ func TestSwitchyardCLIPrivateEvidenceAndNoImplicitRetry(t *testing.T) {
 			t.Error("missing token")
 		}
 		json.NewEncoder(w).Encode(map[string]any{"id": "fixture", "object": "chat.completion", "created": 1, "model": "openai/gpt-6.1-sol", "usage": map[string]int{}, "choices": []any{map[string]any{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": string(content)}}}})
-	}))
+	})))
 	defer server.Close()
 	t.Setenv("MANTIK_SWITCHYARD_MODEL_TOKEN", "switchyard-private-token")
 	args := []string{"news-extract-switchyard", "--article", article, "--endpoint", server.URL, "--model", "openai/gpt-6.1-sol", "--event-key", "event", "--output-dir", dir}

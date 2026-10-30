@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/news"
 	"git.subcult.tv/subculture-collective/mantik/internal/newscase"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
@@ -45,11 +46,11 @@ func TestNewsSupervisionHTTPJourneyIsReadOnlyAndTargeted(t *testing.T) {
 	t.Setenv("MANTIK_API_TOKEN", "news-view-token")
 	var paths []string
 	var methods []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		methods = append(methods, r.Method)
 		paths = append(paths, r.URL.RequestURI())
 		handler.ServeHTTP(w, r)
-	}))
+	})))
 	defer server.Close()
 	fetch := func(ctx context.Context) (storage.NewsCatalog, error) { return fetchNewsCatalog(ctx, server.URL) }
 	inspect := func(ctx context.Context, key string, original bool) (jsonNewsInspection, error) {

@@ -19,6 +19,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
@@ -57,7 +58,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	t.Helper()
 	ctx := context.Background()
 	clock := &ownedDecisionClock{at: time.Date(2026, 10, 21, 14, 0, 0, 0, time.UTC)}
-	server := httptest.NewServer(service.HandlerWithClock(s, "owned-decision-token", clock))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(s, "owned-decision-token", clock)))
 	defer server.Close()
 	t.Setenv("MANTIK_API_TOKEN", "owned-decision-token")
 	request := func(method, path string, body any, want int) []byte {
@@ -418,7 +419,7 @@ func TestPostgresContractsOwnedDecisionAllocationHTTP(t *testing.T) {
 	}
 	defer reopened.Close()
 	clock := &ownedDecisionClock{panicRead: true}
-	server := httptest.NewServer(service.HandlerWithClock(reopened, "restart-token", clock))
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(reopened, "restart-token", clock)))
 	defer server.Close()
 	assertRestartedPaperAttribution(t, server.URL)
 	plans, evaluationErr := reopened.PaperEvaluationDeclarations(ctx)

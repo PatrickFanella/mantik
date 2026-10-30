@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateattempt"
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateevidence"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"net/http"
 	"net/http/httptest"
@@ -115,7 +116,7 @@ func TestCandidateOutcomeHistoryClientStrictness(t *testing.T) {
 			case "oversized":
 				body = append(body, bytes.Repeat([]byte(" "), candidateevidence.MaxHistoryBytes)...)
 			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) }))
+			server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) })))
 			defer server.Close()
 			var out, diag bytes.Buffer
 			args := []string{"candidate-worker-outcomes", "--api-url", server.URL, "--receiver-id", original.ReceiverID}

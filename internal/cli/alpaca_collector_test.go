@@ -17,6 +17,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/loopbacktest"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
@@ -82,7 +83,7 @@ func testFiniteCollectorCLI(t *testing.T, regular bool) {
 	}
 	var controls, reads, publications atomic.Int32
 	handler := service.Handler(store, "collector-cli-api-token")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(loopbacktest.GoClientOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" && r.URL.Path == "/v1/feed-collectors" {
 			controls.Add(1)
 		}
@@ -101,7 +102,7 @@ func testFiniteCollectorCLI(t *testing.T, regular bool) {
 			return
 		}
 		handler.ServeHTTP(w, r)
-	}))
+	})))
 	defer server.Close()
 	previous := http.DefaultTransport
 	http.DefaultTransport = collectorProviderTransport{fallback: previous, reads: &reads}
