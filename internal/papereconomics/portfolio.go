@@ -67,24 +67,22 @@ type event struct {
 	fills []paperfill.Fill
 }
 
-// Evaluate preserves costs from actual verified fill journals. Marks are the
-// observed bid at each retained event clock, never invented end-of-window sales.
-// Drawdown describes this discrete path only. Corporate entitlements and gaps
-// require additional owner evidence before a total-return evaluation can pass.
-func Evaluate(ctx context.Context, in Input) (Result, error) {
+// replayEvents verifies the original books and groups their quotes and fills
+// by event clock, including the first order placement and the cut.
+func replayEvents(ctx context.Context, in Input) ([]*event, string, error) {
 	if in.OpeningCashCents < 1 || in.OpeningCashCents > paperfill.MaxMoneyCents || in.CutAt.IsZero() {
-		return Result{}, ErrInvalid
+		return nil, "", ErrInvalid
 	}
 	if _, err := paperfill.ReplayBook(ctx, in.EntryBook); err != nil {
-		return Result{}, err
+		return nil, "", err
 	}
 	books := []paperfill.Book{in.EntryBook}
 	if in.ExitBook != nil {
 		if in.ExitBook.Model != in.EntryBook.Model || in.ExitBook.Method != in.EntryBook.Method {
-			return Result{}, ErrInvalid
+			return nil, "", ErrInvalid
 		}
 		if _, err := paperfill.ReplayBook(ctx, *in.ExitBook); err != nil {
-			return Result{}, err
+			return nil, "", err
 		}
 		books = append(books, *in.ExitBook)
 	}
@@ -94,13 +92,13 @@ func Evaluate(ctx context.Context, in Input) (Result, error) {
 	for i, b := range books {
 		for _, o := range b.Orders {
 			if o.Mode != "replay" || o.Currency != "USD" || i == 0 && o.Side != "buy" || i == 1 && o.Side != "sell" || o.PlacedAt.After(in.CutAt) {
-				return Result{}, ErrInvalid
+				return nil, "", ErrInvalid
 			}
 			if symbol == "" {
 				symbol = o.Symbol
 			}
 			if o.Symbol != symbol {
-				return Result{}, ErrInvalid
+				return nil, "", ErrInvalid
 			}
 			if i == 0 {
 				orders[o.ID] = o
@@ -108,12 +106,12 @@ func Evaluate(ctx context.Context, in Input) (Result, error) {
 					start = o.PlacedAt
 				}
 			} else if _, ok := orders[o.ID]; !ok {
-				return Result{}, ErrInvalid
+				return nil, "", ErrInvalid
 			}
 		}
 	}
 	if start.IsZero() || in.CutAt.Before(start) {
-		return Result{}, ErrInvalid
+		return nil, "", ErrInvalid
 	}
 	byTime := map[time.Time]*event{}
 	quotesByID := map[string]paperfill.Quote{}
@@ -129,10 +127,10 @@ func Evaluate(ctx context.Context, in Input) (Result, error) {
 	for _, b := range books {
 		for _, e := range b.Entries {
 			if err := ctx.Err(); err != nil {
-				return Result{}, err
+				return nil, "", err
 			}
 			if e.Command.At.Before(start) || e.Command.At.After(in.CutAt) {
-				return Result{}, ErrInvalid
+				return nil, "", ErrInvalid
 			}
 			point := get(e.Command.At)
 			if q := e.Command.Quote; q != nil {
@@ -141,10 +139,10 @@ func Evaluate(ctx context.Context, in Input) (Result, error) {
 				// inventory from them would use a price not yet available. Refuse
 				// the study rather than turn a rejected quote into economic evidence.
 				if q.ReceivedAt.After(e.Command.At) {
-					return Result{}, ErrInvalid
+					return nil, "", ErrInvalid
 				}
 				if old, ok := quotesByID[q.ID]; ok && !reflect.DeepEqual(old, *q) {
-					return Result{}, ErrInvalid
+					return nil, "", ErrInvalid
 				}
 				quotesByID[q.ID] = *q
 				// One observation per event clock; quote-ID order resolves equal
@@ -166,6 +164,18 @@ func Evaluate(ctx context.Context, in Input) (Result, error) {
 		events = append(events, e)
 	}
 	slices.SortFunc(events, func(a, b *event) int { return a.at.Compare(b.at) })
+	return events, symbol, nil
+}
+
+// Evaluate preserves costs from actual verified fill journals. Marks are the
+// observed bid at each retained event clock, never invented end-of-window sales.
+// Drawdown describes this discrete path only. Corporate entitlements and gaps
+// require additional owner evidence before a total-return evaluation can pass.
+func Evaluate(ctx context.Context, in Input) (Result, error) {
+	events, symbol, err := replayEvents(ctx, in)
+	if err != nil {
+		return Result{}, err
+	}
 	out := Result{Method: Method, InputSHA256: workerplan.Hash(in), Points: []Point{}, AllEventMarksAvailable: true, Authority: "owner_selected_counterfactual_book_accounting_only"}
 	cash, peak := in.OpeningCashCents, in.OpeningCashCents
 	positions := map[string]*position{}
@@ -174,17 +184,7 @@ func Evaluate(ctx context.Context, in Input) (Result, error) {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
-		// Entry debits precede exit credits at an equal clock; future proceeds
-		// cannot finance a buy. Equal-side order is fixed by original order ID.
-		slices.SortFunc(e.fills, func(a, b paperfill.Fill) int {
-			if a.Side != b.Side {
-				if a.Side == "buy" {
-					return -1
-				}
-				return 1
-			}
-			return strings.Compare(a.OrderID, b.OrderID)
-		})
+		sortFills(e.fills)
 		for _, f := range e.fills {
 			if positions[f.OrderID] == nil {
 				positions[f.OrderID] = &position{}
@@ -256,4 +256,18 @@ func Evaluate(ctx context.Context, in Input) (Result, error) {
 	}
 	out.SHA256 = workerplan.Hash(out)
 	return out, nil
+}
+
+// Entry debits precede exit credits at an equal clock; future proceeds cannot
+// finance a buy. Equal-side order is fixed by original order ID.
+func sortFills(fills []paperfill.Fill) {
+	slices.SortFunc(fills, func(a, b paperfill.Fill) int {
+		if a.Side != b.Side {
+			if a.Side == "buy" {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.OrderID, b.OrderID)
+	})
 }
