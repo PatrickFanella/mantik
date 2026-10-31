@@ -59,6 +59,20 @@ type PaperEvaluationCorporateInspectionStore interface {
 	PaperEvaluationCorporateInspection(context.Context, string, PaperDecisionEvaluator, PaperOutcomeEvaluator) (PaperEvaluationCorporateInspection, error)
 }
 
+// corporateCutPage resolves one pinned source of a replayed cut.
+func corporateCutPage(pin PaperEvaluationCorporateSourcePin, r CorporateActionSourceRecord) (assessmentCorporatePage, error) {
+	page, err := alpacarecord.NormalizeCorporate(r.Command.Recording)
+	if err != nil {
+		return assessmentCorporatePage{}, err
+	}
+	m := PaperEvaluationCorporatePage{Pin: pin, CaptureID: page.CaptureID, Revision: page.Revision, Contract: page.Contract, QueryDateBasis: page.QueryDateBasis, DataQuality: page.DataQuality, Region: page.Region, Symbols: clone(page.Symbols), Start: page.Start, End: page.End, EvidenceClass: page.EvidenceClass, ReceivedAt: page.ReceivedAt, PageToken: page.PageToken, NextPageToken: clone(page.NextPageToken), PageState: page.PageState, RecordsObserved: len(page.Records), AcquisitionCustody: "caller_reported_response_only_request_and_completion_unavailable"}
+	if r.Acquisition != nil {
+		m.AcquisitionSHA256 = r.Acquisition.SHA256
+		m.AcquisitionCustody = "service_retained_configured_journal_acquisition"
+	}
+	return assessmentCorporatePage{m, *page, r.Acquisition}, nil
+}
+
 // Both catalogues are replayed from the same owner snapshot. Never join public
 // readbacks, choose a latest revision or populate legacy assessments retroactively.
 func inspectAssessmentCorporateSources(ctx context.Context, owner, id string, all map[string]PaperEvaluationAssessment, s paperEvaluationSources) (PaperEvaluationCorporateInspection, error) {
@@ -90,17 +104,11 @@ func inspectAssessmentCorporateSources(ctx context.Context, owner, id string, al
 				return PaperEvaluationCorporateInspection{}, err
 			}
 			// Catalogue replay already proved the exact prefix and owner hashes.
-			r := s.corporateSources[pin.Sequence-1]
-			page, err := alpacarecord.NormalizeCorporate(r.Command.Recording)
+			page, err := corporateCutPage(pin, s.corporateSources[pin.Sequence-1])
 			if err != nil {
 				return PaperEvaluationCorporateInspection{}, err
 			}
-			out.Pages = append(out.Pages, PaperEvaluationCorporatePage{Pin: pin, CaptureID: page.CaptureID, Revision: page.Revision, Contract: page.Contract, QueryDateBasis: page.QueryDateBasis, DataQuality: page.DataQuality, Region: page.Region, Symbols: clone(page.Symbols), Start: page.Start, End: page.End, EvidenceClass: page.EvidenceClass, ReceivedAt: page.ReceivedAt, PageToken: page.PageToken, NextPageToken: clone(page.NextPageToken), PageState: page.PageState, RecordsObserved: len(page.Records), AcquisitionCustody: "caller_reported_response_only_request_and_completion_unavailable"})
-			if r.Acquisition != nil {
-				last := &out.Pages[len(out.Pages)-1]
-				last.AcquisitionSHA256 = r.Acquisition.SHA256
-				last.AcquisitionCustody = "service_retained_configured_journal_acquisition"
-			}
+			out.Pages = append(out.Pages, page.metadata)
 		}
 	}
 	out.SHA256 = workerplan.Hash(out)

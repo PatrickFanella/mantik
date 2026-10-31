@@ -262,3 +262,6 @@ var SearchHistoryMultiplicity string
 
 //go:embed 0083_corporate_reference_sources.sql
 var CorporateReferenceSources string
+
+//go:embed 0084_corporate_coverage_assessments.sql
+var CorporateCoverageAssessments string

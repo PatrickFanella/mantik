@@ -692,3 +692,40 @@ Schema 82 fences earlier writers, including strategy writers without the clock
 floor, through compatibility metadata. It rewrites no retained record. Use the
 verified backup and matching binary in separate resources for rollback; keep
 newer source and assessment evidence intact.
+
+## Corporate-action window coverage
+
+A plan using `native-threshold-corporate-coverage-plan-v7` issues assessment v12
+with recipe `native-predeclared-corporate-coverage-v12`. Its
+`corporate_coverage` result holds, for each declared instrument, the
+[window coverage](corporate-window-coverage.md) derived at the assessment clock
+from two owners:
+
+- **Alpaca:** each declared root collection is resolved in the assessment's own
+  corporate source cut. It is followed with the same page-chain rules as
+  [chain inspection](#inspecting-causal-corporate-page-links).
+- **Polygon and issuer:** the declared collections come from
+  [reference custody](corporate-reference-custody.md), using records retained
+  at or before the clock.
+
+The result keeps each chain's status and page pins, the reference record hashes
+used, the strategy IDs for the instrument and the reconciliation result. Callers
+cannot supply sources, rows or a status.
+
+For a covered window, `corporate_coverage` is `passed` with
+`corporate_actions_reconciled_for_window`. Otherwise it is `unavailable` with
+`corporate_actions_unreconciled_for_window`, and the result lists the reasons. A
+disagreement between providers is not a strategy failure and does not block the
+assessment. `benchmark_comparison` stays `unavailable`. With covered windows its
+reason becomes `reconciled_corporate_actions_not_yet_applied_to_total_return`,
+because reconciled dividends and splits are not yet applied to total return.
+Economic application, admission, execution and qualification flags stay false.
+
+New issuance rejects a clock earlier than any retained reference source. A
+reference retained at or before an existing assessment's clock returns 409.
+Historical replay therefore keeps the same prefix. A coherently rehashed result
+and a schema downgrade both fail replay against the actual owners. Older
+assessment versions do not read reference custody.
+
+Schema 84 fences earlier declaration and assessment writers through
+compatibility metadata. It rewrites no retained record.
