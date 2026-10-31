@@ -106,12 +106,11 @@ On 2026-10-30 the user chose:
   internal research is accepted. Originals never enter Git, public exports or
   documentation; tests use manufactured bytes.
 - **Alpaca process dates.** Proposed by the agent and accepted by the user on
-  2026-10-30. Alpaca filters
-  corporate actions by process date, which for cash dividends is the payable
-  date, not the ex-date. To keep the strict rule, a window declares a maximum
-  process lag of at most 120 days. Alpaca chains must tile process dates from
-  the window start to the window end plus that lag, and every in-window Polygon
-  dividend must be paid within that span.
+  2026-10-30. Alpaca filters corporate actions by process date, which for cash
+  dividends is the payable date, not the ex-date. To keep the strict rule, a
+  window declares a maximum process lag of at most 120 days. Alpaca chains
+  must tile process dates from the window start to the window end plus that
+  lag, and every in-window Polygon dividend must be paid within that span.
 
 ## Consequences
 
