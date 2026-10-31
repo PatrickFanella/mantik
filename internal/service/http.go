@@ -26,10 +26,10 @@ func HandlerWithClock(store storage.Store, token string, clock Clock) http.Handl
 }
 
 func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy) http.Handler {
-	return handlerWithAcquisitions(store, token, clock, policy, nil)
+	return handlerWithAcquisitions(store, token, clock, policy, nil, nil)
 }
 
-func handlerWithAcquisitions(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy, acquisitions *CorporateAcquisitionReader) http.Handler {
+func handlerWithAcquisitions(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy, acquisitions *CorporateAcquisitionReader, references *CorporateReferenceReader) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/feed-readiness-policy", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, struct {
@@ -90,6 +90,7 @@ func handlerWithAcquisitions(store storage.Store, token string, clock Clock, pol
 	feedEvidenceRoutes(mux, store, clock, policy)
 	corporateActionSourceRoutes(mux, store, clock)
 	corporateAcquisitionRoutes(mux, acquisitions, store, clock)
+	corporateReferenceRoutes(mux, references, store, clock)
 	operationalRoutes(mux, store, clock, policy)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]string{"status": "up", "mode": "paper_fixture"})
