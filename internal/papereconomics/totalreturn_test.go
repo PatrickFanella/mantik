@@ -218,20 +218,26 @@ func TestTotalReturnRefusesMalformedActions(t *testing.T) {
 		{Symbol: "SPY", WindowStart: "2026-10-1", WindowEnd: "2026-10-31", Actions: []Action{}},
 		window(dividend("2026-11-02", "", "1")),
 		window(dividend("2026-10-21", "2026-10-20", "1")),
-		window(dividend("2026-10-21", "", "1e2")),
+		window(dividend("2026-10-21", "", "one")),
 		window(dividend("2026-10-21", "", "1/2")),
 		window(dividend("2026-10-21", "", "0")),
 		window(dividend("2026-10-21", "", "-1")),
 		window(split("2026-10-21", "1", "")),
 		window(Action{Kind: "spinoff", ExDate: "2026-10-21"}),
 		window(Action{Kind: "cash_dividend", ExDate: "2026-10-21", Amount: "1", From: "1"}),
-		window(dividend("2026-10-21", "", "1"), split("2026-10-21", "1", "2")),
-		window(dividend("2026-10-21", "", "1"), dividend("2026-10-21", "", "1")),
 	}
 	for i, a := range bad {
 		if _, err := EvaluateTotalReturn(context.Background(), in, a); !errors.Is(err, ErrInvalid) {
 			t.Fatal(i, err)
 		}
+	}
+	for i, a := range bad[2:] {
+		if a.Validate() == nil {
+			t.Fatal("validated", i)
+		}
+	}
+	if window(dividend("2026-10-21", "", "19035.16e-4")).Validate() != nil {
+		t.Fatal("exponent notation is exact")
 	}
 	many := window()
 	for range MaxActions + 1 {
@@ -239,6 +245,22 @@ func TestTotalReturnRefusesMalformedActions(t *testing.T) {
 	}
 	if _, err := EvaluateTotalReturn(context.Background(), in, many); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
+	}
+}
+
+func TestSameExDateActions(t *testing.T) {
+	in := heldStudy(t, trQuote("later", laterAt, 110, 111), false)
+	// A regular and a special dividend on one ex-date both apply.
+	r := evaluateTR(t, in, window(dividend("2026-10-21", "", "0.5"), dividend("2026-10-21", "", "0.25")))
+	want(t, r, "observed_total_return", "795", "150", "2", "1165")
+	for _, a := range []Actions{
+		window(dividend("2026-10-21", "", "1"), split("2026-10-21", "1", "2")),
+		window(split("2026-10-21", "1", "2"), split("2026-10-21", "1", "3")),
+	} {
+		r := evaluateTR(t, in, a)
+		if r.Status != "same_ex_date_split_and_other_action_unsupported" || r.EquityCents != nil || len(r.Applied) != 0 {
+			t.Fatal(r)
+		}
 	}
 }
 

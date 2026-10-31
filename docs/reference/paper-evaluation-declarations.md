@@ -409,3 +409,20 @@ verified issuer method, currently SPY with the SPDR workbook and CUSIP
 `78462F103`; other instruments must omit them. Earlier recipes reject the
 object, and schema downgrades fail. Existing declarations keep their earlier
 rules and exact hashes.
+
+## Prospective total-return benchmarks
+
+Recipe `native-threshold-total-return-plan-v8` retains declaration v10. It
+requires the coverage recipe's choices and adds one field:
+
+```json
+{"total_return_method": "usd-counterfactual-observed-bid-reconciled-total-return-v1"}
+```
+
+It commits the assessment to apply each covered instrument's reconciled
+dividends and splits through
+[total-return accounting](total-return-accounting.md) and to decide
+`benchmark_comparison` against the plan's existing `minimum_net_excess_cents`.
+That threshold was declared from the first plan version but unused until now.
+The planned checks are those of v9. Earlier recipes reject the field, the
+field requires a `corporate_coverage` plan, and a downgrade to v9 fails.

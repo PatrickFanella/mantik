@@ -8,9 +8,10 @@ only retained, owner-verified sources; a caller cannot supply rows, matches or
 a coverage flag. This page describes the derivation; assessment v12
 [retains it per declared instrument](paper-evaluation-assessments.md#corporate-action-window-coverage).
 
-A `covered` window is evidence that the sources agree. It applies no dividend
-or split to positions, cash or benchmarks, and it grants no admission,
-execution or qualification credit.
+A `covered` window is evidence that the sources agree. By itself it applies no
+dividend or split and grants no admission, execution or qualification credit;
+assessment v13 applies its matched actions through
+[total-return accounting](total-return-accounting.md).
 
 ## Window
 

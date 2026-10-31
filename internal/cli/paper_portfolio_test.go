@@ -56,7 +56,7 @@ func TestOwnedPortfolioAssessmentHTTP(t *testing.T) {
 
 // These are manufactured captures submitted through the actual owners and
 // public handler. Their prospective labels do not give them qualification credit.
-type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign, search, coverage bool }
+type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign, search, coverage, totalReturn bool }
 
 func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options ...portfolioFixtureOptions) storage.PaperEvaluationAssessment {
 	var mode portfolioFixtureOptions
@@ -141,6 +141,10 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	if coverage {
 		plan.Recipe = storage.PaperCoverageEvaluationRecipe
 		plan.Plan.CorporateCoverage = coveragePlan()
+	}
+	if mode.totalReturn {
+		plan.Recipe = storage.PaperTotalReturnEvaluationRecipe
+		plan.Plan.TotalReturnMethod = papereconomics.TotalReturnMethod
 	}
 	var declaration storage.PaperEvaluationDeclarationReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", plan, 201), &declaration); err != nil {
@@ -280,9 +284,13 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 			t.Fatal("declared sources did not reconcile", cov)
 		}
 		for _, check := range r.Checks {
-			if check.Name == "corporate_coverage" && check.Status != "passed" || check.Name == "benchmark_comparison" && check.Status != "unavailable" {
+			if check.Name == "corporate_coverage" && check.Status != "passed" || !mode.totalReturn && check.Name == "benchmark_comparison" && check.Status != "unavailable" {
 				t.Fatal("coverage changed more than its own check", check)
 			}
+		}
+		if mode.totalReturn {
+			wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v13", storage.PaperTotalReturnAssessmentRecipe
+			assertTotalReturnBenchmarks(t, r)
 		}
 		// A reference retained at the assessment clock would change replay.
 		if b, ok := s.(coverageSourceBackend); ok {
@@ -311,6 +319,9 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		}
 		if coverage {
 			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v9"
+		}
+		if mode.totalReturn {
+			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v10"
 		}
 		expectedTraining := 1
 		if sampleDesign {
@@ -363,12 +374,16 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	}
 	v := r.Portfolio.Variants[0]
 	if benchmarks {
-		if r.Portfolio.Method != storage.PaperBenchmarkPortfolioMethod || v.BaseBenchmarks == nil || v.StressBenchmarks == nil || v.BaseBenchmarks.CashEndingCents != 200000 || v.BaseBenchmarks.TotalReturnComparisonAvailable || v.BaseBenchmarks.CorporateCoverageReconciled || v.BaseBenchmarks.AdmissionAvailable || v.BaseBenchmarks.ExecutionAvailable || v.BaseBenchmarks.QualificationCredit {
+		method := storage.PaperBenchmarkPortfolioMethod
+		if mode.totalReturn {
+			method = storage.PaperTotalReturnPortfolioMethod
+		}
+		if r.Portfolio.Method != method || v.BaseBenchmarks == nil || v.StressBenchmarks == nil || v.BaseBenchmarks.CashEndingCents != 200000 || v.BaseBenchmarks.TotalReturnComparisonAvailable || v.BaseBenchmarks.CorporateCoverageReconciled || v.BaseBenchmarks.AdmissionAvailable || v.BaseBenchmarks.ExecutionAvailable || v.BaseBenchmarks.QualificationCredit {
 			t.Fatal("owner benchmark envelope", v)
 		}
 		found := false
 		for _, check := range r.Checks {
-			if check.Name == "benchmark_comparison" {
+			if check.Name == "benchmark_comparison" && !mode.totalReturn {
 				found = true
 				want := "observed_price_benchmarks_do_not_establish_total_return_or_corporate_coverage"
 				if coverage {
@@ -379,7 +394,7 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 				}
 			}
 		}
-		if !found {
+		if !found && !mode.totalReturn {
 			t.Fatal("mandatory benchmark check missing")
 		}
 
@@ -680,6 +695,28 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions)
 					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 				}
 			}},
+			{"total-return-forgery", func(r *storage.PaperEvaluationAssessment) {
+				if mode.totalReturn {
+					// A coherent forgery: a larger strategy net, rehashed throughout.
+					tr := &r.Portfolio.Variants[0].BaseTotalReturn.Strategy
+					forgedNet := "999999"
+					tr.NetCents = &forgedNet
+					tr.SHA256 = ""
+					tr.SHA256 = workerplan.Hash(*tr)
+					r.Portfolio.SHA256 = ""
+					r.Portfolio.SHA256 = workerplan.Hash(*r.Portfolio)
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
+			{"total-return-downgrade", func(r *storage.PaperEvaluationAssessment) {
+				if mode.totalReturn {
+					r.Schema = "mantik-owned-paper-evaluation-assessment-v12"
+					r.Recipe = storage.PaperCoverageAssessmentRecipe
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
 			{"changed-horizon", func(r *storage.PaperEvaluationAssessment) {
 				r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 			}},
@@ -756,6 +793,9 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions)
 	}
 	if coverage {
 		migration = 84
+	}
+	if mode.totalReturn {
+		migration = 85
 	}
 	var hash string
 	if err := data.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=$1", migration).Scan(&hash); err != nil {

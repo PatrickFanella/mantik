@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
+	"git.subcult.tv/subculture-collective/mantik/internal/papereconomics"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"github.com/jackc/pgx/v5"
 )
@@ -15,6 +16,8 @@ import (
 // same locked/repeatable-read snapshot; callers select only a declaration ID.
 type PaperEvaluationEntrySources struct {
 	AccountingRecipe string `json:"accounting_recipe,omitempty"`
+	// Reconciled actions of covered instruments, only for total-return accounting.
+	CorporateActions []papereconomics.Actions `json:"corporate_actions,omitempty"`
 	Evidence         PaperEvaluationEvidence
 	Policy           allocation.PolicyRecord
 	Rows             []PaperEvaluationEntrySource

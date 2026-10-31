@@ -109,3 +109,54 @@ func TestOwnedCorporateCoverageAssessmentHTTP(t *testing.T) {
 func TestPostgresContractsOwnedCorporateCoverageAssessmentHTTP(t *testing.T) {
 	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true, coverage: true})
 }
+
+// The fixture holds positions for seconds inside 2026-10-21, after its
+// 04:00 UTC ex-date boundary, so no action applies and total return equals
+// observed equity.
+func assertTotalReturnBenchmarks(t *testing.T, r storage.PaperEvaluationAssessment) {
+	t.Helper()
+	v := r.Portfolio.Variants[0]
+	for _, tr := range []*storage.PaperEvaluationTotalReturn{v.BaseTotalReturn, v.StressTotalReturn} {
+		if tr == nil || !tr.Strategy.Available() || len(tr.Strategy.Applied) != 0 || tr.Strategy.AdmissionAvailable || tr.Strategy.QualificationCredit {
+			t.Fatal("covered instrument lacks total return", tr)
+		}
+	}
+	for _, check := range r.Checks {
+		if check.Name != "benchmark_comparison" {
+			continue
+		}
+		// The strategy lost 7000 cents while the passive book gained 1000; the
+		// predeclared minimum excess is zero, so the comparison fails.
+		if check.Status != "failed" || check.ReasonCode != "total_return_excess_below_predeclared_minimum" || r.Status != "blocked" || deref(v.BaseTotalReturn.Strategy.NetCents) != "-7000" || passiveNet(v.BaseTotalReturn) != "observed_total_return 1000" {
+			t.Fatal("covered total return did not decide the comparison", check, deref(v.BaseTotalReturn.Strategy.NetCents), passiveNet(v.BaseTotalReturn))
+		}
+	}
+	if r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
+		t.Fatal("total return granted authority", r)
+	}
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+	return *s
+}
+
+func passiveNet(t *storage.PaperEvaluationTotalReturn) string {
+	if t.Passive == nil {
+		return "<no passive book>"
+	}
+	return t.Passive.Status + " " + deref(t.Passive.NetCents)
+}
+
+func TestOwnedTotalReturnAssessmentHTTP(t *testing.T) {
+	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPortfolioAssessmentHTTP(t, m, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true, coverage: true, totalReturn: true})
+}
+func TestPostgresContractsOwnedTotalReturnAssessmentHTTP(t *testing.T) {
+	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true, coverage: true, totalReturn: true})
+}

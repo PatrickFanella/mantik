@@ -8,7 +8,9 @@ verified entry and exit fill books as the
 [observed-equity accounting](paper-evaluation-assessments.md) and applies a
 list of reconciled actions for the book's symbol. It is a pure function: it
 reads no source, writes no record and grants no admission, execution or
-qualification credit. No assessment uses it yet.
+qualification credit. Assessment v13
+[uses it](paper-evaluation-assessments.md#reconciled-total-return-benchmarks)
+to decide `benchmark_comparison`.
 
 ## Input
 
@@ -28,13 +30,17 @@ ex-date window:
 ```
 
 Amounts are USD per share and ratios are `from` old shares to `to` new shares,
-all as exact positive decimals. The intended source is a covered
+all as exact positive decimals (exponent notation such as `19035.16e-4` is
+exact and accepted; fractions are not). The intended source is a covered
 [window coverage](corporate-window-coverage.md) result; the function does not
-check coverage itself. Malformed input is an error: an unknown kind, an ex-date
+check coverage itself. `Actions.Validate` checks the actions alone, before any
+book is supplied. Malformed input is an error: an unknown kind, an ex-date
 outside the window, a payable date before the ex-date, a non-decimal amount, a
-symbol other than the book's, more than 64 actions, or two actions on one
-ex-date. The order of a same-day dividend and split is undocumented, so it is
-refused rather than guessed.
+symbol other than the book's or more than 64 actions. Several dividends on one
+ex-date all apply, since their order does not matter. A split's order relative
+to another action on its ex-date is undocumented, so that case returns status
+`same_ex_date_split_and_other_action_unsupported` with no values rather than a
+guess.
 
 ## Rules
 
