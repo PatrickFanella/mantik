@@ -4,7 +4,7 @@
 data as the market-wide source reconciled against Alpaca's corporate actions.
 This page covers step 2: acquiring, retaining and parsing Polygon dividend and
 split queries. It does not reconcile them, establish coverage or apply any
-economic effect.
+economic effect. [Service custody](corporate-reference-custody.md) covers step 3.
 
 ## Methods
 

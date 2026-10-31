@@ -4,6 +4,7 @@
 documents as the independent corporate-action source for issue #282. This page
 covers step 1: acquiring, retaining and parsing those documents. It does not
 reconcile them with Alpaca, establish coverage or apply any economic effect.
+[Service custody](corporate-reference-custody.md) covers step 3.
 
 ## Method
 

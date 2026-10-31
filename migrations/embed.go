@@ -259,3 +259,6 @@ var DisjointSampleDesign string
 
 //go:embed 0082_search_history_multiplicity.sql
 var SearchHistoryMultiplicity string
+
+//go:embed 0083_corporate_reference_sources.sql
+var CorporateReferenceSources string

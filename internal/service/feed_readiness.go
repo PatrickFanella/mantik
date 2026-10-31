@@ -70,8 +70,14 @@ func HandlerWithFeedReadiness(store storage.Store, token string, clock Clock, po
 // HandlerWithCorporateAcquisitions retains normal token authentication and a
 // frozen feed policy; the caller owns the optional journal reader's lifetime.
 func HandlerWithCorporateAcquisitions(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy, acquisitions *CorporateAcquisitionReader) (http.Handler, error) {
+	return HandlerWithJournalReaders(store, token, clock, policy, acquisitions, nil)
+}
+
+// HandlerWithJournalReaders adds an optional corporate reference reader; the
+// caller owns both readers' lifetimes.
+func HandlerWithJournalReaders(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy, acquisitions *CorporateAcquisitionReader, references *CorporateReferenceReader) (http.Handler, error) {
 	if policy == nil {
-		return handlerWithAcquisitions(store, token, clock, nil, acquisitions), nil
+		return handlerWithAcquisitions(store, token, clock, nil, acquisitions, references), nil
 	}
 	if err := policy.validate(); err != nil {
 		return nil, err
@@ -79,7 +85,7 @@ func HandlerWithCorporateAcquisitions(store storage.Store, token string, clock C
 	frozen := *policy
 	frozen.RequiredRegistrations = slices.Clone(policy.RequiredRegistrations)
 	slices.Sort(frozen.RequiredRegistrations)
-	return handlerWithAcquisitions(store, token, clock, &frozen, acquisitions), nil
+	return handlerWithAcquisitions(store, token, clock, &frozen, acquisitions, references), nil
 }
 
 func feedReadiness(ctx context.Context, store storage.Store, at time.Time, policy *FeedReadinessPolicy, storageOK bool) domain.CapabilityReadiness {
