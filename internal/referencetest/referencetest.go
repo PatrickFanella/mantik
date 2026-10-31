@@ -5,8 +5,11 @@
 package referencetest
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,3 +134,66 @@ func IssuerCollection(t testing.TB, j *issuerdoc.Journal, spec issuerdoc.Spec, r
 
 func pageName(id string, i int) string { return fmt.Sprintf("page-%s-%02d.json", id, i) }
 func bodyName(id string, i int) string { return fmt.Sprintf("body-%s-%02d.json", id, i) }
+
+var spdrHeaders = []string{"FUND NAME", "TICKER", "CUSIP", "EX-DATE", "RECORD DATE", "PAYABLE DATE", "DIVIDEND ($)", "SHORT TERM CAPITAL GAIN ($)", "LONG TERM CAPITAL GAIN ($)", "FREQUENCY"}
+
+// SPDRDistribution is one manufactured workbook row; dates use MM/DD/YYYY.
+type SPDRDistribution struct{ Ticker, CUSIP, ExDate, RecordDate, PayableDate, Dividend string }
+
+// SPDRWorkbook manufactures a minimal sponsor-shaped workbook. It contains no
+// issuer document bytes.
+func SPDRWorkbook(t testing.TB, rows ...SPDRDistribution) []byte {
+	t.Helper()
+	shared, index := []string{}, map[string]int{}
+	ref := func(s string) int {
+		if i, ok := index[s]; ok {
+			return i
+		}
+		index[s] = len(shared)
+		shared = append(shared, s)
+		return index[s]
+	}
+	table := [][]string{spdrHeaders}
+	for _, r := range rows {
+		table = append(table, []string{"Manufactured Fund", r.Ticker, r.CUSIP, r.ExDate, r.RecordDate, r.PayableDate, r.Dividend, "", "", "Quarterly"})
+	}
+	var sheet strings.Builder
+	sheet.WriteString(`<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`)
+	for i, row := range table {
+		fmt.Fprintf(&sheet, `<row r="%d">`, i+1)
+		for j, v := range row {
+			if v != "" {
+				fmt.Fprintf(&sheet, `<c r="%c%d" t="s"><v>%d</v></c>`, 'A'+j, i+1, ref(v))
+			}
+		}
+		sheet.WriteString(`</row>`)
+	}
+	sheet.WriteString(`</sheetData></worksheet>`)
+	var sst strings.Builder
+	sst.WriteString(`<?xml version="1.0" encoding="UTF-8"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`)
+	for _, s := range shared {
+		fmt.Fprintf(&sst, `<si><t>%s</t></si>`, s)
+	}
+	sst.WriteString(`</sst>`)
+	parts := [][2]string{
+		{"xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="dividend" sheetId="1" r:id="rId1"/></sheets></workbook>`},
+		{"xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>`},
+		{"xl/worksheets/sheet1.xml", sheet.String()},
+		{"xl/sharedStrings.xml", sst.String()},
+	}
+	var out bytes.Buffer
+	z := zip.NewWriter(&out)
+	for _, p := range parts {
+		w, err := z.Create(p[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(p[1])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}

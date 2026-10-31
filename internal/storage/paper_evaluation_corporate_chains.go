@@ -87,19 +87,25 @@ func inspectAssessmentCorporateChain(ctx context.Context, owner, id, rootID stri
 		if err := ctx.Err(); err != nil {
 			return PaperEvaluationCorporateChain{}, err
 		}
-		r := s.corporateSources[p.Pin.Sequence-1]
-		snapshot, err := alpacarecord.NormalizeCorporate(r.Command.Recording)
+		page, err := corporateCutPage(p.Pin, s.corporateSources[p.Pin.Sequence-1])
 		if err != nil {
 			return PaperEvaluationCorporateChain{}, err
 		}
 		if p.Pin.ID == rootID {
 			root = len(pages)
 		}
-		pages = append(pages, assessmentCorporatePage{p, *snapshot, r.Acquisition})
+		pages = append(pages, page)
 	}
 	if root < 0 {
 		return sealAssessmentCorporateChain(out)
 	}
+	return walkAssessmentCorporateChain(ctx, out, pages, root)
+}
+
+// walkAssessmentCorporateChain follows one root through the cut's pages. A
+// next page must share the root's scope and journal and be requested after
+// the previous page was available; any other shape stops the walk.
+func walkAssessmentCorporateChain(ctx context.Context, out PaperEvaluationCorporateChain, pages []assessmentCorporatePage, root int) (PaperEvaluationCorporateChain, error) {
 	current := root
 	out.RootSourceSHA256 = pages[root].metadata.Pin.SHA256
 	if pages[root].snapshot.PageToken != "" {

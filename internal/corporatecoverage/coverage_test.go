@@ -49,7 +49,7 @@ func baseline() Input {
 		{Status: "consistent_dates", ExDate: "2026-06-18", Dividend: "1.903516"},
 		{Status: "consistent_dates", ExDate: "2026-09-18", Dividend: "1.888834"},
 	}}
-	return Input{Window: w, Alpaca: chains, PolygonDividends: &PolygonReference{SourceID: "polygon-dividends", RequestedAt: acquired, Snapshot: dividends}, PolygonSplits: &PolygonReference{SourceID: "polygon-splits", RequestedAt: acquired, Snapshot: splits}, IssuerRequired: true, Issuer: &IssuerReference{SourceID: "issuer", RequestedAt: acquired, Document: doc}}
+	return Input{Window: w, Alpaca: chains, PolygonDividends: &PolygonReference{SourceID: "polygon-dividends", RequestedAt: acquired, Snapshot: dividends}, PolygonSplits: &PolygonReference{SourceID: "polygon-splits", RequestedAt: acquired, Snapshot: splits}, IssuerRequired: true, IssuerCUSIP: "78462F103", Issuer: &IssuerReference{SourceID: "issuer", RequestedAt: acquired, Document: doc}}
 }
 
 func TestReconcileCoversAgreeingSources(t *testing.T) {
@@ -123,6 +123,7 @@ func TestReconcileFailsClosed(t *testing.T) {
 		"issuer inconsistent": {func(in *Input) { in.Issuer.Document.Distributions[1].Status = "inconsistent_dates" }, "issuer_row_inconsistent_dates"},
 		"issuer differs":      {func(in *Input) { in.Issuer.Document.Distributions[1].Dividend = "1.903515" }, "issuer_dividend_unmatched"},
 		"issuer capital gain": {func(in *Input) { in.Issuer.Document.Distributions[1].LongTermCapitalGain = "0.01" }, "issuer_unsupported_capital_gain"},
+		"issuer other fund":   {func(in *Input) { in.IssuerCUSIP = "78462F104" }, "issuer_document_scope_mismatch"},
 		"issuer unrequired":   {func(in *Input) { in.IssuerRequired = false }, "issuer_document_without_supported_method"},
 		"window invalid":      {func(in *Input) { in.Window.ProcessLagDays = MaxProcessLagDays + 1 }, "window_invalid"},
 	} {

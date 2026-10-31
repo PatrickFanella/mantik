@@ -5,8 +5,8 @@ instrument and one inclusive ex-date window, whether retained Alpaca, Polygon
 and issuer sources agree. Package `internal/corporatecoverage` derives that
 result with method `alpaca-polygon-issuer-window-reconciliation-v1`. It reads
 only retained, owner-verified sources; a caller cannot supply rows, matches or
-a coverage flag. This page describes the derivation. Retaining the result in
-a prospective assessment recipe is a separate change.
+a coverage flag. This page describes the derivation; assessment v12
+[retains it per declared instrument](paper-evaluation-assessments.md#corporate-action-window-coverage).
 
 A `covered` window is evidence that the sources agree. It applies no dividend
 or split to positions, cash or benchmarks, and it grants no admission,

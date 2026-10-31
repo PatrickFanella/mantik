@@ -371,3 +371,41 @@ assessment owner counts the search at its own clock, including strategies
 registered after the declaration. See [registered search history](paper-evaluation-assessments.md#registered-search-history)
 for the count, failure and statistical boundary. Existing declarations keep
 their earlier rules and exact hashes.
+
+## Prospective corporate-action coverage
+
+Recipe `native-threshold-corporate-coverage-plan-v7` retains declaration v9 and
+adds `corporate_coverage` to the planned checks. It requires the
+registered-search recipe's existing choices and a `corporate_coverage` object:
+
+```json
+{
+  "method": "alpaca-polygon-issuer-window-reconciliation-v1",
+  "process_lag_days": 10,
+  "instruments": [{
+    "symbol": "SPY",
+    "alpaca_journal_id": "journal-...",
+    "alpaca_root_collection_ids": ["spy-process-2026-10"],
+    "polygon_journal_id": "polygon-journal-...",
+    "polygon_dividends_collection_id": "spy-dividends-2026",
+    "polygon_splits_collection_id": "spy-splits-2026",
+    "issuer_journal_id": "issuer-journal-...",
+    "issuer_collection_id": "spdr-workbook-2026-10"
+  }]
+}
+```
+
+The ex-date window is the plan's `window_start` to `window_end`, as UTC dates.
+`process_lag_days` (0 to 120) bounds how long after the window Alpaca may
+process an in-window action; see
+[window coverage](corporate-window-coverage.md). Each variant's instrument
+needs exactly one entry, sorted by symbol, with 1 to 8 distinct Alpaca root
+collections and distinct Polygon dividend and split collections.
+
+The plan names acquisition identities only. It supplies no rows, hashes, matches
+or result, and the collections need not exist yet: they are acquired after the
+window closes. Issuer fields are required exactly for instruments with a
+verified issuer method, currently SPY with the SPDR workbook and CUSIP
+`78462F103`; other instruments must omit them. Earlier recipes reject the
+object, and schema downgrades fail. Existing declarations keep their earlier
+rules and exact hashes.

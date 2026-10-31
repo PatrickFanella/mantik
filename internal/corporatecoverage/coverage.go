@@ -93,6 +93,7 @@ type Input struct {
 	// IssuerRequired is set when a supported issuer method exists for the
 	// instrument; a required document must then be present and agree.
 	IssuerRequired bool
+	IssuerCUSIP    string
 	Issuer         *IssuerReference
 }
 
@@ -492,7 +493,7 @@ func issuer(in Input, w Window, closed time.Time, why reasons, out *Result) {
 		why.add("issuer_document_unparseable")
 		return
 	}
-	if doc.Symbol != w.Symbol {
+	if doc.Symbol != w.Symbol || doc.CUSIP != in.IssuerCUSIP {
 		why.add("issuer_document_scope_mismatch")
 		return
 	}

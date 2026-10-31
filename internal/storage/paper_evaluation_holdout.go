@@ -55,6 +55,12 @@ func validHoldoutRecipe(c PaperEvaluationDeclarationCommand) bool {
 		}
 		expected = PaperSearchHistoryEvaluationRecipe
 	}
+	if c.Plan.CorporateCoverage != nil {
+		if !validCoveragePlan(c) {
+			return false
+		}
+		expected = PaperCoverageEvaluationRecipe
+	}
 	if h == nil {
 		return c.Plan.BenchmarkMethod == "" && c.Recipe == PaperEvaluationRecipe
 	}

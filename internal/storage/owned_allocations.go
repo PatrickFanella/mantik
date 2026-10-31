@@ -561,7 +561,7 @@ func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCo
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
-	assessments, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, declarations, decisions, strategies, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, eval, oe, policies, m.portfolioEvaluator)
+	assessments, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, declarations, decisions, strategies, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, m.corporateReferenceSources, eval, oe, policies, m.portfolioEvaluator)
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
@@ -596,7 +596,7 @@ func (m *Memory) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluat
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
-	assessments, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, declarations, d, s, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, eval, oe, p, m.portfolioEvaluator)
+	assessments, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, declarations, d, s, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, m.corporateReferenceSources, eval, oe, p, m.portfolioEvaluator)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
@@ -703,7 +703,11 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, c Owne
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}
-		assessmentCatalog, e = resolveAllocationAssessmentOwner(ctx, owner, assessments, declarations, decisions, strategies, retained, outcomes, feed, corporate.Records, eval, oe, policies, p.portfolioEvaluator)
+		references, e := readCorporateReferenceSources(ctx, tx, false)
+		if e != nil {
+			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
+		}
+		assessmentCatalog, e = resolveAllocationAssessmentOwner(ctx, owner, assessments, declarations, decisions, strategies, retained, outcomes, feed, corporate.Records, references.Records, eval, oe, policies, p.portfolioEvaluator)
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}

@@ -285,8 +285,9 @@ service [import retained references into custody](docs/reference/corporate-refer
 with their original bytes, reverified on inspection. Custody establishes no
 coverage or economic effect.
 [Window coverage](docs/reference/corporate-window-coverage.md) reconciles
-retained Alpaca, Polygon and issuer sources for one instrument's ex-date window;
-a covered window applies no economic effect.
+retained Alpaca, Polygon and issuer sources for one instrument's ex-date window.
+Declaration v9 predeclares the collections and assessment v12 retains the result
+per instrument; a covered window applies no economic effect.
 The [feed-collector API](docs/reference/feed-collectors.md) retains immutable
 registrations and fenced ownership leases. It does not start a collector or
 configure feed readiness.

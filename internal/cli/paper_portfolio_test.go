@@ -56,14 +56,14 @@ func TestOwnedPortfolioAssessmentHTTP(t *testing.T) {
 
 // These are manufactured captures submitted through the actual owners and
 // public handler. Their prospective labels do not give them qualification credit.
-type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign, search bool }
+type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign, search, coverage bool }
 
 func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options ...portfolioFixtureOptions) storage.PaperEvaluationAssessment {
 	var mode portfolioFixtureOptions
 	if len(options) > 0 {
 		mode = options[0]
 	}
-	holdout, delayed, benchmarks, causal, sampleDesign, search := mode.holdout, mode.delayed, mode.benchmarks, mode.causal, mode.sampleDesign, mode.search
+	holdout, delayed, benchmarks, causal, sampleDesign, search, coverage := mode.holdout, mode.delayed, mode.benchmarks, mode.causal, mode.sampleDesign, mode.search, mode.coverage
 	var referencePublishedAt time.Time
 	t.Helper()
 	ctx := context.Background()
@@ -137,6 +137,10 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	if search {
 		plan.Recipe = storage.PaperSearchHistoryEvaluationRecipe
 		plan.Plan.SearchMultiplicity = &storage.PaperEvaluationSearchPlan{Method: storage.PaperSearchHistoryMethod, MaximumSearchedStrategies: 1}
+	}
+	if coverage {
+		plan.Recipe = storage.PaperCoverageEvaluationRecipe
+		plan.Plan.CorporateCoverage = coveragePlan()
 	}
 	var declaration storage.PaperEvaluationDeclarationReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", plan, 201), &declaration); err != nil {
@@ -228,6 +232,11 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		request("POST", "/v1/paper-outcomes", storage.PaperOutcomeCommand{ID: "second-outcome", ReceiverID: owner, DecisionID: secondDecision.Record.Command.ID, DecisionSHA256: secondDecision.Record.SHA256}, 201)
 	}
 	clock.at = declaration.Record.Command.Plan.OutcomeDeadline.Add(time.Second)
+	if coverage {
+		// Coverage sources are acquired after the ex-date window closes.
+		retainCoverageSources(t, s, owner, clock)
+		clock.at = clock.at.Add(time.Minute)
+	}
 	c := storage.PaperEvaluationAssessmentCommand{ID: "portfolio-assessment", ReceiverID: owner, DeclarationID: declaration.Record.Command.ID, DeclarationSHA256: declaration.Record.SHA256}
 	raw, _ := json.Marshal(c)
 	request("POST", "/v1/paper-evaluation-assessments", strings.Replace(string(raw), `"id":`, `"portfolio":{},"id":`, 1), 422)
@@ -264,6 +273,25 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		// A strategy written at the retained cut would change historical replay.
 		registerSearch("same-clock-search", 409)
 	}
+	if coverage {
+		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v12", storage.PaperCoverageAssessmentRecipe
+		cov := r.CorporateCoverage
+		if cov == nil || cov.Status != "covered" || len(cov.Instruments) != 1 || !cov.Instruments[0].Result.Covered() || len(cov.Instruments[0].Result.Dividends) != 1 || !cov.Instruments[0].Result.Dividends[0].IssuerConfirmed || cov.EconomicApplicationReady || cov.AdmissionAvailable || cov.QualificationCredit {
+			t.Fatal("declared sources did not reconcile", cov)
+		}
+		for _, check := range r.Checks {
+			if check.Name == "corporate_coverage" && check.Status != "passed" || check.Name == "benchmark_comparison" && check.Status != "unavailable" {
+				t.Fatal("coverage changed more than its own check", check)
+			}
+		}
+		// A reference retained at the assessment clock would change replay.
+		if b, ok := s.(coverageSourceBackend); ok {
+			late := storage.CorporateReferenceSourceCommand{ID: "late", ReceiverID: owner, Kind: storage.CorporateReferencePolygon}
+			if _, err := b.RetainCorporateReferenceSource(ctx, late, clock.Now); err == nil {
+				t.Fatal("invalid late reference accepted")
+			}
+		}
+	}
 	if r.Schema != wantSchema || r.Recipe != wantRecipe || r.Portfolio == nil || len(r.Portfolio.Variants) != 1 || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 		t.Fatal(r)
 	}
@@ -280,6 +308,9 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		}
 		if search {
 			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v8"
+		}
+		if coverage {
+			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v9"
 		}
 		expectedTraining := 1
 		if sampleDesign {
@@ -339,7 +370,11 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		for _, check := range r.Checks {
 			if check.Name == "benchmark_comparison" {
 				found = true
-				if check.Status != "unavailable" || check.ReasonCode != "observed_price_benchmarks_do_not_establish_total_return_or_corporate_coverage" {
+				want := "observed_price_benchmarks_do_not_establish_total_return_or_corporate_coverage"
+				if coverage {
+					want = "reconciled_corporate_actions_not_yet_applied_to_total_return"
+				}
+				if check.Status != "unavailable" || check.ReasonCode != want {
 					t.Fatal("observed prices promoted to total-return acceptance", check)
 				}
 			}
@@ -362,6 +397,13 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	clock.at = clock.at.Add(time.Second)
 	if search {
 		registerSearch("later-search", 201)
+	}
+	if coverage {
+		// The day-later coverage clock outlived the original collector lease.
+		if _, err := s.FeedCollectorCommand(ctx, owner, feedcollector.Command{RequestID: "reclaim", Operation: "claim", RegistrationID: reg.ID, OwnerID: "worker"}, clock.Now); err != nil {
+			t.Fatal(err)
+		}
+		fence.Generation = 2
 	}
 	publish("later-source", 90, 91, false)
 	clock.panicRead = true
@@ -431,7 +473,7 @@ func TestOwnedHoldoutAssessmentHTTP(t *testing.T) {
 	ownedPortfolioAssessmentHTTP(t, m, portfolioFixtureOptions{holdout: true})
 }
 func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions) {
-	holdout, benchmarks, causal, sampleDesign, search := mode.holdout, mode.benchmarks, mode.causal, mode.sampleDesign, mode.search
+	holdout, benchmarks, causal, sampleDesign, search, coverage := mode.holdout, mode.benchmarks, mode.causal, mode.sampleDesign, mode.search, mode.coverage
 	base := os.Getenv("MANTIK_TEST_DATABASE_URL")
 	if base == "" {
 		t.Skip("use make test-integration")
@@ -615,6 +657,29 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions)
 					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 				}
 			}},
+			{"coverage-forgery", func(r *storage.PaperEvaluationAssessment) {
+				if coverage {
+					// A coherent forgery: a different reconciled amount, rehashed.
+					c := r.CorporateCoverage
+					res := &c.Instruments[0].Result
+					res.Dividends[0].Amount = "1.903517"
+					res.SHA256 = ""
+					res.SHA256 = workerplan.Hash(*res)
+					c.SHA256 = ""
+					c.SHA256 = workerplan.Hash(*c)
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
+			{"coverage-downgrade", func(r *storage.PaperEvaluationAssessment) {
+				if coverage {
+					r.Schema = "mantik-owned-paper-evaluation-assessment-v11"
+					r.Recipe = storage.PaperSearchHistoryAssessmentRecipe
+					r.CorporateCoverage = nil
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
 			{"changed-horizon", func(r *storage.PaperEvaluationAssessment) {
 				r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 			}},
@@ -688,6 +753,9 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions)
 	}
 	if search {
 		migration = 82
+	}
+	if coverage {
+		migration = 84
 	}
 	var hash string
 	if err := data.QueryRow(ctx, "SELECT sha256 FROM mantik_schema WHERE version=$1", migration).Scan(&hash); err != nil {
