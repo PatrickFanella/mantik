@@ -88,7 +88,7 @@ func date(s string) (time.Time, bool) {
 }
 
 func positive(s string) (*big.Rat, bool) {
-	if s == "" || strings.ContainsAny(s, " \t\n/eE") {
+	if s == "" || strings.ContainsAny(s, " \t\n/") {
 		return nil, false
 	}
 	v, ok := new(big.Rat).SetString(s)
@@ -120,56 +120,23 @@ func EvaluateTotalReturn(ctx context.Context, in Input, actions Actions) (TotalR
 	if err != nil {
 		return TotalReturn{}, err
 	}
-	windowStart, ok1 := date(actions.WindowStart)
-	windowEnd, ok2 := date(actions.WindowEnd)
-	if !ok1 || !ok2 || windowEnd.Before(windowStart) || actions.Symbol != symbol || actions.Actions == nil || len(actions.Actions) > MaxActions {
+	if actions.Symbol != symbol {
 		return TotalReturn{}, ErrInvalid
 	}
-	type parsed struct {
-		ex, pay       time.Time
-		amount, ratio *big.Rat
-	}
-	values := make([]parsed, len(actions.Actions))
-	seen := map[string]string{}
-	for i, a := range actions.Actions {
-		ex, ok := date(a.ExDate)
-		if !ok || ex.Before(windowStart) || ex.After(windowEnd) {
-			return TotalReturn{}, ErrInvalid
-		}
-		v := parsed{ex: ex}
-		switch a.Kind {
-		case "cash_dividend":
-			amount, ok := positive(a.Amount)
-			if !ok || a.From != "" || a.To != "" {
-				return TotalReturn{}, ErrInvalid
-			}
-			v.amount = amount.Mul(amount, big.NewRat(100, 1))
-			if a.PayableDate != "" {
-				pay, ok := date(a.PayableDate)
-				if !ok || pay.Before(ex) {
-					return TotalReturn{}, ErrInvalid
-				}
-				v.pay = pay
-			}
-		case "split":
-			from, ok1 := positive(a.From)
-			to, ok2 := positive(a.To)
-			if !ok1 || !ok2 || a.Amount != "" || a.PayableDate != "" {
-				return TotalReturn{}, ErrInvalid
-			}
-			v.ratio = to.Quo(to, from)
-		default:
-			return TotalReturn{}, ErrInvalid
-		}
-		// The order of a dividend and a split on one ex-date is undocumented,
-		// and two actions of one kind on a date are already ambiguous.
-		if _, dup := seen[a.ExDate]; dup {
-			return TotalReturn{}, ErrInvalid
-		}
-		seen[a.ExDate] = a.Kind
-		values[i] = v
+	values, seen, windowStart, windowEnd, err := parseActions(actions)
+	if err != nil {
+		return TotalReturn{}, err
 	}
 	out := TotalReturn{Method: TotalReturnMethod, InputSHA256: workerplan.Hash(in), ActionsSHA256: workerplan.Hash(actions), Status: "observed_total_return", Applied: []AppliedAction{}, Authority: "owner_selected_reconciled_total_return_accounting_only"}
+	// Dividends on one ex-date commute. A split's order relative to another
+	// action on its ex-date is undocumented, so no value is derived.
+	for _, kinds := range seen {
+		if len(kinds) > 1 && slices.Contains(kinds, "split") {
+			out.Status = "same_ex_date_split_and_other_action_unsupported"
+			out.SHA256 = workerplan.Hash(out)
+			return out, nil
+		}
+	}
 	start, cut := events[0].at, in.CutAt.UTC()
 	steps := []step{}
 	for _, e := range events {
@@ -306,6 +273,65 @@ func EvaluateTotalReturn(ctx context.Context, in Input, actions Actions) (TotalR
 	e, n := exactText(equity), exactText(new(big.Rat).Sub(equity, new(big.Rat).SetInt64(in.OpeningCashCents)))
 	out.EquityCents, out.NetCents = &e, &n
 	return finish("observed_total_return")
+}
+
+type parsedAction struct {
+	ex, pay       time.Time
+	amount, ratio *big.Rat
+}
+
+// Validate reports whether the actions are well formed, independent of any
+// book. EvaluateTotalReturn additionally requires the book's symbol.
+func (a Actions) Validate() error {
+	_, _, _, _, err := parseActions(a)
+	return err
+}
+
+func parseActions(actions Actions) ([]parsedAction, map[string][]string, time.Time, time.Time, error) {
+	windowStart, ok1 := date(actions.WindowStart)
+	windowEnd, ok2 := date(actions.WindowEnd)
+	if !ok1 || !ok2 || windowEnd.Before(windowStart) || actions.Symbol == "" || actions.Actions == nil || len(actions.Actions) > MaxActions {
+		return nil, nil, time.Time{}, time.Time{}, ErrInvalid
+	}
+	values := make([]parsedAction, len(actions.Actions))
+	seen := map[string][]string{}
+	bad := func() ([]parsedAction, map[string][]string, time.Time, time.Time, error) {
+		return nil, nil, time.Time{}, time.Time{}, ErrInvalid
+	}
+	for i, a := range actions.Actions {
+		ex, ok := date(a.ExDate)
+		if !ok || ex.Before(windowStart) || ex.After(windowEnd) {
+			return bad()
+		}
+		v := parsedAction{ex: ex}
+		switch a.Kind {
+		case "cash_dividend":
+			amount, ok := positive(a.Amount)
+			if !ok || a.From != "" || a.To != "" {
+				return bad()
+			}
+			v.amount = amount.Mul(amount, big.NewRat(100, 1))
+			if a.PayableDate != "" {
+				pay, ok := date(a.PayableDate)
+				if !ok || pay.Before(ex) {
+					return bad()
+				}
+				v.pay = pay
+			}
+		case "split":
+			from, ok1 := positive(a.From)
+			to, ok2 := positive(a.To)
+			if !ok1 || !ok2 || a.Amount != "" || a.PayableDate != "" {
+				return bad()
+			}
+			v.ratio = to.Quo(to, from)
+		default:
+			return bad()
+		}
+		seen[a.ExDate] = append(seen[a.ExDate], a.Kind)
+		values[i] = v
+	}
+	return values, seen, windowStart, windowEnd, nil
 }
 
 // covered reports whether every ex-date boundary in (from, to] is a date in

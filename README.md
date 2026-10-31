@@ -289,8 +289,10 @@ retained Alpaca, Polygon and issuer sources for one instrument's ex-date window.
 Declaration v9 predeclares the collections and assessment v12 retains the result
 per instrument; a covered window applies no economic effect.
 [Total-return accounting](docs/reference/total-return-accounting.md) replays a
-fill book with exact arithmetic and applies reconciled dividends and splits. No
-assessment uses it yet.
+fill book with exact arithmetic and applies reconciled dividends and splits.
+Declaration v10 and assessment v13 apply it to covered instruments and decide
+`benchmark_comparison` against the predeclared minimum net excess; a pass
+grants no admission.
 The [feed-collector API](docs/reference/feed-collectors.md) retains immutable
 registrations and fenced ownership leases. It does not start a collector or
 configure feed readiness.

@@ -265,3 +265,6 @@ var CorporateReferenceSources string
 
 //go:embed 0084_corporate_coverage_assessments.sql
 var CorporateCoverageAssessments string
+
+//go:embed 0085_total_return_benchmarks.sql
+var TotalReturnBenchmarks string

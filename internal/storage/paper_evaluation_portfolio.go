@@ -20,10 +20,13 @@ type PaperPortfolioEvaluator func(context.Context, PaperEvaluationEntrySources) 
 type PaperEvaluationPortfolioVariant struct {
 	BaseBenchmarks   *papereconomics.Benchmarks `json:"base_benchmarks,omitempty"`
 	StressBenchmarks *papereconomics.Benchmarks `json:"stress_benchmarks,omitempty"`
-	StrategyID       string                     `json:"strategy_id"`
-	Status           string                     `json:"status"`
-	Base             *papereconomics.Result     `json:"base,omitempty"`
-	Stress           *papereconomics.Result     `json:"stress,omitempty"`
+	// Present only for reconciled total-return accounting of a covered instrument.
+	BaseTotalReturn   *PaperEvaluationTotalReturn `json:"base_total_return,omitempty"`
+	StressTotalReturn *PaperEvaluationTotalReturn `json:"stress_total_return,omitempty"`
+	StrategyID        string                      `json:"strategy_id"`
+	Status            string                      `json:"status"`
+	Base              *papereconomics.Result      `json:"base,omitempty"`
+	Stress            *papereconomics.Result      `json:"stress,omitempty"`
 }
 
 type PaperEvaluationPortfolio struct {
@@ -81,6 +84,10 @@ func validatePortfolioEnvelope(e PaperEvaluationEvidence, p PaperEvaluationPortf
 	if benchmarks {
 		expectedMethod = PaperBenchmarkPortfolioMethod
 	}
+	totalReturn := e.Declaration.Command.Plan.TotalReturnMethod != ""
+	if totalReturn {
+		expectedMethod = PaperTotalReturnPortfolioMethod
+	}
 	if p.Method != expectedMethod || p.Authority != "service_owned_observed_portfolio_accounting_only" || p.EvidenceSHA256 != e.SHA256 || p.PolicySHA256 != e.Declaration.Command.PolicySHA256 || !decisionPin.MatchString(p.SourceSHA256) || len(p.Variants) != len(e.Declaration.Command.Plan.Variants) || p.EvaluationComplete || p.AdmissionAvailable || p.ExecutionAvailable || p.QualificationCredit {
 		return ErrPaperEvaluationAssessmentInvalid
 	}
@@ -89,6 +96,9 @@ func validatePortfolioEnvelope(e PaperEvaluationEvidence, p PaperEvaluationPortf
 			return ErrPaperEvaluationAssessmentInvalid
 		}
 		values := []*papereconomics.Result{v.Base, v.Stress}
+		if !totalReturn && (v.BaseTotalReturn != nil || v.StressTotalReturn != nil) || (v.BaseTotalReturn == nil) != (v.StressTotalReturn == nil) || !validPortfolioTotalReturn(v.BaseTotalReturn, v.Base, v.BaseBenchmarks) || !validPortfolioTotalReturn(v.StressTotalReturn, v.Stress, v.StressBenchmarks) {
+			return ErrPaperEvaluationAssessmentInvalid
+		}
 		if benchmarks {
 			if (v.Base == nil) != (v.BaseBenchmarks == nil) || (v.Stress == nil) != (v.StressBenchmarks == nil) {
 				return ErrPaperEvaluationAssessmentInvalid
@@ -130,7 +140,9 @@ func validatePortfolioEnvelope(e PaperEvaluationEvidence, p PaperEvaluationPortf
 	return nil
 }
 
-func ownedPortfolioEvaluation(ctx context.Context, e PaperEvaluationEvidence, s paperEvaluationSources) (*PaperEvaluationPortfolio, error) {
+// actions are the reconciled corporate actions of covered instruments; they
+// apply only when the declaration predeclared total-return accounting.
+func ownedPortfolioEvaluation(ctx context.Context, e PaperEvaluationEvidence, s paperEvaluationSources, actions []papereconomics.Actions) (*PaperEvaluationPortfolio, error) {
 	if s.portfolioEvaluator == nil {
 		return nil, ErrPaperEvaluationAssessmentInvalid
 	}
@@ -140,6 +152,14 @@ func ownedPortfolioEvaluation(ctx context.Context, e PaperEvaluationEvidence, s 
 	}
 	if e.Declaration.Command.Plan.BenchmarkMethod != "" {
 		inputs.AccountingRecipe = PaperBenchmarkAssessmentRecipe
+	}
+	if e.Declaration.Command.Plan.TotalReturnMethod != "" {
+		if actions == nil {
+			return nil, ErrPaperEvaluationAssessmentInvalid
+		}
+		inputs.AccountingRecipe, inputs.CorporateActions = PaperTotalReturnAssessmentRecipe, actions
+	} else if actions != nil {
+		return nil, ErrPaperEvaluationAssessmentInvalid
 	}
 	value, err := s.portfolioEvaluator(ctx, clone(inputs))
 	if err != nil {

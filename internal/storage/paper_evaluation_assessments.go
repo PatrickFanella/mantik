@@ -12,6 +12,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
+	"git.subcult.tv/subculture-collective/mantik/internal/papereconomics"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"github.com/jackc/pgx/v5"
@@ -255,7 +256,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 		if err != nil {
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
-		hasHoldout := slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v7", "mantik-owned-paper-evaluation-assessment-v8", "mantik-owned-paper-evaluation-assessment-v9", "mantik-owned-paper-evaluation-assessment-v10", "mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12"}, r.Schema)
+		hasHoldout := slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v7", "mantik-owned-paper-evaluation-assessment-v8", "mantik-owned-paper-evaluation-assessment-v9", "mantik-owned-paper-evaluation-assessment-v10", "mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13"}, r.Schema)
 		hasPortfolio := r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || hasHoldout
 		hasCorporate := r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || hasPortfolio
 		var warmup *PaperEvaluationWarmUp
@@ -274,9 +275,23 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			}
 			cut = &value
 		}
+		// Coverage precedes the portfolio: total-return accounting applies the
+		// covered instruments' reconciled actions.
+		var coverage *PaperEvaluationCorporateCoverage
+		var actions []papereconomics.Actions
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v12" || r.Schema == "mantik-owned-paper-evaluation-assessment-v13" {
+			value, err := ownedCorporateCoverage(ctx, e, *cut, s)
+			if err != nil {
+				return PaperEvaluationAssessmentCatalog{}, err
+			}
+			coverage = &value
+			if r.Schema == "mantik-owned-paper-evaluation-assessment-v13" {
+				actions = coverageActions(value)
+			}
+		}
 		var portfolio *PaperEvaluationPortfolio
 		if hasPortfolio {
-			portfolio, err = ownedPortfolioEvaluation(ctx, e, s)
+			portfolio, err = ownedPortfolioEvaluation(ctx, e, s, actions)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
 			}
@@ -289,20 +304,12 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			}
 		}
 		var search *PaperEvaluationSearchHistory
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v11" || r.Schema == "mantik-owned-paper-evaluation-assessment-v12" {
+		if slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13"}, r.Schema) {
 			value, err := ownedSearchHistory(e, s.strategies, r.AssessedAt)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
 			}
 			search = &value
-		}
-		var coverage *PaperEvaluationCorporateCoverage
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v12" {
-			value, err := ownedCorporateCoverage(ctx, e, *cut, s)
-			if err != nil {
-				return PaperEvaluationAssessmentCatalog{}, err
-			}
-			coverage = &value
 		}
 		want, err := paperAssessmentWithBenchmarks(r.Command, e, warmup, cut, portfolio, holdout, search, coverage, r.Schema)
 		if err != nil || id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(want, r) {
@@ -405,10 +412,22 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 		return PaperEvaluationAssessmentReceipt{}, err
 	}
 	schema := "mantik-owned-paper-evaluation-assessment-v5"
+	var coverage *PaperEvaluationCorporateCoverage
+	var actions []papereconomics.Actions
+	if e.Declaration.Command.Plan.CorporateCoverage != nil {
+		value, err := ownedCorporateCoverage(ctx, e, cut, s)
+		if err != nil {
+			return PaperEvaluationAssessmentReceipt{}, err
+		}
+		coverage = &value
+		if e.Declaration.Command.Plan.TotalReturnMethod != "" {
+			actions = coverageActions(value)
+		}
+	}
 	var portfolio *PaperEvaluationPortfolio
 	if s.portfolioEvaluator != nil {
 		schema = "mantik-owned-paper-evaluation-assessment-v6"
-		portfolio, err = ownedPortfolioEvaluation(ctx, e, s)
+		portfolio, err = ownedPortfolioEvaluation(ctx, e, s, actions)
 		if err != nil {
 			return PaperEvaluationAssessmentReceipt{}, err
 		}
@@ -446,14 +465,11 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 		}
 		search = &value
 	}
-	var coverage *PaperEvaluationCorporateCoverage
-	if e.Declaration.Command.Plan.CorporateCoverage != nil {
+	if coverage != nil {
 		schema = "mantik-owned-paper-evaluation-assessment-v12"
-		value, err := ownedCorporateCoverage(ctx, e, cut, s)
-		if err != nil {
-			return PaperEvaluationAssessmentReceipt{}, err
-		}
-		coverage = &value
+	}
+	if e.Declaration.Command.Plan.TotalReturnMethod != "" {
+		schema = "mantik-owned-paper-evaluation-assessment-v13"
 	}
 	record, err := paperAssessmentWithBenchmarks(c, e, &warmup, &cut, portfolio, holdout, search, coverage, schema)
 	if err != nil {

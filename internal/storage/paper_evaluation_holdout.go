@@ -61,6 +61,12 @@ func validHoldoutRecipe(c PaperEvaluationDeclarationCommand) bool {
 		}
 		expected = PaperCoverageEvaluationRecipe
 	}
+	if c.Plan.TotalReturnMethod != "" {
+		if c.Plan.TotalReturnMethod != papereconomics.TotalReturnMethod || c.Plan.CorporateCoverage == nil {
+			return false
+		}
+		expected = PaperTotalReturnEvaluationRecipe
+	}
 	if h == nil {
 		return c.Plan.BenchmarkMethod == "" && c.Recipe == PaperEvaluationRecipe
 	}

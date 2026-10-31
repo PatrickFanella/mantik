@@ -111,6 +111,13 @@ On 2026-10-30 the user chose:
   window declares a maximum process lag of at most 120 days. Alpaca chains
   must tile process dates from the window start to the window end plus that
   lag, and every in-window Polygon dividend must be paid within that span.
+- **Benchmark acceptance.** Proposed by the agent and accepted by the user on
+  2026-10-31. With total return applied, `benchmark_comparison` passes only
+  when the strategy's total-return net exceeds both cash and the passive
+  benchmark by the plan's `minimum_net_excess_cents` in the base and stress
+  models. It fails, blocking the assessment, when any margin falls short, and
+  stays unavailable without coverage, a computable total return or a fully
+  filled passive entry. Admission, execution and qualification stay false.
 
 ## Consequences
 

@@ -716,9 +716,10 @@ For a covered window, `corporate_coverage` is `passed` with
 `corporate_actions_reconciled_for_window`. Otherwise it is `unavailable` with
 `corporate_actions_unreconciled_for_window`, and the result lists the reasons. A
 disagreement between providers is not a strategy failure and does not block the
-assessment. `benchmark_comparison` stays `unavailable`. With covered windows its
-reason becomes `reconciled_corporate_actions_not_yet_applied_to_total_return`,
-because reconciled dividends and splits are not yet applied to total return.
+assessment. In v12, `benchmark_comparison` stays `unavailable`. With covered
+windows its reason becomes
+`reconciled_corporate_actions_not_yet_applied_to_total_return`; v13
+[applies them](#reconciled-total-return-benchmarks).
 Economic application, admission, execution and qualification flags stay false.
 
 New issuance rejects a clock earlier than any retained reference source. A
@@ -729,3 +730,47 @@ assessment versions do not read reference custody.
 
 Schema 84 fences earlier declaration and assessment writers through
 compatibility metadata. It rewrites no retained record.
+
+## Reconciled total-return benchmarks
+
+Assessment v13 (recipe `native-predeclared-total-return-benchmarks-v13`)
+follows a declaration v10 plan. It derives window coverage first, then gives
+the reconciled actions of each covered instrument to the portfolio owner, whose
+method becomes `owner-selected-finite-capital-reconciled-total-return-v3`. For
+a variant on a covered instrument, the base and stress rows add
+`base_total_return` and `stress_total_return`: the
+[total-return result](total-return-accounting.md) of the strategy books and of
+the passive benchmark book, both with the same actions. Instruments without
+coverage get no total-return rows. Observed-price results and benchmarks are
+unchanged.
+
+`benchmark_comparison` for each variant is then decided as follows:
+
+- **`passed`** (`total_return_exceeds_cash_and_passive_by_predeclared_minimum`)
+  when, in both the base and stress models, the strategy's total-return net is
+  at least `minimum_net_excess_cents` above cash (whose net is zero, since cash
+  earns no interest) and above the passive benchmark's total-return net.
+- **`failed`** (`total_return_excess_below_predeclared_minimum`) when any of
+  those four margins is below the minimum. The assessment becomes `blocked`.
+- **`pending`** (`predeclared_outcome_window_not_closed`) before the outcome
+  deadline.
+- **`unavailable`** otherwise, with one reason:
+  `observed_price_benchmarks_do_not_establish_total_return_or_corporate_coverage`
+  (window not covered), `reconciled_actions_not_applicable_to_total_return`
+  (covered values that cannot be applied, such as a payable date before the
+  ex-date), `variant_books_unavailable_for_total_return`,
+  `strategy_total_return_unavailable`, `passive_benchmark_entry_incomplete`
+  (no passive book, or a passive entry that did not fill its whole intended
+  quantity and so left most of the benchmark in cash), or
+  `passive_total_return_unavailable`.
+
+Margins compare as exact rationals; a strategy net of `1199/4` cents is below a
+300-cent minimum. A pass is a declared economic comparison on retained
+observations. Admission, execution and qualification flags stay false, and
+other failed checks still block.
+
+Replay re-executes coverage and the portfolio owner, so a coherently rehashed
+total-return value or check and a downgrade to v12 both fail. The assessment
+also refuses total-return rows whose actions hash differs from the covered
+instrument's, rows for an uncovered instrument, and a covered variant missing
+its rows. Schema 85 fences earlier writers and rewrites no retained record.
