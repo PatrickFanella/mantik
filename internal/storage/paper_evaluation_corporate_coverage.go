@@ -41,9 +41,16 @@ type PaperEvaluationCoveragePlan struct {
 	Instruments    []PaperEvaluationCoverageInstrument `json:"instruments"`
 }
 
-// The ex-date window is the declared observation window's UTC dates.
+// The ex-date window is the declared observation window's UTC dates. A
+// total-return plan extends it to the outcome deadline's date: positions and
+// the passive benchmark stay open until the outcome cut, which may follow the
+// window end, and an action on those dates changes their total return.
 func coverageWindow(p PaperEvaluationPlan, symbol string) corporatecoverage.Window {
-	return corporatecoverage.Window{Symbol: symbol, Start: p.WindowStart.UTC().Format(time.DateOnly), End: p.WindowEnd.UTC().Format(time.DateOnly), ProcessLagDays: p.CorporateCoverage.ProcessLagDays}
+	end := p.WindowEnd
+	if p.TotalReturnMethod != "" {
+		end = p.OutcomeDeadline
+	}
+	return corporatecoverage.Window{Symbol: symbol, Start: p.WindowStart.UTC().Format(time.DateOnly), End: end.UTC().Format(time.DateOnly), ProcessLagDays: p.CorporateCoverage.ProcessLagDays}
 }
 
 func validCoveragePlan(c PaperEvaluationDeclarationCommand) bool {

@@ -30,17 +30,19 @@ ex-date window:
 ```
 
 Amounts are USD per share and ratios are `from` old shares to `to` new shares,
-all as exact positive decimals (exponent notation such as `19035.16e-4` is
-exact and accepted; fractions are not). The intended source is a covered
+all as exact positive decimals. A JSON-style exponent of at most two digits,
+such as `19035.16e-4`, is accepted; signs, fractions, hex floats and longer
+exponents are not. The intended source is a covered
 [window coverage](corporate-window-coverage.md) result; the function does not
 check coverage itself. `Actions.Validate` checks the actions alone, before any
 book is supplied. Malformed input is an error: an unknown kind, an ex-date
 outside the window, a payable date before the ex-date, a non-decimal amount, a
 symbol other than the book's or more than 64 actions. Several dividends on one
 ex-date all apply, since their order does not matter. A split's order relative
-to another action on its ex-date is undocumented, so that case returns status
-`same_ex_date_split_and_other_action_unsupported` with no values rather than a
-guess.
+to another action on its ex-date is undocumented. When shares are held at that
+boundary, the result stops with status
+`same_ex_date_split_and_other_action_unsupported` and no equity rather than a
+guess; with no shares held the order cannot matter and both apply.
 
 ## Rules
 

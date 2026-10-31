@@ -180,3 +180,60 @@ func TestTotalReturnPlanRequiresCoverage(t *testing.T) {
 		t.Fatal("total-return plan downgrade accepted", err)
 	}
 }
+
+func TestRetainedTotalReturnValuesMatchStatus(t *testing.T) {
+	sealed := func(change func(*papereconomics.TotalReturn)) *papereconomics.TotalReturn {
+		net, equity := "-7000", "193000"
+		r := papereconomics.TotalReturn{Method: papereconomics.TotalReturnMethod, InputSHA256: "in", Status: "observed_total_return", EquityCents: &equity, NetCents: &net, Authority: "owner_selected_reconciled_total_return_accounting_only"}
+		change(&r)
+		r.SHA256 = workerplan.Hash(r)
+		return &r
+	}
+	if !validTotalReturn(sealed(func(*papereconomics.TotalReturn) {}), "in") {
+		t.Fatal("sealed result refused")
+	}
+	for name, change := range map[string]func(*papereconomics.TotalReturn){
+		"available without net":    func(r *papereconomics.TotalReturn) { r.NetCents = nil },
+		"available without values": func(r *papereconomics.TotalReturn) { r.NetCents, r.EquityCents = nil, nil },
+		"values without status":    func(r *papereconomics.TotalReturn) { r.Status = "terminal_mark_unavailable" },
+		"unknown status":           func(r *papereconomics.TotalReturn) { r.Status = "fabricated" },
+		"exponent net": func(r *papereconomics.TotalReturn) {
+			n := "1e999999999"
+			r.NetCents = &n
+		},
+		"unreduced text": func(r *papereconomics.TotalReturn) {
+			n := "0x10"
+			r.NetCents = &n
+		},
+	} {
+		if validTotalReturn(sealed(change), "in") {
+			t.Fatal(name, "accepted")
+		}
+	}
+	// The decision itself refuses unusable retained values instead of panicking.
+	ok := [2]string{"500", "100"}
+	for name, change := range map[string]func(*PaperEvaluationAssessment){
+		"nil net": func(r *PaperEvaluationAssessment) { r.Portfolio.Variants[0].BaseTotalReturn.Strategy.NetCents = nil },
+		"exponent net": func(r *PaperEvaluationAssessment) {
+			n := "1e999999999"
+			r.Portfolio.Variants[0].StressTotalReturn.Passive.NetCents = &n
+		},
+	} {
+		r := totalReturnAssessment(t, ok, ok)
+		change(&r)
+		if err := applyTotalReturnBenchmarks(&r, 0); err != ErrPaperEvaluationAssessmentInvalid {
+			t.Fatal(name, err)
+		}
+	}
+}
+
+func TestTotalReturnCoverageWindowReachesTheOutcomeDeadline(t *testing.T) {
+	p := PaperEvaluationPlan{WindowStart: time.Date(2026, 10, 20, 14, 0, 0, 0, time.UTC), WindowEnd: time.Date(2026, 10, 21, 20, 0, 0, 0, time.UTC), OutcomeDeadline: time.Date(2026, 10, 23, 19, 0, 0, 0, time.UTC), CorporateCoverage: &PaperEvaluationCoveragePlan{ProcessLagDays: 10}}
+	if w := coverageWindow(p, "SPY"); w.Start != "2026-10-20" || w.End != "2026-10-21" {
+		t.Fatal("coverage-only window changed", w)
+	}
+	p.TotalReturnMethod = papereconomics.TotalReturnMethod
+	if w := coverageWindow(p, "SPY"); w.Start != "2026-10-20" || w.End != "2026-10-23" || w.ProcessLagDays != 10 {
+		t.Fatal("total-return window ends before the outcome cut", w)
+	}
+}

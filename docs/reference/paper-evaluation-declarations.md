@@ -426,3 +426,9 @@ dividends and splits through
 That threshold was declared from the first plan version but unused until now.
 The planned checks are those of v9. Earlier recipes reject the field, the
 field requires a `corporate_coverage` plan, and a downgrade to v9 fails.
+
+The coverage window of a v10 plan ends at the UTC date of `outcome_deadline`
+instead of `window_end`. Positions and the passive benchmark stay open until
+the outcome cut, which can fall up to 48 hours after the window, so an action
+on those dates changes their total return. Coverage sources must therefore be
+acquired after that later date ends. v9 plans keep the observation window.

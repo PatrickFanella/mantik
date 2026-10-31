@@ -262,6 +262,27 @@ func TestSameExDateActions(t *testing.T) {
 			t.Fatal(r)
 		}
 	}
+	// The conflict cannot matter while the book is flat.
+	closed := heldStudy(t, trQuote("later", laterAt, 110, 111), true)
+	closed.CutAt = laterAt.Add(5 * 24 * time.Hour)
+	r = evaluateTR(t, closed, window(dividend("2026-10-24", "", "1"), split("2026-10-24", "1", "2")))
+	want(t, r, "observed_total_return", "1010", "0", "0", "1010")
+	if len(r.Applied) != 2 || r.Applied[0].EntitlementCents != "0" {
+		t.Fatal(r.Applied)
+	}
+}
+
+func TestAmountText(t *testing.T) {
+	for _, ok := range []string{"1", "1.903516", "19035.16e-4", "1.9E-1", "2e+1"} {
+		if _, valid := positive(ok); !valid {
+			t.Fatal("refused", ok)
+		}
+	}
+	for _, bad := range []string{"", "0", "0.0", "+1", "-1", ".5", "1.", "1/2", "0x1p-2", "1e-999", "1e999999999", " 1", "1_000", "Inf", "NaN"} {
+		if _, valid := positive(bad); valid {
+			t.Fatal("accepted", bad)
+		}
+	}
 }
 
 func TestExactText(t *testing.T) {
