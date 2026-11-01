@@ -3,8 +3,8 @@ package papereconomics
 import (
 	"context"
 	"math/big"
+	"regexp"
 	"slices"
-	"strings"
 	"time"
 	_ "time/tzdata"
 
@@ -87,8 +87,12 @@ func date(s string) (time.Time, bool) {
 	return d, err == nil && d.Format(time.DateOnly) == s
 }
 
+// Plain decimals, optionally with a two-digit exponent as a JSON number may
+// carry. Hex floats, signs, fractions and unbounded exponents are refused.
+var decimalText = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]{1,2})?$`)
+
 func positive(s string) (*big.Rat, bool) {
-	if s == "" || strings.ContainsAny(s, " \t\n/") {
+	if !decimalText.MatchString(s) {
 		return nil, false
 	}
 	v, ok := new(big.Rat).SetString(s)
@@ -129,13 +133,11 @@ func EvaluateTotalReturn(ctx context.Context, in Input, actions Actions) (TotalR
 	}
 	out := TotalReturn{Method: TotalReturnMethod, InputSHA256: workerplan.Hash(in), ActionsSHA256: workerplan.Hash(actions), Status: "observed_total_return", Applied: []AppliedAction{}, Authority: "owner_selected_reconciled_total_return_accounting_only"}
 	// Dividends on one ex-date commute. A split's order relative to another
-	// action on its ex-date is undocumented, so no value is derived.
-	for _, kinds := range seen {
-		if len(kinds) > 1 && slices.Contains(kinds, "split") {
-			out.Status = "same_ex_date_split_and_other_action_unsupported"
-			out.SHA256 = workerplan.Hash(out)
-			return out, nil
-		}
+	// action on its ex-date is undocumented; it matters only for shares held
+	// at that boundary, where no value is then derived.
+	conflict := map[string]bool{}
+	for date, kinds := range seen {
+		conflict[date] = len(kinds) > 1 && slices.Contains(kinds, "split")
 	}
 	start, cut := events[0].at, in.CutAt.UTC()
 	steps := []step{}
@@ -204,6 +206,9 @@ func EvaluateTotalReturn(ctx context.Context, in Input, actions Actions) (TotalR
 		switch s.order {
 		case 0:
 			v, quantity := values[s.action], held()
+			if conflict[actions.Actions[s.action].ExDate] && quantity.Sign() > 0 {
+				return finish("same_ex_date_split_and_other_action_unsupported")
+			}
 			a := AppliedAction{Action: actions.Actions[s.action], At: s.at, QuantityBefore: exactText(quantity)}
 			if v.ratio != nil {
 				for _, l := range lots {

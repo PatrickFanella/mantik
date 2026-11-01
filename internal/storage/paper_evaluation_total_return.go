@@ -2,6 +2,7 @@ package storage
 
 import (
 	"math/big"
+	"regexp"
 	"slices"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/papereconomics"
@@ -46,9 +47,28 @@ func instrumentActions(in PaperEvaluationInstrumentCoverage) (papereconomics.Act
 	return a, a.Validate() == nil
 }
 
+// Retained cents and quantities are exact decimals or reduced a/b fractions.
+var exactCentsText = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$|^-?[0-9]+/[0-9]+$`)
+
+func exactCents(s *string) (*big.Rat, bool) {
+	if s == nil || len(*s) > 128 || !exactCentsText.MatchString(*s) {
+		return nil, false
+	}
+	return new(big.Rat).SetString(*s)
+}
+
+var totalReturnStatuses = []string{"observed_total_return", "holding_outside_corporate_coverage_window", "fill_exceeds_split_adjusted_position", "terminal_mark_unavailable", "terminal_mark_predates_corporate_action", "same_ex_date_split_and_other_action_unsupported"}
+
+// A retained result's values must agree with its status, so a rehashed row
+// cannot claim availability without the values it is decided on.
 func validTotalReturn(t *papereconomics.TotalReturn, inputSHA256 string) bool {
 	u := clone(*t)
 	u.SHA256 = ""
+	_, equity := exactCents(t.EquityCents)
+	_, net := exactCents(t.NetCents)
+	if !slices.Contains(totalReturnStatuses, t.Status) || t.Available() != (t.EquityCents != nil) || (t.EquityCents != nil) != (t.NetCents != nil) || t.EquityCents != nil && (!equity || !net) {
+		return false
+	}
 	return t.Method == papereconomics.TotalReturnMethod && t.InputSHA256 == inputSHA256 && t.Authority == "owner_selected_reconciled_total_return_accounting_only" && t.SHA256 == workerplan.Hash(u) && !t.AdmissionAvailable && !t.ExecutionAvailable && !t.QualificationCredit
 }
 
@@ -138,8 +158,8 @@ func applyTotalReturnBenchmarks(r *PaperEvaluationAssessment, minimum int64) err
 			if reason != "" {
 				break
 			}
-			strategy, ok1 := new(big.Rat).SetString(*t.Strategy.NetCents)
-			passive, ok2 := new(big.Rat).SetString(*t.Passive.NetCents)
+			strategy, ok1 := exactCents(t.Strategy.NetCents)
+			passive, ok2 := exactCents(t.Passive.NetCents)
 			if !ok1 || !ok2 {
 				return ErrPaperEvaluationAssessmentInvalid
 			}
