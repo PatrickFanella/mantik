@@ -268,3 +268,6 @@ var CorporateCoverageAssessments string
 
 //go:embed 0085_total_return_benchmarks.sql
 var TotalReturnBenchmarks string
+
+//go:embed 0086_threshold_sensitivity.sql
+var ThresholdSensitivity string

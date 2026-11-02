@@ -56,7 +56,7 @@ func TestOwnedPortfolioAssessmentHTTP(t *testing.T) {
 
 // These are manufactured captures submitted through the actual owners and
 // public handler. Their prospective labels do not give them qualification credit.
-type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign, search, coverage, totalReturn bool }
+type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign, search, coverage, totalReturn, sensitivity bool }
 
 func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options ...portfolioFixtureOptions) storage.PaperEvaluationAssessment {
 	var mode portfolioFixtureOptions
@@ -101,23 +101,46 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	d := strategyHTTPDefinition()
 	d.Safety.MaxHoldingSeconds = 10
 	d.InputEvidenceClass = "prospective_market_unqualified"
+	if mode.sensitivity {
+		// Room for the neighbor above the center's threshold.
+		d.Safety.MaxNotionalCents += 1000
+	}
 	strategy, err := s.RegisterPaperStrategy(ctx, paperstrategy.Command{ReceiverID: owner, Definition: d}, clock.Now)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Sensitivity neighbors differ from the center only in the entry threshold.
+	// They make no decisions here, so their books stay flat.
+	declared := []storage.PaperEvaluationVariant{{ID: d.ID, SHA256: strategy.Record.SHA256}}
+	rules := []allocation.Strategy{{ID: d.ID, ArtifactSHA256: strategy.Record.DefinitionSHA256, LimitCents: 200000}}
+	if mode.sensitivity {
+		for _, n := range []struct {
+			id    string
+			entry int64
+		}{{d.ID + "-above", d.EntryAtOrBelowCents + 100}, {d.ID + "-below", d.EntryAtOrBelowCents - 100}} {
+			other := d
+			other.ID, other.EntryAtOrBelowCents = n.id, n.entry
+			r, err := s.RegisterPaperStrategy(ctx, paperstrategy.Command{ReceiverID: owner, Definition: other}, clock.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			declared = append(declared, storage.PaperEvaluationVariant{ID: n.id, SHA256: r.Record.SHA256})
+			rules = append(rules, allocation.Strategy{ID: n.id, ArtifactSHA256: r.Record.DefinitionSHA256, LimitCents: 200000})
+		}
 	}
 	account, err := s.CreatePaperAccount(ctx, owner, paperaccount.Config{ID: "portfolio-account", Currency: "USD", OpeningCashCents: 200000, CapitalLimitCents: 200000}, clock.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	model := paperfill.Model{Method: paperfill.Method, LiquidityBPS: 10000, MaxQuoteAgeSeconds: 60}
-	policy, err := s.RegisterAllocationPolicy(ctx, allocation.PolicyCommand{ReceiverID: owner, AccountID: account.Account.Config.ID, ExecutionModel: &model, Policy: allocation.Policy{ID: "portfolio-policy", AccountSHA256: account.Account.SHA256, MaxSnapshotAgeSeconds: 60, Strategies: []allocation.Strategy{{ID: d.ID, ArtifactSHA256: strategy.Record.DefinitionSHA256, LimitCents: 200000}}, Symbols: []allocation.Symbol{{ID: "SPY", LimitCents: 200000, Groups: []string{}}}, Groups: []allocation.Group{}}}, clock.Now)
+	policy, err := s.RegisterAllocationPolicy(ctx, allocation.PolicyCommand{ReceiverID: owner, AccountID: account.Account.Config.ID, ExecutionModel: &model, Policy: allocation.Policy{ID: "portfolio-policy", AccountSHA256: account.Account.SHA256, MaxSnapshotAgeSeconds: 60, Strategies: rules, Symbols: []allocation.Symbol{{ID: "SPY", LimitCents: 200000, Groups: []string{}}}, Groups: []allocation.Group{}}}, clock.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	start := clock.at.Add(10 * time.Second)
 	stress := model
 	stress.FeeBPS = 1
-	plan := storage.PaperEvaluationDeclarationCommand{ID: "portfolio-plan", ReceiverID: owner, Recipe: storage.PaperEvaluationRecipe, PolicyID: policy.Record.Command.Policy.ID, PolicySHA256: policy.Record.SHA256, Plan: storage.PaperEvaluationPlan{FamilyID: "portfolio-family", Variants: []storage.PaperEvaluationVariant{{ID: d.ID, SHA256: strategy.Record.SHA256}}, WindowStart: start, WindowEnd: start.Add(40 * time.Second), OutcomeDeadline: start.Add(110 * time.Second), MinIndependentDecisions: 2, MaximumDrawdownCents: 1000, AdmissionTTLSeconds: 60, Benchmarks: []string{"cash_no_action", "passive_same_symbol"}, StressModel: stress}}
+	plan := storage.PaperEvaluationDeclarationCommand{ID: "portfolio-plan", ReceiverID: owner, Recipe: storage.PaperEvaluationRecipe, PolicyID: policy.Record.Command.Policy.ID, PolicySHA256: policy.Record.SHA256, Plan: storage.PaperEvaluationPlan{FamilyID: "portfolio-family", Variants: declared, WindowStart: start, WindowEnd: start.Add(40 * time.Second), OutcomeDeadline: start.Add(110 * time.Second), MinIndependentDecisions: 2, MaximumDrawdownCents: 1000, AdmissionTTLSeconds: 60, Benchmarks: []string{"cash_no_action", "passive_same_symbol"}, StressModel: stress}}
 	if holdout {
 		plan.Recipe = storage.PaperHoldoutEvaluationRecipe
 		plan.Plan.Holdout = &storage.PaperEvaluationHoldoutPlan{Method: storage.PaperHoldoutMethod, SplitAt: start.Add(20 * time.Second), EmbargoSeconds: 2, MinimumTrainingOccurrences: 2, MinimumHoldoutOccurrences: 2}
@@ -136,7 +159,7 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	}
 	if search {
 		plan.Recipe = storage.PaperSearchHistoryEvaluationRecipe
-		plan.Plan.SearchMultiplicity = &storage.PaperEvaluationSearchPlan{Method: storage.PaperSearchHistoryMethod, MaximumSearchedStrategies: 1}
+		plan.Plan.SearchMultiplicity = &storage.PaperEvaluationSearchPlan{Method: storage.PaperSearchHistoryMethod, MaximumSearchedStrategies: len(declared)}
 	}
 	if coverage {
 		plan.Recipe = storage.PaperCoverageEvaluationRecipe
@@ -145,6 +168,10 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	if mode.totalReturn {
 		plan.Recipe = storage.PaperTotalReturnEvaluationRecipe
 		plan.Plan.TotalReturnMethod = papereconomics.TotalReturnMethod
+	}
+	if mode.sensitivity {
+		plan.Recipe = storage.PaperSensitivityEvaluationRecipe
+		plan.Plan.Sensitivity = &storage.PaperEvaluationSensitivityPlan{Method: storage.PaperThresholdSensitivityMethod, Neighborhoods: []storage.PaperEvaluationNeighborhood{{StrategyID: d.ID, NeighborIDs: []string{declared[1].ID, declared[2].ID}}}}
 	}
 	var declaration storage.PaperEvaluationDeclarationReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", plan, 201), &declaration); err != nil {
@@ -266,7 +293,7 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	if search {
 		wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v11", storage.PaperSearchHistoryAssessmentRecipe
 		h := r.SearchHistory
-		if h == nil || h.SearchedStrategies != 2 || h.Status != "failed" || h.ReasonCode != "registered_search_exceeds_predeclared_bound" || h.MultiplicityAdjusted || h.EvaluationComplete || h.AdmissionAvailable || h.ExecutionAvailable || h.QualificationCredit || r.Status != "blocked" {
+		if h == nil || h.SearchedStrategies != len(declared)+1 || h.Status != "failed" || h.ReasonCode != "registered_search_exceeds_predeclared_bound" || h.MultiplicityAdjusted || h.EvaluationComplete || h.AdmissionAvailable || h.ExecutionAvailable || h.QualificationCredit || r.Status != "blocked" {
 			t.Fatal("undeclared registered search was omitted", h, r.Status)
 		}
 		for _, check := range r.Checks {
@@ -292,6 +319,10 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 			wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v13", storage.PaperTotalReturnAssessmentRecipe
 			assertTotalReturnBenchmarks(t, r)
 		}
+		if mode.sensitivity {
+			wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v14", storage.PaperSensitivityAssessmentRecipe
+			assertThresholdSensitivity(t, r, declared)
+		}
 		// A reference retained at the assessment clock would change replay.
 		if b, ok := s.(coverageSourceBackend); ok {
 			late := storage.CorporateReferenceSourceCommand{ID: "late", ReceiverID: owner, Kind: storage.CorporateReferencePolygon}
@@ -300,7 +331,7 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 			}
 		}
 	}
-	if r.Schema != wantSchema || r.Recipe != wantRecipe || r.Portfolio == nil || len(r.Portfolio.Variants) != 1 || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
+	if r.Schema != wantSchema || r.Recipe != wantRecipe || r.Portfolio == nil || len(r.Portfolio.Variants) != len(declared) || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 		t.Fatal(r)
 	}
 	if holdout {
@@ -323,11 +354,14 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		if mode.totalReturn {
 			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v10"
 		}
+		if mode.sensitivity {
+			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v11"
+		}
 		expectedTraining := 1
 		if sampleDesign {
 			expectedTraining = 2
 		}
-		if declaration.Record.Schema != expectedDeclaration || r.Holdout == nil || len(r.Holdout.Variants) != 1 || r.Holdout.Variants[0].TrainingOccurrenceUpperBound != expectedTraining || r.Holdout.Variants[0].HoldoutOccurrenceUpperBound != 0 || r.Holdout.Variants[0].Status != "failed" || r.Holdout.IndependenceEstablished || r.Holdout.OutOfSamplePerformanceAvailable {
+		if declaration.Record.Schema != expectedDeclaration || r.Holdout == nil || len(r.Holdout.Variants) != len(declared) || r.Holdout.Variants[0].TrainingOccurrenceUpperBound != expectedTraining || r.Holdout.Variants[0].HoldoutOccurrenceUpperBound != 0 || r.Holdout.Variants[0].Status != "failed" || r.Holdout.IndependenceEstablished || r.Holdout.OutOfSamplePerformanceAvailable {
 			t.Fatal("owner-derived holdout partition", r.Holdout)
 		}
 	}
@@ -337,7 +371,7 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	if causal {
 		found := false
 		for _, check := range r.Checks {
-			if check.Name == "leakage" {
+			if check.Name == "leakage" && check.StrategyID == d.ID {
 				found = true
 				if check.Status != "passed" || check.ReasonCode != "owner_replayed_stateless_native_features_available_at_finalization" {
 					t.Fatal("causal native feature did not pass its declared check", check)
@@ -349,10 +383,10 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		}
 	}
 	if sampleDesign {
-		if len(r.Evidence.Variants) != 1 || r.Evidence.Variants[0].ObservedOutcomeDecisions != 2 || r.Evidence.Variants[0].SampleBound.Status != "independence_unproven" {
+		if len(r.Evidence.Variants) != len(declared) || r.Evidence.Variants[0].ObservedOutcomeDecisions != 2 || r.Evidence.Variants[0].SampleBound.Status != "independence_unproven" {
 			t.Fatal("fixture did not meet raw occurrence minimum", r.Evidence.Variants)
 		}
-		if r.SampleDesign == nil || len(r.SampleDesign.Variants) != 1 {
+		if r.SampleDesign == nil || len(r.SampleDesign.Variants) != len(declared) {
 			t.Fatal(r.SampleDesign)
 		}
 		v := r.SampleDesign.Variants[0]
@@ -361,7 +395,7 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		}
 		found := false
 		for _, c := range r.Checks {
-			if c.Name == "sample_sufficiency" {
+			if c.Name == "sample_sufficiency" && c.StrategyID == d.ID {
 				found = true
 				if c.Status != "failed" || c.ReasonCode != "disjoint_windows_below_predeclared_minimum" {
 					t.Fatal("raw count bypassed sample design", c)
@@ -713,6 +747,26 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions)
 				if mode.totalReturn {
 					r.Schema = "mantik-owned-paper-evaluation-assessment-v12"
 					r.Recipe = storage.PaperCoverageAssessmentRecipe
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
+			{"sensitivity-forgery", func(r *storage.PaperEvaluationAssessment) {
+				if mode.sensitivity {
+					for i, check := range r.Checks {
+						if check.Name == "parameter_and_cost_sensitivity" && check.StrategyID == r.Portfolio.Variants[0].StrategyID {
+							r.Checks[i].Status = "passed"
+							r.Checks[i].ReasonCode = "threshold_neighborhood_meets_predeclared_net_in_base_and_stress"
+						}
+					}
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
+			{"sensitivity-downgrade", func(r *storage.PaperEvaluationAssessment) {
+				if mode.sensitivity {
+					r.Schema = "mantik-owned-paper-evaluation-assessment-v13"
+					r.Recipe = storage.PaperTotalReturnAssessmentRecipe
 				} else {
 					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 				}

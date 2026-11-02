@@ -774,3 +774,30 @@ total-return value or check and a downgrade to v12 both fail. The assessment
 also refuses total-return rows whose actions hash differs from the covered
 instrument's, rows for an uncovered instrument, and a covered variant missing
 its rows. Schema 85 fences earlier writers and rewrites no retained record.
+
+## Threshold-neighbor sensitivity
+
+Assessment v14 (recipe `native-predeclared-threshold-sensitivity-v14`) follows
+a declaration v11 plan. It derives everything v13 derives, with the same
+portfolio method, then decides `parameter_and_cost_sensitivity` for each
+variant from the retained strategy total returns:
+
+- **`passed`** (`threshold_neighborhood_meets_predeclared_net_in_base_and_stress`)
+  when the center and every declared neighbor have a strategy total-return net
+  of at least `minimum_neighbor_net_cents` in both the base and stress models.
+- **`failed`** (`threshold_neighborhood_net_below_predeclared_minimum`) when any
+  of those nets is below the minimum. The assessment becomes `blocked`.
+- **`pending`** (`predeclared_outcome_window_not_closed`) before the outcome
+  deadline.
+- **`unavailable`** with `threshold_neighborhood_total_return_unavailable` when
+  any member lacks an available total return in either model, and with
+  `threshold_neighbors_not_declared` for a variant that is not a center.
+
+A member without a modeled book has no total return, even if it simply never
+entered. Treating it as flat cash would let a plan pass on neighbors nobody
+evaluated, so the check stays unavailable instead. Nets compare as exact
+rationals. A pass grants no admission, execution or qualification.
+
+Replay re-executes every owner, so a rehashed sensitivity check and a downgrade
+to v13 both fail. Schema 86 fences earlier writers and rewrites no retained
+record.

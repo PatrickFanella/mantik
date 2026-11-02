@@ -147,7 +147,7 @@ func paperStrategySearchClock(owner string, all map[string]PaperEvaluationAssess
 		return ErrPaperEvaluationAssessmentInvalid
 	}
 	for id, r := range all {
-		if !slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13"}, r.Schema) {
+		if !slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13", "mantik-owned-paper-evaluation-assessment-v14"}, r.Schema) {
 			continue
 		}
 		want, err := paperAssessmentWithBenchmarks(r.Command, r.Evidence, r.WarmUp, r.CorporateSourceCut, r.Portfolio, r.Holdout, r.SearchHistory, r.CorporateCoverage, r.Schema)

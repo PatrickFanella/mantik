@@ -293,6 +293,9 @@ fill book with exact arithmetic and applies reconciled dividends and splits.
 Declaration v10 and assessment v13 apply it to covered instruments and decide
 `benchmark_comparison` against the predeclared minimum net excess; a pass
 grants no admission.
+Declaration v11 and assessment v14 decide `parameter_and_cost_sensitivity`
+from the total returns of predeclared threshold neighbors in the base and
+stress models; a pass grants no admission.
 The [feed-collector API](docs/reference/feed-collectors.md) retains immutable
 registrations and fenced ownership leases. It does not start a collector or
 configure feed readiness.

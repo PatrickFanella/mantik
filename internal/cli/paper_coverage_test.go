@@ -122,7 +122,7 @@ func assertTotalReturnBenchmarks(t *testing.T, r storage.PaperEvaluationAssessme
 		}
 	}
 	for _, check := range r.Checks {
-		if check.Name != "benchmark_comparison" {
+		if check.Name != "benchmark_comparison" || check.StrategyID != v.StrategyID {
 			continue
 		}
 		// The strategy lost 7000 cents while the passive book gained 1000; the
@@ -159,4 +159,44 @@ func TestOwnedTotalReturnAssessmentHTTP(t *testing.T) {
 }
 func TestPostgresContractsOwnedTotalReturnAssessmentHTTP(t *testing.T) {
 	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true, coverage: true, totalReturn: true})
+}
+
+// The fixture's neighbors make no decisions, so they have no modeled book.
+// A missing book cannot be told apart from a strategy nobody evaluated, so the
+// neighborhood stays unavailable rather than counting the neighbors as flat.
+func assertThresholdSensitivity(t *testing.T, r storage.PaperEvaluationAssessment, declared []storage.PaperEvaluationVariant) {
+	t.Helper()
+	for _, v := range r.Portfolio.Variants[1:] {
+		if v.Base != nil || v.BaseTotalReturn != nil || v.StressTotalReturn != nil {
+			t.Fatal("undecided neighbor gained a book", v.StrategyID, v.Status)
+		}
+	}
+	decided := 0
+	for _, check := range r.Checks {
+		if check.Name != "parameter_and_cost_sensitivity" {
+			continue
+		}
+		decided++
+		if check.StrategyID == declared[0].ID {
+			if check.Status != "unavailable" || check.ReasonCode != "threshold_neighborhood_total_return_unavailable" {
+				t.Fatal("neighborhood without books was decided", check)
+			}
+		} else if check.Status != "unavailable" || check.ReasonCode != "threshold_neighbors_not_declared" {
+			t.Fatal("undeclared center decided", check)
+		}
+	}
+	if decided != len(declared) {
+		t.Fatal("missing sensitivity checks", decided)
+	}
+}
+
+func TestOwnedThresholdSensitivityAssessmentHTTP(t *testing.T) {
+	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPortfolioAssessmentHTTP(t, m, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true, coverage: true, totalReturn: true, sensitivity: true})
+}
+func TestPostgresContractsOwnedThresholdSensitivityAssessmentHTTP(t *testing.T) {
+	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true, coverage: true, totalReturn: true, sensitivity: true})
 }
