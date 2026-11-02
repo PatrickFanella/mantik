@@ -432,3 +432,36 @@ instead of `window_end`. Positions and the passive benchmark stay open until
 the outcome cut, which can fall up to 48 hours after the window, so an action
 on those dates changes their total return. Coverage sources must therefore be
 acquired after that later date ends. v9 plans keep the observation window.
+
+## Prospective threshold sensitivity
+
+Recipe `native-threshold-sensitivity-plan-v9` retains declaration v11. It
+requires the total-return recipe's choices and adds:
+
+```json
+{"sensitivity": {
+  "method": "native-threshold-neighbor-total-return-v1",
+  "minimum_neighbor_net_cents": 0,
+  "neighborhoods": [
+    {"strategy_id": "baseline", "neighbor_ids": ["baseline-above", "baseline-below"]}
+  ]
+}}
+```
+
+Each neighborhood names an assessed variant and at least two neighbors. Each
+neighbor is another declared variant with the same method, symbol, feed,
+input evidence class, quantity and safety terms. Only `entry_at_or_below_cents`
+differs, and at least one neighbor's threshold lies on each side of the
+center's. Neighborhoods are sorted by strategy ID and neighbors are sorted and
+distinct. `minimum_neighbor_net_cents` is zero or more, so a loss never meets
+it. Neighbors are declared variants, so they count toward the
+`search_multiplicity` bound.
+
+The assessment decides `parameter_and_cost_sensitivity` from the
+[retained total returns](paper-evaluation-assessments.md#threshold-neighbor-sensitivity).
+The cost half comes from the stress model, which every plan already requires to
+cost at least as much as the policy's base model on every term. The planned
+checks are those of v10. Earlier recipes reject the field, it requires a
+`total_return_method`, and a downgrade to v10 fails.
+
+The user accepted this rule on 2026-11-01, as proposed by the agent.

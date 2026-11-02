@@ -256,7 +256,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 		if err != nil {
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
-		hasHoldout := slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v7", "mantik-owned-paper-evaluation-assessment-v8", "mantik-owned-paper-evaluation-assessment-v9", "mantik-owned-paper-evaluation-assessment-v10", "mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13"}, r.Schema)
+		hasHoldout := slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v7", "mantik-owned-paper-evaluation-assessment-v8", "mantik-owned-paper-evaluation-assessment-v9", "mantik-owned-paper-evaluation-assessment-v10", "mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13", "mantik-owned-paper-evaluation-assessment-v14"}, r.Schema)
 		hasPortfolio := r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || hasHoldout
 		hasCorporate := r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || hasPortfolio
 		var warmup *PaperEvaluationWarmUp
@@ -279,13 +279,14 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 		// covered instruments' reconciled actions.
 		var coverage *PaperEvaluationCorporateCoverage
 		var actions []papereconomics.Actions
-		if r.Schema == "mantik-owned-paper-evaluation-assessment-v12" || r.Schema == "mantik-owned-paper-evaluation-assessment-v13" {
+		totalReturn := r.Schema == "mantik-owned-paper-evaluation-assessment-v13" || r.Schema == "mantik-owned-paper-evaluation-assessment-v14"
+		if r.Schema == "mantik-owned-paper-evaluation-assessment-v12" || totalReturn {
 			value, err := ownedCorporateCoverage(ctx, e, *cut, s)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
 			}
 			coverage = &value
-			if r.Schema == "mantik-owned-paper-evaluation-assessment-v13" {
+			if totalReturn {
 				actions = coverageActions(value)
 			}
 		}
@@ -304,7 +305,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			}
 		}
 		var search *PaperEvaluationSearchHistory
-		if slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13"}, r.Schema) {
+		if slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13", "mantik-owned-paper-evaluation-assessment-v14"}, r.Schema) {
 			value, err := ownedSearchHistory(e, s.strategies, r.AssessedAt)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
@@ -470,6 +471,9 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 	}
 	if e.Declaration.Command.Plan.TotalReturnMethod != "" {
 		schema = "mantik-owned-paper-evaluation-assessment-v13"
+	}
+	if e.Declaration.Command.Plan.Sensitivity != nil {
+		schema = "mantik-owned-paper-evaluation-assessment-v14"
 	}
 	record, err := paperAssessmentWithBenchmarks(c, e, &warmup, &cut, portfolio, holdout, search, coverage, schema)
 	if err != nil {
