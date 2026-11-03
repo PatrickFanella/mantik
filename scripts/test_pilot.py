@@ -275,3 +275,189 @@ class BackupIdentityGuards(unittest.TestCase):
             self.assertFalse(receipt['table_data_identity_verified'])
             self.assertEqual(receipt['table_data_identity_status'], 'legacy_receipt_unavailable')
             self.assertFalse(receipt['qualification_credit'])
+
+
+class StackTeardown(unittest.TestCase):
+    def owned(self, directory):
+        import hashlib
+        root = Path(directory)
+        (root / 'compose.json').write_text('{"services": {}}')
+        pilot.save(root / 'manifest.json', {'root': str(root), 'project': 'mantik-pilot-test',
+                   'config_sha256': hashlib.sha256((root / 'compose.json').read_bytes()).hexdigest()})
+        return root
+
+    def test_teardown_removes_only_owned_project_with_volumes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.owned(directory)
+            with patch.object(pilot, 'run') as run:
+                pilot.teardown(root)
+            run.assert_called_once_with('docker', 'compose', '--project-name', 'mantik-pilot-test',
+                                        '--file', str(root / 'compose.json'),
+                                        'down', '--volumes', '--remove-orphans')
+            receipts = list(root.glob('teardown-*.json'))
+            self.assertEqual(len(receipts), 1)
+            self.assertEqual(json.loads(receipts[0].read_text())['project'], 'mantik-pilot-test')
+
+    def test_teardown_without_manifest_touches_nothing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(pilot, 'run') as run:
+                pilot.teardown(Path(directory))
+            run.assert_not_called()
+
+    def test_changed_config_cannot_be_torn_down(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.owned(directory)
+            (root / 'compose.json').write_text('{"services": {"other": {}}}')
+            with patch.object(pilot, 'run') as run:
+                with self.assertRaises(ValueError):
+                    pilot.teardown(root)
+            run.assert_not_called()
+
+    def test_disposable_tears_down_on_success_failure_and_interrupt(self):
+        root = Path('/private/pilot')
+        with patch.object(pilot, 'teardown') as teardown:
+            with pilot.disposable(root):
+                pass
+            with self.assertRaises(RuntimeError):
+                with pilot.disposable(root):
+                    raise RuntimeError('scenario failed')
+            with self.assertRaises(KeyboardInterrupt):
+                with pilot.disposable(root):
+                    raise KeyboardInterrupt
+            with self.assertRaises(SystemExit):
+                with pilot.disposable(root):
+                    raise SystemExit(143)  # SIGTERM handler in main()
+        self.assertEqual(teardown.call_count, 4)
+        teardown.assert_called_with(root)
+
+    def test_teardown_error_does_not_hide_original_failure(self):
+        with patch.object(pilot, 'teardown', side_effect=RuntimeError('docker unavailable')):
+            with self.assertRaisesRegex(RuntimeError, 'scenario failed'):
+                with pilot.disposable(Path('/private/pilot')):
+                    raise RuntimeError('scenario failed')
+
+    def test_keep_retains_resources_in_every_case(self):
+        with patch.object(pilot, 'teardown') as teardown:
+            with pilot.disposable(Path('/private/pilot'), keep=True):
+                pass
+            with self.assertRaises(RuntimeError):
+                with pilot.disposable(Path('/private/pilot'), keep=True):
+                    raise RuntimeError('inspect me')
+        teardown.assert_not_called()
+
+    def test_failure_only_mode_keeps_a_started_stack(self):
+        with patch.object(pilot, 'teardown') as teardown:
+            with pilot.disposable(Path('/private/pilot'), on_success=False):
+                pass
+            teardown.assert_not_called()
+            with self.assertRaises(RuntimeError):
+                with pilot.disposable(Path('/private/pilot'), on_success=False):
+                    raise RuntimeError('not ready')
+            teardown.assert_called_once()
+
+    def test_keep_is_opt_in(self):
+        with patch.dict(pilot.os.environ, {}, clear=True):
+            self.assertFalse(pilot.keep_requested())
+            self.assertTrue(pilot.keep_requested(True))
+        for value, expected in [('1', True), ('true', True), ('0', False), ('', False)]:
+            with patch.dict(pilot.os.environ, {pilot.KEEP_ENV: value}):
+                self.assertEqual(pilot.keep_requested(), expected)
+
+    def main(self, *args, env=None):
+        with patch.object(pilot.sys, 'argv', ['pilot.py', *args, '--dir', '/private/pilot']), \
+             patch.dict(pilot.os.environ, env or {}, clear=True), \
+             patch.object(pilot.signal, 'signal'), patch.object(pilot.os, 'umask'), \
+             patch.object(pilot, 'load'):
+            return pilot.main()
+
+    def test_scenario_commands_tear_down_after_success_and_failure(self):
+        for command, function, extra in [('smoke', 'smoke', []), ('routing-smoke', 'routing_smoke', []),
+                                          ('delivery-smoke', 'delivery_smoke', ['--scenario', 'expiry']),
+                                          ('observe', 'observe', [])]:
+            for error in [None, RuntimeError('failed'), KeyboardInterrupt()]:
+                with self.subTest(command=command, error=error), \
+                     patch.object(pilot, function, side_effect=error), \
+                     patch.object(pilot, 'teardown') as teardown:
+                    if error is None:
+                        self.main(command, *extra)
+                    else:
+                        with self.assertRaises(type(error)):
+                            self.main(command, *extra)
+                    teardown.assert_called_once_with(Path('/private/pilot'))
+
+    def test_scenario_command_keep_flag_and_environment(self):
+        for args, env in [(['--keep'], None), ([], {pilot.KEEP_ENV: '1'})]:
+            with self.subTest(args=args), patch.object(pilot, 'smoke'), \
+                 patch.object(pilot, 'teardown') as teardown:
+                self.main('smoke', *args, env=env)
+                teardown.assert_not_called()
+
+    def test_start_keeps_ready_stack_and_removes_failed_one(self):
+        with patch.object(pilot, 'compose'), patch.object(pilot, 'wait_ready'), \
+             patch.object(pilot, 'snapshot'), patch.object(pilot, 'teardown') as teardown:
+            self.main('start')
+            teardown.assert_not_called()
+        with patch.object(pilot, 'compose'), patch.object(pilot, 'snapshot'), \
+             patch.object(pilot, 'wait_ready', side_effect=RuntimeError('not ready')), \
+             patch.object(pilot, 'teardown') as teardown:
+            with self.assertRaises(RuntimeError):
+                self.main('start')
+            teardown.assert_called_once()
+
+    def test_stop_removes_stack_after_final_evidence(self):
+        order = []
+        with patch.object(pilot, 'snapshot', side_effect=lambda root: order.append('snapshot')), \
+             patch.object(pilot, 'compose') as compose, \
+             patch.object(pilot, 'teardown', side_effect=lambda root: order.append('teardown')):
+            self.main('stop')
+        self.assertEqual(order, ['snapshot', 'teardown'])
+        compose.assert_not_called()
+
+    def test_stop_removes_stack_even_when_capture_fails(self):
+        with patch.object(pilot, 'snapshot', side_effect=OSError('service down')), \
+             patch.object(pilot, 'teardown') as teardown:
+            with self.assertRaises(OSError):
+                self.main('stop')
+            teardown.assert_called_once()
+
+    def test_stop_keep_only_stops_containers(self):
+        with patch.object(pilot, 'snapshot'), patch.object(pilot, 'compose') as compose, \
+             patch.object(pilot, 'teardown') as teardown:
+            self.main('stop', '--keep')
+        compose.assert_called_once_with(Path('/private/pilot'), 'stop')
+        teardown.assert_not_called()
+
+    def test_failed_restore_removes_only_the_new_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, dump, manifest = BackupIdentityGuards.restore_fixture(None, directory, identity=False)
+            target = root / 'restored'
+            with patch.object(pilot, 'load', return_value=manifest), \
+                 patch.object(pilot, 'prepare', side_effect=lambda *args: target.mkdir()), \
+                 patch.object(pilot, 'compose', side_effect=[None, RuntimeError('pg_restore failed')]), \
+                 patch.object(pilot, 'teardown') as teardown:
+                with self.assertRaises(RuntimeError):
+                    pilot.restore(root, target, 41881, dump)
+            teardown.assert_called_once_with(target)
+
+    def test_restore_into_existing_directory_is_refused_without_teardown(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, dump, manifest = BackupIdentityGuards.restore_fixture(None, directory, identity=False)
+            target = root / 'existing'
+            target.mkdir()
+            with patch.object(pilot, 'load', return_value=manifest), patch.object(pilot, 'prepare') as prepare, \
+                 patch.object(pilot, 'teardown') as teardown:
+                with self.assertRaises(ValueError):
+                    pilot.restore(root, target, 41881, dump)
+            prepare.assert_not_called()
+            teardown.assert_not_called()
+
+    def test_restore_keep_retains_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, dump, manifest = BackupIdentityGuards.restore_fixture(None, directory, identity=False)
+            target = root / 'restored'
+            with patch.object(pilot, 'load', return_value=manifest), \
+                 patch.object(pilot, 'prepare', side_effect=lambda *args: target.mkdir()), \
+                 patch.object(pilot, 'compose'), patch.object(pilot, 'wait_ready'), \
+                 patch.object(pilot, 'snapshot'), patch.object(pilot, 'teardown') as teardown:
+                pilot.restore(root, target, 41881, dump, keep=True)
+            teardown.assert_not_called()

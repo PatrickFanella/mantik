@@ -4,8 +4,27 @@
 supervising synthetic Mantik stacks. Docker Compose is required. It never uses
 `mantik-dev`, publishes no database port, and creates a random Compose project
 with a new database volume. The service binds only to the selected loopback port.
-The script has no volume deletion command. `stop` retains containers, volumes,
-credentials, failed attempts, and evidence.
+
+## Docker resource lifetime
+
+Evidence files, credentials and pinned images always stay in the private
+directory and Docker image store. Docker containers, networks and the database
+volume are removed with `docker compose --project-name <manifest project> down
+--volumes --remove-orphans` when a run ends:
+
+- `smoke`, `routing-smoke`, `delivery-smoke` and `observe` remove the stack when
+  they finish, fail, or are interrupted (Ctrl-C or SIGTERM).
+- `restore` removes the new target stack the same way. It refuses a target
+  directory that already exists, so it never removes another stack.
+- `start` removes the stack only if startup fails; a ready stack stays up for
+  later commands.
+- `stop` captures a final snapshot and then removes the stack, even if the
+  capture fails.
+
+Pass `--keep` or set `MANTIK_KEEP_STACK=1` to retain the stack for inspection
+or for a later command. With `--keep`, `stop` only stops the containers. Each
+removal writes a `teardown-*.json` receipt. Teardown uses only the manifest's
+project and the unchanged retained `compose.json`.
 
 ## Prepare and rehearse
 
@@ -20,10 +39,14 @@ separately; the launcher does not infer CI success from a build or merge.
 pilot_dir="$HOME/.local/state/mantik/rehearsal-$(date -u +%Y%m%dT%H%M%SZ)"
 python3 scripts/pilot.py prepare --dir "$pilot_dir" --port 41880
 python3 scripts/pilot.py start --dir "$pilot_dir"
-python3 scripts/pilot.py smoke --dir "$pilot_dir"
+python3 scripts/pilot.py smoke --dir "$pilot_dir" --keep
 python3 scripts/pilot.py snapshot --dir "$pilot_dir"
 python3 scripts/pilot.py backup --dir "$pilot_dir"
+python3 scripts/pilot.py stop --dir "$pilot_dir"
 ```
+
+Keep the smoke stack only when a backup or restore rehearsal follows; run
+`stop` afterwards to remove it.
 
 Preparation records the source SHA, immutable application/PostgreSQL image IDs,
 resource inventory, and build log. Configuration and bearer credentials live in
@@ -36,8 +59,8 @@ unconfigured. `smoke` requires an untouched aggregate, sends a current-time entr
 waits for its durable action to finish, retries identical content, verifies a
 conflicting retry returns 409, and then sends a stop-gap exit. It checks exactly
 two observations and two economic outcomes with fixture P&L of -6000 cents.
-It retains every HTTP request/response and logs. A failed attempt is retained;
-create another directory rather than resetting its database. Never retry a
+It retains every HTTP request/response and logs. A failed attempt's evidence is
+retained; create another directory rather than resetting its database. Never retry a
 partially completed smoke against the same aggregate.
 
 ## Missing-event routing rehearsal
@@ -78,7 +101,6 @@ delivery_dir="$HOME/.local/state/mantik/delivery-$(date -u +%Y%m%dT%H%M%SZ)"
 python3 scripts/pilot.py prepare --dir "$delivery_dir" --port 41893 --gate after_submit
 python3 scripts/pilot.py start --dir "$delivery_dir"
 python3 scripts/pilot.py delivery-smoke --dir "$delivery_dir" --scenario post-crash
-python3 scripts/pilot.py stop --dir "$delivery_dir"
 ```
 
 Run each of the following in a different new directory/stack:
@@ -92,7 +114,8 @@ Run each of the following in a different new directory/stack:
 
 The command checks original intent preservation, terminal action stability,
 economic event/ledger counts, and position consistency. The gate has no reset;
-its marker is never overwritten. Erroring or crashed attempts remain retained.
+its marker is never overwritten. Evidence from erroring or crashed attempts is
+retained; add `--keep` to retain the stack itself for inspection.
 The private parent directory stays mode 0700; only the mounted gate directory is
 writable by the container UID. Marker content is readable within that private
 parent so the host can collect it. Do not put secrets in the gate directory.
@@ -120,7 +143,10 @@ python3 scripts/pilot.py restore --dir "$pilot_dir" \
   --target "$HOME/.local/state/mantik/restore-UNIQUE" --port 41881
 ```
 
-Restore checks the checksum and source identity before creating resources. It
+Restore checks the checksum and source identity before creating resources.
+The restored stack is removed after its snapshot unless you pass `--keep`;
+keep it when pending work must reach a terminal state before you assert
+recovery, then run `stop --dir <target>`. It
 starts only the new database, restores with error checking, captures the aggregate
 before starting workers, and then starts the same application image. Readiness confirms
 worker/capability health; it does not mean every pending action has finished.
@@ -160,9 +186,10 @@ outcomes, commands, identities, and allowed interruptions for the remaining case
   interruption logs. A random restart alone does not prove a specific crash
   boundary. Disposable integration tests remain separate evidence.
 
-For manual Compose operations, use both `--project-name` from `manifest.json` and
+For manual Compose operations on a stack kept with `--keep`, use both
+`--project-name` from `manifest.json` and
 `--file /absolute/evidence/directory/compose.json`. Never substitute the development
-Compose file, remove volumes, or edit retained intents. Save commands, UTC times,
+Compose file or edit retained intents. Remove a kept stack with `stop`. Save commands, UTC times,
 expected results, readbacks, and failures alongside the HTTP evidence. The CLI's
 `operations`, `readiness`, and `recover` commands also support authenticated
 inspection; see [development.md](development.md).
@@ -181,7 +208,7 @@ python3 scripts/pilot.py observe --dir /absolute/path/to/prepared-window-stack
 30 seconds for 24 hours in the foreground. Its default allowed-interruption list
 is empty; run disruptive scenario rehearsals separately. Keep the supervising
 terminal/process alive. Cancellation leaves an incomplete window without a
-success receipt. Each sample retains the worker health and capability report;
+success receipt and removes the stack unless `--keep` was passed. Each sample retains the worker health and capability report;
 finish also captures full state, exceptions, and logs. Unhealthy or unavailable
 samples, supervision gaps longer than 45 seconds on either clock, backwards
 clocks, and wall/monotonic discrepancies greater than five seconds count as
@@ -243,6 +270,6 @@ stack for the qualification window. An observation timeout alone is not grounds
 to stop or restart a process; inspect its actual unit/PID and evidence first.
 
 Use `snapshot` at scenario boundaries and `stop` after retaining the final
-readbacks. To stop during an outage, use the exact project/file Compose command
-because `stop` first captures evidence and fails if that capture is unavailable.
+readbacks. `stop` still removes the stack when its final capture fails, and
+then exits with that failure.
 No pilot window starts during `prepare`, `start`, `smoke`, `backup`, or `restore`.

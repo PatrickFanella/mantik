@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Isolated Mantik fixture preparation. Evidence and credentials stay outside Git."""
 import argparse
+import contextlib
 import datetime as dt
 import hashlib
 import json
 import os
 from pathlib import Path
 import secrets
+import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -17,6 +20,7 @@ import urllib.request
 from snapshot_identity import Snapshot, require_identity, validate_identity
 
 REPO = Path(__file__).resolve().parents[1]
+KEEP_ENV = 'MANTIK_KEEP_STACK'
 
 
 def now():
@@ -51,6 +55,49 @@ def compose_command(root, *args):
 
 def compose(root, *args, **kwargs):
     return run(*compose_command(root, *args), **kwargs)
+
+
+def keep_requested(flag=False):
+    """Docker resources are removed unless the operator explicitly keeps them."""
+    return bool(flag) or os.environ.get(KEEP_ENV, '').strip().lower() in {'1', 'true', 'yes'}
+
+
+def teardown(root):
+    """Remove this manifest's Compose containers, networks and named volumes.
+
+    Evidence files in the private directory and pinned images are retained.
+    """
+    if not (root / 'manifest.json').exists():
+        return  # Preparation never completed, so no project owns resources.
+    project = load(root)['project']
+    compose(root, 'down', '--volumes', '--remove-orphans')
+    save(root / f'teardown-{time.time_ns()}.json', {'at': now(), 'project': project,
+         'removed': ['containers', 'networks', 'named volumes'], 'evidence_retained': True})
+
+
+@contextlib.contextmanager
+def disposable(root, keep=False, on_success=True):
+    """Tear the stack down when the block finishes, fails, or is interrupted.
+
+    on_success=False removes resources only after a failure; the stack is kept
+    for a following command. keep=True retains resources in every case.
+    """
+    try:
+        yield
+    except BaseException:
+        if keep:
+            print(f'Keeping Docker resources for {root} ({KEEP_ENV}/--keep)', file=sys.stderr)
+        else:
+            try:
+                teardown(root)
+            except Exception as error:  # Report, but never hide the original failure.
+                print(f'Teardown of {root} failed: {error}', file=sys.stderr)
+        raise
+    if keep:
+        if on_success:
+            print(f'Keeping Docker resources for {root}; run `stop` to remove them', file=sys.stderr)
+    elif on_success:
+        teardown(root)
 
 
 def api(root, path, body=None, expected=200):
@@ -368,7 +415,7 @@ def backup(root):
     return path
 
 
-def restore(root, target, port, dump):
+def restore(root, target, port, dump, keep=False):
     receipt = json.loads(dump.with_suffix('.json').read_text())
     if receipt['source_manifest'] != load(root) or receipt['sha256'] != hashlib.sha256(dump.read_bytes()).hexdigest():
         raise ValueError('Backup source or checksum mismatch')
@@ -377,27 +424,30 @@ def restore(root, target, port, dump):
         validate_identity(identity)
     elif identity is not None or receipt.get('schema') is not None:
         raise ValueError('Unsupported backup identity receipt')
+    if target.exists():
+        raise ValueError('Restore target must be a new directory')  # Never tear down another stack.
     m = load(root)
-    prepare(target, port, m['image'], m['source_sha'])
-    compose(target, 'up', '-d', '--wait', 'postgres')
-    with dump.open('rb') as stream:
-        compose(target, 'exec', '-T', 'postgres', 'pg_restore', '-U', 'mantik', '-d', 'mantik', '--exit-on-error', stdin=stream)
-    # Compare all retained table data before any application worker can run.
-    if identity is not None:
-        with Snapshot(compose_command(target, 'exec', '-T', 'postgres', 'psql', '-U', 'mantik', '-d', 'mantik')) as restored:
-            require_identity(identity, restored.identity)
-    # Capture restored database before workers can advance pending obligations.
-    with (target / 'restored-before-workers.jsonl').open('w') as stream:
-        compose(target, 'exec', '-T', 'postgres', 'psql', '-U', 'mantik', '-d', 'mantik', '-At', '-c',
-                'SELECT payload FROM mantik_state;', stdout=stream)
-    save(target / 'restore-receipt.json', {'at': now(), 'backup': str(dump),
-        'sha256': receipt['sha256'], 'source_project': m['project'], 'target_project': load(target)['project'],
-        'table_data_identity_verified': identity is not None,
-        'table_data_identity_status': 'matched_before_workers' if identity is not None else 'legacy_receipt_unavailable',
-        'qualification_credit': False})
-    compose(target, 'up', '-d', '--wait')
-    wait_ready(target)
-    snapshot(target)
+    with disposable(target, keep):
+        prepare(target, port, m['image'], m['source_sha'])
+        compose(target, 'up', '-d', '--wait', 'postgres')
+        with dump.open('rb') as stream:
+            compose(target, 'exec', '-T', 'postgres', 'pg_restore', '-U', 'mantik', '-d', 'mantik', '--exit-on-error', stdin=stream)
+        # Compare all retained table data before any application worker can run.
+        if identity is not None:
+            with Snapshot(compose_command(target, 'exec', '-T', 'postgres', 'psql', '-U', 'mantik', '-d', 'mantik')) as restored:
+                require_identity(identity, restored.identity)
+        # Capture restored database before workers can advance pending obligations.
+        with (target / 'restored-before-workers.jsonl').open('w') as stream:
+            compose(target, 'exec', '-T', 'postgres', 'psql', '-U', 'mantik', '-d', 'mantik', '-At', '-c',
+                    'SELECT payload FROM mantik_state;', stdout=stream)
+        save(target / 'restore-receipt.json', {'at': now(), 'backup': str(dump),
+            'sha256': receipt['sha256'], 'source_project': m['project'], 'target_project': load(target)['project'],
+            'table_data_identity_verified': identity is not None,
+            'table_data_identity_status': 'matched_before_workers' if identity is not None else 'legacy_receipt_unavailable',
+            'qualification_credit': False})
+        compose(target, 'up', '-d', '--wait')
+        wait_ready(target)
+        snapshot(target)
 
 
 def observation_gap(previous_monotonic, current_monotonic, previous_wall, current_wall):
@@ -481,6 +531,14 @@ def observe(root):
         'continuous_readiness_passed': failures == 0, 'all_scenarios_qualified': False})
 
 
+def stop(root, keep=False):
+    """Capture final evidence, then remove the stack unless it is explicitly kept."""
+    with disposable(root, keep, on_success=not keep):
+        snapshot(root)
+        if keep:
+            compose(root, 'stop')  # Retains containers and volumes for later inspection.
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['prepare', 'start', 'smoke', 'routing-smoke', 'delivery-smoke', 'snapshot', 'backup', 'restore', 'observe', 'stop'])
@@ -490,25 +548,35 @@ def main():
     parser.add_argument('--scenario', choices=['pre-crash', 'post-crash', 'changed-authority', 'expiry'])
     parser.add_argument('--target', type=Path)
     parser.add_argument('--dump', type=Path)
+    parser.add_argument('--keep', action='store_true',
+                        help=f'retain containers and volumes after the command (or set {KEEP_ENV}=1)')
     args = parser.parse_args()
     root = args.dir.expanduser().resolve()
+    keep = keep_requested(args.keep)
     os.umask(0o077)
+    # systemd and other supervisors stop with SIGTERM; unwind so teardown runs.
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
     if args.command == 'prepare':
         prepare(root, args.port, gate=args.gate)
     else:
         load(root)
         if args.command == 'start':
-            compose(root, 'up', '-d', '--wait')
-            wait_ready(root)
-            snapshot(root)
+            # A failed start leaves nothing behind; a started stack serves later commands.
+            with disposable(root, keep, on_success=False):
+                compose(root, 'up', '-d', '--wait')
+                wait_ready(root)
+                snapshot(root)
         elif args.command == 'smoke':
-            smoke(root)
+            with disposable(root, keep):
+                smoke(root)
         elif args.command == 'routing-smoke':
-            routing_smoke(root)
+            with disposable(root, keep):
+                routing_smoke(root)
         elif args.command == 'delivery-smoke':
             if not args.scenario:
                 parser.error('delivery-smoke requires --scenario')
-            delivery_smoke(root, args.scenario)
+            with disposable(root, keep):
+                delivery_smoke(root, args.scenario)
         elif args.command == 'snapshot':
             snapshot(root)
         elif args.command == 'backup':
@@ -516,12 +584,12 @@ def main():
         elif args.command == 'restore':
             if not args.target or not args.dump:
                 parser.error('restore requires --target and --dump')
-            restore(root, args.target.expanduser().resolve(), args.port, args.dump.expanduser().resolve())
+            restore(root, args.target.expanduser().resolve(), args.port, args.dump.expanduser().resolve(), keep)
         elif args.command == 'observe':
-            observe(root)
+            with disposable(root, keep):
+                observe(root)
         elif args.command == 'stop':
-            snapshot(root)
-            compose(root, 'stop')  # Retain volumes and all evidence; no destructive cleanup.
+            stop(root, keep)
     return 0
 
 
