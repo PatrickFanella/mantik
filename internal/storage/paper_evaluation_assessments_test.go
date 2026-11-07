@@ -562,7 +562,7 @@ func evaluationAssessmentMigrationContract(t *testing.T, p *Postgres) {
 	// Migration rollback uses a separate disposable database so issued receipts
 	// and the reopened backend remain intact and independently readable.
 	upgrade := timerPostgres(t, "assessmentupgrade")
-	if _, err := upgrade.pool.Exec(ctx, `DROP TABLE mantik_paper_evaluation_assessments; DROP TABLE IF EXISTS mantik_owned_admission_reviews; DELETE FROM mantik_schema WHERE version>=50; CREATE FUNCTION reject_assessment_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=50 THEN RAISE EXCEPTION 'assessment migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_assessment_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_assessment_migration()`); err != nil {
+	if _, err := upgrade.pool.Exec(ctx, `DROP TABLE mantik_paper_evaluation_assessments; DROP TABLE IF EXISTS mantik_owned_admission_reviews; DROP TABLE IF EXISTS mantik_owned_allocation_archive; DELETE FROM mantik_schema WHERE version>=50; CREATE FUNCTION reject_assessment_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=50 THEN RAISE EXCEPTION 'assessment migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_assessment_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_assessment_migration()`); err != nil {
 		t.Fatal(err)
 	}
 	if err := upgrade.migrate(ctx); err == nil {
@@ -604,7 +604,7 @@ func allocationAssessmentContextMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(e)
 	}
 	upgrade := timerPostgres(t, "assessmentcontextupgrade")
-	if _, e := upgrade.pool.Exec(ctx, `DROP TABLE IF EXISTS mantik_owned_admission_reviews; DELETE FROM mantik_schema WHERE version>=51; COMMENT ON TABLE mantik_owned_allocations IS 'schema50 fixture'; CREATE FUNCTION reject_assessment_context_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=51 THEN RAISE EXCEPTION 'assessment context migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_assessment_context_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_assessment_context_migration()`); e != nil {
+	if _, e := upgrade.pool.Exec(ctx, `DROP TABLE IF EXISTS mantik_owned_admission_reviews; DROP TABLE IF EXISTS mantik_owned_allocation_archive; DELETE FROM mantik_schema WHERE version>=51; COMMENT ON TABLE mantik_owned_allocations IS 'schema50 fixture'; CREATE FUNCTION reject_assessment_context_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=51 THEN RAISE EXCEPTION 'assessment context migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_assessment_context_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_assessment_context_migration()`); e != nil {
 		t.Fatal(e)
 	}
 	if e := upgrade.migrate(ctx); e == nil {
@@ -646,7 +646,7 @@ func assessmentDecisionReadinessMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(e)
 	}
 	upgrade := timerPostgres(t, "assessmentreadinessupgrade")
-	if _, e := upgrade.pool.Exec(ctx, `DROP TABLE IF EXISTS mantik_owned_admission_reviews; DELETE FROM mantik_schema WHERE version>=52; COMMENT ON TABLE mantik_owned_allocations IS 'schema51 fixture'; CREATE FUNCTION reject_assessment_readiness_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=52 THEN RAISE EXCEPTION 'assessment context migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_assessment_readiness_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_assessment_readiness_migration()`); e != nil {
+	if _, e := upgrade.pool.Exec(ctx, `DROP TABLE IF EXISTS mantik_owned_admission_reviews; DROP TABLE IF EXISTS mantik_owned_allocation_archive; DELETE FROM mantik_schema WHERE version>=52; COMMENT ON TABLE mantik_owned_allocations IS 'schema51 fixture'; CREATE FUNCTION reject_assessment_readiness_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=52 THEN RAISE EXCEPTION 'assessment context migration rollback'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_assessment_readiness_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_assessment_readiness_migration()`); e != nil {
 		t.Fatal(e)
 	}
 	if e := upgrade.migrate(ctx); e == nil {

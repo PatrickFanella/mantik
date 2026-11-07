@@ -1,6 +1,6 @@
 -- Sealed allocation journal records. The active journal's checkpoint chains
 -- every row in sequence order; routine replay starts from that checkpoint.
-CREATE TABLE mantik_owned_allocation_archive (
+CREATE TABLE IF NOT EXISTS mantik_owned_allocation_archive (
     sequence integer PRIMARY KEY CHECK (sequence > 0),
     command_id text NOT NULL UNIQUE,
     payload bytea NOT NULL
