@@ -289,3 +289,6 @@ var ExecutionCostLedgers string
 
 //go:embed 0092_shared_entry_liquidity.sql
 var SharedEntryLiquidity string
+
+//go:embed 0093_owned_allocation_archive.sql
+var OwnedAllocationArchive string

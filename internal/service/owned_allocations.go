@@ -80,4 +80,26 @@ func ownedAllocationRoutes(mux *http.ServeMux, store storage.Store, clock Clock)
 	}
 	mux.HandleFunc("GET /v1/allocation-comparisons", read)
 	mux.HandleFunc("GET /v1/allocation-comparisons/{id}", read)
+	// The audit re-executes the whole history, including sealed records that
+	// routine replay trusts through the journal checkpoint.
+	if auditor, ok := store.(storage.OwnedAllocationAuditStore); ok {
+		mux.HandleFunc("GET /v1/allocation-comparisons/audit", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
+				ownedAllocationError(w, storage.ErrOwnedAllocationInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
+			defer cancel()
+			result, err := auditor.AuditOwnedAllocations(ctx, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+			if errors.Is(err, storage.ErrOwnedAllocationAudit) {
+				write(w, 409, map[string]string{"error": err.Error()})
+				return
+			}
+			if err != nil {
+				ownedAllocationError(w, err)
+				return
+			}
+			write(w, 200, result)
+		})
+	}
 }

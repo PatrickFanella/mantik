@@ -99,7 +99,17 @@ type retainedOwnedAllocation struct {
 	Execution *OwnedExecutionRecord `json:"execution,omitempty"`
 }
 type ownedAllocationJournal struct {
-	Records []retainedOwnedAllocation `json:"records"`
+	// Checkpoint seals every record before Records; see checkpoints.go.
+	Checkpoint *OwnedAllocationCheckpoint `json:"checkpoint,omitempty"`
+	Records    []retainedOwnedAllocation  `json:"records"`
+	// archived is the sealed history, loaded only by readers that list it.
+	archived []retainedOwnedAllocation
+	// lookup finds a sealed record by command identity for exact retries.
+	lookup func(string) (*retainedOwnedAllocation, error)
+	// sealing holds records an append sealed; the store archives them.
+	sealing []retainedOwnedAllocation
+	// unbounded lifts the active record bound for a full-history audit.
+	unbounded bool
 }
 type OwnedAllocationStore interface {
 	CompareOwnedAllocation(context.Context, OwnedAllocationCommand, func() time.Time, PaperDecisionEvaluator, ...PaperOutcomeEvaluator) (OwnedAllocationReceipt, error)
@@ -200,8 +210,22 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 
 // ownedJournalState is what an append continues from after replay.
 type ownedJournalState struct {
-	books []ownedEntryBook
-	last  time.Time
+	books    []ownedEntryBook
+	last     time.Time
+	aliases  *proposalAliases
+	granted  []string
+	executed map[string]bool
+	// sealedBooks names proposals that books in sealed records owned.
+	sealedBooks map[string]bool
+}
+
+// bookProposals lists every proposal an entry book owns, sealed or active.
+func (s ownedJournalState) bookProposals() map[string]bool {
+	out := executedProposals(s.books)
+	for id := range s.sealedBooks {
+		out[id] = true
+	}
+	return out
 }
 
 func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (OwnedAllocationCatalog, ownedJournalState, error) {
@@ -211,7 +235,7 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 	if err != nil {
 		return OwnedAllocationCatalog{}, state, err
 	}
-	if !ValidReceiverID(owner) || journal.Records == nil || len(journal.Records) > maxOwnedAllocations || policies.Validate() != nil {
+	if !ValidReceiverID(owner) || journal.Records == nil || !journal.unbounded && len(journal.Records) > maxOwnedAllocations || policies.Validate() != nil {
 		return out, state, ErrOwnedAllocationInvalid
 	}
 	resolved := make([]allocation.PolicyRecord, len(journal.Records))
@@ -219,6 +243,17 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 	aliases := newProposalAliases(retained)
 	var checked *allocation.PolicyCatalog
 	var last time.Time
+	sealed, err := openOwnedCheckpoint(ctx, owner, journal, policies, &out, seen, aliases)
+	if err != nil {
+		return OwnedAllocationCatalog{}, state, err
+	}
+	if journal.Checkpoint != nil {
+		last, state.last = journal.Checkpoint.At, journal.Checkpoint.At
+		state.sealedBooks = map[string]bool{}
+		for _, id := range journal.Checkpoint.BookProposals {
+			state.sealedBooks[id] = true
+		}
+	}
 	for index, item := range journal.Records {
 		if err := ctx.Err(); err != nil {
 			return out, state, err
@@ -294,6 +329,9 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 		last = r.At
 	}
 	ledgers := map[string]allocation.Ledger{}
+	for _, l := range sealed {
+		ledgers[l.Policy.Command.Policy.ID] = l
+	}
 	for index, item := range journal.Records {
 		advances := item.Record.Executions
 		if item.Execution != nil {
@@ -403,8 +441,13 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 			before := allocation.LedgerProjection{}
 			if start > 0 {
 				before = prefixes[key][start-1].Projection
+			} else if l := ledgers[key]; l.Base != nil {
+				// The first active entry follows the sealed base.
+				if before, err = allocation.ReplayLedger(ctx, ledgerPrefix(l, 0)); err != nil {
+					return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
+				}
 			}
-			due := ownedReservationExpirations(before, r.At, executedProposals(state.books))
+			due := ownedReservationExpirations(before, r.At, state.bookProposals())
 			if len(due) != len(r.Expirations) {
 				return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
 			}
@@ -521,17 +564,25 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 		return strings.Compare(a.Policy.Command.Policy.ID, b.Policy.Command.Policy.ID)
 	})
 	granted := []string{}
+	executed := map[string]bool{}
+	if journal.Checkpoint != nil {
+		granted = append(granted, journal.Checkpoint.Granted...)
+		for _, id := range journal.Checkpoint.Executed {
+			executed[id] = true
+		}
+	}
 	for index, item := range journal.Records {
-		if isOwnedGrantSchema(item.Record.Schema) {
+		if isOwnedGrantSchema(item.Record.Schema) && !slices.Contains(granted, resolved[index].Command.Policy.ID) {
 			granted = append(granted, resolved[index].Command.Policy.ID)
 		}
 	}
-	executed := map[string]bool{}
 	for index, item := range journal.Records {
 		if item.Execution == nil && item.Record.Schema == OwnedExecutionSchema {
 			executed[resolved[index].Command.Policy.ID] = true
 		}
 	}
+	slices.Sort(granted)
+	state.aliases, state.granted, state.executed = aliases, granted, executed
 	out.Capital, err = ownedExecutedCapitalReadbacks(ctx, owner, policies, out.Ledgers, executed, granted...)
 	if err != nil {
 		return OwnedAllocationCatalog{}, state, err
@@ -578,10 +629,27 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 			return journal, OwnedAllocationReceipt{clone(r), true}, nil
 		}
 	}
+	if item, err := archivedRetry(journal, c.ID); err != nil {
+		return journal, OwnedAllocationReceipt{}, err
+	} else if item != nil {
+		if item.Execution != nil || !reflect.DeepEqual(item.Record.Command, c) {
+			return journal, OwnedAllocationReceipt{}, ErrOwnedAllocationConflict
+		}
+		return journal, OwnedAllocationReceipt{clone(item.Record), true}, nil
+	}
+	if next, ok, err := sealOwnedJournal(ctx, journal, catalog, state); err != nil {
+		return journal, OwnedAllocationReceipt{}, err
+	} else if ok {
+		journal = next
+		if catalog, state, err = replayOwnedJournal(ctx, owner, journal, policies, decisions, strategies, retained, x, declarationSource, assessmentSources...); err != nil {
+			return journal, OwnedAllocationReceipt{}, err
+		}
+	}
 	if len(journal.Records) >= maxOwnedAllocations {
 		return journal, OwnedAllocationReceipt{}, ErrOwnedAllocationCapacity
 	}
-	if err := ownedProposalSourceAliases(journal, retained, c); err != nil {
+	// The replayed index holds every earlier proposal, sealed ones included.
+	if err := state.aliases.check(c); err != nil {
 		return journal, OwnedAllocationReceipt{}, err
 	}
 	if now == nil {
@@ -661,7 +729,7 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		return journal, OwnedAllocationReceipt{}, err
 	}
 	var expirations []allocation.LedgerEntry
-	for _, e := range ownedReservationExpirations(projection, at, executedProposals(state.books)) {
+	for _, e := range ownedReservationExpirations(projection, at, state.bookProposals()) {
 		var receipt allocation.LedgerReceipt
 		ledger, _, receipt, err = allocation.AppendLedger(ctx, ledger, allocation.LedgerCommand{ID: e.ID, Effect: &e}, clock)
 		if err != nil {
@@ -701,7 +769,9 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		return journal, OwnedAllocationReceipt{}, err
 	}
 	r.SHA256 = workerplan.Hash(r)
+	sealing := journal.sealing
 	journal = clone(journal)
+	journal.sealing = sealing
 	journal.Records = append(journal.Records, retainedOwnedAllocation{Record: r, Policies: clone(policies), EvaluationDeclarations: &declarations})
 	if _, err = replayOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained, x, declarationSource, assessmentSources...); err != nil {
 		return journal, OwnedAllocationReceipt{}, err
@@ -711,19 +781,6 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		return journal, OwnedAllocationReceipt{}, ErrOwnedAllocationCapacity
 	}
 	return journal, OwnedAllocationReceipt{clone(r), false}, nil
-}
-
-// A request/decision/capture ID is not an independent economic signal. Bind
-// proposal identity to the actual retained strategy and provider market update,
-// ignoring capture IDs, receiver times, registration aliases and raw-record pins.
-// The same finalized decision may be reconsidered; another decision cannot
-// repackage its source update as a second proposal for that strategy.
-func ownedProposalSourceAliases(journal ownedAllocationJournal, retained map[string]retainedPaperDecision, c OwnedAllocationCommand) error {
-	a := newProposalAliases(retained)
-	for _, item := range journal.Records {
-		a.add(item.Record.Command)
-	}
-	return a.check(c)
 }
 
 // proposalAliases indexes earlier proposals by economic source, so replay
@@ -743,6 +800,11 @@ func (a *proposalAliases) add(c OwnedAllocationCommand) {
 	a.pending = append(a.pending, c.Decisions...)
 }
 
+// source binds a proposal to its actual retained strategy and provider market
+// update. A request, decision or capture ID is not an independent economic
+// signal, so capture IDs, receiver times, registration aliases and raw-record
+// pins are ignored. The same finalized decision may be reconsidered; another
+// decision cannot select the same source.
 func (a *proposalAliases) source(pin OwnedDecisionPin) (string, error) {
 	v, ok := a.retained[pin.ID]
 	if !ok || v.Record.SHA256 != pin.SHA256 || v.Basis.Feed.Routing == nil {
@@ -831,7 +893,7 @@ func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCo
 		return OwnedAllocationReceipt{}, err
 	}
 
-	next, r, err := appendOwnedAllocation(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, m.ownedExecutionLocked(), c, now, m.collectors.LastClock, declarations, assessments)
+	next, r, err := appendOwnedAllocation(ctx, m.receiverID, m.ownedAllocationsForAppendLocked(), policies, decisions, strategies, m.paperDecisions, m.ownedExecutionLocked(), c, now, m.collectors.LastClock, declarations, assessments)
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
@@ -839,7 +901,7 @@ func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCo
 		return OwnedAllocationReceipt{}, err
 	}
 	if !r.Duplicate {
-		m.ownedAllocations = clone(next)
+		m.commitOwnedAllocationsLocked(next)
 	}
 	return r, nil
 }
@@ -866,7 +928,7 @@ func (m *Memory) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluat
 		return OwnedAllocationCatalog{}, err
 	}
 
-	catalog, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, p, d, s, m.paperDecisions, m.ownedExecutionLocked(), declarations, assessments)
+	catalog, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocationHistoryLocked(), p, d, s, m.paperDecisions, m.ownedExecutionLocked(), declarations, assessments)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
@@ -944,6 +1006,13 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, apply 
 	if err != nil {
 		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
 	}
+	if write {
+		journal.lookup = postgresArchiveLookup(ctx, tx)
+	} else if journal.Checkpoint != nil {
+		if journal.archived, err = readOwnedAllocationArchive(ctx, tx); err != nil {
+			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
+		}
+	}
 	plans, err := readPaperEvaluationDeclarations(ctx, tx)
 	if err != nil {
 		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
@@ -983,13 +1052,19 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, apply 
 		}
 	}
 	var receipt OwnedAllocationReceipt
-	if write {
+	if apply != nil {
 		next, changed, e := apply(ctx, owner, journal, policies, decisions, strategies, retained, p.ownedExecution(feed), feed.Collectors.LastClock, declarations, assessmentCatalog)
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}
+		if changed && !write {
+			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, ErrOwnedAllocationInvalid
+		}
 		journal = next
 		if changed {
+			if e = writeOwnedAllocationArchive(ctx, tx, journal); e != nil {
+				return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
+			}
 			raw, e = json.Marshal(journal)
 			if e != nil {
 				return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e

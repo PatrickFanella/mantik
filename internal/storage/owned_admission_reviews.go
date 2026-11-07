@@ -243,7 +243,7 @@ func (m *Memory) admissionReviewSourcesLocked(ctx context.Context, de PaperDecis
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
-	return replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, p, d, s, m.paperDecisions, m.ownedExecutionLocked(), plans, actual)
+	return replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocationHistoryLocked(), p, d, s, m.paperDecisions, m.ownedExecutionLocked(), plans, actual)
 }
 func (m *Memory) ReviewOwnedAdmission(ctx context.Context, c OwnedAdmissionReviewCommand, now func() time.Time, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (OwnedAdmissionReviewReceipt, error) {
 	m.mu.Lock()
@@ -341,7 +341,7 @@ func (p *Postgres) admissionReviewAccess(ctx context.Context, write bool, c Owne
 	if err != nil {
 		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
 	}
-	journal, err := readOwnedAllocationJournal(ctx, tx)
+	journal, err := readOwnedAllocationHistory(ctx, tx)
 	if err != nil {
 		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
 	}
