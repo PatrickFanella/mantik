@@ -280,3 +280,6 @@ var OwnedPaperEligibility string
 
 //go:embed 0089_drawdown_gate.sql
 var DrawdownGate string
+
+//go:embed 0090_paper_entry_execution.sql
+var PaperEntryExecution string

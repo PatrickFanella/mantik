@@ -24,6 +24,7 @@ type eligibilityFixture struct {
 	at       time.Time
 	complete PaperEvaluationAssessment
 	strategy string
+	exec     *ownedExecution
 }
 
 func newEligibilityFixture(t *testing.T) eligibilityFixture {
@@ -90,7 +91,7 @@ func (f eligibilityFixture) append(t *testing.T, journal ownedAllocationJournal,
 	}
 	declarations = available
 	catalog := PaperEvaluationAssessmentCatalog{ReceiverID: f.m.receiverID, Records: assessments}
-	return appendOwnedAllocation(context.Background(), f.m.receiverID, journal, policies, decisions, strategies, f.m.paperDecisions, c, func() time.Time { return at }, time.Time{}, declarations, catalog)
+	return appendOwnedAllocation(context.Background(), f.m.receiverID, journal, policies, decisions, strategies, f.m.paperDecisions, f.exec, c, func() time.Time { return at }, time.Time{}, declarations, catalog)
 }
 
 func (f eligibilityFixture) replay(t *testing.T, journal ownedAllocationJournal, assessments ...PaperEvaluationAssessment) (OwnedAllocationCatalog, error) {
@@ -103,7 +104,7 @@ func (f eligibilityFixture) replay(t *testing.T, journal ownedAllocationJournal,
 	if err != nil {
 		t.Fatal(err)
 	}
-	return replayOwnedAllocations(context.Background(), f.m.receiverID, journal, policies, decisions, strategies, f.m.paperDecisions, declarations, PaperEvaluationAssessmentCatalog{ReceiverID: f.m.receiverID, Records: assessments})
+	return replayOwnedAllocations(context.Background(), f.m.receiverID, journal, policies, decisions, strategies, f.m.paperDecisions, f.exec, declarations, PaperEvaluationAssessmentCatalog{ReceiverID: f.m.receiverID, Records: assessments})
 }
 
 func TestOwnedEligibilityReservesReviewsAndExpires(t *testing.T) {

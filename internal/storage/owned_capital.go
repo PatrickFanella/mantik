@@ -44,6 +44,15 @@ type OwnedCapitalReadback struct {
 // owner records fills, closes or realized results yet. A ledger without
 // reservations keeps the v1 readback.
 func ownedCapitalReadbacks(ctx context.Context, owner string, policies allocation.PolicyCatalog, ledgers []allocation.Ledger, granted ...string) ([]OwnedCapitalReadback, error) {
+	return ownedExecutedCapitalReadbacks(ctx, owner, policies, ledgers, nil, granted...)
+}
+
+// ownedExecutedCapitalReadbacks also accepts executed policies, whose ledgers
+// hold a comparison v16 record. Their readback is v3: reservations may be
+// filled by entry execution, so held, filled and released amounts together
+// account for each proposal and for the opening cash. No owner closes
+// positions or records unknown outcomes yet, so both must still be absent.
+func ownedExecutedCapitalReadbacks(ctx context.Context, owner string, policies allocation.PolicyCatalog, ledgers []allocation.Ledger, executed map[string]bool, granted ...string) ([]OwnedCapitalReadback, error) {
 	fail := func(err error) ([]OwnedCapitalReadback, error) { return nil, err }
 	if !ValidReceiverID(owner) || policies.ReceiverID != owner || policies.Validate() != nil {
 		return fail(ErrOwnedAllocationInvalid)
@@ -83,7 +92,22 @@ func ownedCapitalReadbacks(ctx context.Context, owner string, policies allocatio
 		}
 		state := projection.Snapshot
 		row := OwnedCapitalReadback{Schema: "mantik-owned-deferral-capital-v1", ReceiverID: owner, Account: state.Account, PolicyID: id, PolicySHA256: p.SHA256, LedgerSHA256: l.SHA256, AsOf: state.AsOf, Source: source, AvailableCashCents: state.AvailableCashCents, RealizedPnLCents: state.RealizedPnLCents, Positions: state.Positions, Orders: state.Orders, Commitments: state.Commitments, Authority: "service_owned_deferral_capital_readback_only"}
-		if exists && slices.Contains(granted, id) && len(projection.Reservations) > 0 {
+		if exists && executed[id] && len(projection.Reservations) > 0 {
+			held, filled := int64(0), 0
+			for _, r := range projection.Reservations {
+				if r.ClosedCostCents != 0 || r.ProceedsCents != 0 || r.Unknown || r.ReservedCents+r.FilledCents+r.ReleasedCents != r.Proposal.NotionalCents {
+					return fail(ErrOwnedAllocationConflict)
+				}
+				held += r.ReservedCents + r.FilledCents
+				if r.FilledCents > 0 {
+					filled++
+				}
+			}
+			if state.AvailableCashCents+held != p.Account.Config.OpeningCashCents || state.RealizedPnLCents != 0 || len(state.Positions) != filled || len(state.Commitments) != len(projection.Reservations) {
+				return fail(ErrOwnedAllocationConflict)
+			}
+			row.Schema, row.Source, row.Authority, row.Reservations = "mantik-owned-allocation-capital-v3", "replayed_allocation_journal", "service_owned_paper_execution_capital_readback_only", projection.Reservations
+		} else if exists && slices.Contains(granted, id) && len(projection.Reservations) > 0 {
 			reserved := int64(0)
 			for _, r := range projection.Reservations {
 				if r.FilledCents != 0 || r.ClosedCostCents != 0 || r.ProceedsCents != 0 || r.Unknown || r.ReservedCents+r.ReleasedCents != r.Proposal.NotionalCents {

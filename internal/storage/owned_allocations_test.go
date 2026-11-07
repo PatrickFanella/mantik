@@ -477,7 +477,10 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			t.Fatal(err)
 		}
 	}
-	for i := 2; i < MaxOwnedAllocations; i++ {
+	// Each append replays the whole journal, so fill a lowered bound.
+	maxOwnedAllocations = 32
+	defer func() { maxOwnedAllocations = MaxOwnedAllocations }()
+	for i := 2; i < maxOwnedAllocations; i++ {
 		q := clone(c)
 		q.ID = fmt.Sprintf("comparison-%02d", i)
 		if _, err = s.CompareOwnedAllocation(ctx, q, func() time.Time { return at.Add(time.Minute) }, eval); err != nil {
@@ -485,7 +488,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		}
 	}
 	full, err := s.OwnedAllocations(ctx, eval)
-	if err != nil || len(full.Records) != MaxOwnedAllocations {
+	if err != nil || len(full.Records) != maxOwnedAllocations {
 		t.Fatal(err)
 	}
 	overflow := clone(c)
@@ -1417,7 +1420,7 @@ func admissionBindingMigrationContract(t *testing.T, p *Postgres) {
 			t.Fatal(err)
 		}
 	}
-	if err = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 89 {
+	if err = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 90 {
 		t.Fatal(maximum, err)
 	}
 	var after []byte
@@ -1475,7 +1478,7 @@ func evaluationContextMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	reopened.Close()
-	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 89 {
+	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 90 {
 		t.Fatal("context migration missing", maximum, err)
 	}
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); err != nil || !reflect.DeepEqual(before, after) {
@@ -1529,7 +1532,7 @@ func completeEvaluationCaptureMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	reopened.Close()
-	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 89 {
+	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 90 {
 		t.Fatal("context migration missing", maximum, err)
 	}
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); err != nil || !reflect.DeepEqual(before, after) {

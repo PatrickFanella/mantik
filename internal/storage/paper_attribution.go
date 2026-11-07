@@ -253,7 +253,7 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 		return PaperAttributionCatalog{}, err
 	}
 
-	allocations, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, declarations, assessmentCatalog)
+	allocations, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, m.ownedExecutionLocked(), declarations, assessmentCatalog)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
@@ -338,7 +338,7 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 		return PaperAttributionCatalog{}, err
 	}
 
-	allocations, err := replayOwnedAllocations(ctx, feed.ReceiverID, journal, policies, decisions, strategies, retained, declarations, assessmentCatalog)
+	allocations, err := replayOwnedAllocations(ctx, feed.ReceiverID, journal, policies, decisions, strategies, retained, p.ownedExecution(feed), declarations, assessmentCatalog)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}

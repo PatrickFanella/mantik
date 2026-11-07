@@ -497,6 +497,17 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 		return err
 	}
 	defer store.Close()
+	// Paper entry execution is opt-in. Once v16 records exist, allocation
+	// replay needs it and fails closed without it.
+	switch os.Getenv("MANTIK_PAPER_EXECUTION") {
+	case "":
+	case "on":
+		if err := store.EnablePaperExecution(service.SelectPaperExecutionQuotes); err != nil {
+			return err
+		}
+	default:
+		return errors.New("MANTIK_PAPER_EXECUTION must be empty or on")
+	}
 	handler, err := service.HandlerWithJournalReaders(store, token, service.WallClock{}, policy, acquisitions, referenceReader)
 	if err != nil {
 		return err

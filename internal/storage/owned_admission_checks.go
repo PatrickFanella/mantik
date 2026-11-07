@@ -85,7 +85,7 @@ func bindOwnedAdmissionReadiness(r OwnedAllocationRecord, policy allocation.Poli
 		return nil, ErrOwnedAllocationInvalid
 	}
 	safety := map[string]OwnedExecutionSafety{}
-	if r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15")) {
+	if r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))) {
 		for _, v := range r.ExecutionSafety {
 			cost, ok := costs[v.DecisionID]
 			if _, duplicate := safety[v.DecisionID]; duplicate || !ok || v.DecisionSHA256 != cost.DecisionSHA256 || v.CostCeilingSHA256 != cost.SHA256 || v.AccountSHA256 != policy.Account.SHA256 || v.PolicySHA256 != policy.SHA256 {

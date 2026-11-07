@@ -565,6 +565,13 @@ v7 and admission review v2 report `paper_operationally_eligible`; execution and
 qualification credit stay unavailable. See
 [owner-issued paper eligibility](docs/reference/owned-allocation-comparisons.md#owner-issued-paper-eligibility).
 
+With `MANTIK_PAPER_EXECUTION=on`, `serve` also executes reserved proposals as
+paper entry orders. Each comparison opens buy limit orders at the bound cost
+ceiling. Each later comparison, and each `POST /v1/paper-executions` step,
+fills them from retained quotes and releases orders that expire unfilled.
+Capital reads back as v3 with filled positions. There are no exits yet. See
+[paper entry execution](docs/reference/owned-allocation-comparisons.md#paper-entry-execution).
+
 The opt-in [automatic outcome worker](docs/reference/owned-paper-outcomes.md#automatic-sealed-collection)
 (`serve --automatic-paper-outcomes`) now seals one retained forward quote outcome
 per matured entry decision without a client assessment request. Missing prices,
