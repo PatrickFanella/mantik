@@ -184,8 +184,8 @@ func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend) (storage.Paper
 	stress.FeeBPS = 1
 	windowStart := time.Date(2026, 11, 2, 14, 30, 0, 0, time.UTC)
 	windowEnd := time.Date(2026, 11, 6, 21, 0, 0, 0, time.UTC)
-	plan := storage.PaperEvaluationDeclarationCommand{ID: "positive-plan", ReceiverID: owner, Recipe: storage.PaperStatisticalEvaluationRecipe, PolicyID: policy.Record.Command.Policy.ID, PolicySHA256: policy.Record.SHA256, Plan: storage.PaperEvaluationPlan{
-		FamilyID: "positive-family", Variants: declared, WindowStart: windowStart, WindowEnd: windowEnd, OutcomeDeadline: windowEnd.Add(time.Hour), MinIndependentDecisions: 2, MaximumDrawdownCents: 1000, AdmissionTTLSeconds: 86400, Benchmarks: []string{"cash_no_action", "passive_same_symbol"}, StressModel: stress,
+	plan := storage.PaperEvaluationDeclarationCommand{ID: "positive-plan", ReceiverID: owner, Recipe: storage.PaperDrawdownEvaluationRecipe, PolicyID: policy.Record.Command.Policy.ID, PolicySHA256: policy.Record.SHA256, Plan: storage.PaperEvaluationPlan{
+		FamilyID: "positive-family", Variants: declared, WindowStart: windowStart, WindowEnd: windowEnd, OutcomeDeadline: windowEnd.Add(time.Hour), MinIndependentDecisions: 2, MaximumDrawdownCents: 2000, AdmissionTTLSeconds: 86400, Benchmarks: []string{"cash_no_action", "passive_same_symbol"}, StressModel: stress,
 		Holdout:                &storage.PaperEvaluationHoldoutPlan{Method: storage.PaperHoldoutMethod, SplitAt: time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC), EmbargoSeconds: 2, MinimumTrainingOccurrences: 2, MinimumHoldoutOccurrences: 2},
 		BenchmarkMethod:        papereconomics.BenchmarkMethod,
 		FeatureCausalityMethod: storage.PaperFeatureCausalityMethod,
@@ -195,6 +195,7 @@ func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend) (storage.Paper
 		TotalReturnMethod:      papereconomics.TotalReturnMethod,
 		Sensitivity:            &storage.PaperEvaluationSensitivityPlan{Method: storage.PaperThresholdSensitivityMethod, Neighborhoods: []storage.PaperEvaluationNeighborhood{{StrategyID: d.ID, NeighborIDs: []string{declared[1].ID, declared[2].ID}}}},
 		StatisticalTests:       &storage.PaperEvaluationStatisticalPlan{Method: storage.PaperStatisticalTestMethod, MinimumTradingDays: 5, AlphaBasisPoints: 1000},
+		DrawdownMethod:         storage.PaperDrawdownMethod,
 	}}
 	var declaration storage.PaperEvaluationDeclarationReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", plan, 201), &declaration); err != nil {
@@ -334,6 +335,25 @@ func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend) (storage.Paper
 				t.Fatal("standalone decision", decision)
 			}
 		}
+	}
+	// A fill at $99 marked at the $98 bid draws equity down 1000 cents; the
+	// stress fee adds 10. Both stay within the predeclared 2000.
+	for _, v := range r.Portfolio.Variants {
+		if v.Base.ObservedMaximumDrawdownCents != 1000 || v.Stress.ObservedMaximumDrawdownCents != 1010 || !v.Base.AllEventMarksAvailable || !v.Stress.AllEventMarksAvailable {
+			t.Fatal("observed drawdown", v.StrategyID, v.Base.ObservedMaximumDrawdownCents, v.Stress.ObservedMaximumDrawdownCents)
+		}
+	}
+	drawdowns := 0
+	for _, check := range r.Checks {
+		if check.Name == "maximum_drawdown" {
+			drawdowns++
+			if check.Status != "passed" || check.ReasonCode != "observed_drawdown_within_predeclared_maximum" {
+				t.Fatal("drawdown check", check)
+			}
+		}
+	}
+	if drawdowns != len(declared) || r.Recipe != storage.PaperDrawdownAssessmentRecipe {
+		t.Fatal("drawdown checks", drawdowns, r.Recipe)
 	}
 	for _, v := range r.StatisticalTests.Variants {
 		if v.HoldoutDecisions != 3 || deref(v.HoldoutBaseNetCents) != "3000" || deref(v.HoldoutStressNetCents) != "2940" || v.TradingDays != 5 || v.PositiveDays != 5 || deref(v.PValue) != "1/32" {

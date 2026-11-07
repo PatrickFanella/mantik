@@ -149,6 +149,7 @@ func TestStatisticalTestsDecision(t *testing.T) {
 		if err := applyStatisticalTests(&r, &p); err != nil {
 			t.Fatal(name, err)
 		}
+		completeApplicableEvaluation(&r)
 		oos, ss, search := r.Checks[0], r.Checks[1], r.Checks[2]
 		if oos.Status != tc.oos || ss.Status != tc.ss || ss.ReasonCode != tc.sampleWhy || search.Status != tc.searchWant {
 			t.Fatal(name, oos, ss, search)

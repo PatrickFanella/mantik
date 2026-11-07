@@ -277,3 +277,6 @@ var HoldoutSignTests string
 
 //go:embed 0088_owned_paper_eligibility.sql
 var OwnedPaperEligibility string
+
+//go:embed 0089_drawdown_gate.sql
+var DrawdownGate string

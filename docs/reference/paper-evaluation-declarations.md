@@ -496,3 +496,19 @@ requires a `sensitivity` plan, and a downgrade to v11 fails.
 
 The agent chose these methods on 2026-11-07, under the user's delegation for
 the remaining #282 checks.
+
+## Prospective maximum drawdown
+
+Recipe `native-threshold-drawdown-plan-v11` retains declaration v13. It
+requires the sign-test recipe's choices and adds:
+
+```json
+{"drawdown_method": "observed-bid-event-path-drawdown-v1"}
+```
+
+It plans one more check per variant, `maximum_drawdown`. The check is decided
+against the plan's `maximum_drawdown_cents`, which every declaration has
+carried since v1 but no earlier recipe decided. See
+[maximum drawdown](paper-evaluation-assessments.md#maximum-drawdown). Earlier
+recipes reject the field, it requires a `statistical_tests` plan, and a
+downgrade to v12 fails.

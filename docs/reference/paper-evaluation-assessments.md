@@ -914,3 +914,30 @@ proposals, exactly one reserves. The Postgres variant replays all of this
 after a restart. The captures are synthetic and earn no qualification credit.
 The fixture runs without the race detector; issue #316 tracks why.
 
+## Maximum drawdown
+
+Assessment v16 (recipe `native-predeclared-drawdown-v16`) follows a
+declaration v13 plan. It derives everything v15 derives, then decides
+`maximum_drawdown` for each variant, and only then decides completion.
+
+The measure is the variant book's observed maximum drawdown, as reported by the
+owner's portfolio accounting. It is the largest fall in equity, marked at the
+observed bid, across the book's retained event clocks. The larger of the base
+and stress values counts.
+
+- **`passed`** (`observed_drawdown_within_predeclared_maximum`) when that value
+  is at most `maximum_drawdown_cents`.
+- **`failed`** (`observed_drawdown_exceeds_predeclared_maximum`) when it is
+  larger. The assessment becomes `blocked`.
+- **`unavailable`** with `event_marks_unavailable_for_drawdown` when any event
+  in either book had no usable mark, since an unseen low could exceed the
+  limit. It is also unavailable, with `variant_book_unavailable_for_drawdown`,
+  when the variant has no modeled book.
+- **`pending`** before the outcome deadline.
+
+The drawdown covers the finite-capital variant book at its retained event
+clocks. It is not a continuous intraday path, and it does not include the
+standalone decision books. Completion now needs this check too, so the
+eligibility issuer accepts complete v15 and v16 assessments. Schema 89 fences
+earlier writers.
+

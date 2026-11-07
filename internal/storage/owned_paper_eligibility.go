@@ -18,7 +18,7 @@ const OwnedEligibilityReadinessSchema = "mantik-owned-admission-readiness-v7"
 // completeEvaluationFor reports whether a retained assessment completed an
 // applicable evaluation of this exact strategy.
 func completeEvaluationFor(a PaperEvaluationAssessment, strategyID string) bool {
-	return a.Status == "complete" && a.EvaluationComplete && a.Recipe == PaperStatisticalAssessmentRecipe && slices.Contains(a.CompleteStrategyIDs, strategyID) && !a.AdmissionAvailable && !a.ExecutionAvailable && !a.QualificationCredit
+	return a.Status == "complete" && a.EvaluationComplete && (a.Recipe == PaperStatisticalAssessmentRecipe || a.Recipe == PaperDrawdownAssessmentRecipe) && slices.Contains(a.CompleteStrategyIDs, strategyID) && !a.AdmissionAvailable && !a.ExecutionAvailable && !a.QualificationCredit
 }
 
 // ownedEvaluationAdmissions issues at most one paper admission per proposed

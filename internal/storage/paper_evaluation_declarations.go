@@ -39,6 +39,7 @@ type PaperEvaluationVariant struct {
 // This is an operator declaration of intended checks, never supplied results.
 // Registration precedes the observation window and pins the whole variant family.
 type PaperEvaluationPlan struct {
+	DrawdownMethod          string                               `json:"drawdown_method,omitempty"`
 	StatisticalTests        *PaperEvaluationStatisticalPlan      `json:"statistical_tests,omitempty"`
 	Sensitivity             *PaperEvaluationSensitivityPlan      `json:"sensitivity,omitempty"`
 	TotalReturnMethod       string                               `json:"total_return_method,omitempty"`
@@ -123,6 +124,9 @@ type PaperEvaluationDeclarationStore interface {
 }
 
 func newPaperEvaluationDeclaration(c PaperEvaluationDeclarationCommand, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, at time.Time) (PaperEvaluationDeclaration, error) {
+	if c.Plan.DrawdownMethod != "" {
+		return paperEvaluationDeclarationVersion(c, strategies, policies, at, "mantik-owned-paper-evaluation-declaration-v13")
+	}
 	if c.Plan.StatisticalTests != nil {
 		return paperEvaluationDeclarationVersion(c, strategies, policies, at, "mantik-owned-paper-evaluation-declaration-v12")
 	}
@@ -159,10 +163,11 @@ func newPaperEvaluationDeclaration(c PaperEvaluationDeclarationCommand, strategi
 // Legacy declarations keep their ID-count semantics and original bytes. New
 // declarations cannot label identical native configurations as distinct variants.
 func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, at time.Time, schema string) (PaperEvaluationDeclaration, error) {
-	if !slices.Contains([]string{"mantik-owned-paper-evaluation-declaration-v1", "mantik-owned-paper-evaluation-declaration-v2", "mantik-owned-paper-evaluation-declaration-v3", "mantik-owned-paper-evaluation-declaration-v4", "mantik-owned-paper-evaluation-declaration-v5", "mantik-owned-paper-evaluation-declaration-v6", "mantik-owned-paper-evaluation-declaration-v7", "mantik-owned-paper-evaluation-declaration-v8", "mantik-owned-paper-evaluation-declaration-v9", "mantik-owned-paper-evaluation-declaration-v10", "mantik-owned-paper-evaluation-declaration-v11", "mantik-owned-paper-evaluation-declaration-v12"}, schema) {
+	if !slices.Contains([]string{"mantik-owned-paper-evaluation-declaration-v1", "mantik-owned-paper-evaluation-declaration-v2", "mantik-owned-paper-evaluation-declaration-v3", "mantik-owned-paper-evaluation-declaration-v4", "mantik-owned-paper-evaluation-declaration-v5", "mantik-owned-paper-evaluation-declaration-v6", "mantik-owned-paper-evaluation-declaration-v7", "mantik-owned-paper-evaluation-declaration-v8", "mantik-owned-paper-evaluation-declaration-v9", "mantik-owned-paper-evaluation-declaration-v10", "mantik-owned-paper-evaluation-declaration-v11", "mantik-owned-paper-evaluation-declaration-v12", "mantik-owned-paper-evaluation-declaration-v13"}, schema) {
 		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
 	}
-	statistical := schema == "mantik-owned-paper-evaluation-declaration-v12"
+	drawdown := schema == "mantik-owned-paper-evaluation-declaration-v13"
+	statistical := schema == "mantik-owned-paper-evaluation-declaration-v12" || drawdown
 	sensitivity := schema == "mantik-owned-paper-evaluation-declaration-v11" || statistical
 	totalReturn := schema == "mantik-owned-paper-evaluation-declaration-v10" || sensitivity
 	coverage := schema == "mantik-owned-paper-evaluation-declaration-v9" || totalReturn
@@ -171,7 +176,7 @@ func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, stra
 	causal := schema == "mantik-owned-paper-evaluation-declaration-v6" || sampleDesign
 	benchmarks := schema == "mantik-owned-paper-evaluation-declaration-v5" || causal
 	holdout := schema == "mantik-owned-paper-evaluation-declaration-v4" || benchmarks
-	if statistical != (c.Plan.StatisticalTests != nil) || sensitivity != (c.Plan.Sensitivity != nil) || totalReturn != (c.Plan.TotalReturnMethod != "") || coverage != (c.Plan.CorporateCoverage != nil) || search != (c.Plan.SearchMultiplicity != nil) || sampleDesign != (c.Plan.SampleDesign != nil) || causal != (c.Plan.FeatureCausalityMethod != "") || benchmarks != (c.Plan.BenchmarkMethod != "") || holdout != (c.Plan.Holdout != nil) || (!holdout && (schema == "mantik-owned-paper-evaluation-declaration-v3") != (c.Plan.CorporateSources != nil)) {
+	if drawdown != (c.Plan.DrawdownMethod != "") || statistical != (c.Plan.StatisticalTests != nil) || sensitivity != (c.Plan.Sensitivity != nil) || totalReturn != (c.Plan.TotalReturnMethod != "") || coverage != (c.Plan.CorporateCoverage != nil) || search != (c.Plan.SearchMultiplicity != nil) || sampleDesign != (c.Plan.SampleDesign != nil) || causal != (c.Plan.FeatureCausalityMethod != "") || benchmarks != (c.Plan.BenchmarkMethod != "") || holdout != (c.Plan.Holdout != nil) || (!holdout && (schema == "mantik-owned-paper-evaluation-declaration-v3") != (c.Plan.CorporateSources != nil)) {
 		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
 	}
 	if c.Validate() != nil || !declarationTime(at) || strategies.Validate() != nil || policies.Validate() != nil || strategies.ReceiverID != c.ReceiverID || policies.ReceiverID != c.ReceiverID || !c.Plan.WindowStart.After(at) || c.Plan.WindowStart.Sub(at) > 365*24*time.Hour {
@@ -234,6 +239,9 @@ func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, stra
 	planned := []string{"leakage", "warm_up", "out_of_sample", "parameter_and_cost_sensitivity", "benchmark_comparison", "forecast_calibration", "sample_sufficiency", "search_multiplicity"}
 	if coverage {
 		planned = append(planned, "corporate_coverage")
+	}
+	if drawdown {
+		planned = append(planned, "maximum_drawdown")
 	}
 	r := PaperEvaluationDeclaration{VariantConfigurations: configurations, Schema: schema, Command: clone(c), DeclaredAt: at.UTC(), SourceSHA256: workerplan.Hash(struct {
 		Variants []paperstrategy.Record
