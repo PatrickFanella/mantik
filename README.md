@@ -572,6 +572,12 @@ fills them from retained quotes and releases orders that expire unfilled.
 Capital reads back as v3 with filled positions. There are no exits yet. See
 [paper entry execution](docs/reference/owned-allocation-comparisons.md#paper-entry-execution).
 
+The allocation journal seals older records into a checkpoint and an archive
+table, so an append replays only recent records. Reads still list every
+record. `GET /v1/allocation-comparisons/audit` re-executes the full history
+and checks the checkpoint against it. See
+[checkpoints and the archive](docs/reference/owned-allocation-comparisons.md#checkpoints-and-the-archive).
+
 The opt-in [automatic outcome worker](docs/reference/owned-paper-outcomes.md#automatic-sealed-collection)
 (`serve --automatic-paper-outcomes`) now seals one retained forward quote outcome
 per matured entry decision without a client assessment request. Missing prices,

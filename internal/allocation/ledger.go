@@ -54,8 +54,10 @@ type LedgerEntry struct {
 	SHA256         string        `json:"sha256"`
 }
 type Ledger struct {
-	Schema  string        `json:"schema"`
-	Policy  PolicyRecord  `json:"policy"`
+	Schema string       `json:"schema"`
+	Policy PolicyRecord `json:"policy"`
+	// Base, when present, seals every entry before Entries.
+	Base    *LedgerBase   `json:"base,omitempty"`
 	Entries []LedgerEntry `json:"entries"`
 	SHA256  string        `json:"sha256"`
 }
@@ -114,7 +116,9 @@ type ledgerState struct {
 	decisionHashes map[string]string
 	effects        map[string]bool
 	effectHashes   map[string]bool
-	head           string
+	// sealed holds command identities a ledger base retired.
+	sealed map[string]bool
+	head   string
 }
 
 func initialLedger(p PolicyRecord, schema string) ledgerState {
@@ -280,12 +284,18 @@ func walkLedger(ctx context.Context, l Ledger, visit func(int, ledgerState)) (le
 		return ledgerState{}, ErrInvalid
 	}
 	s := initialLedger(l.Policy, l.Schema)
+	if l.Base != nil {
+		var err error
+		if s, err = baseState(l.Policy, *l.Base); err != nil {
+			return ledgerState{}, err
+		}
+	}
 	seen := map[string]bool{}
 	for index, entry := range l.Entries {
 		if err := ctx.Err(); err != nil {
 			return ledgerState{}, err
 		}
-		if seen[entry.Command.ID] || entry.PreviousSHA256 != s.head {
+		if seen[entry.Command.ID] || s.sealed[entry.Command.ID] || entry.PreviousSHA256 != s.head {
 			return ledgerState{}, ErrInvalid
 		}
 		seen[entry.Command.ID] = true
@@ -372,6 +382,9 @@ func AppendLedger(ctx context.Context, l Ledger, c LedgerCommand, now func() tim
 			}
 			return ledgerDetach(l), s.project(), LedgerReceipt{i + 1, e.SHA256, true}, nil
 		}
+	}
+	if s.sealed[c.ID] {
+		return fail(ErrLedgerConflict)
 	}
 	if len(l.Entries) >= MaxLedgerEntries {
 		return fail(ErrLedgerCapacity)

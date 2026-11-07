@@ -122,8 +122,9 @@ with owner validation. Writers acquire collector, state and receiver locks in
 that order. Reads use one repeatable-read snapshot. Failed inserts or updates
 leave the old journal intact.
 
-Retention stops at 256 records or 64 MiB without evicting evidence (32
-records and 8 MiB before [paper entry execution](#paper-entry-execution)).
+Retention stops at 256 active records or 64 MiB without evicting evidence
+(32 records and 8 MiB before [paper entry execution](#paper-entry-execution));
+[checkpoints](#checkpoints-and-the-archive) seal older records into an archive.
 Exact retries remain available at capacity. This bounded deferral journal is not an
 operational order ledger; protective exits, recovery capacity, fee funding,
 admission lifecycle and execution effects must be implemented before activation.
@@ -794,9 +795,48 @@ path, a rehashed amount or a dropped effect fails replay. A v1-v15
 comparison written after a book opened fails replay too, because it left
 open books unadvanced. Schema 90 fences earlier writers.
 
-The journal holds at most 256 records, comparisons and steps together, in
-at most 64 MiB. Every append replays the whole journal, about 1 ms
-per retained record per replay on Kvant, so unbounded operation needs
-archival checkpoints. Exits, unknown outcomes and the execution worker are
-later work.
+The active journal holds at most 256 records, comparisons and steps
+together, in at most 64 MiB; checkpoints below keep it far smaller. Exits,
+unknown outcomes and the execution worker are later work.
+
+## Checkpoints and the archive
+
+Every append replays the active journal, about 1 ms per record per replay on
+Kvant. Once the active journal holds 64 records and no entry book can still
+change, the next append first seals all of them into a checkpoint
+(`mantik-owned-allocation-checkpoint-v1`), retained in the journal's
+`checkpoint`. The sealed records move to `mantik_owned_allocation_archive` in
+the same transaction, and the active journal starts empty. Append cost then
+depends on the records since the last checkpoint, not on history.
+
+A checkpoint holds the replay state after its records:
+
+- each policy ledger, sealed by `allocation.SealLedger`. A sealed ledger
+  replays from its base (snapshot, reservations, proposals, consumed evidence
+  and command identities) and continues the same entry hash chain;
+- the policies that hold grant or v16 records, and the proposals entry books
+  own, so capital readback and the interim expiry rule behave as before;
+- the proposal alias index;
+- `sealed_sha256`, a hash chained over every sealed record in order, and the
+  sequence of every checkpoint so far.
+
+Routine replay starts from the checkpoint and trusts it. Records appended
+after it bind the sealed ledger hashes, so a forged sealed ledger fails replay
+at once, but a forged alias index would not until the audit. Readers that list
+records (`GET /v1/allocation-comparisons`, admission reviews, attribution)
+load the archive and check it against the chain, so a changed archived record
+fails every read. An exact retry of a sealed comparison or step returns it
+from the archive, and its identity stays unusable.
+
+`GET /v1/allocation-comparisons/audit` re-executes the whole history against
+current owner records, one sealed segment at a time, rebuilding each
+checkpoint from its own replay. The last rebuilt checkpoint must equal the
+retained one, and the listed records, steps and ledgers must match. It returns
+`verified` with the record and sealed counts, or 409 on a mismatch. Schema 93
+adds the archive table and fences earlier writers.
+
+A sealed ledger still counts every proposal it ever recorded toward the
+allocation core's 256-proposal limit, so a policy ledger stops accepting new
+proposals after 256 distinct decisions. Compacting settled reservations into
+the checkpoint is the next step for continuous operation.
 

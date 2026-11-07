@@ -453,6 +453,23 @@ func appendOwnedExecution(ctx context.Context, owner string, journal ownedAlloca
 			return journal, OwnedExecutionReceipt{}, ErrOwnedAllocationConflict
 		}
 	}
+	if item, err := archivedRetry(journal, c.ID); err != nil {
+		return journal, OwnedExecutionReceipt{}, err
+	} else if item != nil {
+		if item.Execution == nil || item.Execution.Command != c {
+			return journal, OwnedExecutionReceipt{}, ErrOwnedAllocationConflict
+		}
+		record := clone(*item.Execution)
+		return journal, OwnedExecutionReceipt{Record: &record, Duplicate: true, Status: "effects_committed"}, nil
+	}
+	if next, ok, err := sealOwnedJournal(ctx, journal, catalog, state); err != nil {
+		return journal, OwnedExecutionReceipt{}, err
+	} else if ok {
+		journal = next
+		if catalog, state, err = replayOwnedJournal(ctx, owner, journal, policies, decisions, strategies, retained, x, declarations, assessments...); err != nil {
+			return journal, OwnedExecutionReceipt{}, err
+		}
+	}
 	if now == nil {
 		return journal, OwnedExecutionReceipt{}, ErrOwnedAllocationInvalid
 	}
@@ -476,7 +493,9 @@ func appendOwnedExecution(ctx context.Context, owner string, journal ownedAlloca
 	}
 	r := OwnedExecutionRecord{Schema: OwnedExecutionStepSchema, Command: c, At: at, Executions: advances, Authority: ownedExecutionAuthority}
 	r.SHA256 = workerplan.Hash(r)
+	sealing := journal.sealing
 	journal = clone(journal)
+	journal.sealing = sealing
 	journal.Records = append(journal.Records, retainedOwnedAllocation{Execution: &r})
 	if _, err = replayOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained, x, declarations, assessments...); err != nil {
 		return journal, OwnedExecutionReceipt{}, err
@@ -511,7 +530,7 @@ func (m *Memory) ExecuteOwnedAllocations(ctx context.Context, c OwnedExecutionCo
 	if err != nil {
 		return OwnedExecutionReceipt{}, err
 	}
-	next, r, err := appendOwnedExecution(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, m.ownedExecutionLocked(), c, now, m.collectors.LastClock, declarations, assessments)
+	next, r, err := appendOwnedExecution(ctx, m.receiverID, m.ownedAllocationsForAppendLocked(), policies, decisions, strategies, m.paperDecisions, m.ownedExecutionLocked(), c, now, m.collectors.LastClock, declarations, assessments)
 	if err != nil {
 		return OwnedExecutionReceipt{}, err
 	}
@@ -519,7 +538,7 @@ func (m *Memory) ExecuteOwnedAllocations(ctx context.Context, c OwnedExecutionCo
 		return OwnedExecutionReceipt{}, err
 	}
 	if r.Record != nil && !r.Duplicate {
-		m.ownedAllocations = clone(next)
+		m.commitOwnedAllocationsLocked(next)
 	}
 	return r, nil
 }

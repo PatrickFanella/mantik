@@ -74,7 +74,8 @@ func ownedExecutedCapitalReadbacks(ctx context.Context, owner string, policies a
 		l, exists := byPolicy[id]
 		source := "replayed_deferral_journal"
 		if exists {
-			if l.Policy.SHA256 != p.SHA256 || len(l.Entries) == 0 {
+			// A sealed ledger may have no entries after its base.
+			if l.Policy.SHA256 != p.SHA256 || len(l.Entries) == 0 && l.Base == nil {
 				return fail(ErrOwnedAllocationConflict)
 			}
 			delete(byPolicy, id)

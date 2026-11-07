@@ -385,6 +385,10 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 			return PaperEvaluationAssessmentReceipt{}, ErrPaperEvaluationAssessmentInvalid
 		}
 	}
+	// Sealed records all lie at or before their checkpoint's clock.
+	if c := allocations.Checkpoint; c != nil && !at.After(c.At) {
+		return PaperEvaluationAssessmentReceipt{}, ErrPaperEvaluationAssessmentInvalid
+	}
 	if !declarationTime(at) || at.Before(s.sourceClock) {
 		return PaperEvaluationAssessmentReceipt{}, ErrPaperEvaluationAssessmentInvalid
 	}

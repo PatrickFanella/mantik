@@ -60,6 +60,7 @@ type Memory struct {
 	evaluationAssessments       map[string]PaperEvaluationAssessment
 	socialJournal               *socialwatch.Journal
 	ownedAllocations            ownedAllocationJournal
+	ownedAllocationArchive      []retainedOwnedAllocation
 	decisionReviews             map[string]DecisionReviewRecord
 	paperOutcomes               map[string]retainedPaperOutcome
 	paperDecisions              map[string]retainedPaperDecision

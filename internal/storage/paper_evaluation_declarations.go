@@ -320,6 +320,10 @@ func appendPaperEvaluationDeclaration(owner string, all map[string]PaperEvaluati
 			}
 		}
 	}
+	// Sealed records all lie at or before their checkpoint's clock.
+	if c := allocations.Checkpoint; c != nil && !at.After(c.At) {
+		return PaperEvaluationDeclarationReceipt{}, ErrPaperEvaluationDeclarationInvalid
+	}
 	for _, r := range catalog.Records {
 		if at.Before(r.DeclaredAt) {
 			return PaperEvaluationDeclarationReceipt{}, ErrPaperEvaluationDeclarationInvalid
