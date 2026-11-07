@@ -811,9 +811,12 @@ depends on the records since the last checkpoint, not on history.
 
 A checkpoint holds the replay state after its records:
 
-- each policy ledger, sealed by `allocation.SealLedger`. A sealed ledger
-  replays from its base (snapshot, reservations, proposals, consumed evidence
-  and command identities) and continues the same entry hash chain;
+- each policy ledger, sealed by `allocation.SealSettledLedger`. A sealed
+  ledger replays from its base (snapshot, live reservations and their
+  proposals, consumed evidence and command identities) and continues the same
+  entry hash chain. A settled reservation (nothing held, no unknown outcome,
+  no open position) leaves the base with its commitment and proposal, so a
+  long-lived ledger stays under the allocation core's 256-commitment limit;
 - the policies that hold grant or v16 records, and the proposals entry books
   own, so capital readback and the interim expiry rule behave as before;
 - the proposal alias index;
@@ -835,8 +838,9 @@ retained one, and the listed records, steps and ledgers must match. It returns
 `verified` with the record and sealed counts, or 409 on a mismatch. Schema 93
 adds the archive table and fences earlier writers.
 
-A sealed ledger still counts every proposal it ever recorded toward the
-allocation core's 256-proposal limit, so a policy ledger stops accepting new
-proposals after 256 distinct decisions. Compacting settled reservations into
-the checkpoint is the next step for continuous operation.
+After a checkpoint, capital readback lists only live reservations; the
+records keep the full history. A policy can hold at most 256 live
+reservations at once. Proposal identity across checkpoints is kept by the
+proposal alias index, not by the sealed ledger. Schema 94 fences writers that
+seal settled reservations into the base.
 

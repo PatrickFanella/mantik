@@ -11,6 +11,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
+	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
@@ -273,5 +274,48 @@ func TestOwnedCheckpointsSealExecutedHistory(t *testing.T) {
 		if a, b := figures(unsealed.Ledgers[i]), figures(checkpointed.Ledgers[i]); !reflect.DeepEqual(a, b) {
 			t.Fatal("checkpointed accounting differs", a, b)
 		}
+	}
+}
+
+// An order that expires unfilled is released and, once sealed, leaves the
+// checkpoint's ledger; the records still list its reservation.
+func TestOwnedCheckpointsCompactSettledReservations(t *testing.T) {
+	f := newEligibilityFixture(t)
+	ownedCheckpointRecords = 3
+	defer func() { ownedCheckpointRecords = 64 }()
+	f.exec = &ownedExecution{feed: f.m.decisionFeedLocked(), quotes: func(context.Context, FeedEvidenceSnapshot, PaperExecutionQuoteQuery) ([]paperfill.BookCommand, error) {
+		return nil, nil
+	}}
+	journal := ownedAllocationJournal{Records: []retainedOwnedAllocation{}}
+	archive := []retainedOwnedAllocation{}
+	for i := range 4 {
+		c := f.command
+		at := f.at
+		if i > 0 {
+			c.ID = fmt.Sprintf("later-%d", i)
+			at = f.at.Add(time.Duration(120+i) * time.Second)
+		}
+		next, _, err := f.append(t, journal, c, at, f.complete)
+		if err != nil {
+			t.Fatal(i, err)
+		}
+		archive = append(archive, clone(next.sealing)...)
+		journal = clone(next)
+	}
+	if journal.Checkpoint == nil {
+		t.Fatal("expected a checkpoint")
+	}
+	base := journal.Checkpoint.Ledgers[0].Base
+	if len(base.Reservations) != 0 || len(base.Proposals) != 0 || len(base.Snapshot.Commitments) != 0 {
+		t.Fatal("settled reservation kept in the sealed ledger", base.Reservations)
+	}
+	history := journal
+	history.archived = archive
+	catalog, err := f.replay(t, history, f.complete)
+	if err != nil || catalog.Records[0].Entry.Plan.Decisions[0].Status != "reserve_plan" {
+		t.Fatal("records lost the reservation", err)
+	}
+	if audit, err := f.audit(t, history, f.complete); err != nil || audit.Status != "verified" {
+		t.Fatal("audit", audit, err)
 	}
 }
