@@ -79,6 +79,12 @@ func validHoldoutRecipe(c PaperEvaluationDeclarationCommand) bool {
 		}
 		expected = PaperStatisticalEvaluationRecipe
 	}
+	if c.Plan.DrawdownMethod != "" {
+		if c.Plan.DrawdownMethod != PaperDrawdownMethod || c.Plan.StatisticalTests == nil {
+			return false
+		}
+		expected = PaperDrawdownEvaluationRecipe
+	}
 	if h == nil {
 		return c.Plan.BenchmarkMethod == "" && c.Recipe == PaperEvaluationRecipe
 	}

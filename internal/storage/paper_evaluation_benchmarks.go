@@ -9,7 +9,8 @@ import (
 // V8 is selected only by the prospectively declared benchmark recipe. Older
 // declarations and assessments retain their original accounting and hashes.
 func paperAssessmentWithBenchmarks(c PaperEvaluationAssessmentCommand, e PaperEvaluationEvidence, w *PaperEvaluationWarmUp, cut *PaperEvaluationCorporateSourceCut, p *PaperEvaluationPortfolio, h *PaperEvaluationHoldout, search *PaperEvaluationSearchHistory, coverage *PaperEvaluationCorporateCoverage, schema string) (PaperEvaluationAssessment, error) {
-	statistical := schema == "mantik-owned-paper-evaluation-assessment-v15"
+	drawdown := schema == "mantik-owned-paper-evaluation-assessment-v16"
+	statistical := schema == "mantik-owned-paper-evaluation-assessment-v15" || drawdown
 	sensitivity := schema == "mantik-owned-paper-evaluation-assessment-v14" || statistical
 	totalReturn := schema == "mantik-owned-paper-evaluation-assessment-v13" || sensitivity
 	covered := schema == "mantik-owned-paper-evaluation-assessment-v12" || totalReturn
@@ -48,7 +49,10 @@ func paperAssessmentWithBenchmarks(c PaperEvaluationAssessmentCommand, e PaperEv
 	if statistical {
 		expectedRecipe, expectedMethod = PaperStatisticalEvaluationRecipe, PaperDecisionReturnPortfolioMethod
 	}
-	if statistical != (e.Declaration.Command.Plan.StatisticalTests != nil) || sensitivity != (e.Declaration.Command.Plan.Sensitivity != nil) || totalReturn != (e.Declaration.Command.Plan.TotalReturnMethod != "") || covered != (coverage != nil) || covered != (e.Declaration.Command.Plan.CorporateCoverage != nil) || searched != (search != nil) || searched != (e.Declaration.Command.Plan.SearchMultiplicity != nil) || sampleDesign != (e.Declaration.Command.Plan.SampleDesign != nil) || causal != (e.Declaration.Command.Plan.FeatureCausalityMethod != "") || e.Declaration.Command.Recipe != expectedRecipe || e.Declaration.Command.Plan.BenchmarkMethod == "" || p == nil || p.Method != expectedMethod || h == nil {
+	if drawdown {
+		expectedRecipe = PaperDrawdownEvaluationRecipe
+	}
+	if drawdown != (e.Declaration.Command.Plan.DrawdownMethod != "") || statistical != (e.Declaration.Command.Plan.StatisticalTests != nil) || sensitivity != (e.Declaration.Command.Plan.Sensitivity != nil) || totalReturn != (e.Declaration.Command.Plan.TotalReturnMethod != "") || covered != (coverage != nil) || covered != (e.Declaration.Command.Plan.CorporateCoverage != nil) || searched != (search != nil) || searched != (e.Declaration.Command.Plan.SearchMultiplicity != nil) || sampleDesign != (e.Declaration.Command.Plan.SampleDesign != nil) || causal != (e.Declaration.Command.Plan.FeatureCausalityMethod != "") || e.Declaration.Command.Recipe != expectedRecipe || e.Declaration.Command.Plan.BenchmarkMethod == "" || p == nil || p.Method != expectedMethod || h == nil {
 		return PaperEvaluationAssessment{}, ErrPaperEvaluationAssessmentInvalid
 	}
 	r, err := paperAssessmentWithHoldout(c, e, w, cut, p, h, "mantik-owned-paper-evaluation-assessment-v7")
@@ -109,6 +113,16 @@ func paperAssessmentWithBenchmarks(c PaperEvaluationAssessmentCommand, e PaperEv
 		if err := applyStatisticalTests(&r, e.Declaration.Command.Plan.StatisticalTests); err != nil {
 			return PaperEvaluationAssessment{}, err
 		}
+	}
+	if drawdown {
+		r.Recipe = PaperDrawdownAssessmentRecipe
+		if err := applyDrawdown(&r, e.Declaration.Command.Plan.MaximumDrawdownCents); err != nil {
+			return PaperEvaluationAssessment{}, err
+		}
+	}
+	// Completion reads every decided check, so it runs last.
+	if statistical {
+		completeApplicableEvaluation(&r)
 	}
 	r.SHA256 = ""
 	r.SHA256 = workerplan.Hash(r)

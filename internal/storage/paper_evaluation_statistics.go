@@ -356,7 +356,6 @@ func applyStatisticalTests(r *PaperEvaluationAssessment, p *PaperEvaluationStati
 			r.Status = "blocked"
 		}
 	}
-	completeApplicableEvaluation(r)
 	return nil
 }
 

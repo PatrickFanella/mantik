@@ -101,6 +101,9 @@ func RunPaperEvaluationCycle(ctx context.Context, store PaperEvaluationWorkerSto
 		if d.Command.Recipe == storage.PaperStatisticalEvaluationRecipe && d.Command.Plan.StatisticalTests != nil {
 			selectedRecipe = storage.PaperStatisticalAssessmentRecipe
 		}
+		if d.Command.Recipe == storage.PaperDrawdownEvaluationRecipe && d.Command.Plan.DrawdownMethod != "" {
+			selectedRecipe = storage.PaperDrawdownAssessmentRecipe
+		}
 		command := storage.PaperEvaluationAssessmentCommand{ID: automaticEvaluationIDForRecipe(d, selectedRecipe), ReceiverID: declarations.ReceiverID, DeclarationID: d.Command.ID, DeclarationSHA256: d.SHA256}
 		assessmentClock := func() time.Time {
 			now := clock.Now().UTC()
@@ -154,7 +157,7 @@ func RunPaperEvaluationWorker(ctx context.Context, store PaperEvaluationWorkerSt
 // Only the statistical recipe can complete an applicable evaluation.
 func retainedAssessmentStatus(r storage.PaperEvaluationAssessment) bool {
 	if r.Status == "complete" {
-		return r.EvaluationComplete && r.Recipe == storage.PaperStatisticalAssessmentRecipe && len(r.CompleteStrategyIDs) > 0
+		return r.EvaluationComplete && (r.Recipe == storage.PaperStatisticalAssessmentRecipe || r.Recipe == storage.PaperDrawdownAssessmentRecipe) && len(r.CompleteStrategyIDs) > 0
 	}
 	return (r.Status == "blocked" || r.Status == "incomplete") && !r.EvaluationComplete && r.CompleteStrategyIDs == nil
 }

@@ -301,6 +301,9 @@ decisions' standalone total returns, and `sample_sufficiency` and
 `search_multiplicity` from a day-clustered exact sign test with a
 Bonferroni-corrected alpha. An assessment whose variant passes every check is
 `complete`; completion grants no admission.
+Declaration v13 and assessment v16 also decide `maximum_drawdown` from each
+variant book's observed bid-marked drawdown against the plan's
+`maximum_drawdown_cents`.
 The [feed-collector API](docs/reference/feed-collectors.md) retains immutable
 registrations and fenced ownership leases. It does not start a collector or
 configure feed readiness.
