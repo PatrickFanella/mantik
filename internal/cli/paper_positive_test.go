@@ -412,7 +412,7 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 		t.Fatal(err)
 	}
 	g := comparison.Record
-	if g.Schema != storage.OwnedAllocationGrantSchema || len(g.Entry.Command.Comparison.Admissions) != 1 || g.Entry.Command.Comparison.Admissions[0].EvidenceSHA256 != r.SHA256 || g.Entry.Plan.Decisions[0].Status != "reserve_plan" {
+	if g.Schema != storage.OwnedExecutionSchema || len(g.Entry.Command.Comparison.Admissions) != 1 || g.Entry.Command.Comparison.Admissions[0].EvidenceSHA256 != r.SHA256 || g.Entry.Plan.Decisions[0].Status != "reserve_plan" {
 		t.Fatal("complete evaluation did not admit and reserve", g.Entry.Command.Comparison, g.Entry.Plan)
 	}
 	readiness := g.AdmissionChecks[0]
@@ -430,7 +430,7 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 	if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &catalog); err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Capital) != 1 || catalog.Capital[0].Schema != "mantik-owned-allocation-capital-v2" || len(catalog.Capital[0].Reservations) != 1 || catalog.Capital[0].AvailableCashCents != 200000-99000 {
+	if len(catalog.Capital) != 1 || catalog.Capital[0].Schema != "mantik-owned-allocation-capital-v3" || len(catalog.Capital[0].Reservations) != 1 || catalog.Capital[0].AvailableCashCents != 200000-99000 {
 		t.Fatal("reserved capital not read back", catalog.Capital)
 	}
 
@@ -478,6 +478,66 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 	if err := json.Unmarshal(request("POST", "/v1/allocation-comparisons", results[0].Record.Command, 200), &again); err != nil || !again.Duplicate || again.Record.SHA256 != results[0].Record.SHA256 {
 		t.Fatal("exact retry", again, err)
 	}
+	// Entry execution. Each later record advanced the grant's book: it filled
+	// all 1000 shares at the $99 ask published at 15:00:10.1. After every
+	// validity has passed, a step releases the contest winner's unfilled order
+	// at its expiry. The filled grant keeps its position.
+	winner := results[0].Record.Command.Decisions[0].ID
+	if results[1].Record.Entry.Plan.Decisions[0].Status == "reserve_plan" {
+		winner = results[1].Record.Command.Decisions[0].ID
+	}
+	clock.at = time.Date(2026, 11, 9, 15, 2, 0, 0, time.UTC)
+	stepCommand := storage.OwnedExecutionCommand{ID: "execution-step", ReceiverID: owner}
+	var step storage.OwnedExecutionReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-executions", stepCommand, 201), &step); err != nil {
+		t.Fatal(err)
+	}
+	if step.Record == nil || step.Record.Schema != storage.OwnedExecutionStepSchema || len(step.Record.Executions) != 1 || len(step.Record.Executions[0].Entries) != 1 {
+		t.Fatal("execution step", step)
+	}
+	release := step.Record.Executions[0].Entries[0].Command.Effect
+	if release == nil || release.Kind != "release" || release.DecisionID != winner || release.AmountCents != 99000 || !strings.HasPrefix(release.ID, "unfilled-release-") {
+		t.Fatal("unfilled release", release)
+	}
+	var retried storage.OwnedExecutionReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-executions", stepCommand, 200), &retried); err != nil || !retried.Duplicate || retried.Record.SHA256 != step.Record.SHA256 {
+		t.Fatal("execution retry", retried, err)
+	}
+	var idle storage.OwnedExecutionReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-executions", storage.OwnedExecutionCommand{ID: "execution-idle", ReceiverID: owner}, 200), &idle); err != nil || idle.Record != nil || idle.Status != "no_effects" {
+		t.Fatal("idle execution step", idle, err)
+	}
+	if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	capital := catalog.Capital[0]
+	if capital.Schema != "mantik-owned-allocation-capital-v3" || capital.AvailableCashCents != 200000-99000 || len(capital.Positions) != 1 || len(catalog.Executions) != 1 {
+		t.Fatal("capital after execution", capital, len(catalog.Executions))
+	}
+	for _, r := range capital.Reservations {
+		want := [3]int64{}
+		switch r.Proposal.ID {
+		case "grant-decision":
+			want = [3]int64{0, 99000, 0}
+		case winner:
+			want = [3]int64{0, 0, 99000}
+		}
+		if [3]int64{r.ReservedCents, r.FilledCents, r.ReleasedCents} != want {
+			t.Fatal("reservation after execution", r)
+		}
+	}
+	fills := 0
+	for _, e := range catalog.Ledgers[0].Entries {
+		if f := e.Command.Effect; f != nil && f.Kind == "fill" {
+			fills++
+			if f.DecisionID != "grant-decision" || f.AmountCents != 99000 || !e.At.Equal(time.Date(2026, 11, 9, 15, 0, 10, 100000000, time.UTC)) {
+				t.Fatal("entry fill", e)
+			}
+		}
+	}
+	if fills != 1 {
+		t.Fatal("entry fills", fills)
+	}
 	if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &catalog); err != nil {
 		t.Fatal(err)
 	}
@@ -486,6 +546,9 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 
 func TestOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T) {
 	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err == nil {
+		err = m.EnablePaperExecution(service.SelectPaperExecutionQuotes)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,6 +584,9 @@ func TestPostgresContractsOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T
 	})
 	u.Path = "/" + db
 	s, err := storage.OpenPostgresWithPortfolioEvaluator(ctx, u.String(), service.EvaluateOwnedPaperPortfolio)
+	if err == nil {
+		err = s.EnablePaperExecution(service.SelectPaperExecutionQuotes)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -542,6 +608,9 @@ func TestPostgresContractsOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T
 	assessment, catalog := positiveEvaluationHTTP(t, s, failCommit, positiveShape{})
 	s.Close()
 	reopened, err := storage.OpenPostgresWithPortfolioEvaluator(ctx, u.String(), service.EvaluateOwnedPaperPortfolio)
+	if err == nil {
+		err = reopened.EnablePaperExecution(service.SelectPaperExecutionQuotes)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

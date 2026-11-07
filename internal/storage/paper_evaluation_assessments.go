@@ -134,6 +134,7 @@ func newPaperEvaluationAssessment(c PaperEvaluationAssessmentCommand, e PaperEva
 // permits later source records without changing old assessments. Source writers
 // serialize their strictly later timestamps against every issued assessment.
 type paperEvaluationSources struct {
+	feed               FeedEvidenceSnapshot
 	policies           allocation.PolicyCatalog
 	retainedOutcomes   map[string]retainedPaperOutcome
 	portfolioEvaluator PaperPortfolioEvaluator
@@ -177,7 +178,7 @@ func (m *Memory) paperEvaluationSourcesLocked(de PaperDecisionEvaluator, oe Pape
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	return paperEvaluationSources{corporateSources: corporate.Records, referenceSources: references.Records, declarations: declarations, decisions: decisions, outcomes: outcomes, retained: m.paperDecisions, sourceClock: m.collectors.LastClock, strategies: strategies, policies: policies, retainedOutcomes: m.paperOutcomes, portfolioEvaluator: m.portfolioEvaluator}, nil
+	return paperEvaluationSources{corporateSources: corporate.Records, referenceSources: references.Records, declarations: declarations, decisions: decisions, outcomes: outcomes, retained: m.paperDecisions, sourceClock: m.collectors.LastClock, strategies: strategies, policies: policies, retainedOutcomes: m.paperOutcomes, portfolioEvaluator: m.portfolioEvaluator, feed: m.decisionFeedLocked()}, nil
 }
 func readPaperEvaluationSources(ctx context.Context, tx pgx.Tx, write bool, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolioEval PaperPortfolioEvaluator) (paperEvaluationSources, error) {
 	feed, err := readFeedEvidence(ctx, tx, write)
@@ -241,7 +242,7 @@ func readPaperEvaluationSources(ctx context.Context, tx pgx.Tx, write bool, de P
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	return paperEvaluationSources{corporateSources: corporate.Records, referenceSources: references.Records, declarations: declarations, decisions: decisions, outcomes: outcomes, retained: retained, sourceClock: feed.Collectors.LastClock, strategies: strategies, policies: policies, retainedOutcomes: all, portfolioEvaluator: portfolioEval}, nil
+	return paperEvaluationSources{corporateSources: corporate.Records, referenceSources: references.Records, declarations: declarations, decisions: decisions, outcomes: outcomes, retained: retained, sourceClock: feed.Collectors.LastClock, strategies: strategies, policies: policies, retainedOutcomes: all, portfolioEvaluator: portfolioEval, feed: feed}, nil
 }
 func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, s paperEvaluationSources) (PaperEvaluationAssessmentCatalog, error) {
 	out := PaperEvaluationAssessmentCatalog{ReceiverID: owner, Records: []PaperEvaluationAssessment{}}
@@ -375,7 +376,7 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 	// stay strictly outside every retained cut; exact retries return above.
 	for _, item := range allocations.Records {
 		r := item.Record
-		if r.Schema != "mantik-owned-allocation-deferral-v8" && r.Schema != "mantik-owned-allocation-deferral-v9" && r.Schema != "mantik-owned-allocation-deferral-v10" && r.Schema != "mantik-owned-allocation-deferral-v11" && r.Schema != "mantik-owned-allocation-deferral-v12" && r.Schema != "mantik-owned-allocation-deferral-v13" && r.Schema != "mantik-owned-allocation-deferral-v14" && r.Schema != "mantik-owned-allocation-deferral-v15" {
+		if r.Schema != "mantik-owned-allocation-deferral-v8" && r.Schema != "mantik-owned-allocation-deferral-v9" && r.Schema != "mantik-owned-allocation-deferral-v10" && r.Schema != "mantik-owned-allocation-deferral-v11" && r.Schema != "mantik-owned-allocation-deferral-v12" && r.Schema != "mantik-owned-allocation-deferral-v13" && r.Schema != "mantik-owned-allocation-deferral-v14" && r.Schema != "mantik-owned-allocation-deferral-v15" && r.Schema != OwnedExecutionSchema {
 			continue
 		}
 		unsigned := clone(r)

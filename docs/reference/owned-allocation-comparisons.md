@@ -122,8 +122,9 @@ with owner validation. Writers acquire collector, state and receiver locks in
 that order. Reads use one repeatable-read snapshot. Failed inserts or updates
 leave the old journal intact.
 
-Retention stops at 32 comparisons or 8 MiB without evicting evidence. Exact
-retries remain available at capacity. This bounded deferral journal is not an
+Retention stops at 256 records or 64 MiB without evicting evidence (32
+records and 8 MiB before [paper entry execution](#paper-entry-execution)).
+Exact retries remain available at capacity. This bounded deferral journal is not an
 operational order ledger; protective exits, recovery capacity, fee funding,
 admission lifecycle and execution effects must be implemented before activation.
 
@@ -707,4 +708,79 @@ ledger state before it. A forged or missing admission, or a dropped or altered
 release, fails replay. Exact retries return the retained record without a
 clock. Schema 88 fences earlier writers and rewrites no retained record; v1-v14
 comparisons keep their reservation-free invariant and hashes.
+
+## Paper entry execution
+
+Execution is opt-in: `serve` enables it when `MANTIK_PAPER_EXECUTION=on`.
+Once the journal holds a v16 record, allocation replay needs it and fails
+closed with `owned paper execution is not configured` without it. With it,
+new comparisons are v16 (`mantik-owned-allocation-deferral-v16`). Without
+it, comparisons stay v15, and so does everything above.
+
+### Entry books
+
+Each v16 comparison opens one entry book per registration and strategy quote
+scope (symbol, feed, evidence class, quote age). Each reserved proposal adds a
+buy limit order:
+
+- order ID equal to the proposal ID;
+- quantity, limit and debit ceiling from the record's bound execution cost;
+- placed at the comparison clock, expiring at the cost's validity;
+- mode `ongoing_paper`, under the policy's execution model.
+
+Orders reserved by different comparisons never share a book, so displayed
+liquidity is shared only among orders reserved together. Two books that hold
+the same symbol at the same time can each fill against the same quote.
+
+### Advancing books
+
+Every later record, comparison or step, first advances every open book to its
+own clock. A book receives the registration's retained quotes that became
+available after placement and by that clock, in availability order, plus an
+expiry timer at each order's expiry. Timers run before quotes at the same
+clock, and nothing is applied after the last order expires. A quote counts only
+with documented share sizes, the strategy's symbol and evidence class, a
+fill-method range, an age within the strategy's limit at availability, and open
+regular-session evidence at that clock. This is the same filter the
+evaluation's protective replay applies, and captures are validated against
+owner custody as the outcome market inspector validates them.
+
+The existing ledger reducers turn each advanced book into effects:
+`ApplyEntryFillBook` posts fills, and `ApplyUnfilledEntryReleases` releases an
+order that ended cancelled or expired with no fill. A filled or partly filled
+order keeps its whole remaining hold, including protective funding. Effects
+from all books are merged in clock order and retained in the record's
+`executions`, grouped by policy, before its `expirations` and `entry`. The
+interim expiry rule above no longer releases proposals that a book owns.
+
+### Execution steps
+
+`POST /v1/paper-executions` takes `{"id","receiver_id"}` and advances every
+open book to the service clock. The caller names only the step identity.
+A step that would commit an effect is retained as
+`mantik-owned-execution-step-v1` and returns 201. One with nothing to commit
+returns 200 with status `no_effects`, retains nothing and leaves its identity
+unused. An exact retry returns the retained step with 200. Steps appear in
+the allocation catalogue's `executions`; comparison readers never see them.
+
+### Capital and replay
+
+A ledger holding a v16 record reads back as capital v3
+(`mantik-owned-allocation-capital-v3`). For each reservation, held, filled
+and released amounts sum to its notional. Cash plus every held and filled
+amount equals opening cash. Positions are the filled reservations. No owner
+closes positions or records unknown outcomes yet, so closes, proceeds,
+realized results and unknown effects must still be absent.
+
+Replay rederives every record's execution effects from the ledgers as they
+stood before it and from the owner's quote selection, so a fabricated quote
+path, a rehashed amount or a dropped effect fails replay. A v1-v15
+comparison written after a book opened fails replay too, because it left
+open books unadvanced. Schema 90 fences earlier writers.
+
+The journal holds at most 256 records, comparisons and steps together, in
+at most 64 MiB. Every append replays the whole journal, about 1 ms
+per retained record per replay on Kvant, so unbounded operation needs
+archival checkpoints. Exits, unknown outcomes and the execution worker are
+later work.
 

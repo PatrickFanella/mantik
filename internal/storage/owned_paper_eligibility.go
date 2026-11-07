@@ -102,10 +102,10 @@ type ownedReservationExpiry struct {
 // clock: every reserved remainder whose proposal is no longer valid and whose
 // outcome is not unknown. They are applied before the comparison, in the
 // ledger's reservation order, so released cash can fund the new proposals.
-func ownedReservationExpirations(p allocation.LedgerProjection, at time.Time) []allocation.Effect {
+func ownedReservationExpirations(p allocation.LedgerProjection, at time.Time, executed map[string]bool) []allocation.Effect {
 	out := []allocation.Effect{}
 	for _, r := range p.Reservations {
-		if r.ReservedCents <= 0 || r.Unknown || at.Before(r.Proposal.ValidUntil) {
+		if r.ReservedCents <= 0 || r.Unknown || at.Before(r.Proposal.ValidUntil) || executed[r.Proposal.ID] {
 			continue
 		}
 		h := workerplan.Hash(ownedReservationExpiry{Kind: "owner_reservation_expiry", ProposalID: r.Proposal.ID, DecisionSHA256: r.Proposal.DecisionSHA256, ValidUntil: r.Proposal.ValidUntil.UTC(), ReservedCents: r.ReservedCents})

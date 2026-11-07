@@ -17,8 +17,16 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const MaxOwnedAllocations = 32
-const MaxOwnedAllocationBytes = 8 << 20
+// Execution steps share this journal so effects commit with the ledger.
+// Every append replays the whole journal, about 1 ms per retained record
+// per replay on Kvant, so the bound stays well inside the 5 s request
+// deadline. Unbounded operation needs archival checkpoints.
+const MaxOwnedAllocations = 256
+
+// maxOwnedAllocations is MaxOwnedAllocations; capacity tests lower it.
+var maxOwnedAllocations = MaxOwnedAllocations
+
+const MaxOwnedAllocationBytes = 64 << 20
 
 var ErrOwnedAllocationInvalid = errors.New("invalid owned allocation comparison")
 var ErrOwnedAllocationConflict = errors.New("owned allocation identity, policy or decision conflict")
@@ -52,7 +60,10 @@ type OwnedAllocationRecord struct {
 	ExecutionSafety []OwnedExecutionSafety `json:"execution_safety,omitempty"`
 	// Comparison v15 only: owner-issued releases of expired reservations,
 	// applied to the policy ledger immediately before Entry.
-	Expirations         []allocation.LedgerEntry          `json:"expirations,omitempty"`
+	Expirations []allocation.LedgerEntry `json:"expirations,omitempty"`
+	// Comparison v16 only: owner execution effects from open entry books up
+	// to At, per policy, applied before Expirations and Entry.
+	Executions          []OwnedExecutionAdvance           `json:"executions,omitempty"`
 	EvaluationContext   *OwnedAllocationEvaluationContext `json:"evaluation_context,omitempty"`
 	Schema              string                            `json:"schema"`
 	Command             OwnedAllocationCommand            `json:"command"`
@@ -75,6 +86,7 @@ type OwnedAllocationCatalog struct {
 	Capital    []OwnedCapitalReadback  `json:"capital"`
 	ReceiverID string                  `json:"receiver_id"`
 	Records    []OwnedAllocationRecord `json:"records"`
+	Executions []OwnedExecutionRecord  `json:"executions,omitempty"`
 	Ledgers    []allocation.Ledger     `json:"ledgers"`
 }
 type retainedOwnedAllocation struct {
@@ -83,6 +95,8 @@ type retainedOwnedAllocation struct {
 	// rewrite past choices. Every captured policy must still match its owner.
 	Policies               allocation.PolicyCatalog           `json:"policies"`
 	EvaluationDeclarations *PaperEvaluationDeclarationCatalog `json:"evaluation_declarations,omitempty"`
+	// An execution step is retained here with a zero Record.
+	Execution *OwnedExecutionRecord `json:"execution,omitempty"`
 }
 type ownedAllocationJournal struct {
 	Records []retainedOwnedAllocation `json:"records"`
@@ -179,32 +193,56 @@ func ownedComparisonFunding(c OwnedAllocationCommand, policies allocation.Policy
 	return selected, out, nil
 }
 
-func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (OwnedAllocationCatalog, error) {
+func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (OwnedAllocationCatalog, error) {
+	out, _, err := replayOwnedJournal(ctx, owner, journal, policies, decisions, strategies, retained, x, declarationSource, assessmentSources...)
+	return out, err
+}
+
+// ownedJournalState is what an append continues from after replay.
+type ownedJournalState struct {
+	books []ownedEntryBook
+	last  time.Time
+}
+
+func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (OwnedAllocationCatalog, ownedJournalState, error) {
 	out := OwnedAllocationCatalog{ReceiverID: owner, Records: []OwnedAllocationRecord{}, Ledgers: []allocation.Ledger{}}
+	state := ownedJournalState{}
 	assessments, err := allocationAssessmentSource(owner, assessmentSources)
 	if err != nil {
-		return OwnedAllocationCatalog{}, err
+		return OwnedAllocationCatalog{}, state, err
 	}
-	if !ValidReceiverID(owner) || journal.Records == nil || len(journal.Records) > MaxOwnedAllocations || policies.Validate() != nil {
-		return out, ErrOwnedAllocationInvalid
+	if !ValidReceiverID(owner) || journal.Records == nil || len(journal.Records) > maxOwnedAllocations || policies.Validate() != nil {
+		return out, state, ErrOwnedAllocationInvalid
 	}
 	resolved := make([]allocation.PolicyRecord, len(journal.Records))
 	seen := map[string]bool{}
 	var last time.Time
 	for index, item := range journal.Records {
 		if err := ctx.Err(); err != nil {
-			return out, err
+			return out, state, err
+		}
+		if item.Execution != nil {
+			e := item.Execution
+			if x == nil {
+				return out, state, ErrOwnedExecutionUnavailable
+			}
+			if !reflect.DeepEqual(item.Record, OwnedAllocationRecord{}) || !reflect.DeepEqual(item.Policies, allocation.PolicyCatalog{}) || item.EvaluationDeclarations != nil || e.Command.ReceiverID != owner || seen[e.Command.ID] || e.At.Before(last) {
+				return out, state, ErrOwnedAllocationInvalid
+			}
+			seen[e.Command.ID] = true
+			last = e.At
+			continue
 		}
 		r := item.Record
 		if r.Command.ReceiverID != owner || seen[r.Command.ID] || r.At.Before(last) || item.Policies.Validate() != nil {
-			return out, ErrOwnedAllocationInvalid
+			return out, state, ErrOwnedAllocationInvalid
 		}
 		// v5 was introduced after source aliases were rejected at append. A
 		// portable rehash must not bypass that same invariant during replay.
 		// Earlier schemas retain their historical representation and retries.
-		if r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15")))))))) {
+		if r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))))))))) {
 			if err := ownedProposalSourceAliases(ownedAllocationJournal{Records: journal.Records[:index]}, retained, r.Command); err != nil {
-				return OwnedAllocationCatalog{}, err
+				return OwnedAllocationCatalog{}, state, err
 			}
 		}
 		for _, old := range item.Policies.Records {
@@ -216,27 +254,27 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 				}
 			}
 			if !found {
-				return out, ErrOwnedAllocationConflict
+				return out, state, ErrOwnedAllocationConflict
 			}
 		}
-		policy, comparison, err := ownedComparisonFunding(r.Command, item.Policies, decisions, strategies, retained, r.At, r.Schema == "mantik-owned-allocation-deferral-v4" || (r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15"))))))))), (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15")))
+		policy, comparison, err := ownedComparisonFunding(r.Command, item.Policies, decisions, strategies, retained, r.At, r.Schema == "mantik-owned-allocation-deferral-v4" || (r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema)))))))))), (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))))
 		if err != nil {
-			return out, err
+			return out, state, err
 		}
 		// The grant schema rederives its admissions from the captured
 		// declarations and the owner-replayed assessments at its own clock.
-		if r.Schema == OwnedAllocationGrantSchema {
+		if isOwnedGrantSchema(r.Schema) {
 			if item.EvaluationDeclarations == nil {
-				return out, ErrOwnedAllocationInvalid
+				return out, state, ErrOwnedAllocationInvalid
 			}
 			comparison.Admissions, err = ownedEvaluationAdmissions(comparison.Proposals, policy, strategies, *item.EvaluationDeclarations, assessments, r.At)
 			if err != nil {
-				return out, err
+				return out, state, err
 			}
 		}
 
 		if !reflect.DeepEqual(r.Entry.At, r.At.UTC()) || !reflect.DeepEqual(r.Entry.Command, allocation.LedgerCommand{ID: r.Command.ID, Comparison: &comparison}) {
-			return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
+			return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
 		}
 		resolved[index] = policy
 		seen[r.Command.ID] = true
@@ -244,6 +282,21 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 	}
 	ledgers := map[string]allocation.Ledger{}
 	for index, item := range journal.Records {
+		advances := item.Record.Executions
+		if item.Execution != nil {
+			advances = item.Execution.Executions
+		}
+		for _, a := range advances {
+			ledger, ok := ledgers[a.PolicyID]
+			if !ok {
+				return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
+			}
+			ledger.Entries = append(ledger.Entries, a.Entries...)
+			ledgers[a.PolicyID] = ledger
+		}
+		if item.Execution != nil {
+			continue
+		}
 		policy := resolved[index]
 		key := policy.Command.Policy.ID
 		ledger, ok := ledgers[key]
@@ -251,7 +304,7 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 			var err error
 			ledger, err = allocation.NewLedger(policy)
 			if err != nil {
-				return OwnedAllocationCatalog{}, err
+				return OwnedAllocationCatalog{}, state, err
 			}
 		}
 		ledger.Entries = append(ledger.Entries, item.Record.Expirations...)
@@ -265,7 +318,7 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 		var err error
 		prefixes[key], err = allocation.ReplayLedgerPrefixes(ctx, ledger)
 		if err != nil {
-			return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
+			return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
 		}
 		ledgers[key] = ledger
 	}
@@ -275,37 +328,79 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 	indices := map[string]int{}
 	for index, item := range journal.Records {
 		if err := ctx.Err(); err != nil {
-			return OwnedAllocationCatalog{}, err
+			return OwnedAllocationCatalog{}, state, err
+		}
+		advances, at := item.Record.Executions, item.Record.At
+		if item.Execution != nil {
+			advances, at = item.Execution.Executions, item.Execution.At
+		}
+		// Every record advances each open entry book to its own clock first.
+		// Rederive those effects from the ledgers as they stood before it.
+		if len(state.books) > 0 || len(advances) > 0 {
+			if x == nil {
+				return OwnedAllocationCatalog{}, state, ErrOwnedExecutionUnavailable
+			}
+			before := map[string]allocation.Ledger{}
+			for _, b := range state.books {
+				if l, ok := ledgers[b.policyID]; ok {
+					before[b.policyID] = ledgerPrefix(l, indices[b.policyID])
+				}
+			}
+			expected, err := advanceAll(ctx, before, state.books, *x, state.last, at)
+			if err != nil {
+				return OwnedAllocationCatalog{}, state, err
+			}
+			if len(expected) != len(advances) || len(advances) > 0 && !reflect.DeepEqual(expected, advances) {
+				return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
+			}
+		}
+		for _, a := range advances {
+			indices[a.PolicyID] += len(a.Entries)
+		}
+		if item.Execution != nil {
+			e := *item.Execution
+			want := OwnedExecutionRecord{Schema: OwnedExecutionStepSchema, Command: e.Command, At: e.At.UTC(), Executions: advances, Authority: ownedExecutionAuthority}
+			want.SHA256 = workerplan.Hash(want)
+			if len(advances) == 0 || !paperaccount.ID.MatchString(e.Command.ID) || !reflect.DeepEqual(want, e) {
+				return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
+			}
+			out.Executions = append(out.Executions, clone(e))
+			state.last = e.At
+			continue
 		}
 		r := item.Record
+		// An older writer cannot leave open books unadvanced.
+		if len(state.books) > 0 && r.Schema != OwnedExecutionSchema {
+			return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
+		}
 		policy := resolved[index]
 		comparison := *r.Entry.Command.Comparison
 		key := policy.Command.Policy.ID
 		start := indices[key]
 		indices[key] += len(r.Expirations)
 		if indices[key] >= len(prefixes[key]) {
-			return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
+			return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
 		}
 		prefix := prefixes[key][indices[key]]
 		indices[key]++
-		if r.Schema == OwnedAllocationGrantSchema {
+		if isOwnedGrantSchema(r.Schema) {
 			// Releases must be exactly those due from the state before this
 			// record, at its clock; the ledger walk already applied them.
 			before := allocation.LedgerProjection{}
 			if start > 0 {
 				before = prefixes[key][start-1].Projection
 			}
-			due := ownedReservationExpirations(before, r.At)
+			due := ownedReservationExpirations(before, r.At, executedProposals(state.books))
 			if len(due) != len(r.Expirations) {
-				return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
+				return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
 			}
 			for i, e := range r.Expirations {
 				if e.Command.ID != due[i].ID || e.Command.Comparison != nil || e.Command.Effect == nil || !reflect.DeepEqual(*e.Command.Effect, due[i]) || !e.At.Equal(r.At) {
-					return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
+					return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
 				}
 			}
 		} else if len(r.Expirations) != 0 || len(prefix.Projection.Reservations) != 0 || prefix.Projection.Snapshot.AvailableCashCents != policy.Account.Config.OpeningCashCents {
-			return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
+			return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
 		}
 		var err error
 
@@ -314,50 +409,53 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 		case "mantik-owned-allocation-deferral-v1":
 			// Legacy records retain their exact wire shape and hash.
 			if policy.Command.ExecutionModel != nil {
-				return out, ErrOwnedAllocationInvalid
+				return out, state, ErrOwnedAllocationInvalid
 			}
-		case "mantik-owned-allocation-deferral-v2", "mantik-owned-allocation-deferral-v3", "mantik-owned-allocation-deferral-v4", "mantik-owned-allocation-deferral-v5", "mantik-owned-allocation-deferral-v6", "mantik-owned-allocation-deferral-v7", "mantik-owned-allocation-deferral-v8", "mantik-owned-allocation-deferral-v9", "mantik-owned-allocation-deferral-v10", "mantik-owned-allocation-deferral-v11", "mantik-owned-allocation-deferral-v12", "mantik-owned-allocation-deferral-v13", "mantik-owned-allocation-deferral-v14", "mantik-owned-allocation-deferral-v15":
+		case "mantik-owned-allocation-deferral-v2", "mantik-owned-allocation-deferral-v3", "mantik-owned-allocation-deferral-v4", "mantik-owned-allocation-deferral-v5", "mantik-owned-allocation-deferral-v6", "mantik-owned-allocation-deferral-v7", "mantik-owned-allocation-deferral-v8", "mantik-owned-allocation-deferral-v9", "mantik-owned-allocation-deferral-v10", "mantik-owned-allocation-deferral-v11", "mantik-owned-allocation-deferral-v12", "mantik-owned-allocation-deferral-v13", "mantik-owned-allocation-deferral-v14", "mantik-owned-allocation-deferral-v15", OwnedExecutionSchema:
 			expected.Schema = r.Schema
-			if r.Schema == OwnedAllocationGrantSchema {
+			if isOwnedGrantSchema(r.Schema) {
 				expected.Authority, expected.Expirations = ownedAllocationGrantAuthority, r.Expirations
+			}
+			if r.Schema == OwnedExecutionSchema {
+				expected.Executions = r.Executions
 			}
 			expected.AdmissionChecks, err = ownedAdmissionReadiness(comparison, decisions, strategies, retained, r.At)
 			if err != nil {
-				return out, err
+				return out, state, err
 			}
-			if r.Schema == "mantik-owned-allocation-deferral-v3" || r.Schema == "mantik-owned-allocation-deferral-v4" || (r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15"))))))))) && policy.Command.ExecutionModel != nil {
-				expected.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained, r.Schema == "mantik-owned-allocation-deferral-v4" || (r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15"))))))))))
+			if r.Schema == "mantik-owned-allocation-deferral-v3" || r.Schema == "mantik-owned-allocation-deferral-v4" || (r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema)))))))))) && policy.Command.ExecutionModel != nil {
+				expected.ExecutionCosts, err = ownedExecutionCosts(comparison, policy, strategies, retained, r.Schema == "mantik-owned-allocation-deferral-v4" || (r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema)))))))))))
 				if err != nil {
-					return out, err
+					return out, state, err
 				}
 			} else if policy.Command.ExecutionModel != nil {
-				return out, ErrOwnedAllocationInvalid
+				return out, state, ErrOwnedAllocationInvalid
 			}
 		default:
-			return out, ErrOwnedAllocationInvalid
+			return out, state, ErrOwnedAllocationInvalid
 		}
-		if r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15"))) {
+		if r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema)))) {
 			expected.ExecutionSafety, err = ownedExecutionSafety(expected, policy, strategies, retained)
 			if err != nil {
-				return out, err
+				return out, state, err
 			}
 		}
-		if r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15")))))))) {
+		if r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))))))))) {
 			expected.AdmissionChecks, err = bindOwnedAdmissionReadiness(expected, policy)
 			if err != nil {
-				return out, err
+				return out, state, err
 			}
 		}
-		if r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15")))))))) {
+		if r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))))))))) {
 			current, e := ownedEvaluationDeclarationSource(owner, policies, strategies, declarationSource)
 			if e != nil || item.EvaluationDeclarations == nil {
-				return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
+				return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
 			}
 			captured, e := validateOwnedEvaluationCapture(owner, *item.EvaluationDeclarations, current, policies, strategies, r.At)
 			if e != nil {
-				return OwnedAllocationCatalog{}, e
+				return OwnedAllocationCatalog{}, state, e
 			}
-			if r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15"))))))) {
+			if r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema)))))))) {
 				available := PaperEvaluationDeclarationCatalog{ReceiverID: owner, Records: []PaperEvaluationDeclaration{}}
 				for _, d := range current.Records {
 					if !d.DeclaredAt.After(r.At) {
@@ -365,27 +463,35 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 					}
 				}
 				if !reflect.DeepEqual(captured, available) {
-					return out, ErrOwnedAllocationConflict
+					return out, state, ErrOwnedAllocationConflict
 				}
 			}
 			expected.EvaluationContext = ownedAllocationEvaluationContext(expected, policy, captured)
-			if r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15")))))) {
+			if r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))))))) {
 				expected.EvaluationContext = ownedAllocationAssessmentContext(expected, policy, captured, assessments)
 			}
 		} else if item.EvaluationDeclarations != nil || r.EvaluationContext != nil {
-			return OwnedAllocationCatalog{}, ErrOwnedAllocationInvalid
+			return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
 		}
-		if r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15"))))) {
+		if r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema)))))) {
 			expected.AdmissionChecks, err = bindOwnedAssessmentReadiness(expected, policy, assessments)
 			if err != nil {
-				return OwnedAllocationCatalog{}, err
+				return OwnedAllocationCatalog{}, state, err
 			}
 		}
 		expected.SHA256 = workerplan.Hash(expected)
 		if !reflect.DeepEqual(expected, r) {
-			return out, ErrOwnedAllocationInvalid
+			return out, state, ErrOwnedAllocationInvalid
 		}
 		out.Records = append(out.Records, clone(r))
+		if r.Schema == OwnedExecutionSchema {
+			books, err := ownedEntryBooks(r, policy, strategies, retained)
+			if err != nil {
+				return OwnedAllocationCatalog{}, state, err
+			}
+			state.books = append(state.books, books...)
+		}
+		state.last = r.At
 	}
 	for _, l := range ledgers {
 		out.Ledgers = append(out.Ledgers, l)
@@ -395,19 +501,33 @@ func replayOwnedAllocations(ctx context.Context, owner string, journal ownedAllo
 	})
 	granted := []string{}
 	for index, item := range journal.Records {
-		if item.Record.Schema == OwnedAllocationGrantSchema {
+		if isOwnedGrantSchema(item.Record.Schema) {
 			granted = append(granted, resolved[index].Command.Policy.ID)
 		}
 	}
-	out.Capital, err = ownedCapitalReadbacks(ctx, owner, policies, out.Ledgers, granted...)
-	if err != nil {
-		return OwnedAllocationCatalog{}, err
+	executed := map[string]bool{}
+	for index, item := range journal.Records {
+		if item.Execution == nil && item.Record.Schema == OwnedExecutionSchema {
+			executed[resolved[index].Command.Policy.ID] = true
+		}
 	}
-	return clone(out), nil
+	out.Capital, err = ownedExecutedCapitalReadbacks(ctx, owner, policies, out.Ledgers, executed, granted...)
+	if err != nil {
+		return OwnedAllocationCatalog{}, state, err
+	}
+	return clone(out), state, nil
 }
 
-func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, c OwnedAllocationCommand, now func() time.Time, sourceClock time.Time, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, OwnedAllocationReceipt, error) {
-	catalog, err := replayOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained, declarationSource, assessmentSources...)
+// ledgerPrefix is l with only its first n entries, rehashed.
+func ledgerPrefix(l allocation.Ledger, n int) allocation.Ledger {
+	l.Entries = slices.Clone(l.Entries[:n])
+	l.SHA256 = ""
+	l.SHA256 = workerplan.Hash(l)
+	return l
+}
+
+func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, c OwnedAllocationCommand, now func() time.Time, sourceClock time.Time, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, OwnedAllocationReceipt, error) {
+	catalog, state, err := replayOwnedJournal(ctx, owner, journal, policies, decisions, strategies, retained, x, declarationSource, assessmentSources...)
 	if err != nil {
 		return journal, OwnedAllocationReceipt{}, err
 	}
@@ -425,7 +545,7 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 			return journal, OwnedAllocationReceipt{clone(r), true}, nil
 		}
 	}
-	if len(journal.Records) >= MaxOwnedAllocations {
+	if len(journal.Records) >= maxOwnedAllocations {
 		return journal, OwnedAllocationReceipt{}, ErrOwnedAllocationCapacity
 	}
 	if err := ownedProposalSourceAliases(journal, retained, c); err != nil {
@@ -468,11 +588,25 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		return journal, OwnedAllocationReceipt{}, err
 	}
 
+	// Advance every open entry book to this clock before anything else.
+	ledgers := map[string]allocation.Ledger{}
+	for _, l := range catalog.Ledgers {
+		ledgers[l.Policy.Command.Policy.ID] = l
+	}
+	var executions []OwnedExecutionAdvance
+	if x != nil {
+		executions, err = advanceAll(ctx, ledgers, state.books, *x, state.last, at)
+		if err != nil {
+			return journal, OwnedAllocationReceipt{}, err
+		}
+	} else if len(state.books) > 0 {
+		return journal, OwnedAllocationReceipt{}, ErrOwnedExecutionUnavailable
+	}
 	ledger, err := allocation.NewLedger(policy)
 	if err != nil {
 		return journal, OwnedAllocationReceipt{}, err
 	}
-	for _, l := range catalog.Ledgers {
+	for _, l := range ledgers {
 		if l.Policy.SHA256 == policy.SHA256 {
 			ledger = l
 			break
@@ -490,7 +624,7 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		return journal, OwnedAllocationReceipt{}, err
 	}
 	var expirations []allocation.LedgerEntry
-	for _, e := range ownedReservationExpirations(projection, at) {
+	for _, e := range ownedReservationExpirations(projection, at, executedProposals(state.books)) {
 		var receipt allocation.LedgerReceipt
 		ledger, _, receipt, err = allocation.AppendLedger(ctx, ledger, allocation.LedgerCommand{ID: e.ID, Effect: &e}, clock)
 		if err != nil {
@@ -503,6 +637,9 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 		return journal, OwnedAllocationReceipt{}, conflict(err)
 	}
 	r := OwnedAllocationRecord{Schema: OwnedAllocationGrantSchema, Command: clone(c), At: at, PolicySHA256: policy.SHA256, LedgerSHA256: next.SHA256, Entry: next.Entries[receipt.Sequence-1], Expirations: expirations, Authority: ownedAllocationGrantAuthority}
+	if x != nil {
+		r.Schema, r.Executions = OwnedExecutionSchema, executions
+	}
 	r.AdmissionChecks, err = ownedAdmissionReadiness(comparison, decisions, strategies, retained, at)
 	if err != nil {
 		return journal, OwnedAllocationReceipt{}, err
@@ -529,7 +666,7 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 	r.SHA256 = workerplan.Hash(r)
 	journal = clone(journal)
 	journal.Records = append(journal.Records, retainedOwnedAllocation{Record: r, Policies: clone(policies), EvaluationDeclarations: &declarations})
-	if _, err = replayOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained, declarationSource, assessmentSources...); err != nil {
+	if _, err = replayOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained, x, declarationSource, assessmentSources...); err != nil {
 		return journal, OwnedAllocationReceipt{}, err
 	}
 	raw, err := json.Marshal(journal)
@@ -632,7 +769,7 @@ func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCo
 		return OwnedAllocationReceipt{}, err
 	}
 
-	next, r, err := appendOwnedAllocation(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, c, now, m.collectors.LastClock, declarations, assessments)
+	next, r, err := appendOwnedAllocation(ctx, m.receiverID, m.ownedAllocations, policies, decisions, strategies, m.paperDecisions, m.ownedExecutionLocked(), c, now, m.collectors.LastClock, declarations, assessments)
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
@@ -667,7 +804,7 @@ func (m *Memory) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluat
 		return OwnedAllocationCatalog{}, err
 	}
 
-	catalog, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, p, d, s, m.paperDecisions, declarations, assessments)
+	catalog, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocations, p, d, s, m.paperDecisions, m.ownedExecutionLocked(), declarations, assessments)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
@@ -689,7 +826,12 @@ func readOwnedAllocationJournal(ctx context.Context, tx pgx.Tx) (ownedAllocation
 	}
 	return j, nil
 }
-func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, c OwnedAllocationCommand, now func() time.Time, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, OwnedAllocationReceipt, error) {
+
+// ownedJournalAppend computes a journal append inside the owner transaction.
+// It reports whether the journal changed and must be written.
+type ownedJournalAppend func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error)
+
+func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, apply ownedJournalAppend, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, OwnedAllocationReceipt, error) {
 	options := pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}
 	if write {
 		options = pgx.TxOptions{}
@@ -780,13 +922,12 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, c Owne
 	}
 	var receipt OwnedAllocationReceipt
 	if write {
-		next, r, e := appendOwnedAllocation(ctx, owner, journal, policies, decisions, strategies, retained, c, now, feed.Collectors.LastClock, declarations, assessmentCatalog)
+		next, changed, e := apply(ctx, owner, journal, policies, decisions, strategies, retained, p.ownedExecution(feed), feed.Collectors.LastClock, declarations, assessmentCatalog)
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}
 		journal = next
-		receipt = r
-		if !r.Duplicate {
+		if changed {
 			raw, e = json.Marshal(journal)
 			if e != nil {
 				return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
@@ -797,7 +938,7 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, c Owne
 			}
 		}
 	}
-	catalog, err := replayOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained, declarations, assessmentCatalog)
+	catalog, err := replayOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained, p.ownedExecution(feed), declarations, assessmentCatalog)
 	if err != nil {
 		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
 	}
@@ -814,10 +955,18 @@ func (p *Postgres) CompareOwnedAllocation(ctx context.Context, c OwnedAllocation
 	if c.Validate() != nil {
 		return OwnedAllocationReceipt{}, ErrOwnedAllocationInvalid
 	}
-	_, r, e := p.ownedAllocationAccess(ctx, true, c, now, eval, outcomeEvals...)
-	return r, e
+	var r OwnedAllocationReceipt
+	_, _, e := p.ownedAllocationAccess(ctx, true, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
+		next, receipt, err := appendOwnedAllocation(ctx, owner, journal, policies, decisions, strategies, retained, x, c, now, sourceClock, declarations, assessments)
+		r = receipt
+		return next, err == nil && !receipt.Duplicate, err
+	}, eval, outcomeEvals...)
+	if e != nil {
+		return OwnedAllocationReceipt{}, e
+	}
+	return r, nil
 }
 func (p *Postgres) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, error) {
-	c, _, e := p.ownedAllocationAccess(ctx, false, OwnedAllocationCommand{}, nil, eval, outcomeEvals...)
+	c, _, e := p.ownedAllocationAccess(ctx, false, nil, eval, outcomeEvals...)
 	return c, e
 }

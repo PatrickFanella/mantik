@@ -58,6 +58,7 @@ func handlerWithAcquisitions(store storage.Store, token string, clock Clock, pol
 	ownedAdmissionReviewRoutes(mux, store, clock)
 	socialWatchRoutes(mux, store, clock)
 	ownedAllocationRoutes(mux, store, clock)
+	paperExecutionRoutes(mux, store, clock)
 	fixtureCapitalRoutes(mux, store)
 	paperLedgerRoutes(mux, store, clock)
 	newsRoutes(mux, store, clock)

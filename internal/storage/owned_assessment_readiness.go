@@ -64,13 +64,13 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 			}
 		}
 		c.Schema = "mantik-owned-admission-readiness-v3"
-		if r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15")))) {
+		if r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))))) {
 			c.Schema = "mantik-owned-admission-readiness-v4"
 		}
-		if r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15")) {
+		if r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))) {
 			c.Schema = "mantik-owned-admission-readiness-v5"
 		}
-		if r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15" {
+		if r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema) {
 			c.Schema = "mantik-owned-admission-readiness-v6"
 		}
 		c.Binding.EvaluationBindingSHA256 = workerplan.Hash(*binding)
@@ -87,7 +87,7 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 				if check.StrategyID == c.StrategyID && check.Name == "sample_sufficiency" {
 					v.SampleStatus = check.Status
 				}
-				if (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15"))))) && check.StrategyID == c.StrategyID && check.Status == "failed" {
+				if (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema)))))) && check.StrategyID == c.StrategyID && check.Status == "failed" {
 					v.FailedChecks = append(v.FailedChecks, clone(check))
 				}
 			}
@@ -132,7 +132,7 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 				c.Gates[j] = gate
 			}
 		}
-		if r.Schema == OwnedAllocationGrantSchema {
+		if isOwnedGrantSchema(r.Schema) {
 			applyOwnedEligibility(c, r, latest)
 		}
 		c.SHA256 = ""
