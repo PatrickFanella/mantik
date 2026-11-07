@@ -17,28 +17,32 @@ type OwnedAdmissionGate struct {
 }
 
 type OwnedAdmissionReadiness struct {
-	EvaluationEvidence  []OwnedAssessmentReadiness `json:"evaluation_evidence,omitempty"`
-	Binding             *OwnedAdmissionBinding     `json:"binding,omitempty"`
-	Schema              string                     `json:"schema"`
-	ReceiverID          string                     `json:"receiver_id"`
-	DecisionID          string                     `json:"decision_id"`
-	DecisionSHA256      string                     `json:"decision_sha256"`
-	StrategyID          string                     `json:"strategy_id"`
-	StrategySHA256      string                     `json:"strategy_sha256"`
-	DefinitionSHA256    string                     `json:"definition_sha256"`
-	BasisSHA256         string                     `json:"basis_sha256"`
-	QuoteInputID        string                     `json:"quote_input_id"`
-	EvidenceClass       string                     `json:"evidence_class"`
-	CheckedAt           time.Time                  `json:"checked_at"`
-	ValidUntil          time.Time                  `json:"valid_until"`
-	Status              string                     `json:"status"`
-	Gates               []OwnedAdmissionGate       `json:"gates"`
-	ReconsiderTriggers  []string                   `json:"reconsider_triggers"`
-	Authority           string                     `json:"authority"`
-	AdmissionAvailable  bool                       `json:"admission_available"`
-	ExecutionAvailable  bool                       `json:"execution_available"`
-	QualificationCredit bool                       `json:"qualification_credit"`
-	SHA256              string                     `json:"sha256"`
+	EvaluationEvidence []OwnedAssessmentReadiness `json:"evaluation_evidence,omitempty"`
+	Binding            *OwnedAdmissionBinding     `json:"binding,omitempty"`
+	Schema             string                     `json:"schema"`
+	ReceiverID         string                     `json:"receiver_id"`
+	DecisionID         string                     `json:"decision_id"`
+	DecisionSHA256     string                     `json:"decision_sha256"`
+	StrategyID         string                     `json:"strategy_id"`
+	StrategySHA256     string                     `json:"strategy_sha256"`
+	DefinitionSHA256   string                     `json:"definition_sha256"`
+	BasisSHA256        string                     `json:"basis_sha256"`
+	QuoteInputID       string                     `json:"quote_input_id"`
+	EvidenceClass      string                     `json:"evidence_class"`
+	CheckedAt          time.Time                  `json:"checked_at"`
+	ValidUntil         time.Time                  `json:"valid_until"`
+	Status             string                     `json:"status"`
+	Gates              []OwnedAdmissionGate       `json:"gates"`
+	ReconsiderTriggers []string                   `json:"reconsider_triggers"`
+	Authority          string                     `json:"authority"`
+	// Readiness v7 only: an applicable evaluation completed for this strategy,
+	// and the owner issued paper eligibility for this proposal.
+	EvaluationComplete         bool   `json:"evaluation_complete,omitempty"`
+	PaperOperationallyEligible bool   `json:"paper_operationally_eligible,omitempty"`
+	AdmissionAvailable         bool   `json:"admission_available"`
+	ExecutionAvailable         bool   `json:"execution_available"`
+	QualificationCredit        bool   `json:"qualification_credit"`
+	SHA256                     string `json:"sha256"`
 }
 
 // OwnedAdmissionBinding identifies the owner-selected comparison context. It is
@@ -81,7 +85,7 @@ func bindOwnedAdmissionReadiness(r OwnedAllocationRecord, policy allocation.Poli
 		return nil, ErrOwnedAllocationInvalid
 	}
 	safety := map[string]OwnedExecutionSafety{}
-	if r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || r.Schema == "mantik-owned-allocation-deferral-v14") {
+	if r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || r.Schema == "mantik-owned-allocation-deferral-v15")) {
 		for _, v := range r.ExecutionSafety {
 			cost, ok := costs[v.DecisionID]
 			if _, duplicate := safety[v.DecisionID]; duplicate || !ok || v.DecisionSHA256 != cost.DecisionSHA256 || v.CostCeilingSHA256 != cost.SHA256 || v.AccountSHA256 != policy.Account.SHA256 || v.PolicySHA256 != policy.SHA256 {

@@ -208,13 +208,31 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 		{Name: "evaluation_recipe", Status: "unavailable", ReasonCode: "relevant_evaluation_receipt_unavailable"},
 		{Name: "execution_reconciliation", Status: "unavailable", ReasonCode: "owned_execution_evidence_unavailable"},
 	}
-	if c.Schema == "mantik-owned-admission-readiness-v3" || (c.Schema == "mantik-owned-admission-readiness-v4" || (c.Schema == "mantik-owned-admission-readiness-v5" || c.Schema == "mantik-owned-admission-readiness-v6")) {
+	if c.Schema == "mantik-owned-admission-readiness-v3" || (c.Schema == "mantik-owned-admission-readiness-v4" || (c.Schema == "mantik-owned-admission-readiness-v5" || c.Schema == "mantik-owned-admission-readiness-v6" || c.Schema == "mantik-owned-admission-readiness-v7")) {
 		gate, err := validateReadinessAssessmentSelection(c, a)
 		if err != nil {
 			return err
 		}
 		gates[2] = gate
 	} else if len(c.EvaluationEvidence) > 0 || c.Binding != nil && c.Binding.EvaluationBindingSHA256 != "" {
+		return storage.ErrPaperAttributionInvalid
+	}
+	if c.Schema == "mantik-owned-admission-readiness-v7" {
+		// The service replays the admission itself; a client checks that the
+		// retained eligibility agrees with the readiness it was derived from.
+		if c.EvaluationComplete && gates[2].Status == "unavailable" {
+			gates[2] = storage.OwnedAdmissionGate{Name: "evaluation_recipe", Status: "verified", ReasonCode: "retained_complete_applicable_evaluation"}
+		}
+		if c.PaperOperationallyEligible {
+			if !c.EvaluationComplete || expectedStatus == "expired" || a.ExecutionSafety == nil || gates[2].Status != "verified" {
+				return storage.ErrPaperAttributionInvalid
+			}
+			expectedStatus, triggers = "eligible", []string{"admission_expiry"}
+		}
+		if c.AdmissionAvailable != c.PaperOperationallyEligible || c.ExecutionAvailable || c.QualificationCredit {
+			return storage.ErrPaperAttributionInvalid
+		}
+	} else if c.EvaluationComplete || c.PaperOperationallyEligible {
 		return storage.ErrPaperAttributionInvalid
 	}
 	if c.QuoteInputID != r.Decision.Evaluation.Coverage.Quote.InputID || c.ValidUntil.IsZero() || c.Status != expectedStatus || !reflect.DeepEqual(c.Gates, gates) || !reflect.DeepEqual(c.ReconsiderTriggers, triggers) {
@@ -225,7 +243,7 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 		if c.Binding != nil {
 			return storage.ErrPaperAttributionInvalid
 		}
-	case "mantik-owned-admission-readiness-v2", "mantik-owned-admission-readiness-v3", "mantik-owned-admission-readiness-v4", "mantik-owned-admission-readiness-v5", "mantik-owned-admission-readiness-v6":
+	case "mantik-owned-admission-readiness-v2", "mantik-owned-admission-readiness-v3", "mantik-owned-admission-readiness-v4", "mantik-owned-admission-readiness-v5", "mantik-owned-admission-readiness-v6", "mantik-owned-admission-readiness-v7":
 		b := c.Binding
 		if b == nil || b.ComparisonID != a.ComparisonID || b.PolicySHA256 != a.PolicySHA256 || b.AccountID != a.AccountID || !paperaccount.ID.MatchString(b.PolicyID) || !paperStrategyPin.MatchString(b.AccountSHA256) || !paperStrategyPin.MatchString(b.ProposalSHA256) || !paperStrategyPin.MatchString(b.LedgerSHA256) {
 			return storage.ErrPaperAttributionInvalid
@@ -235,7 +253,7 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 			expectedCost = a.CostCeiling.SHA256
 		}
 		expectedSafety := ""
-		if (c.Schema == "mantik-owned-admission-readiness-v5" || c.Schema == "mantik-owned-admission-readiness-v6") && a.ExecutionSafety != nil {
+		if (c.Schema == "mantik-owned-admission-readiness-v5" || c.Schema == "mantik-owned-admission-readiness-v6" || c.Schema == "mantik-owned-admission-readiness-v7") && a.ExecutionSafety != nil {
 			expectedSafety = a.ExecutionSafety.SHA256
 		}
 		if b.ExecutionSafetySHA256 != expectedSafety {
@@ -338,7 +356,7 @@ func validateReadinessAssessmentSelection(c storage.OwnedAdmissionReadiness, a s
 		if !found {
 			return gate, storage.ErrPaperAttributionInvalid
 		}
-		if c.Schema == "mantik-owned-admission-readiness-v6" && v.DecisionEvidenceStatus == "source_unavailable_at_decision" && len(v.FailedChecks) > 0 {
+		if (c.Schema == "mantik-owned-admission-readiness-v6" || c.Schema == "mantik-owned-admission-readiness-v7") && v.DecisionEvidenceStatus == "source_unavailable_at_decision" && len(v.FailedChecks) > 0 {
 			failed = true
 		}
 		switch v.DecisionEvidenceStatus {
@@ -355,7 +373,7 @@ func validateReadinessAssessmentSelection(c storage.OwnedAdmissionReadiness, a s
 	switch {
 	case failed:
 		gate.Status, gate.ReasonCode = "failed", "retained_necessary_sample_check_failed"
-		if c.Schema == "mantik-owned-admission-readiness-v4" || (c.Schema == "mantik-owned-admission-readiness-v5" || c.Schema == "mantik-owned-admission-readiness-v6") {
+		if c.Schema == "mantik-owned-admission-readiness-v4" || (c.Schema == "mantik-owned-admission-readiness-v5" || c.Schema == "mantik-owned-admission-readiness-v6" || c.Schema == "mantik-owned-admission-readiness-v7") {
 			gate.ReasonCode = "retained_necessary_evaluation_check_failed"
 		}
 	case pending:
@@ -385,7 +403,7 @@ func validateAttributionReviews(row storage.PaperAttributionRow, receiver string
 		c := review.Command
 		raw := review
 		raw.SHA256 = ""
-		if c.Validate() != nil || c.ReceiverID != receiver || c.DecisionID != row.Decision.Command.ID || c.DecisionSHA256 != row.Decision.SHA256 || review.Schema != "mantik-owned-admission-review-v1" || review.Method != "retained-non-grant-admission-review-v1" || review.Authority != "service_owned_non_grant_admission_review_only" || review.AdmissionAvailable || review.ExecutionAvailable || review.QualificationCredit || !paperStrategyPin.MatchString(review.SHA256) || workerplan.Hash(raw) != review.SHA256 || seen[c.ID] || review.Sequence <= previous.Sequence || review.Sequence > storage.MaxOwnedAdmissionReviews || review.ReviewedAt.IsZero() || review.ReviewedAt.Before(previous.ReviewedAt) || review.ComparisonAt.Before(previous.ComparisonAt) || review.ReviewedAt.Before(review.ComparisonAt) || c.PreviousID != previous.Command.ID || c.PreviousSHA256 != previous.SHA256 {
+		if c.Validate() != nil || c.ReceiverID != receiver || c.DecisionID != row.Decision.Command.ID || c.DecisionSHA256 != row.Decision.SHA256 || !validAttributionReviewKind(review) || review.ExecutionAvailable || review.QualificationCredit || !paperStrategyPin.MatchString(review.SHA256) || workerplan.Hash(raw) != review.SHA256 || seen[c.ID] || review.Sequence <= previous.Sequence || review.Sequence > storage.MaxOwnedAdmissionReviews || review.ReviewedAt.IsZero() || review.ReviewedAt.Before(previous.ReviewedAt) || review.ComparisonAt.Before(previous.ComparisonAt) || review.ReviewedAt.Before(review.ComparisonAt) || c.PreviousID != previous.Command.ID || c.PreviousSHA256 != previous.SHA256 {
 			return storage.ErrPaperAttributionInvalid
 		}
 		seen[c.ID] = true
@@ -400,7 +418,7 @@ func validateAttributionReviews(row storage.PaperAttributionRow, receiver string
 			found = true
 		}
 		readiness := review.Readiness
-		if !found || (readiness.Schema != "mantik-owned-admission-readiness-v3" && readiness.Schema != "mantik-owned-admission-readiness-v4" && readiness.Schema != "mantik-owned-admission-readiness-v5" && readiness.Schema != "mantik-owned-admission-readiness-v6") || readiness.Binding == nil {
+		if !found || (readiness.Schema != "mantik-owned-admission-readiness-v3" && readiness.Schema != "mantik-owned-admission-readiness-v4" && readiness.Schema != "mantik-owned-admission-readiness-v5" && readiness.Schema != "mantik-owned-admission-readiness-v6" && readiness.Schema != "mantik-owned-admission-readiness-v7") || readiness.Binding == nil || (review.Schema == "mantik-owned-admission-review-v2") != (readiness.Schema == "mantik-owned-admission-readiness-v7") {
 			return storage.ErrPaperAttributionInvalid
 		}
 		status, reason := "deferred", "required_admission_gates_unavailable"
@@ -417,8 +435,10 @@ func validateAttributionReviews(row storage.PaperAttributionRow, receiver string
 			status, reason = "blocked", "retained_necessary_evaluation_check_failed"
 		case pending:
 			status, reason = "pending", "retained_evaluation_window_open"
+		case readiness.PaperOperationallyEligible:
+			status, reason = "eligible", "owner_issued_paper_eligibility"
 		}
-		if review.Status != status || review.ReasonCode != reason || !reflect.DeepEqual(review.ReconsiderTriggers, triggers) {
+		if review.AdmissionAvailable != (status == "eligible") || review.Status != status || review.ReasonCode != reason || !reflect.DeepEqual(review.ReconsiderTriggers, triggers) {
 			return storage.ErrPaperAttributionInvalid
 		}
 		previous = review
@@ -438,7 +458,7 @@ func validateAttributionReviews(row storage.PaperAttributionRow, receiver string
 // These are portable failure shapes, not source attestations. Actual owner replay
 // must still rederive the exact failure list from the pinned assessment.
 func validateReadinessFailures(c storage.OwnedAdmissionReadiness, v storage.OwnedAssessmentReadiness) error {
-	if c.Schema != "mantik-owned-admission-readiness-v4" && c.Schema != "mantik-owned-admission-readiness-v5" && c.Schema != "mantik-owned-admission-readiness-v6" {
+	if c.Schema != "mantik-owned-admission-readiness-v4" && c.Schema != "mantik-owned-admission-readiness-v5" && c.Schema != "mantik-owned-admission-readiness-v6" && c.Schema != "mantik-owned-admission-readiness-v7" {
 		if len(v.FailedChecks) > 0 {
 			return storage.ErrPaperAttributionInvalid
 		}
@@ -466,4 +486,15 @@ func validateReadinessFailures(c storage.OwnedAdmissionReadiness, v storage.Owne
 		return storage.ErrPaperAttributionInvalid
 	}
 	return nil
+}
+
+// Review v1 never grants; review v2 reviews owner-issued paper eligibility.
+func validAttributionReviewKind(r storage.OwnedAdmissionReview) bool {
+	switch r.Schema {
+	case "mantik-owned-admission-review-v1":
+		return r.Method == "retained-non-grant-admission-review-v1" && r.Authority == "service_owned_non_grant_admission_review_only" && !r.AdmissionAvailable
+	case "mantik-owned-admission-review-v2":
+		return r.Method == "retained-owner-eligibility-review-v1" && r.Authority == "service_owned_paper_eligibility_review_only"
+	}
+	return false
 }

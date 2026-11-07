@@ -24,8 +24,12 @@ type allocationBackend interface {
 	FixtureCapitalStore
 }
 
+// fixtureCapitalScale multiplies the fixture account and policy limits. Tests
+// that need a fundable protective proposal raise it and restore it after.
+var fixtureCapitalScale int64 = 1
+
 func policyCommand(a paperaccount.Account, id string) allocation.PolicyCommand {
-	return allocation.PolicyCommand{ReceiverID: a.ReceiverID, AccountID: a.Config.ID, Policy: allocation.Policy{ID: id, AccountSHA256: a.SHA256, MaxSnapshotAgeSeconds: 60, Strategies: []allocation.Strategy{{ID: "baseline-v1", ArtifactSHA256: strings.Repeat("a", 64), LimitCents: 40000, Priority: 0}}, Symbols: []allocation.Symbol{{ID: "DEMO", LimitCents: 40000, Groups: []string{"group"}}}, Groups: []allocation.Group{{ID: "group", LimitCents: 40000}}}}
+	return allocation.PolicyCommand{ReceiverID: a.ReceiverID, AccountID: a.Config.ID, Policy: allocation.Policy{ID: id, AccountSHA256: a.SHA256, MaxSnapshotAgeSeconds: 60, Strategies: []allocation.Strategy{{ID: "baseline-v1", ArtifactSHA256: strings.Repeat("a", 64), LimitCents: 40000 * fixtureCapitalScale, Priority: 0}}, Symbols: []allocation.Symbol{{ID: "DEMO", LimitCents: 40000 * fixtureCapitalScale, Groups: []string{"group"}}}, Groups: []allocation.Group{{ID: "group", LimitCents: 40000 * fixtureCapitalScale}}}}
 }
 func policyAccount(t *testing.T, s allocationBackend, id string) paperaccount.Account {
 	t.Helper()
@@ -34,7 +38,7 @@ func policyAccount(t *testing.T, s allocationBackend, id string) paperaccount.Ac
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := s.CreatePaperAccount(ctx, receiver.ID, paperaccount.Config{ID: id, Currency: "USD", OpeningCashCents: 100000, CapitalLimitCents: 50000}, func() time.Time { return time.Unix(100, 0).UTC() })
+	r, err := s.CreatePaperAccount(ctx, receiver.ID, paperaccount.Config{ID: id, Currency: "USD", OpeningCashCents: 100000 * fixtureCapitalScale, CapitalLimitCents: 50000 * fixtureCapitalScale}, func() time.Time { return time.Unix(100, 0).UTC() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +198,7 @@ func TestPostgresContractsAllocationPolicyUpgradeRollbackAndRestart(t *testing.T
 	}
 	defer up.Close()
 	var maximum int
-	if err = up.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 87 {
+	if err = up.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 88 {
 		t.Fatal(maximum, err)
 	}
 	after, _ := up.Snapshot(ctx)

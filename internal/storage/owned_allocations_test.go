@@ -344,7 +344,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	}
 
 	if withModel {
-		if len(first.ExecutionCosts) != 1 || first.Schema != "mantik-owned-allocation-deferral-v14" {
+		if len(first.ExecutionCosts) != 1 || first.Schema != OwnedAllocationGrantSchema {
 			t.Fatal(first)
 		}
 		cost := first.ExecutionCosts[0]
@@ -533,7 +533,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	journal.Records = clone(journal.Records[:2])
 	writeJournal := func(j ownedAllocationJournal) {
 		for i := range j.Records {
-			if j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v14" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v13" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v12" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v11" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v10" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v8" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v7" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v6" {
+			if j.Records[i].Record.Schema != OwnedAllocationGrantSchema && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v14" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v13" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v12" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v11" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v10" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v8" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v7" && j.Records[i].Record.Schema != "mantik-owned-allocation-deferral-v6" {
 				j.Records[i].EvaluationDeclarations = nil
 			}
 		}
@@ -559,6 +559,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	for i := range legacy12.Records {
 		v := &legacy12.Records[i].Record
 		v.Schema = "mantik-owned-allocation-deferral-v12"
+		v.Authority, v.Expirations = "service_owned_allocation_deferral_only", nil
 		for j := range v.AdmissionChecks {
 			v.AdmissionChecks[j].Schema = "mantik-owned-admission-readiness-v5"
 			v.AdmissionChecks[j].SHA256 = ""
@@ -591,6 +592,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		}
 		r := clone(first)
 		r.Schema = "mantik-owned-allocation-deferral-v11"
+		r.Authority, r.Expirations = "service_owned_allocation_deferral_only", nil
 		r.At = alias.Record.FinalizedAt
 		r.Command = OwnedAllocationCommand{ID: "forged-source-alias", ReceiverID: owner, Decisions: []OwnedDecisionPin{}}
 		comparison := allocation.Comparison{Proposals: []allocation.Proposal{}, Admissions: []allocation.Admission{}}
@@ -652,9 +654,11 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		for i := range legacy.Records {
 			r := &legacy.Records[i].Record
 			r.Schema = "mantik-owned-allocation-deferral-v2"
+			r.Authority, r.Expirations = "service_owned_allocation_deferral_only", nil
 			r.ExecutionSafety = nil
 			if withModel {
 				r.Schema = "mantik-owned-allocation-deferral-v4"
+				r.Authority, r.Expirations = "service_owned_allocation_deferral_only", nil
 				r.ExecutionSafety = nil
 			}
 			legacyReadiness(r)
@@ -686,6 +690,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	for i := range legacyV8.Records {
 		r := &legacyV8.Records[i].Record
 		r.Schema = "mantik-owned-allocation-deferral-v8"
+		r.Authority, r.Expirations = "service_owned_allocation_deferral_only", nil
 		r.ExecutionSafety = nil
 		var p allocation.PolicyRecord
 		for _, v := range legacyV8.Records[i].Policies.Records {
@@ -710,6 +715,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	for i := range legacyV7.Records {
 		r := &legacyV7.Records[i].Record
 		r.Schema = "mantik-owned-allocation-deferral-v7"
+		r.Authority, r.Expirations = "service_owned_allocation_deferral_only", nil
 		r.ExecutionSafety = nil
 		r.EvaluationContext.Schema = "mantik-owned-allocation-evaluation-context-v1"
 		r.EvaluationContext.AssessmentSourceSHA256 = ""
@@ -730,6 +736,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	for i := range legacyV6.Records {
 		r := &legacyV6.Records[i].Record
 		r.Schema = "mantik-owned-allocation-deferral-v6"
+		r.Authority, r.Expirations = "service_owned_allocation_deferral_only", nil
 		r.ExecutionSafety = nil
 		r.SHA256 = ""
 		r.SHA256 = workerplan.Hash(*r)
@@ -756,6 +763,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	for i := range legacyV5.Records {
 		r := &legacyV5.Records[i].Record
 		r.Schema = "mantik-owned-allocation-deferral-v5"
+		r.Authority, r.Expirations = "service_owned_allocation_deferral_only", nil
 		r.ExecutionSafety = nil
 		r.EvaluationContext = nil
 		r.SHA256 = ""
@@ -831,9 +839,11 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 	for i := range legacyBound.Records {
 		r := &legacyBound.Records[i].Record
 		r.Schema = "mantik-owned-allocation-deferral-v2"
+		r.Authority, r.Expirations = "service_owned_allocation_deferral_only", nil
 		r.ExecutionSafety = nil
 		if withModel {
 			r.Schema = "mantik-owned-allocation-deferral-v4"
+			r.Authority, r.Expirations = "service_owned_allocation_deferral_only", nil
 			r.ExecutionSafety = nil
 		}
 		legacyReadiness(r)
@@ -872,6 +882,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		legacy.Records = legacy.Records[:1]
 		old := &legacy.Records[0].Record
 		old.Schema = "mantik-owned-allocation-deferral-v3"
+		old.Authority, old.Expirations = "service_owned_allocation_deferral_only", nil
 		old.ExecutionSafety = nil
 		legacyReadiness(old)
 		old.ExecutionCosts[0].ProtectiveFunding = nil
@@ -959,7 +970,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			t.Fatal("serialized plan result", racingReceipt, racingErr)
 		}
 		mixed, e := s.OwnedAllocations(ctx, eval)
-		if e != nil || len(mixed.Records) != 2 || !reflect.DeepEqual(mixed.Records[0], *old) || mixed.Records[1].Schema != "mantik-owned-allocation-deferral-v14" {
+		if e != nil || len(mixed.Records) != 2 || !reflect.DeepEqual(mixed.Records[0], *old) || mixed.Records[1].Schema != OwnedAllocationGrantSchema {
 			t.Fatal("mixed v3/v4", e)
 		}
 		for _, record := range mixed.Records {
@@ -1005,6 +1016,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		legacy := clone(journal)
 		old := &legacy.Records[0].Record
 		old.Schema = "mantik-owned-allocation-deferral-v1"
+		old.Authority, old.Expirations = "service_owned_allocation_deferral_only", nil
 		old.ExecutionSafety = nil
 		old.AdmissionChecks = nil
 		old.EvaluationContext = nil
@@ -1017,7 +1029,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		}
 		writeJournal(legacy)
 		mixed, e := s.OwnedAllocations(ctx, eval)
-		if e != nil || !reflect.DeepEqual(mixed.Records[0], *old) || mixed.Records[1].Schema != "mantik-owned-allocation-deferral-v14" {
+		if e != nil || !reflect.DeepEqual(mixed.Records[0], *old) || mixed.Records[1].Schema != OwnedAllocationGrantSchema {
 			t.Fatal("legacy replay", e)
 		}
 		oldRetry, e := s.CompareOwnedAllocation(ctx, c, noClock, eval)
@@ -1029,7 +1041,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		if len(first.ExecutionSafety) != 1 || first.ExecutionSafety[0].Safety != strategy.Record.Command.Definition.Safety || first.ExecutionSafety[0].CostCeilingSHA256 != first.ExecutionCosts[0].SHA256 || first.ExecutionSafety[0].ComparisonID != first.Command.ID || first.ExecutionSafety[0].AdmissionAvailable || first.ExecutionSafety[0].ExecutionAvailable || first.ExecutionSafety[0].QualificationCredit {
 			t.Fatal("missing actual execution safety binding", first.ExecutionSafety)
 		}
-		if first.AdmissionChecks[0].Schema != "mantik-owned-admission-readiness-v6" || first.AdmissionChecks[0].Binding.ExecutionSafetySHA256 != first.ExecutionSafety[0].SHA256 {
+		if first.AdmissionChecks[0].Schema != "mantik-owned-admission-readiness-v7" || first.AdmissionChecks[0].Binding.ExecutionSafetySHA256 != first.ExecutionSafety[0].SHA256 {
 			t.Fatal("readiness did not bind actual safety requirements")
 		}
 		for _, replacement := range []string{"", workerplan.Hash("other-safety")} {
@@ -1054,6 +1066,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 			for i := range legacy.Records {
 				v := &legacy.Records[i].Record
 				v.Schema = fmt.Sprintf("mantik-owned-allocation-deferral-v%d", version)
+				v.Authority, v.Expirations = "service_owned_allocation_deferral_only", nil
 				for j := range v.AdmissionChecks {
 					c := &v.AdmissionChecks[j]
 					c.Schema = "mantik-owned-admission-readiness-v4"
@@ -1327,13 +1340,13 @@ func TestPostgresContractsOwnedAllocationUpgradeRollback(t *testing.T) {
 
 func assertOwnedReadiness(t *testing.T, r OwnedAllocationRecord, decision PaperDecisionRecord, strategy paperstrategy.Record, quote, class, status string) {
 	t.Helper()
-	if r.Schema != "mantik-owned-allocation-deferral-v14" || len(r.AdmissionChecks) != 1 {
+	if r.Schema != OwnedAllocationGrantSchema || len(r.AdmissionChecks) != 1 {
 		t.Fatal(r)
 	}
 	c := r.AdmissionChecks[0]
 	hash := c.SHA256
 	c.SHA256 = ""
-	if workerplan.Hash(c) != hash || c.Schema != "mantik-owned-admission-readiness-v6" || c.ReceiverID != r.Command.ReceiverID || c.DecisionID != decision.Command.ID || c.DecisionSHA256 != decision.SHA256 || c.StrategyID != strategy.Command.Definition.ID || c.StrategySHA256 != strategy.SHA256 || c.DefinitionSHA256 != strategy.DefinitionSHA256 || c.BasisSHA256 != decision.BasisSHA256 || c.QuoteInputID != quote || c.EvidenceClass != class || !c.CheckedAt.Equal(r.At) || !c.ValidUntil.Equal(r.Entry.Plan.Decisions[0].Proposal.ValidUntil) || c.Status != status || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit || c.Authority != "service_owned_admission_readiness_only" {
+	if workerplan.Hash(c) != hash || c.Schema != "mantik-owned-admission-readiness-v7" || c.ReceiverID != r.Command.ReceiverID || c.DecisionID != decision.Command.ID || c.DecisionSHA256 != decision.SHA256 || c.StrategyID != strategy.Command.Definition.ID || c.StrategySHA256 != strategy.SHA256 || c.DefinitionSHA256 != strategy.DefinitionSHA256 || c.BasisSHA256 != decision.BasisSHA256 || c.QuoteInputID != quote || c.EvidenceClass != class || !c.CheckedAt.Equal(r.At) || !c.ValidUntil.Equal(r.Entry.Plan.Decisions[0].Proposal.ValidUntil) || c.Status != status || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit || c.Authority != "service_owned_admission_readiness_only" {
 		t.Fatal(c)
 	}
 	b := c.Binding
@@ -1404,7 +1417,7 @@ func admissionBindingMigrationContract(t *testing.T, p *Postgres) {
 			t.Fatal(err)
 		}
 	}
-	if err = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 87 {
+	if err = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 88 {
 		t.Fatal(maximum, err)
 	}
 	var after []byte
@@ -1462,7 +1475,7 @@ func evaluationContextMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	reopened.Close()
-	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 87 {
+	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 88 {
 		t.Fatal("context migration missing", maximum, err)
 	}
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); err != nil || !reflect.DeepEqual(before, after) {
@@ -1516,7 +1529,7 @@ func completeEvaluationCaptureMigrationContract(t *testing.T, p *Postgres) {
 		t.Fatal(err)
 	}
 	reopened.Close()
-	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 87 {
+	if err := p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 88 {
 		t.Fatal("context migration missing", maximum, err)
 	}
 	if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_owned_allocations WHERE singleton").Scan(&after); err != nil || !reflect.DeepEqual(before, after) {
