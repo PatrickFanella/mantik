@@ -120,7 +120,9 @@ func retainPositiveCoverage(t *testing.T, store any, owner string, clock *ownedD
 // must complete for the center strategy. A fresh decision on 2026-11-09 then
 // receives owner-issued eligibility and a capital reservation. These are
 // manufactured captures with no qualification credit.
-func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend) (storage.PaperEvaluationAssessment, storage.OwnedAllocationCatalog) {
+// failCommit, when set, makes the store's next commits fail (true) or succeed
+// again (false); the Postgres variant uses a deferred constraint trigger.
+func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend, failCommit func(bool)) (storage.PaperEvaluationAssessment, storage.OwnedAllocationCatalog) {
 	t.Helper()
 	skipUnderRaceDetector(t)
 	ctx := context.Background()
@@ -372,8 +374,23 @@ func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend) (storage.Paper
 	quote("grant-entry", 98, 99)
 	clock.at = clock.at.Add(time.Second)
 	fresh := decide("grant-decision", d.ID)
+	grant := storage.OwnedAllocationCommand{ID: "grant-comparison", ReceiverID: owner, Decisions: []storage.OwnedDecisionPin{{ID: fresh.Record.Command.ID, SHA256: fresh.Record.SHA256}}}
+	if failCommit != nil {
+		// A failed commit must leave no comparison, reservation or ledger
+		// entry, and the same command must then reserve exactly once.
+		failCommit(true)
+		request("POST", "/v1/allocation-comparisons", grant, 503)
+		failCommit(false)
+		var untouched storage.OwnedAllocationCatalog
+		if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &untouched); err != nil {
+			t.Fatal(err)
+		}
+		if len(untouched.Records) != 0 || len(untouched.Ledgers) != 0 || len(untouched.Capital) != 1 || untouched.Capital[0].Schema != "mantik-owned-deferral-capital-v1" || untouched.Capital[0].AvailableCashCents != 200000 {
+			t.Fatal("failed commit persisted allocation state", untouched)
+		}
+	}
 	var comparison storage.OwnedAllocationReceipt
-	if err := json.Unmarshal(request("POST", "/v1/allocation-comparisons", storage.OwnedAllocationCommand{ID: "grant-comparison", ReceiverID: owner, Decisions: []storage.OwnedDecisionPin{{ID: fresh.Record.Command.ID, SHA256: fresh.Record.SHA256}}}, 201), &comparison); err != nil {
+	if err := json.Unmarshal(request("POST", "/v1/allocation-comparisons", grant, 201), &comparison); err != nil {
 		t.Fatal(err)
 	}
 	g := comparison.Record
@@ -467,12 +484,12 @@ func TestOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	positiveEvaluationHTTP(t, m)
+	positiveEvaluationHTTP(t, m, nil)
 }
 
-// The Postgres variant also reopens the store: replay after restart must
-// rederive the same complete assessment, admissions and reservations without
-// reading a clock.
+// The Postgres variant also fails one reserving commit and then reopens the
+// store: replay after restart must rederive the same complete assessment,
+// admissions and reservations without reading a clock.
 func TestPostgresContractsOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T) {
 	base := os.Getenv("MANTIK_TEST_DATABASE_URL")
 	if base == "" {
@@ -502,7 +519,22 @@ func TestPostgresContractsOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	assessment, catalog := positiveEvaluationHTTP(t, s)
+	trigger, err := pgx.Connect(ctx, u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer trigger.Close(ctx)
+	failCommit := func(on bool) {
+		t.Helper()
+		statement := `CREATE FUNCTION reject_allocation_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'allocation commit fixture rollback'; END $$; CREATE CONSTRAINT TRIGGER reject_allocation_commit AFTER INSERT OR UPDATE ON mantik_owned_allocations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_allocation_commit()`
+		if !on {
+			statement = "DROP TRIGGER reject_allocation_commit ON mantik_owned_allocations; DROP FUNCTION reject_allocation_commit()"
+		}
+		if _, err := trigger.Exec(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assessment, catalog := positiveEvaluationHTTP(t, s, failCommit)
 	s.Close()
 	reopened, err := storage.OpenPostgresWithPortfolioEvaluator(ctx, u.String(), service.EvaluateOwnedPaperPortfolio)
 	if err != nil {
