@@ -801,3 +801,96 @@ rationals. A pass grants no admission, execution or qualification.
 Replay re-executes every owner, so a rehashed sensitivity check and a downgrade
 to v13 both fail. Schema 86 fences earlier writers and rewrites no retained
 record.
+
+## Holdout returns and day-clustered sign test
+
+Assessment v15 (recipe `native-predeclared-holdout-sign-test-v15`) follows a
+declaration v12 plan. It derives everything v14 derives, then decides three
+more checks.
+
+### Standalone decision returns
+
+The portfolio method becomes
+`owner-selected-finite-capital-decision-total-return-v4`. Besides each
+variant's finite-capital book, the owner replays every selected decision
+alone: a book with the full opening capital that trades only that decision,
+through the same entry, protective-exit and reconciled total-return
+accounting. The variant book funds decisions in order until its budget is
+used and never reinvests, so later decisions, including most holdout ones, may
+never trade there. A standalone book measures each decision on its own.
+
+Each `decisions` row keeps the decision pin, a status, and the base and stress
+nets with their total-return hashes. Statuses are `observed_total_return`, a
+total-return status such as `terminal_mark_unavailable`, `decision_not_funded`,
+`capital_replay_capacity_exceeded` or `instrument_not_covered`. Rows exist only
+when the variant's entry replay ran.
+
+### `out_of_sample`
+
+The holdout decisions are the rows of the purged partition marked `holdout`.
+
+- **`passed`** (`holdout_total_return_meets_predeclared_floor_in_base_and_stress`)
+  when the sum of their standalone nets reaches `minimum_holdout_net_cents` in
+  both models.
+- **`failed`** (`holdout_total_return_below_predeclared_floor`) when either sum
+  falls short. A partition below its occurrence minimum stays failed with its
+  earlier reason. Both make the assessment `blocked`.
+- **`unavailable`** (`holdout_decision_total_return_unavailable`) when any
+  holdout decision lacks an observed standalone total return.
+- **`pending`** before the outcome deadline.
+
+Threshold parameters are fixed before `window_start`, so the whole window is
+already prospective. The holdout sum checks that a result is not carried by
+the early part of the window.
+
+### `sample_sufficiency`
+
+The units are the selected disjoint windows of the sample design, thinned to
+one per New York trading day: the earliest-ending window that starts on each
+date. Each unit's stress-model standalone net is positive or not; zero counts
+against the variant. With n units and k positive, the one-sided exact binomial
+p-value is P(X ≥ k) for X ~ Binomial(n, 1/2), kept as a reduced fraction.
+
+- **`passed`** (`day_clustered_sign_test_significant_at_corrected_alpha`) when
+  n reaches `minimum_trading_days` and the p-value is at most alpha divided by
+  the plan's search bound. The comparison uses exact integers.
+- **`failed`** with `trading_day_windows_below_predeclared_minimum` or
+  `sign_test_not_significant_at_corrected_alpha`. A disjoint count below the
+  design minimum stays failed with its earlier reason.
+- **`unavailable`** (`clustered_window_total_return_unavailable`) when any unit
+  lacks an observed standalone total return.
+- **`pending`** before the outcome deadline.
+
+The test treats day-clustered windows as exchangeable. The retained
+`statistical_tests` object says so with `exchangeability_assumed: true` and
+`independence_established: false`. One window per day removes same-day
+overlap; it does not prove independence across days.
+
+### `search_multiplicity`
+
+The search history still fails when the registry exceeds the declared bound.
+Otherwise, after the deadline, the check passes with
+`sign_test_bonferroni_adjusted_for_predeclared_search_bound`: the sign test
+divided alpha by that bound, which is at least the number of strategies
+searched. Before the deadline it is `pending`.
+
+The `statistical_tests` object is derived from the retained portfolio,
+holdout partition and sample design and has no sources of its own. A pass
+grants no admission, execution or qualification.
+
+### Completion
+
+After the outcome deadline, an assessment that is not `blocked` becomes
+`complete` when at least one variant has every planned check `passed` or
+`not_applicable`. Those variants are listed in `complete_strategy_ids`, and
+`evaluation_complete` becomes true. Other variants stay incomplete; a
+sensitivity neighbor that is not a center, for example, never decides its own
+sensitivity check. This is the first recipe that can complete. `admission_available`,
+`execution_available` and `qualification_credit` stay false: eligibility and
+capital commitments belong to the admission owner (#283). Allocation readiness
+accepts a passed sample check but still reports the evaluation gate as
+unavailable.
+
+Replay re-executes every owner, so a rehashed decision return and a downgrade
+to v14 both fail. Schema 87 fences earlier writers and rewrites no retained
+record.

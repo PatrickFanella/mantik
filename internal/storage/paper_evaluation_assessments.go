@@ -56,20 +56,24 @@ type PaperEvaluationAssessment struct {
 	Portfolio           *PaperEvaluationPortfolio           `json:"portfolio,omitempty"`
 	CorporateSourceCut  *PaperEvaluationCorporateSourceCut  `json:"corporate_source_cut,omitempty"`
 	ForecastCalibration *PaperEvaluationForecastCalibration `json:"forecast_calibration,omitempty"`
-	WarmUp              *PaperEvaluationWarmUp              `json:"warm_up,omitempty"`
-	Schema              string                              `json:"schema"`
-	Command             PaperEvaluationAssessmentCommand    `json:"command"`
-	AssessedAt          time.Time                           `json:"assessed_at"`
-	Recipe              string                              `json:"recipe"`
-	Evidence            PaperEvaluationEvidence             `json:"evidence"`
-	Checks              []PaperEvaluationCheck              `json:"checks"`
-	Status              string                              `json:"status"`
-	Authority           string                              `json:"authority"`
-	EvaluationComplete  bool                                `json:"evaluation_complete"`
-	AdmissionAvailable  bool                                `json:"admission_available"`
-	ExecutionAvailable  bool                                `json:"execution_available"`
-	QualificationCredit bool                                `json:"qualification_credit"`
-	SHA256              string                              `json:"sha256"`
+	StatisticalTests    *PaperEvaluationStatisticalTests    `json:"statistical_tests,omitempty"`
+	// Variants whose every planned check passed or is not applicable; set only
+	// with status complete.
+	CompleteStrategyIDs []string                         `json:"complete_strategy_ids,omitempty"`
+	WarmUp              *PaperEvaluationWarmUp           `json:"warm_up,omitempty"`
+	Schema              string                           `json:"schema"`
+	Command             PaperEvaluationAssessmentCommand `json:"command"`
+	AssessedAt          time.Time                        `json:"assessed_at"`
+	Recipe              string                           `json:"recipe"`
+	Evidence            PaperEvaluationEvidence          `json:"evidence"`
+	Checks              []PaperEvaluationCheck           `json:"checks"`
+	Status              string                           `json:"status"`
+	Authority           string                           `json:"authority"`
+	EvaluationComplete  bool                             `json:"evaluation_complete"`
+	AdmissionAvailable  bool                             `json:"admission_available"`
+	ExecutionAvailable  bool                             `json:"execution_available"`
+	QualificationCredit bool                             `json:"qualification_credit"`
+	SHA256              string                           `json:"sha256"`
 }
 type PaperEvaluationAssessmentReceipt struct {
 	Record    PaperEvaluationAssessment `json:"record"`
@@ -256,7 +260,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 		if err != nil {
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
-		hasHoldout := slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v7", "mantik-owned-paper-evaluation-assessment-v8", "mantik-owned-paper-evaluation-assessment-v9", "mantik-owned-paper-evaluation-assessment-v10", "mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13", "mantik-owned-paper-evaluation-assessment-v14"}, r.Schema)
+		hasHoldout := slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v7", "mantik-owned-paper-evaluation-assessment-v8", "mantik-owned-paper-evaluation-assessment-v9", "mantik-owned-paper-evaluation-assessment-v10", "mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13", "mantik-owned-paper-evaluation-assessment-v14", "mantik-owned-paper-evaluation-assessment-v15"}, r.Schema)
 		hasPortfolio := r.Schema == "mantik-owned-paper-evaluation-assessment-v6" || hasHoldout
 		hasCorporate := r.Schema == "mantik-owned-paper-evaluation-assessment-v5" || hasPortfolio
 		var warmup *PaperEvaluationWarmUp
@@ -279,7 +283,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 		// covered instruments' reconciled actions.
 		var coverage *PaperEvaluationCorporateCoverage
 		var actions []papereconomics.Actions
-		totalReturn := r.Schema == "mantik-owned-paper-evaluation-assessment-v13" || r.Schema == "mantik-owned-paper-evaluation-assessment-v14"
+		totalReturn := r.Schema == "mantik-owned-paper-evaluation-assessment-v13" || r.Schema == "mantik-owned-paper-evaluation-assessment-v14" || r.Schema == "mantik-owned-paper-evaluation-assessment-v15"
 		if r.Schema == "mantik-owned-paper-evaluation-assessment-v12" || totalReturn {
 			value, err := ownedCorporateCoverage(ctx, e, *cut, s)
 			if err != nil {
@@ -305,7 +309,7 @@ func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map
 			}
 		}
 		var search *PaperEvaluationSearchHistory
-		if slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13", "mantik-owned-paper-evaluation-assessment-v14"}, r.Schema) {
+		if slices.Contains([]string{"mantik-owned-paper-evaluation-assessment-v11", "mantik-owned-paper-evaluation-assessment-v12", "mantik-owned-paper-evaluation-assessment-v13", "mantik-owned-paper-evaluation-assessment-v14", "mantik-owned-paper-evaluation-assessment-v15"}, r.Schema) {
 			value, err := ownedSearchHistory(e, s.strategies, r.AssessedAt)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
@@ -474,6 +478,9 @@ func appendPaperEvaluationAssessment(ctx context.Context, owner string, all map[
 	}
 	if e.Declaration.Command.Plan.Sensitivity != nil {
 		schema = "mantik-owned-paper-evaluation-assessment-v14"
+	}
+	if e.Declaration.Command.Plan.StatisticalTests != nil {
+		schema = "mantik-owned-paper-evaluation-assessment-v15"
 	}
 	record, err := paperAssessmentWithBenchmarks(c, e, &warmup, &cut, portfolio, holdout, search, coverage, schema)
 	if err != nil {

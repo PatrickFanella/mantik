@@ -27,6 +27,9 @@ type PaperEvaluationPortfolioVariant struct {
 	Status            string                      `json:"status"`
 	Base              *papereconomics.Result      `json:"base,omitempty"`
 	Stress            *papereconomics.Result      `json:"stress,omitempty"`
+	// Present only for the decision-return method: each selected decision
+	// evaluated alone with the full opening capital.
+	Decisions []PaperEvaluationDecisionReturn `json:"decisions,omitempty"`
 }
 
 type PaperEvaluationPortfolio struct {
@@ -88,11 +91,15 @@ func validatePortfolioEnvelope(e PaperEvaluationEvidence, p PaperEvaluationPortf
 	if totalReturn {
 		expectedMethod = PaperTotalReturnPortfolioMethod
 	}
+	decisions := e.Declaration.Command.Plan.StatisticalTests != nil
+	if decisions {
+		expectedMethod = PaperDecisionReturnPortfolioMethod
+	}
 	if p.Method != expectedMethod || p.Authority != "service_owned_observed_portfolio_accounting_only" || p.EvidenceSHA256 != e.SHA256 || p.PolicySHA256 != e.Declaration.Command.PolicySHA256 || !decisionPin.MatchString(p.SourceSHA256) || len(p.Variants) != len(e.Declaration.Command.Plan.Variants) || p.EvaluationComplete || p.AdmissionAvailable || p.ExecutionAvailable || p.QualificationCredit {
 		return ErrPaperEvaluationAssessmentInvalid
 	}
 	for i, v := range p.Variants {
-		if v.StrategyID != e.Declaration.Command.Plan.Variants[i].ID || v.Status == "" || (v.Base == nil) != (v.Stress == nil) {
+		if v.StrategyID != e.Declaration.Command.Plan.Variants[i].ID || v.Status == "" || (v.Base == nil) != (v.Stress == nil) || !decisions && v.Decisions != nil || !validDecisionReturns(v.Decisions) {
 			return ErrPaperEvaluationAssessmentInvalid
 		}
 		values := []*papereconomics.Result{v.Base, v.Stress}
@@ -158,6 +165,9 @@ func ownedPortfolioEvaluation(ctx context.Context, e PaperEvaluationEvidence, s 
 			return nil, ErrPaperEvaluationAssessmentInvalid
 		}
 		inputs.AccountingRecipe, inputs.CorporateActions = PaperTotalReturnAssessmentRecipe, actions
+		if e.Declaration.Command.Plan.StatisticalTests != nil {
+			inputs.AccountingRecipe = PaperStatisticalAssessmentRecipe
+		}
 	} else if actions != nil {
 		return nil, ErrPaperEvaluationAssessmentInvalid
 	}

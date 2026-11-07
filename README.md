@@ -296,6 +296,11 @@ grants no admission.
 Declaration v11 and assessment v14 decide `parameter_and_cost_sensitivity`
 from the total returns of predeclared threshold neighbors in the base and
 stress models; a pass grants no admission.
+Declaration v12 and assessment v15 decide `out_of_sample` from the holdout
+decisions' standalone total returns, and `sample_sufficiency` and
+`search_multiplicity` from a day-clustered exact sign test with a
+Bonferroni-corrected alpha. An assessment whose variant passes every check is
+`complete`; completion grants no admission.
 The [feed-collector API](docs/reference/feed-collectors.md) retains immutable
 registrations and fenced ownership leases. It does not start a collector or
 configure feed readiness.

@@ -200,3 +200,72 @@ func TestOwnedThresholdSensitivityAssessmentHTTP(t *testing.T) {
 func TestPostgresContractsOwnedThresholdSensitivityAssessmentHTTP(t *testing.T) {
 	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true, coverage: true, totalReturn: true, sensitivity: true})
 }
+
+// The fixture has no holdout decisions and all its windows fall on one New
+// York date, so out-of-sample and the sign test fail on their predeclared
+// minimums. The pass paths are covered by the storage unit tests. Each
+// selected decision still gets its own standalone total-return book.
+func assertStatisticalTests(t *testing.T, r storage.PaperEvaluationAssessment, declared []storage.PaperEvaluationVariant) {
+	t.Helper()
+	st := r.StatisticalTests
+	if st == nil || len(st.Variants) != len(declared) || st.SearchBound != len(declared) || st.CorrectedAlpha != "1/30" || !st.ExchangeabilityAssumed || st.IndependenceEstablished || st.EvaluationComplete || st.AdmissionAvailable || st.ExecutionAvailable || st.QualificationCredit {
+		t.Fatal("statistical tests envelope", st)
+	}
+	selected := 0
+	for _, row := range r.Evidence.Rows {
+		if row.Status == "selected_research_evidence" && row.Decision.Command.StrategyID == declared[0].ID {
+			selected++
+		}
+	}
+	decisions := r.Portfolio.Variants[0].Decisions
+	if selected == 0 || len(decisions) != selected {
+		t.Fatal("standalone decision returns", selected, decisions)
+	}
+	for _, d := range decisions {
+		if d.Status != "observed_total_return" || d.BaseNetCents == nil || d.StressNetCents == nil {
+			t.Fatal("covered decision lacks a standalone total return", d)
+		}
+	}
+	for _, v := range r.Portfolio.Variants[1:] {
+		if v.Decisions != nil {
+			t.Fatal("undecided neighbor gained decision returns", v.StrategyID)
+		}
+	}
+	v := st.Variants[0]
+	if v.HoldoutDecisions != 0 || v.OutOfSampleStatus != "failed" || v.TradingDays != 1 || v.PValue == nil || v.SampleStatus != "failed" {
+		t.Fatal("statistical variant", v)
+	}
+	for _, check := range r.Checks {
+		if check.StrategyID != declared[0].ID {
+			continue
+		}
+		switch check.Name {
+		case "out_of_sample":
+			if check.Status != "failed" || check.ReasonCode != "purged_partition_occurrence_upper_bound_below_predeclared_minimum" {
+				t.Fatal(check)
+			}
+		case "sample_sufficiency":
+			if check.Status != "failed" || check.ReasonCode != v.SampleReasonCode {
+				t.Fatal(check)
+			}
+		case "search_multiplicity":
+			if check.Status != "failed" || check.ReasonCode != "registered_search_exceeds_predeclared_bound" {
+				t.Fatal("search failure was overwritten", check)
+			}
+		}
+	}
+	if r.Status != "blocked" {
+		t.Fatal(r.Status)
+	}
+}
+
+func TestOwnedHoldoutSignTestAssessmentHTTP(t *testing.T) {
+	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPortfolioAssessmentHTTP(t, m, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true, coverage: true, totalReturn: true, sensitivity: true, statistical: true})
+}
+func TestPostgresContractsOwnedHoldoutSignTestAssessmentHTTP(t *testing.T) {
+	postgresPortfolioAssessmentHTTP(t, portfolioFixtureOptions{holdout: true, delayed: true, benchmarks: true, causal: true, sampleDesign: true, search: true, coverage: true, totalReturn: true, sensitivity: true, statistical: true})
+}

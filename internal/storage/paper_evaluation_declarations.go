@@ -39,6 +39,7 @@ type PaperEvaluationVariant struct {
 // This is an operator declaration of intended checks, never supplied results.
 // Registration precedes the observation window and pins the whole variant family.
 type PaperEvaluationPlan struct {
+	StatisticalTests        *PaperEvaluationStatisticalPlan      `json:"statistical_tests,omitempty"`
 	Sensitivity             *PaperEvaluationSensitivityPlan      `json:"sensitivity,omitempty"`
 	TotalReturnMethod       string                               `json:"total_return_method,omitempty"`
 	CorporateCoverage       *PaperEvaluationCoveragePlan         `json:"corporate_coverage,omitempty"`
@@ -122,6 +123,9 @@ type PaperEvaluationDeclarationStore interface {
 }
 
 func newPaperEvaluationDeclaration(c PaperEvaluationDeclarationCommand, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, at time.Time) (PaperEvaluationDeclaration, error) {
+	if c.Plan.StatisticalTests != nil {
+		return paperEvaluationDeclarationVersion(c, strategies, policies, at, "mantik-owned-paper-evaluation-declaration-v12")
+	}
 	if c.Plan.Sensitivity != nil {
 		return paperEvaluationDeclarationVersion(c, strategies, policies, at, "mantik-owned-paper-evaluation-declaration-v11")
 	}
@@ -155,10 +159,11 @@ func newPaperEvaluationDeclaration(c PaperEvaluationDeclarationCommand, strategi
 // Legacy declarations keep their ID-count semantics and original bytes. New
 // declarations cannot label identical native configurations as distinct variants.
 func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, strategies paperstrategy.Catalog, policies allocation.PolicyCatalog, at time.Time, schema string) (PaperEvaluationDeclaration, error) {
-	if !slices.Contains([]string{"mantik-owned-paper-evaluation-declaration-v1", "mantik-owned-paper-evaluation-declaration-v2", "mantik-owned-paper-evaluation-declaration-v3", "mantik-owned-paper-evaluation-declaration-v4", "mantik-owned-paper-evaluation-declaration-v5", "mantik-owned-paper-evaluation-declaration-v6", "mantik-owned-paper-evaluation-declaration-v7", "mantik-owned-paper-evaluation-declaration-v8", "mantik-owned-paper-evaluation-declaration-v9", "mantik-owned-paper-evaluation-declaration-v10", "mantik-owned-paper-evaluation-declaration-v11"}, schema) {
+	if !slices.Contains([]string{"mantik-owned-paper-evaluation-declaration-v1", "mantik-owned-paper-evaluation-declaration-v2", "mantik-owned-paper-evaluation-declaration-v3", "mantik-owned-paper-evaluation-declaration-v4", "mantik-owned-paper-evaluation-declaration-v5", "mantik-owned-paper-evaluation-declaration-v6", "mantik-owned-paper-evaluation-declaration-v7", "mantik-owned-paper-evaluation-declaration-v8", "mantik-owned-paper-evaluation-declaration-v9", "mantik-owned-paper-evaluation-declaration-v10", "mantik-owned-paper-evaluation-declaration-v11", "mantik-owned-paper-evaluation-declaration-v12"}, schema) {
 		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
 	}
-	sensitivity := schema == "mantik-owned-paper-evaluation-declaration-v11"
+	statistical := schema == "mantik-owned-paper-evaluation-declaration-v12"
+	sensitivity := schema == "mantik-owned-paper-evaluation-declaration-v11" || statistical
 	totalReturn := schema == "mantik-owned-paper-evaluation-declaration-v10" || sensitivity
 	coverage := schema == "mantik-owned-paper-evaluation-declaration-v9" || totalReturn
 	search := schema == "mantik-owned-paper-evaluation-declaration-v8" || coverage
@@ -166,7 +171,7 @@ func paperEvaluationDeclarationVersion(c PaperEvaluationDeclarationCommand, stra
 	causal := schema == "mantik-owned-paper-evaluation-declaration-v6" || sampleDesign
 	benchmarks := schema == "mantik-owned-paper-evaluation-declaration-v5" || causal
 	holdout := schema == "mantik-owned-paper-evaluation-declaration-v4" || benchmarks
-	if sensitivity != (c.Plan.Sensitivity != nil) || totalReturn != (c.Plan.TotalReturnMethod != "") || coverage != (c.Plan.CorporateCoverage != nil) || search != (c.Plan.SearchMultiplicity != nil) || sampleDesign != (c.Plan.SampleDesign != nil) || causal != (c.Plan.FeatureCausalityMethod != "") || benchmarks != (c.Plan.BenchmarkMethod != "") || holdout != (c.Plan.Holdout != nil) || (!holdout && (schema == "mantik-owned-paper-evaluation-declaration-v3") != (c.Plan.CorporateSources != nil)) {
+	if statistical != (c.Plan.StatisticalTests != nil) || sensitivity != (c.Plan.Sensitivity != nil) || totalReturn != (c.Plan.TotalReturnMethod != "") || coverage != (c.Plan.CorporateCoverage != nil) || search != (c.Plan.SearchMultiplicity != nil) || sampleDesign != (c.Plan.SampleDesign != nil) || causal != (c.Plan.FeatureCausalityMethod != "") || benchmarks != (c.Plan.BenchmarkMethod != "") || holdout != (c.Plan.Holdout != nil) || (!holdout && (schema == "mantik-owned-paper-evaluation-declaration-v3") != (c.Plan.CorporateSources != nil)) {
 		return PaperEvaluationDeclaration{}, ErrPaperEvaluationDeclarationInvalid
 	}
 	if c.Validate() != nil || !declarationTime(at) || strategies.Validate() != nil || policies.Validate() != nil || strategies.ReceiverID != c.ReceiverID || policies.ReceiverID != c.ReceiverID || !c.Plan.WindowStart.After(at) || c.Plan.WindowStart.Sub(at) > 365*24*time.Hour {

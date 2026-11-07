@@ -465,3 +465,34 @@ checks are those of v10. Earlier recipes reject the field, it requires a
 `total_return_method`, and a downgrade to v10 fails.
 
 The user accepted this rule on 2026-11-01, as proposed by the agent.
+
+## Prospective holdout returns and sign test
+
+Recipe `native-threshold-holdout-sign-test-plan-v10` retains declaration v12.
+It requires the sensitivity recipe's choices and adds:
+
+```json
+{"statistical_tests": {
+  "method": "native-holdout-return-day-clustered-sign-test-v1",
+  "minimum_holdout_net_cents": 0,
+  "minimum_trading_days": 20,
+  "alpha_basis_points": 500
+}}
+```
+
+`minimum_holdout_net_cents` is zero or more. `alpha_basis_points` ranges from
+1 to 1,000 (0.01% to 10%). `minimum_trading_days` ranges from 1 to 32, the
+most decisions a variant's book can hold. The plan must make a pass
+reachable: with every one of `minimum_trading_days` units positive, the sign
+test's p-value of 2^-n must not exceed alpha divided by
+`search_multiplicity.maximum_searched_strategies`. With alpha 5% and a bound of
+3, that needs at least 6 days.
+
+The assessment decides `out_of_sample`, `sample_sufficiency` and
+`search_multiplicity` as described in
+[holdout returns and sign test](paper-evaluation-assessments.md#holdout-returns-and-day-clustered-sign-test).
+The planned checks are those of v11. Earlier recipes reject the field, it
+requires a `sensitivity` plan, and a downgrade to v11 fails.
+
+The agent chose these methods on 2026-11-07, under the user's delegation for
+the remaining #282 checks.
