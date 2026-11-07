@@ -126,8 +126,8 @@ type ownedEntryBook struct {
 // ownedEntryBooks derives a v16 comparison's entry books: one buy limit per
 // reserved proposal at its bound cost ceiling, placed at the reserve clock and
 // expiring at the cost's validity, grouped by registration and quote scope so
-// a book consumes one feed. Orders reserved by different comparisons never
-// share a book, so liquidity is shared only among orders reserved together.
+// a book consumes one feed. Orders reserved by different comparisons get
+// separate books; advancedBooks shares displayed liquidity between them.
 func ownedEntryBooks(r OwnedAllocationRecord, policy allocation.PolicyRecord, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision) ([]ownedEntryBook, error) {
 	if r.Schema != OwnedExecutionSchema || r.Entry.Plan == nil {
 		return nil, nil
@@ -193,10 +193,38 @@ func (b ownedEntryBook) settled(cut time.Time) bool {
 	return !b.expires[len(b.expires)-1].After(cut)
 }
 
+// bookUse is the shares earlier books filled at one occurrence.
+type bookUse struct{ ask, bid int64 }
+
+// occurrenceKey names displayed liquidity: one registration's quote for one
+// symbol at one occurrence clock, as the occurrence book keys it.
+func occurrenceKey(registration string, q paperfill.Quote) string {
+	return workerplan.Hash(struct {
+		Registration, Symbol string
+		OccurredAt           time.Time
+	}{registration, q.Symbol, q.OccurredAt.UTC()})
+}
+
+// sharedDisplay is the displayed size whose modeled capacity is what earlier
+// books left of displayed. The occurrence book's capacity is
+// displayed*bps/10000, rounded down, so ceil(left*10000/bps) restores exactly
+// left and never exceeds the original display.
+func sharedDisplay(displayed, used, bps int64) int64 {
+	if used <= 0 {
+		return displayed
+	}
+	left := displayed*bps/10000 - used
+	if left <= 0 {
+		return 0
+	}
+	return (left*10000 + bps - 1) / bps
+}
+
 // at advances the book to cut: retained quotes available after placement and
 // through cut, interleaved with expiry timers, which precede quotes at the
-// same clock. Nothing is applied after the last order expires.
-func (b ownedEntryBook) at(ctx context.Context, x ownedExecution, cut time.Time) (paperfill.Book, error) {
+// same clock. Nothing is applied after the last order expires. Each quote's
+// displayed sizes first shrink by what earlier books filled at its occurrence.
+func (b ownedEntryBook) at(ctx context.Context, x ownedExecution, cut time.Time, used map[string]bookUse) (paperfill.Book, error) {
 	placed := b.root.Orders[0].PlacedAt
 	through := cut
 	if last := b.expires[len(b.expires)-1]; last.Before(through) {
@@ -211,15 +239,22 @@ func (b ownedEntryBook) at(ctx context.Context, x ownedExecution, cut time.Time)
 	if err != nil {
 		return paperfill.Book{}, err
 	}
+	bps := b.root.Model.LiquidityBPS
 	commands := []paperfill.BookCommand{}
 	timers := slices.DeleteFunc(slices.Clone(b.expires), func(t time.Time) bool { return t.After(through) })
 	for _, q := range quotes {
-		if !q.At.After(placed) || q.At.After(through) {
+		if !q.At.After(placed) || q.At.After(through) || q.Quote == nil {
 			return paperfill.Book{}, ErrOwnedAllocationConflict
 		}
 		for len(timers) > 0 && !timers[0].After(q.At) {
 			commands = append(commands, paperfill.BookCommand{ID: "entry-expiry-" + workerplan.Hash(timers[0]), At: timers[0]})
 			timers = timers[1:]
+		}
+		if u, ok := used[occurrenceKey(b.query.RegistrationID, *q.Quote)]; ok {
+			quote := *q.Quote
+			quote.AskQuantity = sharedDisplay(quote.AskQuantity, u.ask, bps)
+			quote.BidQuantity = sharedDisplay(quote.BidQuantity, u.bid, bps)
+			q.Quote = &quote
 		}
 		commands = append(commands, q)
 	}
@@ -241,20 +276,69 @@ func (b ownedEntryBook) at(ctx context.Context, x ownedExecution, cut time.Time)
 	return appender.Book(), nil
 }
 
-// advancePolicy stages every fill and unfilled-release effect the open books
-// produce by cut that ledger does not hold yet, merged in clock order, and
+// consume adds this advanced book's fills to the shares used per occurrence.
+func (b ownedEntryBook) consume(book paperfill.Book, used map[string]bookUse) {
+	for _, e := range book.Entries {
+		if e.Command.Quote == nil {
+			continue
+		}
+		key := occurrenceKey(b.query.RegistrationID, *e.Command.Quote)
+		for _, o := range e.Outcomes {
+			if f := o.Outcome.Fill; f != nil {
+				u := used[key]
+				if f.Side == "sell" {
+					u.bid += f.Quantity
+				} else {
+					u.ask += f.Quantity
+				}
+				used[key] = u
+			}
+		}
+	}
+}
+
+// advancedBooks advances, in reservation order, every book still open after
+// previous, and every earlier book whose orders overlap an open one, so each
+// open book sees the liquidity earlier books took. It returns the open books.
+func advancedBooks(ctx context.Context, books []ownedEntryBook, x ownedExecution, previous, cut time.Time) (map[int]paperfill.Book, error) {
+	earliest := time.Time{}
+	for _, b := range books {
+		if p := b.root.Orders[0].PlacedAt; !b.settled(previous) && (earliest.IsZero() || p.Before(earliest)) {
+			earliest = p
+		}
+	}
+	out := map[int]paperfill.Book{}
+	if earliest.IsZero() {
+		return out, nil
+	}
+	used := map[string]bookUse{}
+	for i, b := range books {
+		open := !b.settled(previous)
+		if !open && !b.expires[len(b.expires)-1].After(earliest) {
+			continue
+		}
+		book, err := b.at(ctx, x, cut, used)
+		if err != nil {
+			return nil, err
+		}
+		b.consume(book, used)
+		if open {
+			out[i] = book
+		}
+	}
+	return out, nil
+}
+
+// advancePolicy stages every fill and unfilled-release effect these advanced
+// books produce that ledger does not hold yet, merged in clock order, and
 // returns the advanced ledger with them appended.
-func advancePolicy(ctx context.Context, ledger allocation.Ledger, books []ownedEntryBook, x ownedExecution, cut time.Time) (allocation.Ledger, []allocation.LedgerEntry, error) {
+func advancePolicy(ctx context.Context, ledger allocation.Ledger, books []paperfill.Book) (allocation.Ledger, []allocation.LedgerEntry, error) {
 	type staged struct {
 		command allocation.LedgerCommand
 		at      time.Time
 	}
 	stages := []staged{}
-	for _, b := range books {
-		book, err := b.at(ctx, x, cut)
-		if err != nil {
-			return ledger, nil, err
-		}
+	for _, book := range books {
 		filled, _, _, err := allocation.ApplyEntryFillBook(ctx, ledger, book)
 		if err != nil {
 			return ledger, nil, ownedExecutionConflict(err)
@@ -302,12 +386,17 @@ func executedProposals(books []ownedEntryBook) map[string]bool {
 
 // advanceAll advances every policy with an unsettled book to cut, in policy
 // ID order, starting from each policy's current ledger. previous is the last
-// record clock; a book settled by then cannot change.
+// record clock; a book settled by then commits nothing new, though it still
+// counts toward the liquidity later books share.
 func advanceAll(ctx context.Context, ledgers map[string]allocation.Ledger, books []ownedEntryBook, x ownedExecution, previous, cut time.Time) ([]OwnedExecutionAdvance, error) {
-	byPolicy := map[string][]ownedEntryBook{}
-	for _, b := range books {
-		if !b.settled(previous) {
-			byPolicy[b.policyID] = append(byPolicy[b.policyID], b)
+	advanced, err := advancedBooks(ctx, books, x, previous, cut)
+	if err != nil {
+		return nil, err
+	}
+	byPolicy := map[string][]paperfill.Book{}
+	for i, b := range books {
+		if book, ok := advanced[i]; ok {
+			byPolicy[b.policyID] = append(byPolicy[b.policyID], book)
 		}
 	}
 	ids := []string{}
@@ -321,7 +410,7 @@ func advanceAll(ctx context.Context, ledgers map[string]allocation.Ledger, books
 		if !ok {
 			return nil, ErrOwnedAllocationInvalid
 		}
-		next, added, err := advancePolicy(ctx, ledger, byPolicy[id], x, cut)
+		next, added, err := advancePolicy(ctx, ledger, byPolicy[id])
 		if err != nil {
 			return nil, err
 		}

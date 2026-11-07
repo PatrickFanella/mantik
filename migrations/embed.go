@@ -286,3 +286,6 @@ var PaperEntryExecution string
 
 //go:embed 0091_execution_cost_ledgers.sql
 var ExecutionCostLedgers string
+
+//go:embed 0092_shared_entry_liquidity.sql
+var SharedEntryLiquidity string
