@@ -292,3 +292,6 @@ var SharedEntryLiquidity string
 
 //go:embed 0093_owned_allocation_archive.sql
 var OwnedAllocationArchive string
+
+//go:embed 0094_compact_settled_reservations.sql
+var CompactSettledReservations string

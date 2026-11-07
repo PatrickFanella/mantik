@@ -3,6 +3,7 @@ package allocation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -113,6 +114,73 @@ func TestSealedLedgerRefusesReuseAndInconsistentBases(t *testing.T) {
 		bad.SHA256 = workerplan.Hash(bad)
 		if _, err := ReplayLedger(context.Background(), bad); !errors.Is(err, ErrInvalid) {
 			t.Fatal(name, err)
+		}
+	}
+}
+
+// A fully settled reservation leaves the compacted base with no reservation,
+// commitment or proposal, while cash and the realized result carry over.
+func TestSettledSealDropsOnlySettledReservations(t *testing.T) {
+	l, admissions, at := ledgerFixture(t)
+	for _, c := range lifecycleCommands(admissions, at) {
+		l, _ = ledgerAppend(t, l, c.command, c.at)
+	}
+	want, err := ReplayLedger(context.Background(), l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact, err := SealSettledLedger(context.Background(), l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReplayLedger(context.Background(), compact)
+	if err != nil || len(got.Reservations) != 0 || len(got.Snapshot.Commitments) != 0 || len(compact.Base.Proposals) != 0 {
+		t.Fatal("settled reservation kept", got, err)
+	}
+	if got.Snapshot.AvailableCashCents != want.Snapshot.AvailableCashCents || got.Snapshot.RealizedPnLCents != want.Snapshot.RealizedPnLCents || got.HeadSHA256 != want.HeadSHA256 {
+		t.Fatal("compaction changed accounting", got.Snapshot, want.Snapshot)
+	}
+	// A held or filled-open reservation is live and stays.
+	l2, admissions2, at2 := ledgerFixture(t)
+	for _, c := range lifecycleCommands(admissions2, at2)[:2] {
+		l2, _ = ledgerAppend(t, l2, c.command, c.at)
+	}
+	compact2, err := SealSettledLedger(context.Background(), l2)
+	if err != nil || len(compact2.Base.Reservations) != 1 || len(compact2.Base.Proposals) != 1 || len(compact2.Base.Snapshot.Commitments) != 1 {
+		t.Fatal("live reservation dropped", err)
+	}
+}
+
+// Distinct decisions settle and are compacted away, so a long-lived ledger
+// keeps reserving past MaxCommitments; an exact seal reaches the limit.
+func TestSettledSealsKeepLedgersUnderCommitmentLimit(t *testing.T) {
+	for _, compact := range []bool{false, true} {
+		l, admissions, at := ledgerFixture(t)
+		var failed error
+		for i := 0; i < MaxCommitments+4 && failed == nil; i++ {
+			clock := at.Add(time.Duration(i) * time.Second)
+			q := proposal(fmt.Sprintf("decision-%03d", i), "baseline-v1", "ALPHA", 100, clock)
+			next, _, _, err := AppendLedger(context.Background(), l, compareCommand(fmt.Sprintf("compare-%03d", i), []Proposal{q}, admissions), func() time.Time { return clock })
+			if err != nil {
+				failed = err
+				break
+			}
+			if next, _, _, err = AppendLedger(context.Background(), next, effectCommand(fmt.Sprintf("release-%03d", i), q.ID, "release", 100, 0), func() time.Time { return clock }); err != nil {
+				t.Fatal(i, err)
+			}
+			l = next
+			if i%20 == 19 {
+				seal := SealLedger
+				if compact {
+					seal = SealSettledLedger
+				}
+				if l, err = seal(context.Background(), l); err != nil {
+					t.Fatal(i, err)
+				}
+			}
+		}
+		if compact && failed != nil || !compact && !errors.Is(failed, ErrLedgerCapacity) {
+			t.Fatal("compact", compact, failed)
 		}
 	}
 }

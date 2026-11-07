@@ -208,7 +208,7 @@ func buildOwnedCheckpoint(ctx context.Context, previous *OwnedAllocationCheckpoi
 	}
 	c.Seals = append(c.Seals, c.Sequence)
 	for _, l := range catalog.Ledgers {
-		sealed, err := allocation.SealLedger(ctx, l)
+		sealed, err := allocation.SealSettledLedger(ctx, l)
 		if err != nil {
 			return c, err
 		}

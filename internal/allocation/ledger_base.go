@@ -32,9 +32,50 @@ type LedgerBase struct {
 // SealLedger replays l and returns a ledger with no entries whose base is the
 // replayed state. Sealing again extends the sequence.
 func SealLedger(ctx context.Context, l Ledger) (Ledger, error) {
+	return seal(ctx, l, false)
+}
+
+// SealSettledLedger seals like SealLedger but leaves settled reservations out
+// of the base: nothing held, no unknown outcome and no open position. Their
+// commitments go with them, and so does every proposal no longer backing a
+// live reservation, so a long-lived ledger stays under MaxCommitments.
+// Consumed evidence and command identities are still kept. The owner must
+// keep the full history and stop a dropped proposal's decision from being
+// reused under another proposal identity.
+func SealSettledLedger(ctx context.Context, l Ledger) (Ledger, error) {
+	return seal(ctx, l, true)
+}
+
+func settled(r Reservation) bool {
+	return r.ReservedCents == 0 && !r.Unknown && r.FilledCents == r.ClosedCostCents
+}
+
+func seal(ctx context.Context, l Ledger, compact bool) (Ledger, error) {
 	s, err := replayLedger(ctx, l)
 	if err != nil {
 		return Ledger{}, err
+	}
+	if compact {
+		live := map[string]bool{}
+		reservations := []Reservation{}
+		for _, r := range s.reservations {
+			if !settled(r) {
+				reservations = append(reservations, r)
+				live[r.Proposal.ID] = true
+			}
+		}
+		commitments := []Commitment{}
+		for _, c := range s.snapshot.Commitments {
+			if live[c.DecisionID] {
+				commitments = append(commitments, c)
+			}
+		}
+		for id := range s.proposals {
+			if !live[id] {
+				delete(s.proposals, id)
+			}
+		}
+		s.reservations, s.snapshot.Commitments = reservations, commitments
 	}
 	sequence := len(l.Entries)
 	if l.Base != nil {
