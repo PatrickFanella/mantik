@@ -302,7 +302,7 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 		ledger, ok := ledgers[key]
 		if !ok {
 			var err error
-			ledger, err = allocation.NewLedger(policy)
+			ledger, err = newOwnedLedger(policy, item.Record.Schema)
 			if err != nil {
 				return OwnedAllocationCatalog{}, state, err
 			}
@@ -518,6 +518,18 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 	return clone(out), state, nil
 }
 
+// newOwnedLedger starts a policy ledger at its first record. A ledger that
+// starts with a v16 comparison is a cost ledger, so a paper exit whose fees
+// exceed its sale proceeds can close against available cash. A ledger begun
+// by an earlier comparison keeps its schema and hashes, even after v16
+// records join it.
+func newOwnedLedger(policy allocation.PolicyRecord, schema string) (allocation.Ledger, error) {
+	if schema == OwnedExecutionSchema {
+		return allocation.NewCostLedger(policy)
+	}
+	return allocation.NewLedger(policy)
+}
+
 // ledgerPrefix is l with only its first n entries, rehashed.
 func ledgerPrefix(l allocation.Ledger, n int) allocation.Ledger {
 	l.Entries = slices.Clone(l.Entries[:n])
@@ -602,7 +614,11 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 	} else if len(state.books) > 0 {
 		return journal, OwnedAllocationReceipt{}, ErrOwnedExecutionUnavailable
 	}
-	ledger, err := allocation.NewLedger(policy)
+	schema := OwnedAllocationGrantSchema
+	if x != nil {
+		schema = OwnedExecutionSchema
+	}
+	ledger, err := newOwnedLedger(policy, schema)
 	if err != nil {
 		return journal, OwnedAllocationReceipt{}, err
 	}

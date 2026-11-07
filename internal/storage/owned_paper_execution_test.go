@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
@@ -63,7 +64,7 @@ func TestOwnedEntryExecutionStepAndReplayGuards(t *testing.T) {
 		t.Fatal("entry fill", fill)
 	}
 	catalog, err := f.replay(t, stepped, f.complete)
-	if err != nil || len(catalog.Executions) != 1 || catalog.Capital[0].Schema != "mantik-owned-allocation-capital-v3" || catalog.Capital[0].Reservations[0].FilledCents == 0 {
+	if err != nil || len(catalog.Ledgers) != 1 || catalog.Ledgers[0].Schema != allocation.CostLedgerSchema || len(catalog.Executions) != 1 || catalog.Capital[0].Schema != "mantik-owned-allocation-capital-v3" || catalog.Capital[0].Reservations[0].FilledCents == 0 {
 		t.Fatal("replayed execution", err, catalog.Capital)
 	}
 	if _, retry, err := f.step(t, stepped, command, f.at.Add(time.Hour), f.complete); err != nil || !retry.Duplicate || retry.Record.SHA256 != executed.Record.SHA256 {

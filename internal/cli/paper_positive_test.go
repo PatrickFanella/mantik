@@ -511,7 +511,7 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 		t.Fatal(err)
 	}
 	capital := catalog.Capital[0]
-	if capital.Schema != "mantik-owned-allocation-capital-v3" || capital.AvailableCashCents != 200000-99000 || len(capital.Positions) != 1 || len(catalog.Executions) != 1 {
+	if catalog.Ledgers[0].Schema != allocation.CostLedgerSchema || capital.Schema != "mantik-owned-allocation-capital-v3" || capital.AvailableCashCents != 200000-99000 || len(capital.Positions) != 1 || len(catalog.Executions) != 1 {
 		t.Fatal("capital after execution", capital, len(catalog.Executions))
 	}
 	for _, r := range capital.Reservations {
