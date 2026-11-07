@@ -216,6 +216,8 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 	}
 	resolved := make([]allocation.PolicyRecord, len(journal.Records))
 	seen := map[string]bool{}
+	aliases := newProposalAliases(retained)
+	var checked *allocation.PolicyCatalog
 	var last time.Time
 	for index, item := range journal.Records {
 		if err := ctx.Err(); err != nil {
@@ -234,18 +236,28 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 			continue
 		}
 		r := item.Record
-		if r.Command.ReceiverID != owner || seen[r.Command.ID] || r.At.Before(last) || item.Policies.Validate() != nil {
+		if r.Command.ReceiverID != owner || seen[r.Command.ID] || r.At.Before(last) {
+			return out, state, ErrOwnedAllocationInvalid
+		}
+		// Consecutive records almost always capture the same catalogue, so
+		// validate and match each distinct capture once.
+		checkedPolicies := checked != nil && reflect.DeepEqual(item.Policies, *checked)
+		if !checkedPolicies && item.Policies.Validate() != nil {
 			return out, state, ErrOwnedAllocationInvalid
 		}
 		// v5 was introduced after source aliases were rejected at append. A
 		// portable rehash must not bypass that same invariant during replay.
 		// Earlier schemas retain their historical representation and retries.
 		if r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))))))))) {
-			if err := ownedProposalSourceAliases(ownedAllocationJournal{Records: journal.Records[:index]}, retained, r.Command); err != nil {
+			if err := aliases.check(r.Command); err != nil {
 				return OwnedAllocationCatalog{}, state, err
 			}
 		}
+		aliases.add(r.Command)
 		for _, old := range item.Policies.Records {
+			if checkedPolicies {
+				break
+			}
 			found := false
 			for _, current := range policies.Records {
 				if reflect.DeepEqual(old, current) {
@@ -257,6 +269,7 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 				return out, state, ErrOwnedAllocationConflict
 			}
 		}
+		checked = &item.Policies
 		policy, comparison, err := ownedComparisonFunding(r.Command, item.Policies, decisions, strategies, retained, r.At, r.Schema == "mantik-owned-allocation-deferral-v4" || (r.Schema == "mantik-owned-allocation-deferral-v5" || r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema)))))))))), (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))))
 		if err != nil {
 			return out, state, err
@@ -326,6 +339,7 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 	// before any receipt escapes. Re-evaluating each already-validated ledger
 	// prefix through AppendLedger would repeat all prior transitions.
 	indices := map[string]int{}
+	var currentDeclarations *PaperEvaluationDeclarationCatalog
 	for index, item := range journal.Records {
 		if err := ctx.Err(); err != nil {
 			return OwnedAllocationCatalog{}, state, err
@@ -447,8 +461,15 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 			}
 		}
 		if r.Schema == "mantik-owned-allocation-deferral-v6" || (r.Schema == "mantik-owned-allocation-deferral-v7" || (r.Schema == "mantik-owned-allocation-deferral-v8" || (r.Schema == "mantik-owned-allocation-deferral-v9" || (r.Schema == "mantik-owned-allocation-deferral-v10" || (r.Schema == "mantik-owned-allocation-deferral-v11" || (r.Schema == "mantik-owned-allocation-deferral-v12" || (r.Schema == "mantik-owned-allocation-deferral-v13" || (r.Schema == "mantik-owned-allocation-deferral-v14" || (r.Schema == "mantik-owned-allocation-deferral-v15" || r.Schema == OwnedExecutionSchema))))))))) {
-			current, e := ownedEvaluationDeclarationSource(owner, policies, strategies, declarationSource)
-			if e != nil || item.EvaluationDeclarations == nil {
+			if currentDeclarations == nil {
+				d, e := ownedEvaluationDeclarationSource(owner, policies, strategies, declarationSource)
+				if e != nil {
+					return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
+				}
+				currentDeclarations = &d
+			}
+			current := *currentDeclarations
+			if item.EvaluationDeclarations == nil {
 				return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
 			}
 			captured, e := validateOwnedEvaluationCapture(owner, *item.EvaluationDeclarations, current, policies, strategies, r.At)
@@ -698,49 +719,74 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 // The same finalized decision may be reconsidered; another decision cannot
 // repackage its source update as a second proposal for that strategy.
 func ownedProposalSourceAliases(journal ownedAllocationJournal, retained map[string]retainedPaperDecision, c OwnedAllocationCommand) error {
-	source := func(pin OwnedDecisionPin) (string, error) {
-		v, ok := retained[pin.ID]
-		if !ok || v.Record.SHA256 != pin.SHA256 || v.Basis.Feed.Routing == nil {
-			return "", ErrOwnedAllocationConflict
-		}
-		quote, ok := v.Basis.Feed.Routing.Inputs[v.Record.Evaluation.Coverage.Quote.InputID]
-		collector, registered := v.Basis.Feed.Collectors.Entries[v.Record.Command.RegistrationID]
-		if !ok || !registered || quote.Input.Kind != "quote" || quote.Input.PriceCents != v.Record.Evaluation.PriceCents {
-			return "", ErrOwnedAllocationConflict
-		}
-		return workerplan.Hash(struct {
-			StrategySHA256 string
-			Provider       string
-			Feed           string
-			Symbol         string
-			OccurredAt     time.Time
-		}{v.Basis.Strategy.SHA256, collector.Registration.Provider, collector.Registration.Feed, quote.Input.Symbol, quote.Input.OccurredAt.UTC()}), nil
-	}
-	// Keep historical deferral bytes and retries intact. New commands may not
-	// select an alias of any earlier proposal, including legacy journal rows.
-	previous := map[string]map[string]bool{}
+	a := newProposalAliases(retained)
 	for _, item := range journal.Records {
-		for _, pin := range item.Record.Command.Decisions {
-			key, err := source(pin)
-			if err != nil {
-				return err
-			}
-			if previous[key] == nil {
-				previous[key] = map[string]bool{}
-			}
-			previous[key][pin.ID] = true
+		a.add(item.Record.Command)
+	}
+	return a.check(c)
+}
+
+// proposalAliases indexes earlier proposals by economic source, so replay
+// checks each record against all earlier ones without rescanning them.
+// Earlier pins resolve lazily, at the first later check, as they always did.
+type proposalAliases struct {
+	retained map[string]retainedPaperDecision
+	pending  []OwnedDecisionPin
+	previous map[string]map[string]bool
+}
+
+func newProposalAliases(retained map[string]retainedPaperDecision) *proposalAliases {
+	return &proposalAliases{retained: retained, previous: map[string]map[string]bool{}}
+}
+
+func (a *proposalAliases) add(c OwnedAllocationCommand) {
+	a.pending = append(a.pending, c.Decisions...)
+}
+
+func (a *proposalAliases) source(pin OwnedDecisionPin) (string, error) {
+	v, ok := a.retained[pin.ID]
+	if !ok || v.Record.SHA256 != pin.SHA256 || v.Basis.Feed.Routing == nil {
+		return "", ErrOwnedAllocationConflict
+	}
+	quote, ok := v.Basis.Feed.Routing.Inputs[v.Record.Evaluation.Coverage.Quote.InputID]
+	collector, registered := v.Basis.Feed.Collectors.Entries[v.Record.Command.RegistrationID]
+	if !ok || !registered || quote.Input.Kind != "quote" || quote.Input.PriceCents != v.Record.Evaluation.PriceCents {
+		return "", ErrOwnedAllocationConflict
+	}
+	return workerplan.Hash(struct {
+		StrategySHA256 string
+		Provider       string
+		Feed           string
+		Symbol         string
+		OccurredAt     time.Time
+	}{v.Basis.Strategy.SHA256, collector.Registration.Provider, collector.Registration.Feed, quote.Input.Symbol, quote.Input.OccurredAt.UTC()}), nil
+}
+
+// check refuses a command that selects an alias of any earlier proposal or
+// two aliases of one source. Historical bytes and retries stay intact.
+func (a *proposalAliases) check(c OwnedAllocationCommand) error {
+	for len(a.pending) > 0 {
+		pin := a.pending[0]
+		key, err := a.source(pin)
+		if err != nil {
+			return err
 		}
+		if a.previous[key] == nil {
+			a.previous[key] = map[string]bool{}
+		}
+		a.previous[key][pin.ID] = true
+		a.pending = a.pending[1:]
 	}
 	selected := map[string]string{}
 	for _, pin := range c.Decisions {
-		key, err := source(pin)
+		key, err := a.source(pin)
 		if err != nil {
 			return err
 		}
 		if old := selected[key]; old != "" && old != pin.ID {
 			return ErrOwnedAllocationConflict
 		}
-		for old := range previous[key] {
+		for old := range a.previous[key] {
 			if old != pin.ID {
 				return ErrOwnedAllocationConflict
 			}
