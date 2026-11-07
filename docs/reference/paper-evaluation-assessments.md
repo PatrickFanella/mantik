@@ -894,3 +894,23 @@ unavailable.
 Replay re-executes every owner, so a rehashed decision return and a downgrade
 to v14 both fail. Schema 87 fences earlier writers and rewrites no retained
 record.
+
+### Known positive fixture
+
+`TestOwnedPositiveEvaluationAndEligibilityHTTP` drives a manufactured plan
+through the public handler and actual owners until it completes. A threshold
+strategy and two bracketing neighbors fill at a $99 ask and exit at a $100 bid
+on five sessions from 2026-11-02, while the passive book ends at a $95 bid.
+The test asserts each result exactly:
+
+- 1000 cents base and 980 stress per standalone decision;
+- 2000 and 1960 for each finite-capital book, against −8000 for the passive
+  book;
+- holdout sums of 3000 and 2940;
+- p = 1/32 against a corrected alpha of 1/30.
+
+It then admits and reserves a fresh decision. Of two concurrent competing
+proposals, exactly one reserves. The Postgres variant replays all of this
+after a restart. The captures are synthetic and earn no qualification credit.
+The fixture runs without the race detector; issue #316 tracks why.
+
