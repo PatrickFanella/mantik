@@ -99,3 +99,66 @@ func TestOwnedEntryExecutionStepAndReplayGuards(t *testing.T) {
 	}
 	f.exec = exec
 }
+
+// Two books reserved at different clocks share one quote: the earlier takes
+// its modeled share first and the later sees only what remains.
+func TestOwnedEntryBooksShareOccurrenceLiquidity(t *testing.T) {
+	t0 := time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
+	model := paperfill.Model{Method: paperfill.Method, LiquidityBPS: 5000, LatencyMillis: 100, MaxQuoteAgeSeconds: 60}
+	query := PaperExecutionQuoteQuery{RegistrationID: "spy", Symbol: "SPY", Feed: "iex", EvidenceClass: "synthetic_unqualified", MaxQuoteAgeSeconds: 60}
+	book := func(id string, placed time.Time) ownedEntryBook {
+		root, err := paperfill.NewOccurrenceBook(model, []paperfill.Order{{ID: id, Symbol: "SPY", Currency: "USD", Side: "buy", Kind: "limit", Quantity: 6, LimitCents: 10000, MaxDebitCents: 100000, PlacedAt: placed, ExpiresAt: t0.Add(time.Minute), Mode: "ongoing_paper"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ownedEntryBook{policyID: "policy", query: query, root: root, expires: []time.Time{t0.Add(time.Minute)}}
+	}
+	at := t0.Add(2 * time.Second)
+	quote := paperfill.Quote{ID: "quote-shared", SourceSHA256: strings.Repeat("a", 64), Symbol: "SPY", Currency: "USD", Quality: "usable", EvidenceClass: query.EvidenceClass, OccurredAt: at, ReceivedAt: at, BidCents: 99, AskCents: 100, BidQuantity: 20, AskQuantity: 20}
+	x := ownedExecution{quotes: func(_ context.Context, _ FeedEvidenceSnapshot, q PaperExecutionQuoteQuery) ([]paperfill.BookCommand, error) {
+		if !at.After(q.After) || at.After(q.Through) {
+			return nil, nil
+		}
+		return []paperfill.BookCommand{{ID: quote.ID, At: at, Quote: &quote}}, nil
+	}}
+	books := []ownedEntryBook{book("first", t0), book("second", t0.Add(time.Second))}
+	advanced, err := advancedBooks(context.Background(), books, x, t0, t0.Add(3*time.Second))
+	if err != nil || len(advanced) != 2 {
+		t.Fatal(len(advanced), err)
+	}
+	filled := func(b paperfill.Book) int64 {
+		p, err := paperfill.ReplayBook(context.Background(), b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p.Orders[0].Projection.FilledQuantity
+	}
+	// Capacity is 20*5000/10000 = 10 shares: 6 to the first book, 4 left.
+	if filled(advanced[0]) != 6 || filled(advanced[1]) != 4 {
+		t.Fatal("shared fills", filled(advanced[0]), filled(advanced[1]))
+	}
+	// A settled earlier book still counts when a later open book overlaps it.
+	books[0].expires = []time.Time{t0.Add(2500 * time.Millisecond)}
+	books[0].root.Orders[0].ExpiresAt = books[0].expires[0]
+	if books[0].root, err = paperfill.NewOccurrenceBook(model, books[0].root.Orders); err != nil {
+		t.Fatal(err)
+	}
+	advanced, err = advancedBooks(context.Background(), books, x, t0.Add(2500*time.Millisecond), t0.Add(3*time.Second))
+	if err != nil || len(advanced) != 1 || filled(advanced[1]) != 4 {
+		t.Fatal("settled book liquidity", len(advanced), err)
+	}
+}
+
+func TestSharedDisplayRestoresRemainingCapacity(t *testing.T) {
+	for _, bps := range []int64{1, 3333, 5000, 7777, 10000} {
+		for displayed := int64(0); displayed <= 300; displayed++ {
+			capacity := displayed * bps / 10000
+			for used := int64(0); used <= capacity+1; used++ {
+				d := sharedDisplay(displayed, used, bps)
+				if d > displayed || d*bps/10000 != max(0, capacity-used) {
+					t.Fatal(bps, displayed, used, d)
+				}
+			}
+		}
+	}
+}

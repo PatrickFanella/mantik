@@ -728,9 +728,15 @@ buy limit order:
 - placed at the comparison clock, expiring at the cost's validity;
 - mode `ongoing_paper`, under the policy's execution model.
 
-Orders reserved by different comparisons never share a book, so displayed
-liquidity is shared only among orders reserved together. Two books that hold
-the same symbol at the same time can each fill against the same quote.
+Orders reserved by different comparisons get separate books, but they share
+displayed liquidity. The owner advances books in reservation order (record
+order, then book key). Before a later book applies a quote, its displayed bid
+and ask shrink by the shares earlier books filled at the same occurrence
+(registration, symbol and occurrence clock). The reduced size gives the book
+exactly the modeled capacity that remains, or zero. An earlier book counts
+even after it settles, as long as its orders overlapped the later book's.
+Replay reduces the same quotes in the same order. Schema 92 fences writers
+whose books do not share liquidity.
 
 ### Advancing books
 
