@@ -56,7 +56,7 @@ func TestOwnedPortfolioAssessmentHTTP(t *testing.T) {
 
 // These are manufactured captures submitted through the actual owners and
 // public handler. Their prospective labels do not give them qualification credit.
-type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign, search, coverage, totalReturn, sensitivity bool }
+type portfolioFixtureOptions struct{ holdout, delayed, benchmarks, causal, sampleDesign, search, coverage, totalReturn, sensitivity, statistical bool }
 
 func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options ...portfolioFixtureOptions) storage.PaperEvaluationAssessment {
 	var mode portfolioFixtureOptions
@@ -172,6 +172,10 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	if mode.sensitivity {
 		plan.Recipe = storage.PaperSensitivityEvaluationRecipe
 		plan.Plan.Sensitivity = &storage.PaperEvaluationSensitivityPlan{Method: storage.PaperThresholdSensitivityMethod, Neighborhoods: []storage.PaperEvaluationNeighborhood{{StrategyID: d.ID, NeighborIDs: []string{declared[1].ID, declared[2].ID}}}}
+	}
+	if mode.statistical {
+		plan.Recipe = storage.PaperStatisticalEvaluationRecipe
+		plan.Plan.StatisticalTests = &storage.PaperEvaluationStatisticalPlan{Method: storage.PaperStatisticalTestMethod, MinimumTradingDays: 5, AlphaBasisPoints: 1000}
 	}
 	var declaration storage.PaperEvaluationDeclarationReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-declarations", plan, 201), &declaration); err != nil {
@@ -323,6 +327,10 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 			wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v14", storage.PaperSensitivityAssessmentRecipe
 			assertThresholdSensitivity(t, r, declared)
 		}
+		if mode.statistical {
+			wantSchema, wantRecipe = "mantik-owned-paper-evaluation-assessment-v15", storage.PaperStatisticalAssessmentRecipe
+			assertStatisticalTests(t, r, declared)
+		}
 		// A reference retained at the assessment clock would change replay.
 		if b, ok := s.(coverageSourceBackend); ok {
 			late := storage.CorporateReferenceSourceCommand{ID: "late", ReceiverID: owner, Kind: storage.CorporateReferencePolygon}
@@ -356,6 +364,9 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		}
 		if mode.sensitivity {
 			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v11"
+		}
+		if mode.statistical {
+			expectedDeclaration = "mantik-owned-paper-evaluation-declaration-v12"
 		}
 		expectedTraining := 1
 		if sampleDesign {
@@ -411,6 +422,9 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 		method := storage.PaperBenchmarkPortfolioMethod
 		if mode.totalReturn {
 			method = storage.PaperTotalReturnPortfolioMethod
+		}
+		if mode.statistical {
+			method = storage.PaperDecisionReturnPortfolioMethod
 		}
 		if r.Portfolio.Method != method || v.BaseBenchmarks == nil || v.StressBenchmarks == nil || v.BaseBenchmarks.CashEndingCents != 200000 || v.BaseBenchmarks.TotalReturnComparisonAvailable || v.BaseBenchmarks.CorporateCoverageReconciled || v.BaseBenchmarks.AdmissionAvailable || v.BaseBenchmarks.ExecutionAvailable || v.BaseBenchmarks.QualificationCredit {
 			t.Fatal("owner benchmark envelope", v)
@@ -767,6 +781,27 @@ func postgresPortfolioAssessmentHTTP(t *testing.T, mode portfolioFixtureOptions)
 				if mode.sensitivity {
 					r.Schema = "mantik-owned-paper-evaluation-assessment-v13"
 					r.Recipe = storage.PaperTotalReturnAssessmentRecipe
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
+			{"decision-return-forgery", func(r *storage.PaperEvaluationAssessment) {
+				if mode.statistical && len(r.Portfolio.Variants[0].Decisions) > 0 {
+					// A coherent forgery: a larger standalone decision net, rehashed.
+					d := &r.Portfolio.Variants[0].Decisions[0]
+					forged := "999999"
+					d.Status, d.BaseNetCents, d.StressNetCents = "observed_total_return", &forged, &forged
+					r.Portfolio.SHA256 = ""
+					r.Portfolio.SHA256 = workerplan.Hash(*r.Portfolio)
+				} else {
+					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
+				}
+			}},
+			{"statistical-downgrade", func(r *storage.PaperEvaluationAssessment) {
+				if mode.statistical {
+					r.Schema = "mantik-owned-paper-evaluation-assessment-v14"
+					r.Recipe = storage.PaperSensitivityAssessmentRecipe
+					r.StatisticalTests = nil
 				} else {
 					r.Holdout.Rows[0].HorizonAt = r.Holdout.Rows[0].HorizonAt.Add(time.Second)
 				}

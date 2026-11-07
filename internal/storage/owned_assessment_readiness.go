@@ -91,7 +91,8 @@ func bindOwnedAssessmentReadiness(r OwnedAllocationRecord, policy allocation.Pol
 					v.FailedChecks = append(v.FailedChecks, clone(check))
 				}
 			}
-			if v.SampleStatus != "pending" && v.SampleStatus != "failed" && v.SampleStatus != "unavailable" {
+			// A v15 sign test can pass; readiness still grants nothing for it.
+			if v.SampleStatus != "pending" && v.SampleStatus != "failed" && v.SampleStatus != "unavailable" && v.SampleStatus != "passed" {
 				return nil, ErrOwnedAllocationInvalid
 			}
 			c.EvaluationEvidence = append(c.EvaluationEvidence, v)

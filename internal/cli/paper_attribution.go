@@ -132,7 +132,7 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 				status = "assessed_not_admitted"
 				previous := ""
 				for _, pin := range b.Assessments {
-					if !paperaccount.ID.MatchString(pin.ID) || pin.ID <= previous || !paperStrategyPin.MatchString(pin.SHA256) || (pin.Status != "pending" && pin.Status != "blocked" && pin.Status != "incomplete") {
+					if !paperaccount.ID.MatchString(pin.ID) || pin.ID <= previous || !paperStrategyPin.MatchString(pin.SHA256) || (pin.Status != "pending" && pin.Status != "blocked" && pin.Status != "incomplete" && pin.Status != "complete") {
 						return storage.ErrPaperAttributionInvalid
 					}
 					found := false
@@ -322,7 +322,7 @@ func validateReadinessAssessmentSelection(c storage.OwnedAdmissionReadiness, a s
 	previous := ""
 	selected, pending, failed := false, false, false
 	for _, v := range c.EvaluationEvidence {
-		if !paperaccount.ID.MatchString(v.AssessmentID) || !paperaccount.ID.MatchString(v.DeclarationID) || v.DeclarationID <= previous || !paperStrategyPin.MatchString(v.AssessmentSHA256) || !paperStrategyPin.MatchString(v.DeclarationSHA256) || !paperStrategyPin.MatchString(v.EvidenceSHA256) || v.AssessedAt.IsZero() || v.AssessedAt.After(c.CheckedAt) || (v.SampleStatus != "pending" && v.SampleStatus != "failed" && v.SampleStatus != "unavailable") {
+		if !paperaccount.ID.MatchString(v.AssessmentID) || !paperaccount.ID.MatchString(v.DeclarationID) || v.DeclarationID <= previous || !paperStrategyPin.MatchString(v.AssessmentSHA256) || !paperStrategyPin.MatchString(v.DeclarationSHA256) || !paperStrategyPin.MatchString(v.EvidenceSHA256) || v.AssessedAt.IsZero() || v.AssessedAt.After(c.CheckedAt) || (v.SampleStatus != "pending" && v.SampleStatus != "failed" && v.SampleStatus != "unavailable" && v.SampleStatus != "passed") {
 			return gate, storage.ErrPaperAttributionInvalid
 		}
 		if err := validateReadinessFailures(c, v); err != nil {

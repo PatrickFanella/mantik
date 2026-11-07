@@ -271,3 +271,6 @@ var TotalReturnBenchmarks string
 
 //go:embed 0086_threshold_sensitivity.sql
 var ThresholdSensitivity string
+
+//go:embed 0087_holdout_sign_tests.sql
+var HoldoutSignTests string

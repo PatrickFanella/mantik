@@ -98,6 +98,9 @@ func RunPaperEvaluationCycle(ctx context.Context, store PaperEvaluationWorkerSto
 		if d.Command.Recipe == storage.PaperSensitivityEvaluationRecipe && d.Command.Plan.Sensitivity != nil {
 			selectedRecipe = storage.PaperSensitivityAssessmentRecipe
 		}
+		if d.Command.Recipe == storage.PaperStatisticalEvaluationRecipe && d.Command.Plan.StatisticalTests != nil {
+			selectedRecipe = storage.PaperStatisticalAssessmentRecipe
+		}
 		command := storage.PaperEvaluationAssessmentCommand{ID: automaticEvaluationIDForRecipe(d, selectedRecipe), ReceiverID: declarations.ReceiverID, DeclarationID: d.Command.ID, DeclarationSHA256: d.SHA256}
 		assessmentClock := func() time.Time {
 			now := clock.Now().UTC()
@@ -109,7 +112,7 @@ func RunPaperEvaluationCycle(ctx context.Context, store PaperEvaluationWorkerSto
 		receipt, err := store.AssessPaperEvaluation(cycleCtx, command, assessmentClock, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err == nil {
 			r := receipt.Record
-			if r.Command != command || r.Recipe != selectedRecipe || !r.AssessedAt.After(deadline) || r.Evidence.Phase != "outcome_deadline_elapsed" || (r.Status != "blocked" && r.Status != "incomplete") || r.EvaluationComplete || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
+			if r.Command != command || r.Recipe != selectedRecipe || !r.AssessedAt.After(deadline) || r.Evidence.Phase != "outcome_deadline_elapsed" || !retainedAssessmentStatus(r) || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 				err = storage.ErrPaperEvaluationAssessmentConflict
 			}
 		}
@@ -146,4 +149,12 @@ func RunPaperEvaluationWorker(ctx context.Context, store PaperEvaluationWorkerSt
 			return
 		}
 	}
+}
+
+// Only the statistical recipe can complete an applicable evaluation.
+func retainedAssessmentStatus(r storage.PaperEvaluationAssessment) bool {
+	if r.Status == "complete" {
+		return r.EvaluationComplete && r.Recipe == storage.PaperStatisticalAssessmentRecipe && len(r.CompleteStrategyIDs) > 0
+	}
+	return (r.Status == "blocked" || r.Status == "incomplete") && !r.EvaluationComplete && r.CompleteStrategyIDs == nil
 }
