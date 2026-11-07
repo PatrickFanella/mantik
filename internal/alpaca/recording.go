@@ -126,7 +126,28 @@ func (r Recording) input(symbol, key string, at time.Time) domain.RoutingInput {
 
 // Normalize is deterministic for a retained capture. Repeated retrieval is a
 // new capture, not a rewrite of receipt times or raw bytes in the original.
+// Owners replay the same retained captures many times per request, so quote
+// and calendar results are remembered by the capture's exact encoding.
 func Normalize(r Recording) (Result, error) {
+	if r.Capability != "latest_quotes" && r.Capability != "market_calendar" {
+		return normalize(r)
+	}
+	raw, err := json.Marshal(r)
+	if err != nil {
+		return normalize(r)
+	}
+	key := string(raw)
+	if out, ok := normalized.get(key); ok {
+		return out, nil
+	}
+	out, err := normalize(r)
+	if err == nil {
+		normalized.put(key, out)
+	}
+	return copyResult(out), err
+}
+
+func normalize(r Recording) (Result, error) {
 	out := Result{Schema: "mantik-alpaca-normalized-v1", Inputs: []domain.RoutingInput{}, Coverage: []Coverage{}, Sessions: []Session{}, Unsupported: []string{"corporate_actions", "expiry", "settlement", "order_execution"}}
 	if err := r.validate(); err != nil {
 		return out, err

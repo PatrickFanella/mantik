@@ -135,13 +135,17 @@ func EvaluateBenchmarks(ctx context.Context, in Input) (Benchmarks, error) {
 	if err != nil {
 		return Benchmarks{}, err
 	}
+	appender, err := paperfill.NewBookAppender(ctx, book)
+	if err != nil {
+		return Benchmarks{}, err
+	}
 	count := 0
 	for _, command := range path {
 		if command.At.Before(out.PlacedAt) {
 			continue
 		}
 		command.ID = "benchmark-" + workerplan.Digest([]byte(command.Quote.ID))
-		book, _, _, err = paperfill.ApplyBook(ctx, book, command)
+		_, _, err = appender.Apply(ctx, command)
 		if err == paperfill.ErrCapacity {
 			out.PassiveStatus = "passive_source_capacity_exceeded"
 			return finish()
@@ -151,6 +155,7 @@ func EvaluateBenchmarks(ctx context.Context, in Input) (Benchmarks, error) {
 		}
 		count++
 	}
+	book = appender.Book()
 	// Use the original cut even when no subsequent quote exists. Missing or
 	// stale marks remain unavailable rather than creating a liquidation.
 	if count == 0 {

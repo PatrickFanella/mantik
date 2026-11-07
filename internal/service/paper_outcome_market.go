@@ -199,12 +199,23 @@ func inspectPaperOutcomeMarket(ctx context.Context, s storage.PaperOutcomeSource
 		}
 		out.Rows = append(out.Rows, row)
 	}
+	memo := sessionMemoFrom(ctx)
+	var prefixes feedPrefixes
+	if memo != nil {
+		prefixes = newFeedPrefixes(feed, d.Command.RegistrationID)
+	}
 	for i := range out.Rows {
 		row := &out.Rows[i]
 		if row.Quote == nil {
 			continue
 		}
-		session, err := inspectOutcomeQuoteSession(ctx, feed, d.Command.RegistrationID, *row)
+		var session PaperOutcomeSessionEvidence
+		var err error
+		if memo != nil {
+			session, err = memo.inspect(ctx, prefixes, feed, d.Command.RegistrationID, *row)
+		} else {
+			session, err = inspectOutcomeQuoteSession(ctx, feed, d.Command.RegistrationID, *row)
+		}
 		if err != nil {
 			return PaperOutcomeMarketEvidence{}, err
 		}

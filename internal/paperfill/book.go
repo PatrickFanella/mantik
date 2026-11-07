@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
@@ -300,48 +301,124 @@ func ReplayBook(ctx context.Context, b Book) (BookProjection, error) {
 	return detach(p), nil
 }
 func ApplyBook(ctx context.Context, b Book, c BookCommand) (Book, BookProjection, BookReceipt, error) {
+	a, err := NewBookAppender(ctx, b)
+	if err != nil {
+		return Book{}, BookProjection{}, BookReceipt{}, err
+	}
+	p, receipt, err := a.Apply(ctx, c)
+	if err != nil {
+		return Book{}, BookProjection{}, BookReceipt{}, err
+	}
+	return a.Book(), p, receipt, nil
+}
+
+// BookAppender applies a sequence of commands to a book it replays once.
+// After each Apply, Book and the returned projection equal what ApplyBook
+// returns for the previous book, without replaying every earlier entry
+// again. An appender is unusable after Apply returns an error.
+type BookAppender struct {
+	book       Book
+	projection BookProjection
+	seen       map[string]string
+	commands   map[string]int
+	size       int
+	signed     bool
+	err        error
+}
+
+func NewBookAppender(ctx context.Context, b Book) (*BookAppender, error) {
 	p, err := ReplayBook(ctx, b)
 	if err != nil {
-		return Book{}, BookProjection{}, BookReceipt{}, err
+		return nil, err
+	}
+	a := &BookAppender{book: detach(b), projection: p, seen: map[string]string{}, commands: map[string]int{}, signed: true}
+	for i, e := range a.book.Entries {
+		a.commands[e.Command.ID] = i
+		if e.Command.Quote != nil {
+			a.seen[e.Command.Quote.ID] = workerplan.Hash(*e.Command.Quote)
+		}
+	}
+	raw, err := json.Marshal(a.book)
+	if err != nil {
+		return nil, ErrInvalid
+	}
+	a.size = len(raw)
+	return a, nil
+}
+
+func (a *BookAppender) Apply(ctx context.Context, c BookCommand) (BookProjection, BookReceipt, error) {
+	if a.err != nil {
+		return BookProjection{}, BookReceipt{}, a.err
 	}
 	c = normalizeBookCommand(c)
-	for i, e := range b.Entries {
-		if e.Command.ID == c.ID {
-			if !reflect.DeepEqual(e.Command, c) {
-				return Book{}, BookProjection{}, BookReceipt{}, ErrConflict
-			}
-			return detach(b), p, BookReceipt{Sequence: i + 1, EntrySHA256: e.SHA256, Duplicate: true, Outcomes: detach(e.Outcomes)}, nil
+	if i, ok := a.commands[c.ID]; ok {
+		e := a.book.Entries[i]
+		if !reflect.DeepEqual(e.Command, c) {
+			a.err = ErrConflict
+			return BookProjection{}, BookReceipt{}, a.err
 		}
+		return copyProjection(a.projection), BookReceipt{Sequence: i + 1, EntrySHA256: e.SHA256, Duplicate: true, Outcomes: detach(e.Outcomes)}, nil
 	}
-	if len(b.Entries) >= MaxEntries {
-		return Book{}, BookProjection{}, BookReceipt{}, ErrCapacity
+	if len(a.book.Entries) >= MaxEntries {
+		a.err = ErrCapacity
+		return BookProjection{}, BookReceipt{}, a.err
 	}
 	if err := ctx.Err(); err != nil {
-		return Book{}, BookProjection{}, BookReceipt{}, err
+		a.err = err
+		return BookProjection{}, BookReceipt{}, err
 	}
-	seen := map[string]string{}
-	for _, e := range b.Entries {
-		if e.Command.Quote != nil {
-			seen[e.Command.Quote.ID] = workerplan.Hash(*e.Command.Quote)
-		}
-	}
-	next, out, err := bookStep(b, p, c, seen)
+	next, out, err := bookStep(a.book, a.projection, c, a.seen)
 	if err != nil {
-		return Book{}, BookProjection{}, BookReceipt{}, err
+		a.err = err
+		return BookProjection{}, BookReceipt{}, err
 	}
-	previous := b.SHA256
-	if len(b.Entries) > 0 {
-		previous = b.Entries[len(b.Entries)-1].SHA256
+	previous := a.book.SHA256
+	if len(a.book.Entries) > 0 {
+		previous = a.book.Entries[len(a.book.Entries)-1].SHA256
 	}
 	e := BookEntry{Command: c, Outcomes: out, PreviousSHA256: previous}
 	e.SHA256 = workerplan.Hash(e)
-	updated := detach(b)
-	updated.Entries = append(updated.Entries, e)
-	updated.SHA256 = ""
-	updated.SHA256 = workerplan.Hash(updated)
-	raw, err := json.Marshal(updated)
-	if err != nil || len(raw) > MaxBookBytes {
-		return Book{}, BookProjection{}, BookReceipt{}, ErrCapacity
+	// The encoded book grows by this entry and, after the first, a comma.
+	raw, err := json.Marshal(e)
+	size := a.size + len(raw)
+	if len(a.book.Entries) > 0 {
+		size++
 	}
-	return updated, detach(next), BookReceipt{Sequence: len(updated.Entries), EntrySHA256: e.SHA256, Outcomes: detach(out)}, nil
+	if err != nil || size > MaxBookBytes {
+		a.err = ErrCapacity
+		return BookProjection{}, BookReceipt{}, a.err
+	}
+	a.commands[c.ID] = len(a.book.Entries)
+	a.book.Entries = append(a.book.Entries, e)
+	a.projection, a.size, a.signed = next, size, false
+	return copyProjection(next), BookReceipt{Sequence: len(a.book.Entries), EntrySHA256: e.SHA256, Outcomes: detach(out)}, nil
+}
+
+// copyProjection detaches every slice and pointer in a projection without the
+// JSON round trip, whose cost grows with every consumed market update. Keep
+// it in step with BookProjection and Projection.
+func copyProjection(p BookProjection) BookProjection {
+	out := p
+	out.Orders = slices.Clone(p.Orders)
+	for i := range out.Orders {
+		out.Orders[i].Projection.ConsumedMarketUpdates = slices.Clone(p.Orders[i].Projection.ConsumedMarketUpdates)
+	}
+	out.Liquidity = slices.Clone(p.Liquidity)
+	for i, l := range out.Liquidity {
+		if l.Capacity != nil {
+			c := *l.Capacity
+			out.Liquidity[i].Capacity = &c
+		}
+	}
+	return out
+}
+
+// Book returns a detached, signed copy of the current book.
+func (a *BookAppender) Book() Book {
+	if !a.signed {
+		a.book.SHA256 = ""
+		a.book.SHA256 = workerplan.Hash(a.book)
+		a.signed = true
+	}
+	return detach(a.book)
 }

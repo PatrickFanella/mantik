@@ -89,6 +89,10 @@ Exact retries and reads preserve the retained result after later source
 publication. Catalogue replay, including allocation, admission-review and
 attribution reads, reselects the actual historical sources and reexecutes the
 compiled evaluator. A coherently rehashed fabricated result fails replay.
+Within one process, a store reuses the evaluator's result when the rederived
+inputs hash identically. Replay still reselects and rehashes every source, and
+the result must still bind that hash; only the deterministic computation over
+identical inputs is skipped. A restarted process recomputes it.
 Disposable HTTP tests cover retries, worker recipe identity, PostgreSQL reopen,
 tamper rejection, migration failure rollback and closed-database copy/reopen.
 These are manufactured fixtures and do not qualify funded recovery or a release.
@@ -912,7 +916,10 @@ The test asserts each result exactly:
 It then admits and reserves a fresh decision. Of two concurrent competing
 proposals, exactly one reserves. The Postgres variant replays all of this
 after a restart. The captures are synthetic and earn no qualification credit.
-The fixture runs without the race detector; issue #316 tracks why.
+The fixture runs in `make verify`, `make test-race` and the main
+`make test-integration` run. `BenchmarkOwnedPositiveEvaluation` scales it by
+sessions, each adding three decisions and five feed records, and by extra
+quotes per session, which add records only.
 
 ## Maximum drawdown
 

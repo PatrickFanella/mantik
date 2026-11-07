@@ -478,16 +478,8 @@ func ownedPortfolioAssessmentHTTP(t *testing.T, s portfolioHTTPBackend, options 
 	if err := json.Unmarshal(request("GET", "/v1/paper-evaluation-assessments/"+c.ID, nil, 200), &read); err != nil || !reflect.DeepEqual(read, r) {
 		t.Fatal("read sampled live clock or changed source cut", err)
 	}
-	// Every exact retry replays the owner catalogue under the store lock and
-	// the handler's 5 s deadline. The statistical recipe also replays each
-	// selected decision alone, so under -race four serialized retries can pass
-	// that deadline on a shared CI runner. Two still race each other.
-	concurrent := 4
-	if mode.statistical {
-		concurrent = 2
-	}
 	var retries sync.WaitGroup
-	for range concurrent {
+	for range 4 {
 		retries.Go(func() {
 			var duplicate storage.PaperEvaluationAssessmentReceipt
 			if err := json.Unmarshal(request("POST", "/v1/paper-evaluation-assessments", c, 200), &duplicate); err != nil || !duplicate.Duplicate || !reflect.DeepEqual(duplicate.Record, r) {
