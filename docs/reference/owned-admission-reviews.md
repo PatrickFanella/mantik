@@ -107,3 +107,16 @@ Readiness v5 on a new v12 comparison also retains the owner-derived
 proposal's actual safety requirements. Historical readiness v3/v4 remains
 readable without this field. The pin does not turn a review into an admission
 or establish any economic effect.
+
+## Owner-issued eligibility reviews
+
+Review v2 (method `retained-owner-eligibility-review-v1`, authority
+`service_owned_paper_eligibility_review_only`) reviews readiness v7 from a
+comparison v15. The readiness must carry `admission_available` equal to
+`paper_operationally_eligible`, with no execution or qualification flag.
+Outcomes keep their order: expiry, then a failed gate, then a pending gate.
+Otherwise an eligible proposal reviews as `eligible` with reason
+`owner_issued_paper_eligibility` and `admission_available: true`; anything
+else stays `deferred`. Review v1 still reviews readiness v3-v6 and never
+grants. See [owner-issued paper eligibility](owned-allocation-comparisons.md#owner-issued-paper-eligibility).
+

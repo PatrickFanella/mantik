@@ -247,7 +247,7 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 	newComparison := guardedComparisons.Records[0].Command
 	newComparison.ID = "http-assessment-bound-comparison"
 	var boundComparison storage.OwnedAllocationReceipt
-	if e := json.Unmarshal(request("POST", "/v1/allocation-comparisons", newComparison, 201), &boundComparison); e != nil || boundComparison.Record.Schema != "mantik-owned-allocation-deferral-v14" || boundComparison.Record.EvaluationContext.Schema != "mantik-owned-allocation-evaluation-context-v2" || len(boundComparison.Record.EvaluationContext.Decisions[0].Assessments) != 1 || boundComparison.Record.EvaluationContext.Decisions[0].Assessments[0].SHA256 != assessment.Record.SHA256 {
+	if e := json.Unmarshal(request("POST", "/v1/allocation-comparisons", newComparison, 201), &boundComparison); e != nil || boundComparison.Record.Schema != "mantik-owned-allocation-deferral-v15" || boundComparison.Record.EvaluationContext.Schema != "mantik-owned-allocation-evaluation-context-v2" || len(boundComparison.Record.EvaluationContext.Decisions[0].Assessments) != 1 || boundComparison.Record.EvaluationContext.Decisions[0].Assessments[0].SHA256 != assessment.Record.SHA256 {
 		t.Fatal("HTTP assessment context", boundComparison, e)
 	}
 	readiness := boundComparison.Record.AdmissionChecks[0]
@@ -258,7 +258,7 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 			break
 		}
 	}
-	if readiness.Schema != "mantik-owned-admission-readiness-v6" || readiness.Binding == nil || readiness.Binding.EvaluationBindingSHA256 != workerplan.Hash(boundComparison.Record.EvaluationContext.Decisions[0]) || len(readiness.EvaluationEvidence) != 1 || readiness.EvaluationEvidence[0].AssessmentSHA256 != assessment.Record.SHA256 || readiness.EvaluationEvidence[0].DecisionEvidenceStatus != expectedDecisionStatus || readiness.AdmissionAvailable || readiness.ExecutionAvailable || readiness.QualificationCredit {
+	if readiness.Schema != "mantik-owned-admission-readiness-v7" || readiness.Binding == nil || readiness.Binding.EvaluationBindingSHA256 != workerplan.Hash(boundComparison.Record.EvaluationContext.Decisions[0]) || len(readiness.EvaluationEvidence) != 1 || readiness.EvaluationEvidence[0].AssessmentSHA256 != assessment.Record.SHA256 || readiness.EvaluationEvidence[0].DecisionEvidenceStatus != expectedDecisionStatus || readiness.AdmissionAvailable || readiness.ExecutionAvailable || readiness.QualificationCredit {
 		t.Fatal("HTTP exact assessment evidence readiness", readiness)
 	}
 	ownedAdmissionReviewHTTP(t, request, serverURL, clock, boundComparison.Record)

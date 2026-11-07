@@ -552,6 +552,16 @@ expiry to a stricter execution-model quote-age limit measured from the retained
 quote occurrence. Historical records and retries retain their original expiry;
 this supplies no admission or execution authority.
 
+Comparison v15 is the first owner record that can reserve cash. For each
+proposed strategy the owner issues a paper admission from the latest complete
+v15 evaluation assessment of a declaration that names that policy and strategy
+record, valid for the declaration's admission TTL. A later blocked assessment
+withdraws it. Admitted proposals reserve capital in the policy ledger; the next
+comparison after a proposal expires releases its unfilled reservation. Readiness
+v7 and admission review v2 report `paper_operationally_eligible`; execution and
+qualification credit stay unavailable. See
+[owner-issued paper eligibility](docs/reference/owned-allocation-comparisons.md#owner-issued-paper-eligibility).
+
 The opt-in [automatic outcome worker](docs/reference/owned-paper-outcomes.md#automatic-sealed-collection)
 (`serve --automatic-paper-outcomes`) now seals one retained forward quote outcome
 per matured entry decision without a client assessment request. Missing prices,

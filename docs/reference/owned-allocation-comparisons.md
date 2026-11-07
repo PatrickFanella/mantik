@@ -631,3 +631,80 @@ Schema 66 fences older writers without rewriting existing journals. Historical
 v1-v13 comparisons retain their original readiness, hashes and clock-free
 retries. This change adds no positive admission, retirement, reservation,
 order, fill, capital posting, provider request or qualification credit.
+
+## Owner-issued paper eligibility
+
+Comparison v15 keeps the `mantik-owned-allocation-deferral` family name, so
+every earlier version rule still applies, but its authority is
+`service_owned_paper_allocation_reservation_only`. It is the first comparison
+that can reserve cash.
+
+### Admissions
+
+For each distinct proposed strategy, the owner derives at most one
+`allocation.Admission` from records it has already replayed in the same
+transaction. Callers still select only decisions.
+
+- A declaration counts when it names this policy and policy hash, lists the
+  exact registered strategy record, and was declared by the comparison clock.
+- Only each declaration's latest assessment at the clock counts. If any is
+  `blocked`, the strategy gets no admission, so a later failure withdraws an
+  earlier grant.
+- A latest assessment grants when it is `complete` under
+  `native-predeclared-holdout-sign-test-v15`, lists the strategy in
+  `complete_strategy_ids`, and carries no admission, execution or
+  qualification flag.
+- The admission's evidence is that assessment's hash. It is valid from the
+  assessment clock for the declaration's `admission_ttl_seconds` (at most one
+  day). The latest complete assessment wins; equal clocks use the greater ID.
+- A policy without an execution model has no protective funding and gets no
+  admission.
+
+The allocation core then compares proposals as before. An admitted proposal
+that fits cash, capital and every strategy, symbol and group limit gets
+`reserve_plan`; the ledger reserves its protective funding and records a
+commitment. Competing proposals are ordered by the policy's priority, then ID,
+in one all-or-nothing comparison.
+
+### Expiry
+
+A reservation is held for order placement while its proposal is valid: at
+most 60 seconds after the quote, or the execution model's tighter quote age.
+At the next comparison on or after that time, the owner first appends one
+`release` effect per expired, reserved, not-unknown remainder, in ledger
+order. These are retained in the record's `expirations`, applied before
+`entry`, so released cash can fund the new proposals. Each release ID and
+hash derive from the reservation, so a release happens once. No execution
+owner records fills yet, so every reservation ends in a release.
+
+### Readiness, reviews and capital
+
+Readiness v7 adds `evaluation_complete` and `paper_operationally_eligible`.
+Eligibility needs an admission valid at the comparison clock, an unexpired
+proposal, bound execution safety, and an `evaluation_recipe` gate that a
+complete evaluation turned `verified`. A failed or pending gate from any bound
+declaration wins. An eligible proposal has status `eligible`, trigger
+`admission_expiry` and `admission_available: true`.
+`execution_reconciliation` stays `unavailable`, and `execution_available` and
+`qualification_credit` stay false. Eligibility does not need the natural
+qualification window.
+
+[Admission review](owned-admission-reviews.md) v2 reviews readiness v7. A
+current eligible proposal reviews as `eligible` with
+`owner_issued_paper_eligibility`. Expiry, failed and pending gates keep their
+earlier precedence.
+
+A ledger that holds reservations reads back as capital v2
+(`mantik-owned-allocation-capital-v2`) with its reservations. Cash plus
+reserved amounts must equal opening cash, with no fills, positions or realized
+result. A ledger without reservations keeps the v1 readback.
+
+### Replay
+
+Replay rederives each v15 record's admissions from its captured declarations
+and the owner-replayed assessments at its clock, and its releases from the
+ledger state before it. A forged or missing admission, or a dropped or altered
+release, fails replay. Exact retries return the retained record without a
+clock. Schema 88 fences earlier writers and rewrites no retained record; v1-v14
+comparisons keep their reservation-free invariant and hashes.
+

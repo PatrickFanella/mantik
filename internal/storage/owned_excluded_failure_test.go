@@ -81,11 +81,12 @@ func TestOwnedAssessmentExcludedFailureRetained(t *testing.T) {
 		}
 	}
 	got, err := bindOwnedAssessmentReadiness(r, policy, actual)
-	if err != nil || len(got) != 1 || got[0].Schema != "mantik-owned-admission-readiness-v6" || got[0].Gates[2].Status != "failed" || got[0].Gates[2].ReasonCode != "retained_necessary_evaluation_check_failed" || got[0].EvaluationEvidence[0].SampleStatus != "pending" || len(got[0].EvaluationEvidence[0].FailedChecks) != 1 || got[0].AdmissionAvailable || got[0].ExecutionAvailable || got[0].QualificationCredit {
+	if err != nil || len(got) != 1 || got[0].Schema != "mantik-owned-admission-readiness-v7" || got[0].Gates[2].Status != "failed" || got[0].Gates[2].ReasonCode != "retained_necessary_evaluation_check_failed" || got[0].EvaluationEvidence[0].SampleStatus != "pending" || len(got[0].EvaluationEvidence[0].FailedChecks) != 1 || got[0].AdmissionAvailable || got[0].ExecutionAvailable || got[0].QualificationCredit {
 		t.Fatal(got, err)
 	}
 	legacy := clone(r)
 	legacy.Schema = "mantik-owned-allocation-deferral-v13"
+	legacy.Authority, legacy.Expirations = "service_owned_allocation_deferral_only", nil
 	old, err := bindOwnedAssessmentReadiness(legacy, policy, actual)
 	if err != nil || old[0].Schema != "mantik-owned-admission-readiness-v5" || old[0].Gates[2].Status != "unavailable" || len(old[0].EvaluationEvidence[0].FailedChecks) != 1 {
 		t.Fatal("legacy excluded failure semantics changed", old, err)

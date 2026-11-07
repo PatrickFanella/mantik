@@ -274,3 +274,6 @@ var ThresholdSensitivity string
 
 //go:embed 0087_holdout_sign_tests.sql
 var HoldoutSignTests string
+
+//go:embed 0088_owned_paper_eligibility.sql
+var OwnedPaperEligibility string

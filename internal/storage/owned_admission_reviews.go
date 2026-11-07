@@ -106,10 +106,19 @@ func newOwnedAdmissionReview(c OwnedAdmissionReviewCommand, source OwnedAllocati
 	if readiness == nil {
 		return OwnedAdmissionReview{}, ErrOwnedAdmissionReviewNotFound
 	}
-	if (readiness.Schema != "mantik-owned-admission-readiness-v3" && readiness.Schema != "mantik-owned-admission-readiness-v4" && readiness.Schema != "mantik-owned-admission-readiness-v5" && readiness.Schema != "mantik-owned-admission-readiness-v6") || readiness.Binding == nil || readiness.AdmissionAvailable || readiness.ExecutionAvailable || readiness.QualificationCredit {
+	eligibility := readiness.Schema == OwnedEligibilityReadinessSchema
+	if eligibility {
+		// Readiness v7 carries the owner's paper eligibility; nothing else.
+		if readiness.Binding == nil || readiness.AdmissionAvailable != readiness.PaperOperationallyEligible || readiness.ExecutionAvailable || readiness.QualificationCredit {
+			return OwnedAdmissionReview{}, ErrOwnedAdmissionReviewInvalid
+		}
+	} else if (readiness.Schema != "mantik-owned-admission-readiness-v3" && readiness.Schema != "mantik-owned-admission-readiness-v4" && readiness.Schema != "mantik-owned-admission-readiness-v5" && readiness.Schema != "mantik-owned-admission-readiness-v6") || readiness.Binding == nil || readiness.AdmissionAvailable || readiness.ExecutionAvailable || readiness.QualificationCredit {
 		return OwnedAdmissionReview{}, ErrOwnedAdmissionReviewInvalid
 	}
 	r := OwnedAdmissionReview{Schema: "mantik-owned-admission-review-v1", Method: "retained-non-grant-admission-review-v1", Command: c, Sequence: sequence, ReviewedAt: at.UTC(), ComparisonAt: comparison.At, Readiness: clone(*readiness), Status: "deferred", ReasonCode: "required_admission_gates_unavailable", ReconsiderTriggers: clone(readiness.ReconsiderTriggers), Authority: "service_owned_non_grant_admission_review_only"}
+	if eligibility {
+		r.Schema, r.Method, r.Authority = "mantik-owned-admission-review-v2", "retained-owner-eligibility-review-v1", "service_owned_paper_eligibility_review_only"
+	}
 	failed, pending := false, false
 	for _, g := range readiness.Gates {
 		failed = failed || g.Status == "failed"
@@ -126,6 +135,10 @@ func newOwnedAdmissionReview(c OwnedAdmissionReviewCommand, source OwnedAllocati
 	case pending:
 		r.Status = "pending"
 		r.ReasonCode = "retained_evaluation_window_open"
+	case eligibility && readiness.PaperOperationallyEligible:
+		// The proposal is still valid; the comparison already checked the
+		// admission window at its clock.
+		r.Status, r.ReasonCode, r.AdmissionAvailable = "eligible", "owner_issued_paper_eligibility", true
 	}
 	r.SHA256 = workerplan.Hash(r)
 	raw, err := json.Marshal(r)
