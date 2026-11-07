@@ -283,3 +283,6 @@ var DrawdownGate string
 
 //go:embed 0090_paper_entry_execution.sql
 var PaperEntryExecution string
+
+//go:embed 0091_execution_cost_ledgers.sql
+var ExecutionCostLedgers string

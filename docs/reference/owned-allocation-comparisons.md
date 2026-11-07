@@ -763,6 +763,16 @@ returns 200 with status `no_effects`, retains nothing and leaves its identity
 unused. An exact retry returns the retained step with 200. Steps appear in
 the allocation catalogue's `executions`; comparison readers never see them.
 
+### Cost ledgers
+
+A policy ledger whose first record is a v16 comparison is a cost ledger
+(`mantik-allocation-ledger-core-v2`). A paper exit whose fees exceed its sale
+proceeds can then close against available cash instead of being refused. A
+ledger begun by an earlier comparison keeps its schema and hashes, even after
+v16 records join it, so a negative-proceeds exit cannot close there. Schema 91
+fences writers that start v16 ledgers without the cost schema. Any v16 journal
+written before that fence fails replay.
+
 ### Capital and replay
 
 A ledger holding a v16 record reads back as capital v3
