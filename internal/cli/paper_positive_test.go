@@ -51,7 +51,7 @@ func positiveCoveragePlan() *storage.PaperEvaluationCoveragePlan {
 // retainPositiveCoverage retains manufactured sources that report no action
 // between 2026-11-02 and 11-06. The issuer workbook lists a later ex-date, so
 // the empty window is documented rather than inferred.
-func retainPositiveCoverage(t *testing.T, store any, owner string, clock *ownedDecisionClock) {
+func retainPositiveCoverage(t testing.TB, store any, owner string, clock *ownedDecisionClock) {
 	t.Helper()
 	s, ok := store.(coverageSourceBackend)
 	if !ok {
@@ -122,9 +122,20 @@ func retainPositiveCoverage(t *testing.T, store any, owner string, clock *ownedD
 // manufactured captures with no qualification credit.
 // failCommit, when set, makes the store's next commits fail (true) or succeed
 // again (false); the Postgres variant uses a deferred constraint trigger.
-func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend, failCommit func(bool)) (storage.PaperEvaluationAssessment, storage.OwnedAllocationCatalog) {
+// positiveShape scales the fixture for BenchmarkOwnedPositiveEvaluation. The
+// zero value is the known positive result.
+type positiveShape struct {
+	sessions    int  // leading positiveDays to use; 0 uses all
+	extraQuotes int  // quotes per session after the exit, adding records only
+	assessOnly  bool // return after the assessment request
+}
+
+func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit func(bool), shape positiveShape) (storage.PaperEvaluationAssessment, storage.OwnedAllocationCatalog) {
 	t.Helper()
-	skipUnderRaceDetector(t)
+	days := positiveDays
+	if shape.sessions > 0 {
+		days = positiveDays[:shape.sessions]
+	}
 	ctx := context.Background()
 	clock := &ownedDecisionClock{at: time.Date(2026, 10, 30, 14, 0, 0, 0, time.UTC)}
 	server := httptest.NewServer(loopbacktest.GoClientOnly(service.HandlerWithClock(s, "positive-fixture-token", clock)))
@@ -259,7 +270,7 @@ func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend, failCommit fun
 		return out
 	}
 
-	for i, day := range positiveDays {
+	for i, day := range days {
 		session, _ := time.Parse(time.DateOnly, day)
 		at := session.Add(15 * time.Hour)
 		// Calendar captures go stale after a day, so each session has its own.
@@ -279,7 +290,11 @@ func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend, failCommit fun
 			clock.at = at.Add(time.Duration(q.offset) * time.Second)
 			quote(fmt.Sprintf("quote-%d-%d", i, q.offset), q.bid, q.ask)
 		}
-		if i == len(positiveDays)-1 {
+		for j := range shape.extraQuotes {
+			clock.at = at.Add(14*time.Second + time.Duration(j)*200*time.Millisecond)
+			quote(fmt.Sprintf("extra-%d-%d", i, j), 100, 101)
+		}
+		if i == len(days)-1 {
 			// The passive book is still open at the cut; mark it lower.
 			clock.at = at.Add(20 * time.Second)
 			quote("passive-mark", 95, 96)
@@ -299,6 +314,9 @@ func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend, failCommit fun
 		t.Fatal(err)
 	}
 	r := got.Record
+	if shape.assessOnly {
+		return r, storage.OwnedAllocationCatalog{}
+	}
 	if r.Status != "complete" || !r.EvaluationComplete || len(r.CompleteStrategyIDs) != 1 || r.CompleteStrategyIDs[0] != d.ID || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit {
 		for _, check := range r.Checks {
 			t.Log(check.StrategyID, check.Name, check.Status, check.ReasonCode)
@@ -466,25 +484,12 @@ func positiveEvaluationHTTP(t *testing.T, s portfolioHTTPBackend, failCommit fun
 	return r, catalog
 }
 
-// Each outcome's market evidence re-inspects every feed record published by
-// its evaluation, so evaluation work grows with decisions x records. The
-// smallest complete v15 plan has 15 decisions; under the race detector its
-// assessment request passes the handler's 5 s deadline. make verify runs this
-// fixture without -race, and make test-integration runs the Postgres variant
-// in a separate step without -race. Issue #316 tracks the scaling.
-func skipUnderRaceDetector(t *testing.T) {
-	t.Helper()
-	if raceDetectorEnabled {
-		t.Skip("evaluation work exceeds the 5 s handler deadline under -race; runs without it")
-	}
-}
-
 func TestOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T) {
 	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
 	if err != nil {
 		t.Fatal(err)
 	}
-	positiveEvaluationHTTP(t, m, nil)
+	positiveEvaluationHTTP(t, m, nil, positiveShape{})
 }
 
 // The Postgres variant also fails one reserving commit and then reopens the
@@ -534,7 +539,7 @@ func TestPostgresContractsOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	assessment, catalog := positiveEvaluationHTTP(t, s, failCommit)
+	assessment, catalog := positiveEvaluationHTTP(t, s, failCommit, positiveShape{})
 	s.Close()
 	reopened, err := storage.OpenPostgresWithPortfolioEvaluator(ctx, u.String(), service.EvaluateOwnedPaperPortfolio)
 	if err != nil {

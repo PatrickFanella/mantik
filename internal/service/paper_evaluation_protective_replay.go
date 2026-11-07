@@ -207,16 +207,28 @@ func replayProtectiveModel(ctx context.Context, sources []storage.PaperEvaluatio
 	if err != nil {
 		return nil, err
 	}
+	appender, err := paperfill.NewBookAppender(ctx, book)
+	if err != nil {
+		return nil, err
+	}
 	projection, err := paperfill.ReplayBook(ctx, book)
 	if err != nil {
 		return nil, err
 	}
 	positions := map[string]*PaperEvaluationProtectivePosition{}
 	expiries := map[string]bool{}
+	// A duplicate command appends nothing, so the latest entry keeps its outcomes.
+	latest := []paperfill.BookOrderOutcome{}
 	apply := func(c paperfill.BookCommand) error {
-		var e error
-		book, projection, _, e = paperfill.ApplyBook(ctx, book, c)
-		return e
+		p, receipt, e := appender.Apply(ctx, c)
+		if e != nil {
+			return e
+		}
+		projection = p
+		if !receipt.Duplicate {
+			latest = receipt.Outcomes
+		}
+		return nil
 	}
 	trigger := func(id, reason, quoteID string, at time.Time) error {
 		p := positions[id]
@@ -307,8 +319,7 @@ func replayProtectiveModel(ctx context.Context, sources []storage.PaperEvaluatio
 		if err := apply(q); err != nil {
 			return nil, err
 		}
-		latest := book.Entries[len(book.Entries)-1]
-		for _, result := range latest.Outcomes {
+		for _, result := range latest {
 			f := result.Outcome.Fill
 			if f == nil {
 				continue
@@ -333,7 +344,7 @@ func replayProtectiveModel(ctx context.Context, sources []storage.PaperEvaluatio
 	if err := apply(paperfill.BookCommand{ID: "source-cut", At: cut}); err != nil {
 		return nil, err
 	}
-	result := &PaperEvaluationProtectiveModel{CutAt: cut, EntryBook: book, EntryProjection: projection, Positions: []PaperEvaluationProtectivePosition{}}
+	result := &PaperEvaluationProtectiveModel{CutAt: cut, EntryBook: appender.Book(), EntryProjection: projection, Positions: []PaperEvaluationProtectivePosition{}}
 	exits := []paperfill.Order{}
 	for _, o := range orders {
 		p := positions[o.ID]
@@ -357,21 +368,26 @@ func replayProtectiveModel(ctx context.Context, sources []storage.PaperEvaluatio
 		if err != nil {
 			return nil, err
 		}
+		exitAppender, err := paperfill.NewBookAppender(ctx, exitBook)
+		if err != nil {
+			return nil, err
+		}
 		for _, q := range quotes {
 			if q.At.Before(exitProjection.LastClock) {
 				continue
 			}
-			exitBook, exitProjection, _, err = paperfill.ApplyBook(ctx, exitBook, q)
+			exitProjection, _, err = exitAppender.Apply(ctx, q)
 			if err != nil {
 				return nil, err
 			}
 		}
 		if !cut.Before(exitProjection.LastClock) {
-			exitBook, exitProjection, _, err = paperfill.ApplyBook(ctx, exitBook, paperfill.BookCommand{ID: "source-cut", At: cut})
+			exitProjection, _, err = exitAppender.Apply(ctx, paperfill.BookCommand{ID: "source-cut", At: cut})
 			if err != nil {
 				return nil, err
 			}
 		}
+		exitBook = exitAppender.Book()
 		result.ExitBook = &exitBook
 		result.ExitProjection = &exitProjection
 		for _, o := range exitProjection.Orders {

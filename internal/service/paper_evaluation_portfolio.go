@@ -34,7 +34,7 @@ func EvaluateOwnedPaperPortfolio(ctx context.Context, inputs storage.PaperEvalua
 	if benchmarks && inputs.Evidence.Declaration.Command.Plan.BenchmarkMethod != papereconomics.BenchmarkMethod {
 		return storage.PaperEvaluationPortfolio{}, storage.ErrPaperEvaluationAssessmentInvalid
 	}
-	capital, err := inspectEvaluationCapitalReplay(ctx, inputs)
+	capital, err := inspectEvaluationCapitalReplay(withSessionMemo(ctx), inputs)
 	if err != nil {
 		return storage.PaperEvaluationPortfolio{}, err
 	}

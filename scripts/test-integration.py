@@ -99,31 +99,6 @@ def replay_restored_owner(container, source_runner, database, expect_rejection=F
 
 
 
-def positive_contract(container, database):
-    # The positive evaluation fixture skips itself under -race: its assessment
-    # outgrows the 5 s handler deadline there. Run it once without the race
-    # detector against the same disposable server, in its own container.
-    runner = container + "-positive"
-    created = False
-    try:
-        run("docker", "create", "--name", runner, "--network", "container:" + container,
-            "-w", "/src", "-e", "MANTIK_TEST_DATABASE_URL=" +
-            f"postgres://mantik:fixture-only@127.0.0.1:5432/{database}?sslmode=disable",
-            "golang:1.26.9", "go", "test", "./internal/cli",
-            "-run", "^TestPostgresContractsOwnedPositiveEvaluationAndEligibilityHTTP$", "-count=1", "-timeout=10m",
-            stdout=subprocess.DEVNULL)
-        created = True
-        for path in ("go.mod", "go.sum", "internal", "migrations"):
-            run("docker", "cp", path, runner + ":/src/" + path)
-        run("docker", "start", "-a", runner)
-        code = run("docker", "inspect", "--format", "{{.State.ExitCode}}", runner, capture_output=True).stdout.strip()
-        if code != "0":
-            raise RuntimeError("Positive evaluation contract container failed: " + code)
-    finally:
-        if created:
-            run("docker", "rm", "-f", runner, stdout=subprocess.DEVNULL)
-
-
 def main():
     suffix = uuid.uuid4().hex[:12]
     name = "mantik-test-" + suffix
@@ -170,7 +145,6 @@ def main():
                         capture_output=True).stdout.strip()
         if exit_code != "0":
             raise RuntimeError("PostgreSQL contract test container failed: " + exit_code)
-        positive_contract(name, database)
         recovery_contract(name, database, lambda target, rejected: replay_restored_owner(name, runner, target, rejected))
     finally:
         if runner_created:

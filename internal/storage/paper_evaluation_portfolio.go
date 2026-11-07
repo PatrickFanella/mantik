@@ -51,7 +51,7 @@ func NewMemoryWithPortfolioEvaluator(eval PaperPortfolioEvaluator) (*Memory, err
 		return nil, ErrPaperEvaluationAssessmentInvalid
 	}
 	m := NewMemory()
-	m.portfolioEvaluator = eval
+	m.portfolioEvaluator = memoizePortfolio(eval)
 	return m, nil
 }
 
@@ -61,7 +61,7 @@ func OpenPostgresWithPortfolioEvaluator(ctx context.Context, url string, eval Pa
 	}
 	p, err := OpenPostgres(ctx, url)
 	if err == nil {
-		p.portfolioEvaluator = eval
+		p.portfolioEvaluator = memoizePortfolio(eval)
 	}
 	return p, err
 }

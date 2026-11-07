@@ -218,15 +218,19 @@ func replayEvaluationEntryVariant(ctx context.Context, sources []storage.PaperEv
 		if err != nil {
 			return nil, nil, nil, err
 		}
+		appender, err := paperfill.NewBookAppender(ctx, b)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 		var projection paperfill.BookProjection
 		for _, command := range commands {
 			var err error
-			b, projection, _, err = paperfill.ApplyBook(ctx, b, command)
+			projection, _, err = appender.Apply(ctx, command)
 			if err != nil {
 				return nil, nil, nil, err
 			}
 		}
-		results[i] = &PaperEvaluationEntryModelReplay{Book: b, Projection: projection}
+		results[i] = &PaperEvaluationEntryModelReplay{Book: appender.Book(), Projection: projection}
 	}
 	return results[0], results[1], exclusions, nil
 }
