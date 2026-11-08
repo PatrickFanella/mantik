@@ -571,7 +571,9 @@ ceiling. Each later comparison, and each `POST /v1/paper-executions` step,
 fills them from retained quotes and releases orders that expire unfilled.
 A filled position that crosses its stop or target, or reaches its holding
 limit, closes with a market exit on a later quote, and its unspent notional is
-released. Capital reads back as v3 with open and closed positions. See
+released. An execution worker steps every open book every 15 seconds and
+reports under the `paper_execution` readiness scope. Capital reads back as v3
+with open and closed positions. See
 [paper entry execution](docs/reference/owned-allocation-comparisons.md#paper-entry-execution).
 
 The allocation journal seals older records into a checkpoint and an archive

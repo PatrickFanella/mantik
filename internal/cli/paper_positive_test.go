@@ -503,6 +503,8 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 	if err := json.Unmarshal(request("POST", "/v1/paper-executions", stepCommand, 200), &retried); err != nil || !retried.Duplicate || retried.Record.SHA256 != step.Record.SHA256 {
 		t.Fatal("execution retry", retried, err)
 	}
+	// The execution worker's identities are reserved.
+	request("POST", "/v1/paper-executions", storage.OwnedExecutionCommand{ID: service.AutomaticPaperExecutionPrefix + "caller", ReceiverID: owner}, 422)
 	var idle storage.OwnedExecutionReceipt
 	if err := json.Unmarshal(request("POST", "/v1/paper-executions", storage.OwnedExecutionCommand{ID: "execution-idle", ReceiverID: owner}, 200), &idle); err != nil || idle.Record != nil || idle.Status != "no_effects" {
 		t.Fatal("idle execution step", idle, err)

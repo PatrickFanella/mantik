@@ -29,7 +29,9 @@ func paperExecutionRoutes(mux *http.ServeMux, store storage.Store, clock Clock) 
 		defer r.Body.Close()
 		raw, err := io.ReadAll(r.Body)
 		var c storage.OwnedExecutionCommand
-		if err != nil || workerplan.ReadBoundedShape(raw, &c, 4096) != nil {
+		// The execution worker's identities are reserved, so a caller cannot
+		// occupy the identity it retries.
+		if err != nil || workerplan.ReadBoundedShape(raw, &c, 4096) != nil || reservedPaperExecutionID(c.ID) {
 			ownedAllocationError(w, storage.ErrOwnedAllocationInvalid)
 			return
 		}

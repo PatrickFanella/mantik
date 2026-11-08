@@ -499,12 +499,16 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 	defer store.Close()
 	// Paper entry execution is opt-in. Once v16 records exist, allocation
 	// replay needs it and fails closed without it.
+	// With it on, the execution worker steps every open book, so protective
+	// exits do not wait for a comparison or a caller's step.
+	execution := false
 	switch os.Getenv("MANTIK_PAPER_EXECUTION") {
 	case "":
 	case "on":
 		if err := store.EnablePaperExecution(service.SelectPaperExecutionQuotes); err != nil {
 			return err
 		}
+		execution = true
 	default:
 		return errors.New("MANTIK_PAPER_EXECUTION must be empty or on")
 	}
@@ -554,6 +558,15 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 	} else {
 		close(socialDone)
 	}
+	executionDone := make(chan struct{})
+	if execution {
+		go func() {
+			defer close(executionDone)
+			service.RunPaperExecutionWorker(workerCtx, store, workerID+"-execution", service.WallClock{})
+		}()
+	} else {
+		close(executionDone)
+	}
 	defer func() {
 		stopWorker()
 		<-workerDone
@@ -561,6 +574,7 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 		<-outcomeDone
 		<-evaluationDone
 		<-socialDone
+		<-executionDone
 	}()
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	finished := make(chan error, 1)
