@@ -881,7 +881,12 @@ the next append first seals all of them into a checkpoint
 (`mantik-owned-allocation-checkpoint-v1`), retained in the journal's
 `checkpoint`. The sealed records move to `mantik_owned_allocation_archive` in
 the same transaction, and the active journal starts empty. Append cost then
-depends on the records since the last checkpoint, not on history.
+depends on the records since the last checkpoint, not on history. On Kvant on
+2026-11-08, with other CI jobs running, one append with 32 records active took
+65 ms after 160 records and 74 ms after 1056
+(`MANTIK_ALLOCATION_APPEND_BENCH=1 go test ./internal/storage -run
+TestOwnedAllocationAppendCostIsBounded -v`). The remaining growth comes from
+the sealed alias index and consumed identities.
 
 A checkpoint holds the replay state after its records:
 
