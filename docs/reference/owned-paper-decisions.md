@@ -255,6 +255,22 @@ every historical source record, pass the full leakage recipe, attest provider
 quality, or grant admission, execution or qualification. Existing record schemas
 and valid historical bytes remain unchanged.
 
+## Windowed decision bases
+
+New `mantik-owned-paper-decision-v3` records no longer copy the registration's
+whole feed history. The basis keeps the window an evaluation reads: from the
+older of the latest quote and the latest calendar by receipt clock onward, ties
+included, with the admissions and routed inputs at least that new. `prefix`
+binds the rest: a count and a chained digest over every publication in
+`(published_at, key)` order, and the same over every admission with its routed
+input in `(at, id)` order, each through the cut.
+
+A read recomputes both digests from the current owner records and checks that
+the basis holds exactly the window those records select, so omitting or adding
+a source fails as before. Each registration's chain is built once per read, not
+once per decision. Records from before v3 keep their full copies and their
+original checks. Schema 99 fences writers that cannot read v3 bases.
+
 ## Versioned decision source membership
 
 New `mantik-owned-paper-decision-v2` records retain every admitted input and raw

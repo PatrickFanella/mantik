@@ -106,7 +106,7 @@ func paperOutcomeMembershipContract(t *testing.T, s outcomeMembershipBackend) {
 			}
 		}
 	}
-	if saved.Record.Schema != "mantik-owned-paper-outcome-v2" {
+	if saved.Record.Schema != paperOutcomeSchemaV3 {
 		t.Fatal("new outcome omitted versioned membership contract", saved.Record.Schema)
 	}
 	// Legacy envelopes preserve their original replay contract, bytes and hash.

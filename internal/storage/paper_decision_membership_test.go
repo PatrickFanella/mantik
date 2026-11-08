@@ -64,7 +64,7 @@ func paperDecisionMembershipContract(t *testing.T, s decisionTimeBackend) {
 		t.Fatal(err)
 	}
 	saved := retainedPaperDecision{original.Decision, original.Basis}
-	if saved.Record.Schema != "mantik-owned-paper-decision-v2" {
+	if saved.Record.Schema != paperDecisionSchemaV3 {
 		t.Fatal("new decision omitted versioned membership contract", saved.Record.Schema)
 	}
 	set := func(v retainedPaperDecision) {

@@ -52,6 +52,11 @@ every retained assessment at its original time. A self-hashed supplied envelope
 cannot establish service ownership. Corruption anywhere in the retained prefix
 prevents successful reads, new writes and retries.
 
+New `mantik-owned-paper-outcome-v3` assessments use the windowed basis described
+in [decisions](owned-paper-decisions.md#windowed-decision-bases), extended to keep
+everything published from the decision's clock onward, which is what the forward
+observation reads.
+
 New `mantik-owned-paper-outcome-v2` assessments also require every input admission
 and raw publication for the selected registration that was available by
 `evaluated_at`. Replay compares this membership against the actual storage

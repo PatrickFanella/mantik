@@ -49,6 +49,8 @@ func (c PaperDecisionCommand) Validate() error {
 type PaperDecisionBasis struct {
 	Strategy paperstrategy.Record `json:"strategy"`
 	Feed     FeedEvidenceSnapshot `json:"feed"`
+	// Prefix is set on v3 bases, which hold a window of the feed.
+	Prefix *PaperDecisionFeedPrefix `json:"prefix,omitempty"`
 }
 type PaperDecisionEvaluation struct {
 	Action     string                      `json:"action"`
@@ -73,7 +75,7 @@ type PaperDecisionRecord struct {
 
 // Validate checks the public receipt envelope, not service ownership of its basis.
 func (r PaperDecisionRecord) Validate() error {
-	if r.Command.Validate() != nil || (r.Schema != "mantik-owned-paper-decision-v1" && r.Schema != "mantik-owned-paper-decision-v2") || r.Status != "finalized" || r.FinalizedAt.IsZero() || r.Authority != "service_finalized_research_proposal_only" || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || !decisionPin.MatchString(r.BasisSHA256) || (r.Evaluation.Action != "abstain" && r.Evaluation.Action != "entry_candidate") || r.Evaluation.ReasonCode == "" {
+	if r.Command.Validate() != nil || (r.Schema != "mantik-owned-paper-decision-v1" && r.Schema != "mantik-owned-paper-decision-v2" && r.Schema != paperDecisionSchemaV3) || r.Status != "finalized" || r.FinalizedAt.IsZero() || r.Authority != "service_finalized_research_proposal_only" || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || !decisionPin.MatchString(r.BasisSHA256) || (r.Evaluation.Action != "abstain" && r.Evaluation.Action != "entry_candidate") || r.Evaluation.ReasonCode == "" {
 		return ErrPaperDecisionInvalid
 	}
 	want := r.SHA256
@@ -141,13 +143,13 @@ func decisionBasis(c PaperDecisionCommand, strategies paperstrategy.Catalog, fee
 	return clone(PaperDecisionBasis{Strategy: s, Feed: selected}), nil
 }
 func newPaperDecision(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time, eval PaperDecisionEvaluator) (PaperDecisionRecord, error) {
-	return paperDecisionForSchema("mantik-owned-paper-decision-v2", c, b, at, eval)
+	return paperDecisionForSchema(paperDecisionSchemaV3, c, b, at, eval)
 }
 
 // Historical v1 records keep their exact envelopes and hashes. Only new v2
 // decisions assert the selected-registration immutable source membership cut.
 func paperDecisionForSchema(schema string, c PaperDecisionCommand, b PaperDecisionBasis, at time.Time, eval PaperDecisionEvaluator) (PaperDecisionRecord, error) {
-	if schema != "mantik-owned-paper-decision-v1" && schema != "mantik-owned-paper-decision-v2" {
+	if schema != "mantik-owned-paper-decision-v1" && schema != "mantik-owned-paper-decision-v2" && schema != paperDecisionSchemaV3 {
 		return PaperDecisionRecord{}, ErrPaperDecisionInvalid
 	}
 	if c.Validate() != nil || eval == nil || at.IsZero() || at.UTC().Year() < 1 || at.UTC().Year() > 9999 || b.Strategy.Validate() != nil || b.Strategy.Command.ReceiverID != c.ReceiverID || b.Strategy.Command.Definition.ID != c.StrategyID || b.Strategy.SHA256 != c.StrategySHA256 || b.Feed.ReceiverID != c.ReceiverID || at.Before(b.Strategy.RegisteredAt) {
@@ -167,22 +169,26 @@ func paperDecisionForSchema(schema string, c PaperDecisionCommand, b PaperDecisi
 	r.SHA256 = workerplan.Hash(r)
 	return r, nil
 }
-func sameFeedRecord(a, b FeedEvidenceRecord) bool {
-	canonical := func(raw []byte) (string, error) {
-		var value any
-		d := json.NewDecoder(bytes.NewReader(raw))
-		d.UseNumber()
-		if err := d.Decode(&value); err != nil {
-			return "", err
-		}
-		out, err := json.Marshal(value)
-		return string(out), err
+
+// canonicalRecording normalizes JSON so a recording compares equal however
+// its store reordered object keys.
+func canonicalRecording(raw []byte) (string, error) {
+	var value any
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
+	if err := d.Decode(&value); err != nil {
+		return "", err
 	}
-	x, err := canonical(a.Recording)
+	out, err := json.Marshal(value)
+	return string(out), err
+}
+
+func sameFeedRecord(a, b FeedEvidenceRecord) bool {
+	x, err := canonicalRecording(a.Recording)
 	if err != nil {
 		return false
 	}
-	y, err := canonical(b.Recording)
+	y, err := canonicalRecording(b.Recording)
 	if err != nil {
 		return false
 	}
@@ -193,13 +199,18 @@ func sameFeedRecord(a, b FeedEvidenceRecord) bool {
 
 // Validate historical sources against their actual retained owner records. A new
 // lease or later input does not rewrite a completed decision's as-of basis.
-func verifyPaperDecision(v retainedPaperDecision, strategies paperstrategy.Catalog, current FeedEvidenceSnapshot, eval PaperDecisionEvaluator) error {
+func verifyPaperDecision(v retainedPaperDecision, strategies paperstrategy.Catalog, current FeedEvidenceSnapshot, index *feedPrefixIndex, eval PaperDecisionEvaluator) error {
 	if err := verifyPaperDecisionBasis(v.Record.Command, v.Basis, v.Record.FinalizedAt, strategies, current); err != nil {
 		return err
 	}
 	r, b, c := v.Record, v.Basis, v.Record.Command
-	if r.Schema == "mantik-owned-paper-decision-v2" {
+	switch r.Schema {
+	case "mantik-owned-paper-decision-v2":
 		if err := paperDecisionSourceMembership(c, b, r.FinalizedAt, current); err != nil {
+			return err
+		}
+	case paperDecisionSchemaV3:
+		if err := verifyFeedPrefix(c, b, r.FinalizedAt, time.Time{}, index); err != nil {
 			return err
 		}
 	}
@@ -300,11 +311,12 @@ func paperDecisionCatalog(owner string, all map[string]retainedPaperDecision, st
 	if eval == nil || !ValidReceiverID(owner) || len(all) > MaxPaperDecisions || strategies.Validate() != nil {
 		return out, ErrPaperDecisionInvalid
 	}
+	index := newFeedPrefixIndex(feed)
 	for id, v := range all {
 		if id != v.Record.Command.ID || v.Record.Command.ReceiverID != owner {
 			return out, ErrPaperDecisionInvalid
 		}
-		if err := verifyPaperDecision(v, strategies, feed, eval); err != nil {
+		if err := verifyPaperDecision(v, strategies, feed, index, eval); err != nil {
 			return out, err
 		}
 		out.Records = append(out.Records, v.Record)
@@ -334,11 +346,13 @@ func appendPaperDecision(c PaperDecisionCommand, all map[string]retainedPaperDec
 	if now == nil {
 		return retainedPaperDecision{}, false, ErrPaperDecisionInvalid
 	}
-	b, err := decisionBasis(c, strategies, feed)
+	full, err := decisionBasis(c, strategies, feed)
 	if err != nil {
 		return retainedPaperDecision{}, false, err
 	}
-	r, err := newPaperDecision(c, b, now(), eval)
+	at := now()
+	b := withFeedPrefix(c, full, feed, at, time.Time{})
+	r, err := newPaperDecision(c, b, at, eval)
 	if err != nil {
 		return retainedPaperDecision{}, false, err
 	}

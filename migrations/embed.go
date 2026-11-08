@@ -307,3 +307,6 @@ var PaperReplacementExits string
 
 //go:embed 0098_paper_decision_worker_health.sql
 var PaperDecisionWorkerHealth string
+
+//go:embed 0099_paper_basis_windows.sql
+var PaperBasisWindows string
