@@ -58,6 +58,40 @@ read the retained owner history or retry the exact command with the same ID;
 do not infer rollback from the absence of a receipt or allocate a replacement ID.
 This acknowledgment rule supplies no admission, execution or qualification.
 
+## Automatic decisions
+
+`serve --automatic-paper-decisions` runs a decision worker that finalizes and
+compares without a caller sequencing either stage. It runs immediately and
+then every 15 seconds:
+
+1. Every strategy a retained evaluation declaration names, at its current
+   record, is paired with each feed registration that matches its symbol,
+   feed and evidence class. A superseded strategy record no longer decides.
+2. When a pair's registration has published a quote recording no decision has
+   seen, the worker finalizes one decision against it. The identity,
+   `automatic-decision-` and a hash of the strategy record, registration and
+   latest quote, means a cycle without a newer quote retains nothing. Entry
+   candidates, abstentions and rejections are all retained.
+3. Every entry candidate that no allocation comparison pins gets a comparison
+   of its own, `automatic-comparison-` and a hash of the decision. The
+   allocation owner reserves, defers or rejects it as for any caller. At most
+   one candidate per strategy record, registration and evaluated quote is
+   compared, counting comparisons any caller made. A quote published between
+   the worker's feed read and finalization can give two decisions the same
+   evaluated quote, and this keeps one signal from reserving twice.
+
+Both prefixes are reserved: the decision and comparison routes reject them
+with 422. Each commit is atomic, and a failure in one pair or comparison does
+not stop the others. Progress, failures and clean stop are reported under
+the `paper_decision` readiness scope; the evidence reference names the
+failing decision or comparison. Schema 98 fences writers that reject this
+worker's health reports.
+
+Retention limits still apply. Decisions stop at 32 and published feed
+evidence at 128 records, so the worker supports a bounded rehearsal; once a
+limit is reached, every cycle fails visibly with the capacity error. See
+#285 for the retention work continuous operation needs.
+
 ## API and terminal client
 
 New finalizations return 201, exact retries 200, invalid commands 422, identity or

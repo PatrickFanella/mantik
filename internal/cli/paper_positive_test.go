@@ -128,6 +128,9 @@ type positiveShape struct {
 	sessions    int  // leading positiveDays to use; 0 uses all
 	extraQuotes int  // quotes per session after the exit, adding records only
 	assessOnly  bool // return after the assessment request
+	// automaticDecisions lets the decision worker finalize and compare the
+	// next session's decisions, then returns.
+	automaticDecisions bool
 }
 
 func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit func(bool), shape positiveShape) (storage.PaperEvaluationAssessment, storage.OwnedAllocationCatalog) {
@@ -391,6 +394,14 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 	clock.at = time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
 	quote("grant-entry", 98, 99)
 	clock.at = clock.at.Add(time.Second)
+	if shape.automaticDecisions {
+		positiveAutomaticDecisions(t, s, request, owner, clock, d.ID, r.SHA256, func() {
+			clock.at = time.Date(2026, 11, 9, 15, 0, 10, 0, time.UTC)
+			quote("automatic-next", 98, 99)
+			clock.at = clock.at.Add(time.Second)
+		})
+		return r, storage.OwnedAllocationCatalog{}
+	}
 	fresh := decide("grant-decision", d.ID)
 	grant := storage.OwnedAllocationCommand{ID: "grant-comparison", ReceiverID: owner, Decisions: []storage.OwnedDecisionPin{{ID: fresh.Record.Command.ID, SHA256: fresh.Record.SHA256}}}
 	if failCommit != nil {
@@ -799,4 +810,129 @@ func TestPostgresContractsOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T
 	if !reflect.DeepEqual(replayed, assessment) || !reflect.DeepEqual(comparisons, catalog) {
 		t.Fatal("restart replay changed the complete evaluation or reservations")
 	}
+}
+
+// positiveAutomaticDecisions runs the decision worker's cycle where the
+// fixture otherwise decides and compares by hand. All three declared
+// strategies see the $99 ask; the complete assessment admits only the center
+// one, so only its entry candidate reserves. A second cycle with no newer
+// quote retains nothing, and a newer quote yields one more decision per
+// strategy. Callers cannot use the worker's identities.
+func positiveAutomaticDecisions(t testing.TB, s portfolioHTTPBackend, request func(string, string, any, int) []byte, owner string, clock *ownedDecisionClock, center, assessment string, nextQuote func()) {
+	t.Helper()
+	ctx := context.Background()
+	worker, ok := s.(service.PaperDecisionWorkerStore)
+	if !ok {
+		t.Fatal("store cannot run the decision worker")
+	}
+	var decisions storage.PaperDecisionCatalog
+	if err := json.Unmarshal(request("GET", "/v1/paper-decisions", nil, 200), &decisions); err != nil {
+		t.Fatal(err)
+	}
+	manual := len(decisions.Records)
+	if err := service.RunPaperDecisionCycle(ctx, worker, clock); err != nil {
+		t.Fatal("decision cycle", err)
+	}
+	read := func() (storage.PaperDecisionCatalog, storage.OwnedAllocationCatalog) {
+		t.Helper()
+		var d storage.PaperDecisionCatalog
+		var a storage.OwnedAllocationCatalog
+		if err := json.Unmarshal(request("GET", "/v1/paper-decisions", nil, 200), &d); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &a); err != nil {
+			t.Fatal(err)
+		}
+		return d, a
+	}
+	decisions, comparisons := read()
+	automatic := []storage.PaperDecisionRecord{}
+	for _, d := range decisions.Records {
+		if strings.HasPrefix(d.Command.ID, service.AutomaticPaperDecisionPrefix) {
+			automatic = append(automatic, d)
+		}
+	}
+	if len(automatic) != 3 || len(decisions.Records) != manual+3 {
+		t.Fatal("automatic decisions", len(automatic), len(decisions.Records), manual)
+	}
+	reserved := 0
+	for _, d := range automatic {
+		if d.Evaluation.Action != "entry_candidate" {
+			continue
+		}
+		var found *storage.OwnedAllocationRecord
+		for i, r := range comparisons.Records {
+			if r.Command.ID == service.AutomaticPaperComparisonID(d) {
+				found = &comparisons.Records[i]
+			}
+		}
+		if found == nil || len(found.Command.Decisions) != 1 || found.Command.Decisions[0].SHA256 != d.SHA256 {
+			t.Fatal("entry candidate without its comparison", d.Command.ID)
+		}
+		status := found.Entry.Plan.Decisions[0].Status
+		if d.Command.StrategyID == center {
+			if status != "reserve_plan" || len(found.Entry.Command.Comparison.Admissions) != 1 || found.Entry.Command.Comparison.Admissions[0].EvidenceSHA256 != assessment {
+				t.Fatal("center strategy not admitted and reserved", status, found.Entry.Command.Comparison.Admissions)
+			}
+			reserved++
+		} else if status == "reserve_plan" {
+			t.Fatal("unadmitted strategy reserved", d.Command.StrategyID)
+		}
+	}
+	if reserved != 1 {
+		t.Fatal("reserved comparisons", reserved)
+	}
+	// No newer quote: the same identities, nothing retained.
+	if err := service.RunPaperDecisionCycle(ctx, worker, clock); err != nil {
+		t.Fatal("idle decision cycle", err)
+	}
+	if again, againComparisons := read(); len(again.Records) != len(decisions.Records) || len(againComparisons.Records) != len(comparisons.Records) {
+		t.Fatal("idle cycle retained records", len(again.Records), len(againComparisons.Records))
+	}
+	nextQuote()
+	// A caller decides and compares the center strategy on the newer quote
+	// first. The worker's own center decision evaluates the same quote, so it
+	// gets no second comparison: one signal reserves at most once.
+	var centerPin storage.PaperDecisionRecord
+	for _, d := range automatic {
+		if d.Command.StrategyID == center {
+			centerPin = d
+		}
+	}
+	var manual2 storage.PaperDecisionReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-decisions", storage.PaperDecisionCommand{ID: "manual-next", ReceiverID: owner, StrategyID: center, StrategySHA256: centerPin.Command.StrategySHA256, RegistrationID: centerPin.Command.RegistrationID}, 201), &manual2); err != nil || manual2.Record.Evaluation.Action != "entry_candidate" {
+		t.Fatal("manual decision", manual2.Record.Evaluation, err)
+	}
+	request("POST", "/v1/allocation-comparisons", storage.OwnedAllocationCommand{ID: "manual-next-comparison", ReceiverID: owner, Decisions: []storage.OwnedDecisionPin{{ID: manual2.Record.Command.ID, SHA256: manual2.Record.SHA256}}}, 201)
+	if err := service.RunPaperDecisionCycle(ctx, worker, clock); err != nil {
+		t.Fatal("next decision cycle", err)
+	}
+	next, nextComparisons := read()
+	if len(next.Records) != len(decisions.Records)+4 {
+		t.Fatal("newer quote decisions", len(next.Records), len(decisions.Records))
+	}
+	for _, d := range next.Records {
+		if !strings.HasPrefix(d.Command.ID, service.AutomaticPaperDecisionPrefix) || d.Command.StrategyID != center || d.Evaluation.Coverage.Quote.InputID != manual2.Record.Evaluation.Coverage.Quote.InputID {
+			continue
+		}
+		for _, r := range nextComparisons.Records {
+			if r.Command.ID == service.AutomaticPaperComparisonID(d) {
+				t.Fatal("second comparison for one evaluated quote", d.Command.ID)
+			}
+		}
+	}
+	// The worker's identities are reserved.
+	request("POST", "/v1/paper-decisions", storage.PaperDecisionCommand{ID: service.AutomaticPaperDecisionPrefix + "caller", ReceiverID: owner, StrategyID: automatic[0].Command.StrategyID, StrategySHA256: automatic[0].Command.StrategySHA256, RegistrationID: automatic[0].Command.RegistrationID}, 422)
+	request("POST", "/v1/allocation-comparisons", storage.OwnedAllocationCommand{ID: service.AutomaticPaperComparisonPrefix + "caller", ReceiverID: owner, Decisions: []storage.OwnedDecisionPin{{ID: automatic[0].Command.ID, SHA256: automatic[0].SHA256}}}, 422)
+}
+
+func TestOwnedPositiveAutomaticDecisionsHTTP(t *testing.T) {
+	m, err := storage.NewMemoryWithPortfolioEvaluator(service.EvaluateOwnedPaperPortfolio)
+	if err == nil {
+		err = m.EnablePaperExecution(service.SelectPaperExecutionQuotes)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	positiveEvaluationHTTP(t, m, nil, positiveShape{automaticDecisions: true})
 }

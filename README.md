@@ -1006,4 +1006,6 @@ acceptance remain unfinished.
 
 Social and copy source research requests can be explicitly dispatched into owner-bound research cases; see [social watches](docs/reference/owned-social-watches.md). Source assertions retain their unverified status and confer no financial authority.
 
+`mantik serve --automatic-paper-decisions` finalizes a decision for each declared strategy on each new quote from a matching feed registration, and compares every entry candidate no comparison pins yet. It is disabled by default, reports under its own `paper_decision` readiness scope, and stops at the existing decision and feed retention limits. See [automatic decisions](docs/reference/owned-paper-decisions.md#automatic-decisions).
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

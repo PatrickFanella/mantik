@@ -84,7 +84,8 @@ func paperDecisionRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		defer r.Body.Close()
 		raw, err := io.ReadAll(r.Body)
 		var c storage.PaperDecisionCommand
-		if err != nil || workerplan.ReadBoundedShape(raw, &c, 4096) != nil || c.Validate() != nil {
+		// The decision worker's identities are reserved.
+		if err != nil || workerplan.ReadBoundedShape(raw, &c, 4096) != nil || c.Validate() != nil || reservedPaperDecisionID(c.ID) {
 			paperDecisionError(w, storage.ErrPaperDecisionInvalid)
 			return
 		}
