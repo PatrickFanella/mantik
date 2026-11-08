@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -330,28 +331,52 @@ func TestOwnedAppendsReportDeadlines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for d := time.Microsecond; d < 300*time.Millisecond; d = d * 3 / 2 {
-		ctx, cancel := context.WithTimeout(context.Background(), d)
+	// Cancel at each successive context check until a run finishes without
+	// reaching one, so every check on these paths is exercised.
+	for limit := int64(0); ; limit++ {
+		ctx := newCountdownContext(limit)
 		journal, _, err := appendOwnedAllocation(ctx, f.m.receiverID, ownedAllocationJournal{Records: []retainedOwnedAllocation{}}, policies, decisions, strategies, f.m.paperDecisions, f.exec, f.command, func() time.Time { return f.at }, time.Time{}, available, assessments)
-		cancel()
-		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatal("comparison", d, err)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatal("comparison", limit, err)
 		}
 		if err == nil {
 			if _, err := f.replay(t, journal, f.complete); err != nil {
-				t.Fatal("committed comparison does not replay", d, err)
+				t.Fatal("committed comparison does not replay", limit, err)
 			}
 		}
-		ctx, cancel = context.WithTimeout(context.Background(), d)
+		compared := ctx.Err() == nil
+		ctx = newCountdownContext(limit)
 		stepped, _, err := appendOwnedExecution(ctx, f.m.receiverID, granted, policies, decisions, strategies, f.m.paperDecisions, f.exec, OwnedExecutionCommand{ID: "step", ReceiverID: f.m.receiverID}, func() time.Time { return f.at.Add(2 * time.Second) }, time.Time{}, available, assessments)
-		cancel()
-		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatal("step", d, err)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatal("step", limit, err)
 		}
 		if err == nil {
 			if _, err := f.replay(t, stepped, f.complete); err != nil {
-				t.Fatal("committed step does not replay", d, err)
+				t.Fatal("committed step does not replay", limit, err)
 			}
 		}
+		if compared && ctx.Err() == nil {
+			break
+		}
 	}
+}
+
+// countdownContext reports cancellation from its nth Err call onwards, so a
+// test can stop a computation at each of its context checks in turn.
+type countdownContext struct {
+	context.Context
+	remaining atomic.Int64
+}
+
+func newCountdownContext(n int64) *countdownContext {
+	c := &countdownContext{Context: context.Background()}
+	c.remaining.Store(n)
+	return c
+}
+
+func (c *countdownContext) Err() error {
+	if c.remaining.Add(-1) < 0 {
+		return context.Canceled
+	}
+	return nil
 }

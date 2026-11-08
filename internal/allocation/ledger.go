@@ -305,6 +305,9 @@ func walkLedger(ctx context.Context, l Ledger, visit func(int, ledgerState)) (le
 			return ledgerState{}, ErrInvalid
 		}
 		plan, err := s.apply(ctx, l.Policy.Command.Policy, entry.Command, entry.At, l.Schema)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return ledgerState{}, err
+		}
 		if err != nil || !reflect.DeepEqual(plan, entry.Plan) {
 			return ledgerState{}, ErrInvalid
 		}
