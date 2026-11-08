@@ -73,7 +73,7 @@ type PaperOutcomeRecord struct {
 }
 
 func (r PaperOutcomeRecord) Validate() error {
-	if r.Command.Validate() != nil || (r.Schema != "mantik-owned-paper-outcome-v1" && r.Schema != "mantik-owned-paper-outcome-v2") || r.Recipe != PaperOutcomeRecipe || r.EvaluatedAt.IsZero() || r.Authority != "service_owned_forward_quote_outcome_only" || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || !decisionPin.MatchString(r.BasisSHA256) {
+	if r.Command.Validate() != nil || (r.Schema != "mantik-owned-paper-outcome-v1" && r.Schema != "mantik-owned-paper-outcome-v2" && r.Schema != paperOutcomeSchemaV3) || r.Recipe != PaperOutcomeRecipe || r.EvaluatedAt.IsZero() || r.Authority != "service_owned_forward_quote_outcome_only" || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || !decisionPin.MatchString(r.BasisSHA256) {
 		return ErrPaperOutcomeInvalid
 	}
 	switch r.Evaluation.Status {
@@ -110,7 +110,7 @@ type PaperOutcomeStore interface {
 }
 
 func newPaperOutcome(c PaperOutcomeCommand, b PaperOutcomeBasis, at time.Time, eval PaperOutcomeEvaluator) (PaperOutcomeRecord, error) {
-	return paperOutcomeForSchema("mantik-owned-paper-outcome-v2", c, b, at, eval)
+	return paperOutcomeForSchema(paperOutcomeSchemaV3, c, b, at, eval)
 }
 
 func paperOutcomeForSchema(schema string, c PaperOutcomeCommand, b PaperOutcomeBasis, at time.Time, eval PaperOutcomeEvaluator) (PaperOutcomeRecord, error) {
@@ -183,6 +183,7 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 	eval = memoPaperOutcomeEvaluator(eval)
 	// The actual owner snapshot is fixed for this catalogue call. Reuse only
 	// successful custody checks for a fully equal command, basis, clock and mode.
+	index := newFeedPrefixIndex(feed)
 	verify := memoPaperOutcomeCustody(func(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time, membership bool) error {
 		if err := verifyPaperDecisionBasis(c, b, at, strategies, feed); err != nil {
 			return err
@@ -202,6 +203,11 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 		// membership modes are distinct cache inputs, never inferred from a hit.
 		if err := verify(d.Record.Command, b.Observation, r.EvaluatedAt, r.Schema == "mantik-owned-paper-outcome-v2"); err != nil {
 			return out, err
+		}
+		if r.Schema == paperOutcomeSchemaV3 {
+			if err := verifyFeedPrefix(d.Record.Command, b.Observation, r.EvaluatedAt, d.Record.FinalizedAt, index); err != nil {
+				return out, err
+			}
 		}
 		expected, err := paperOutcomeForSchema(r.Schema, r.Command, b, r.EvaluatedAt, eval)
 		if err != nil || !reflect.DeepEqual(expected, r) {
@@ -241,12 +247,13 @@ func appendPaperOutcome(c PaperOutcomeCommand, all map[string]retainedPaperOutco
 	if d.Record.SHA256 != c.DecisionSHA256 {
 		return retainedPaperOutcome{}, false, ErrPaperOutcomeConflict
 	}
-	observation, err := decisionBasis(d.Record.Command, strategies, feed)
+	full, err := decisionBasis(d.Record.Command, strategies, feed)
 	if err != nil {
 		return retainedPaperOutcome{}, false, err
 	}
-	b := PaperOutcomeBasis{d.Record, observation}
-	r, err := newPaperOutcome(c, b, now(), eval)
+	at := now()
+	b := PaperOutcomeBasis{d.Record, withFeedPrefix(d.Record.Command, full, feed, at, d.Record.FinalizedAt)}
+	r, err := newPaperOutcome(c, b, at, eval)
 	if err != nil {
 		return retainedPaperOutcome{}, false, err
 	}
