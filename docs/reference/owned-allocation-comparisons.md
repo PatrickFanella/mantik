@@ -760,6 +760,32 @@ from all books are merged in clock order and retained in the record's
 `executions`, grouped by policy, before its `expirations` and `entry`. The
 interim expiry rule above no longer releases proposals that a book owns.
 
+### Protective exits
+
+Each entry order carries its decision's stop, target and holding limit. A
+filled position triggers its exit at the first of:
+
+- a quote that occurred after the first fill, within the strategy's quote age,
+  whose bid is at or below the stop or at or above the target;
+- its holding deadline, the first fill plus the holding limit, run as a timer.
+
+A trigger cancels the order's unfilled remainder. Once every order in the book
+is terminal, the next quote after both the trigger and the last entry event
+places one market sell for the filled quantity, expiring 24 hours later, in
+its own exit book. Exit books take later quotes from the bid side, after entry
+books, and share displayed bid size the same way entry books share ask size.
+At one clock, entry expiries run first, then holding deadlines, then exit
+expiries.
+
+`ApplyExitFillBook` posts each exit fill as a `close` effect with its cost
+basis and net proceeds, and `ApplyClosedPositionReleases` releases the
+reservation's unspent notional once the position is fully closed. Both bind
+the entry book's final hash, so they run only after the entry book is frozen.
+A book is finished when its entry orders are terminal and every position's
+exit has ended. An exit that expires without filling fully leaves the rest of
+the position open; resolving it is later work. Schema 95 fences writers whose
+books do not exit.
+
 ### Execution steps
 
 `POST /v1/paper-executions` takes `{"id","receiver_id"}` and advances every
@@ -785,9 +811,10 @@ written before that fence fails replay.
 A ledger holding a v16 record reads back as capital v3
 (`mantik-owned-allocation-capital-v3`). For each reservation, held, filled
 and released amounts sum to its notional. Cash plus every held and filled
-amount equals opening cash. Positions are the filled reservations. No owner
-closes positions or records unknown outcomes yet, so closes, proceeds,
-realized results and unknown effects must still be absent.
+amount, less closed cost, equals opening cash plus the realized result.
+Positions are the reservations with filled cost not yet closed. No owner
+records unknown outcomes yet, so unknown effects must still be absent. A
+sealed ledger whose closed reservations left the base still reads back as v3.
 
 Replay rederives every record's execution effects from the ledgers as they
 stood before it and from the owner's quote selection, so a fabricated quote
@@ -796,14 +823,14 @@ comparison written after a book opened fails replay too, because it left
 open books unadvanced. Schema 90 fences earlier writers.
 
 The active journal holds at most 256 records, comparisons and steps
-together, in at most 64 MiB; checkpoints below keep it far smaller. Exits,
-unknown outcomes and the execution worker are later work.
+together, in at most 64 MiB; checkpoints below keep it far smaller. Unknown
+outcomes and the execution worker are later work.
 
 ## Checkpoints and the archive
 
 Every append replays the active journal, about 1 ms per record per replay on
-Kvant. Once the active journal holds 64 records and no entry book can still
-change, the next append first seals all of them into a checkpoint
+Kvant. Once the active journal holds 64 records and every book has finished,
+the next append first seals all of them into a checkpoint
 (`mantik-owned-allocation-checkpoint-v1`), retained in the journal's
 `checkpoint`. The sealed records move to `mantik_owned_allocation_archive` in
 the same transaction, and the active journal starts empty. Append cost then

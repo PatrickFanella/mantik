@@ -167,7 +167,7 @@ func (f eligibilityFixture) audit(t *testing.T, journal ownedAllocationJournal, 
 	return auditOwnedAllocations(context.Background(), f.m.receiverID, journal, policies, decisions, strategies, f.m.paperDecisions, f.exec, declarations, PaperEvaluationAssessmentCatalog{ReceiverID: f.m.receiverID, Records: assessments})
 }
 
-// A journal with entry execution seals only once its books have settled.
+// A journal with entry execution seals only once its books have finished.
 // Sealed steps answer exact retries, the audit re-executes the books, and
 // the ledgers match the same history appended without checkpoints.
 func TestOwnedCheckpointsSealExecutedHistory(t *testing.T) {
@@ -246,7 +246,7 @@ func TestOwnedCheckpointsSealExecutedHistory(t *testing.T) {
 		t.Fatal("audit", audit, err)
 	}
 	// With every record past the threshold, sealing still waits for the
-	// grant's book to settle at its expiry.
+	// grant's book to finish: its entry fills and its protective exit closes.
 	if _, eager, _, _ := run(1); openBookSealed || eager.Checkpoint == nil {
 		t.Fatal("sealing ignored an open book", openBookSealed)
 	}
@@ -264,9 +264,12 @@ func TestOwnedCheckpointsSealExecutedHistory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		out := []int64{p.Snapshot.AvailableCashCents, p.Snapshot.RealizedPnLCents, int64(len(p.Snapshot.Positions)), int64(len(p.Snapshot.Commitments))}
+		// Sealing drops settled reservations, closed positions included.
+		out := []int64{p.Snapshot.AvailableCashCents, p.Snapshot.RealizedPnLCents, int64(len(p.Snapshot.Positions))}
 		for _, r := range p.Reservations {
-			out = append(out, r.ReservedCents, r.FilledCents, r.ReleasedCents)
+			if r.ReservedCents != 0 || r.FilledCents != r.ClosedCostCents {
+				out = append(out, r.ReservedCents, r.FilledCents, r.ReleasedCents)
+			}
 		}
 		return out
 	}

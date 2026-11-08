@@ -151,7 +151,7 @@ func sealOwnedJournal(ctx context.Context, journal ownedAllocationJournal, catal
 		return journal, false, nil
 	}
 	for _, b := range state.books {
-		if !b.settled(state.last) {
+		if !b.done {
 			return journal, false, nil
 		}
 	}

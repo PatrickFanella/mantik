@@ -569,7 +569,9 @@ With `MANTIK_PAPER_EXECUTION=on`, `serve` also executes reserved proposals as
 paper entry orders. Each comparison opens buy limit orders at the bound cost
 ceiling. Each later comparison, and each `POST /v1/paper-executions` step,
 fills them from retained quotes and releases orders that expire unfilled.
-Capital reads back as v3 with filled positions. There are no exits yet. See
+A filled position that crosses its stop or target, or reaches its holding
+limit, closes with a market exit on a later quote, and its unspent notional is
+released. Capital reads back as v3 with open and closed positions. See
 [paper entry execution](docs/reference/owned-allocation-comparisons.md#paper-entry-execution).
 
 The allocation journal seals older records into a checkpoint and an archive

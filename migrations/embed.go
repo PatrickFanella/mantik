@@ -295,3 +295,6 @@ var OwnedAllocationArchive string
 
 //go:embed 0094_compact_settled_reservations.sql
 var CompactSettledReservations string
+
+//go:embed 0095_paper_protective_exits.sql
+var PaperProtectiveExits string
