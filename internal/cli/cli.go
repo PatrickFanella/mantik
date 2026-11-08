@@ -226,6 +226,9 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if len(args) > 0 && args[0] == "alpaca-publish" {
 		return runAlpacaPublish(ctx, args[1:], out, errOut)
 	}
+	if len(args) > 0 && args[0] == "alpaca-collector-loop" {
+		return runAlpacaCollectorLoop(ctx, args[1:], out, errOut)
+	}
 	if len(args) > 0 && (args[0] == "alpaca-run-collector" || args[0] == "alpaca-collector-status") {
 		return runAlpacaCollector(ctx, args[0], args[1:], out, errOut)
 	}

@@ -165,3 +165,77 @@ func boolInt(value bool) int {
 	}
 	return 0
 }
+
+// The loop runs finite sessions on one journal until the process stops, and
+// each run publishes under its own owner.
+func TestCollectorLoopThroughAuthenticatedService(t *testing.T) {
+	zone, _ := time.LoadLocation("America/New_York")
+	if at := time.Now().In(zone); at.Hour() == 23 && at.Minute() >= 58 {
+		t.Skip("manufactured same-day regular session ends at 23:59")
+	}
+	t.Setenv("MANTIK_API_TOKEN", "collector-cli-api-token")
+	root := t.TempDir()
+	journal := filepath.Join(root, "journal")
+	if err := Run(context.Background(), []string{"alpaca-journal", "--journal", journal, "--init"}, new(bytes.Buffer), new(bytes.Buffer)); err != nil {
+		t.Fatal(err)
+	}
+	j, err := alpaca.OpenExistingJournal(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journalID := j.ID
+	_ = j.Close()
+	store := storage.NewMemory()
+	snapshot, _ := store.FeedCollectors(context.Background())
+	r := feedcollector.Registration{ID: "spy-iex", Provider: "alpaca", Feed: "iex", Symbol: "SPY", EvidenceClass: "prospective_market_unqualified", JournalID: journalID, AccessRef: "manufactured-access", LeaseSeconds: 300}
+	if _, err := store.FeedCollectorCommand(context.Background(), snapshot.ReceiverID, feedcollector.Command{RequestID: "register", Operation: "register", RegistrationID: r.ID, Registration: &r}, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(loopbacktest.GoClientOnly(service.Handler(store, "collector-cli-api-token")))
+	defer server.Close()
+	var reads atomic.Int32
+	previous := http.DefaultTransport
+	http.DefaultTransport = collectorProviderTransport{fallback: previous, reads: &reads}
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	credentials := filepath.Join(root, "credentials.json")
+	if err := os.WriteFile(credentials, []byte(`{"key":"manufactured-provider-key","secret":"manufactured-provider-secret"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	spec := alpaca.SessionSpec{ID: "loop", Count: 1, IntervalSeconds: 1, Collection: alpaca.CollectionSpec{Capability: "latest_quotes", Feed: "iex", Symbols: []string{"SPY"}, AccessRef: r.AccessRef, MaxQuoteAgeSeconds: 60}}
+	path := filepath.Join(root, "session.json")
+	raw, _ := json.Marshal(spec)
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for ctx.Err() == nil {
+			evidence, err := store.FeedEvidence(context.Background())
+			if err == nil && len(evidence.Records) >= 4 {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+	out, diag := new(bytes.Buffer), new(bytes.Buffer)
+	args := []string{"alpaca-collector-loop", "--journal", journal, "--spec", path, "--credentials-file", credentials, "--api-url", server.URL, "--receiver-id", snapshot.ReceiverID, "--collector-registration-id", r.ID, "--regular-session-seconds", "60"}
+	if err := Run(ctx, args, out, diag); err != nil {
+		t.Fatal(out.String(), diag.String(), err)
+	}
+	evidence, err := store.FeedEvidence(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	owners := map[string]bool{}
+	for _, record := range evidence.Records {
+		owners[record.Fence.OwnerID] = true
+	}
+	if len(owners) < 2 {
+		t.Fatal("runs did not repeat under their own owners", owners)
+	}
+	if strings.Contains(out.String(), "manufactured-provider-") {
+		t.Fatal("terminal leaked credentials")
+	}
+}

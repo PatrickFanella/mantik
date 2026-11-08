@@ -97,11 +97,10 @@ shared capacity after preflight. Server admission and raw-publication limits
 remain authoritative at mutation: exhaustion
 stops the run and retains the acquisition; no history is pruned or replaced.
 The existing server-wide bounds still apply. The maximum duration does not
-expand the declared count or retention capacity. Longer operation requires a
-new explicitly named run within remaining capacity, never automatic rollover.
-Each new regular-session run refreshes its own calendar once. There is no
-mid-window calendar refetch, overnight wait, scheduler, automatic restart,
-catch-up, or capacity reset.
+expand the declared count or retention capacity. Within one run there is no
+mid-window calendar refetch, overnight wait, automatic restart, catch-up or
+capacity reset. Each new regular-session run refreshes its own calendar once.
+Use `alpaca-collector-loop`, below, to repeat runs.
 
 Regular-session intent/result artifacts use v3; v1/v2 history remains readable.
 `calendar` reports the retained calendar collection, `calendar_published`
@@ -225,3 +224,23 @@ does not change fixture execution, configure global feed coverage, prove
 profitability, or enable orders. Provider entitlement, usable fresh-price
 coverage, prospective strategy evaluation, and live-money execution retain
 their separate gates.
+
+## Repeating runs
+
+`alpaca-collector-loop` repeats finite regular-session runs on one journal and
+registration until the process is stopped. It takes the same `--journal`,
+`--spec`, `--credentials-file`, `--api-url`, `--receiver-id` and
+`--collector-registration-id` flags. The spec's `id`, at most 15 characters, is a
+prefix: each run's session and owner are that prefix plus the UTC second it
+started. `--regular-session-seconds` limits each run and defaults to 480.
+
+Runs follow one another directly during a session. When a run finds the market
+closed, the loop waits for the next weekday 09:30 New York. A market holiday
+therefore costs one calendar read. Any other stop waits one minute, and five
+consecutive failed runs end the process with an error. Each run's status is
+printed as JSON.
+
+The journal's 128 captures and the server's feed limits still apply, so the loop
+ends with an error once capacity runs out rather than pruning anything. It does
+not yet support unattended operation for longer than those limits allow; #285
+tracks the retention work.

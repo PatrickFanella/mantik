@@ -315,7 +315,8 @@ explicit ownership, bounded quote acquisition, fenced delivery, raw capture
 publication, and release
 through `alpaca-run-collector`. Its optional `--regular-session-seconds` mode
 refreshes and publishes a calendar first, then bounds quotes by count, deadline,
-and regular-session close. It has no automatic restart or catch-up schedule.
+and regular-session close. Each run has no restart or catch-up of its own;
+`alpaca-collector-loop` repeats runs on one journal until capacity runs out.
 `alpaca-publish` retains [validated server evidence](docs/reference/feed-evidence.md)
 for inspection with `feed-coverage`. An explicit [startup policy](docs/reference/feed-readiness.md)
 can enable scoped feed readiness for a pinned receiver and required registrations;
