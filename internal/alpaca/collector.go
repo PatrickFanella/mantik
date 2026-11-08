@@ -253,7 +253,7 @@ func (j *Journal) RunCollector(ctx context.Context, c *Client, s CollectorSpec, 
 	return j.runCollector(ctx, c, s, control, receiver, wait)
 }
 func (j *Journal) runCollector(ctx context.Context, c *Client, s CollectorSpec, control CollectorControl, receiver CollectorReceiver, pause func(context.Context, time.Duration) error) (CollectorStatus, error) {
-	return j.runCollectorAt(ctx, c, s, control, receiver, pause, time.Now)
+	return j.runCollectorAt(ctx, c, s, control, receiver, pause, j.stamp)
 }
 
 func (j *Journal) runCollectorAt(ctx context.Context, c *Client, s CollectorSpec, control CollectorControl, receiver CollectorReceiver, pause func(context.Context, time.Duration) error, now func() time.Time) (CollectorStatus, error) {
@@ -551,7 +551,7 @@ func (j *Journal) runCollectorAt(ctx context.Context, c *Client, s CollectorSpec
 		resultSchema = "mantik-alpaca-collector-result-v3"
 		stopCode = collectorWindowStopCode(runErr, state)
 	}
-	result := collectorResult{CalendarPublished: calendarPublished, StopCode: stopCode, Schema: resultSchema, IntentSHA256: digest, State: state, At: time.Now().UTC(), StopConfirmed: stopConfirmed, Steps: steps, Session: out.Session, Delivery: status, Published: published}
+	result := collectorResult{CalendarPublished: calendarPublished, StopCode: stopCode, Schema: resultSchema, IntentSHA256: digest, State: state, At: j.stamp(), StopConfirmed: stopConfirmed, Steps: steps, Session: out.Session, Delivery: status, Published: published}
 	if err := j.writeCollection(collectorName(s.Session.ID, "complete"), result); err != nil {
 		return out, errors.Join(runErr, err)
 	}

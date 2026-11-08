@@ -230,7 +230,7 @@ func (j *Journal) runControlledSession(ctx context.Context, c *Client, s Session
 	if len(captures)+s.Count > MaxCaptures || collections+s.Count > MaxCollections || sessions >= 128 || len(entries)+s.Count*20+4 > 20000 {
 		return out, errors.New("session retention budget exceeds journal capacity before acquisition")
 	}
-	intent := sessionIntent{"mantik-alpaca-session-v1", j.ID, s, time.Now().UTC()}
+	intent := sessionIntent{"mantik-alpaca-session-v1", j.ID, s, j.stamp()}
 	if err := j.writeCollection(sessionName(s.ID, "intent"), intent); err != nil {
 		return out, err
 	}
@@ -243,7 +243,7 @@ func (j *Journal) runControlledSession(ctx context.Context, c *Client, s Session
 		if err != nil {
 			return out, err
 		}
-		if err := j.writeCollection(sessionName(s.ID, "complete"), sessionCompletion{"mantik-alpaca-session-result-v1", digest, state, code, time.Now().UTC(), current.Started, current.Retained}); err != nil {
+		if err := j.writeCollection(sessionName(s.ID, "complete"), sessionCompletion{"mantik-alpaca-session-result-v1", digest, state, code, j.stamp(), current.Started, current.Retained}); err != nil {
 			return current, err
 		}
 		return j.Session(s.ID)

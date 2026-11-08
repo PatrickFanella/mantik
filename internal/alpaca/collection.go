@@ -288,13 +288,13 @@ func (j *Journal) Collect(ctx context.Context, c *Client, s CollectionSpec) (Col
 			return out, ErrJournalConflict
 		}
 	}
-	intent := collectionIntent{"mantik-alpaca-collection-v1", j.ID, s, time.Now().UTC()}
+	intent := collectionIntent{"mantik-alpaca-collection-v1", j.ID, s, j.stamp()}
 	if err := j.writeCollection(collectionName(s.ID, "intent"), intent); err != nil {
 		return out, err
 	}
 	intentRaw, _ := json.Marshal(intent)
 	finish := func(state, code, capture string) (CollectionStatus, error) {
-		done := collectionCompletion{"mantik-alpaca-collection-result-v1", Digest(string(intentRaw)), state, code, time.Now().UTC(), capture}
+		done := collectionCompletion{"mantik-alpaca-collection-result-v1", Digest(string(intentRaw)), state, code, j.stamp(), capture}
 		if err := j.writeCollection(collectionName(s.ID, "complete"), done); err != nil {
 			return out, err
 		}
@@ -315,7 +315,7 @@ func (j *Journal) Collect(ctx context.Context, c *Client, s CollectionSpec) (Col
 			persistenceFailed = true
 		}
 		return err
-	})
+	}, j.stamp)
 	if persistenceFailed {
 		return out, ErrCollectionIncomplete
 	}

@@ -119,13 +119,13 @@ func (c *Client) target(q Query) (string, error) {
 // at most three attempts, and at most 1 MiB per response. The caller must retain
 // response bytes and attribution before normalization or any service submission.
 func (c *Client) Fetch(ctx context.Context, q Query) (Response, error) {
-	return c.fetch(ctx, q, nil)
+	return c.fetch(ctx, q, nil, time.Now)
 }
 
 // The private observer durably records each attempt before a request and its
 // bounded response before retrying or returning success. Observer failure stops
 // acquisition immediately; it is never treated as a transport retry.
-func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) error) (Response, error) {
+func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) error, now func() time.Time) (Response, error) {
 	if err := ctx.Err(); err != nil {
 		return Response{}, err
 	}
@@ -144,7 +144,7 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 			return Response{}, err
 		}
 		if observe != nil {
-			if err := observe(ReadAttempt{Number: attempt, State: "started", At: time.Now().UTC()}); err != nil {
+			if err := observe(ReadAttempt{Number: attempt, State: "started", At: now().UTC()}); err != nil {
 				return Response{}, err
 			}
 		}
@@ -158,7 +158,7 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 		res, err := c.http.Do(req)
 		if err != nil {
 			if observe != nil {
-				if e := observe(ReadAttempt{Number: attempt, State: "transport_failed", At: time.Now().UTC()}); e != nil {
+				if e := observe(ReadAttempt{Number: attempt, State: "transport_failed", At: now().UTC()}); e != nil {
 					return Response{}, e
 				}
 			}
@@ -172,7 +172,7 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 		}
 		raw, readErr := io.ReadAll(io.LimitReader(res.Body, MaxBytes+1))
 		_ = res.Body.Close()
-		receivedAt := time.Now().UTC()
+		receivedAt := now().UTC()
 		if observe != nil {
 			bounded := raw
 			if len(bounded) > MaxBytes {

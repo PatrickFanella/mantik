@@ -137,7 +137,7 @@ func TestClientObserverFailureStopsWithoutRetry(t *testing.T) {
 					return fault
 				}
 				return nil
-			})
+			}, time.Now)
 			want := int32(0)
 			if state == "response" {
 				want = 1
