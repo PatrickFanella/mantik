@@ -1,9 +1,12 @@
 package storage
 
 import (
+	"slices"
+
 	"context"
 	"encoding/json"
 	"errors"
+	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
@@ -46,13 +49,40 @@ type PaperEvaluationPlanAttribution struct {
 }
 
 // Unknown economic values are null, not manufactured zero costs or PnL.
-// This view describes the implemented deferral owner, not future funded effects.
+//
+// A decision the allocation owner reserved carries its paper execution: every
+// retained fill, close and release effect for its proposal, and their sums.
+// Status is owned_execution_unavailable without a reservation, then
+// reserved_unfilled, released_unfilled, position_open or position_closed.
+// Fees are inside each fill's cost and each close's net proceeds, and the
+// ledger does not retain share counts, so ExecutedQuantity and FeesCents stay
+// null. RealizedPnLCents is net proceeds less the closed cost basis, set once
+// something has closed.
 type PaperEconomicAttribution struct {
 	Status           string `json:"status"`
 	ExecutedQuantity *int64 `json:"executed_quantity"`
 	FeesCents        *int64 `json:"fees_cents"`
 	RealizedPnLCents *int64 `json:"realized_pnl_cents"`
 	BaselineStatus   string `json:"baseline_status"`
+	ReservedCents    *int64 `json:"reserved_cents,omitempty"`
+	FilledCostCents  *int64 `json:"filled_cost_cents,omitempty"`
+	ClosedCostCents  *int64 `json:"closed_cost_cents,omitempty"`
+	NetProceedsCents *int64 `json:"net_proceeds_cents,omitempty"`
+	ReleasedCents    *int64 `json:"released_cents,omitempty"`
+	// Effects is null without a reservation and a list, possibly empty,
+	// with one, so a reserved decision with nothing filled keeps it.
+	Effects []PaperExecutionEffect `json:"effects"`
+}
+
+// PaperExecutionEffect is one retained ledger effect for a decision's
+// proposal, with the comparison or execution step that committed it.
+type PaperExecutionEffect struct {
+	RecordID      string    `json:"record_id"`
+	EffectID      string    `json:"effect_id"`
+	Kind          string    `json:"kind"`
+	At            time.Time `json:"at"`
+	AmountCents   int64     `json:"amount_cents"`
+	ProceedsCents int64     `json:"proceeds_cents"`
 }
 
 // The complete per-decision review chain is a projection of retained non-grant
@@ -102,7 +132,7 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 	if decisions.ReceiverID != strategies.ReceiverID || outcomes.ReceiverID != decisions.ReceiverID || allocations.ReceiverID != decisions.ReceiverID {
 		return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
 	}
-	out := PaperAttributionCatalog{Schema: "mantik-owned-paper-attribution-v2", ReceiverID: decisions.ReceiverID, Rows: []PaperAttributionRow{}, Authority: "service_owned_phase_attribution_only"}
+	out := PaperAttributionCatalog{Schema: "mantik-owned-paper-attribution-v4", ReceiverID: decisions.ReceiverID, Rows: []PaperAttributionRow{}, Authority: "service_owned_phase_attribution_only"}
 	reviews, err := ownedAdmissionReviewCatalog(ctx, decisions.ReceiverID, allReviews, allocations)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
@@ -185,6 +215,7 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 				row.Allocations = append(row.Allocations, item)
 			}
 		}
+		row.Economics = paperExecutionAttribution(d.Command.ID, row.Allocations, allocations)
 		scoped := OwnedAdmissionReviewCatalog{ReceiverID: out.ReceiverID, Records: []OwnedAdmissionReview{}, CurrentIDs: []string{}}
 		for _, review := range reviews.Records {
 			if review.Command.DecisionID != d.Command.ID {
@@ -370,4 +401,68 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 		return PaperAttributionCatalog{}, err
 	}
 	return out, nil
+}
+
+// paperExecutionAttribution collects the decision's effects from comparison
+// records and execution steps, archived ones included, so it survives
+// checkpoints that seal settled reservations out of the ledgers.
+func paperExecutionAttribution(decisionID string, choices []PaperAllocationAttribution, allocations OwnedAllocationCatalog) PaperEconomicAttribution {
+	out := PaperEconomicAttribution{Status: "owned_execution_unavailable", BaselineStatus: "economic_baselines_unavailable"}
+	var reserved int64
+	for _, c := range choices {
+		if c.Status == "reserve_plan" {
+			reserved += c.RequestedFundingCents
+		}
+	}
+	if reserved == 0 {
+		return out
+	}
+	effects := []PaperExecutionEffect{}
+	collect := func(record string, entries []allocation.LedgerEntry) {
+		for _, e := range entries {
+			if f := e.Command.Effect; f != nil && f.DecisionID == decisionID {
+				effects = append(effects, PaperExecutionEffect{RecordID: record, EffectID: f.ID, Kind: f.Kind, At: e.At, AmountCents: f.AmountCents, ProceedsCents: f.ProceedsCents})
+			}
+		}
+	}
+	for _, r := range allocations.Records {
+		for _, x := range r.Executions {
+			collect(r.Command.ID, x.Entries)
+		}
+		collect(r.Command.ID, r.Expirations)
+	}
+	for _, step := range allocations.Executions {
+		for _, x := range step.Executions {
+			collect(step.Command.ID, x.Entries)
+		}
+	}
+	slices.SortStableFunc(effects, func(a, b PaperExecutionEffect) int { return a.At.Compare(b.At) })
+	var filled, closed, proceeds, released int64
+	for _, e := range effects {
+		switch e.Kind {
+		case "fill":
+			filled += e.AmountCents
+		case "close":
+			closed += e.AmountCents
+			proceeds += e.ProceedsCents
+		case "release":
+			released += e.AmountCents
+		}
+	}
+	out.ReservedCents, out.FilledCostCents, out.ClosedCostCents, out.NetProceedsCents, out.ReleasedCents, out.Effects = &reserved, &filled, &closed, &proceeds, &released, effects
+	switch {
+	case filled == 0 && released == 0:
+		out.Status = "reserved_unfilled"
+	case filled == 0:
+		out.Status = "released_unfilled"
+	case closed < filled:
+		out.Status = "position_open"
+	default:
+		out.Status = "position_closed"
+	}
+	if closed > 0 {
+		realized := proceeds - closed
+		out.RealizedPnLCents = &realized
+	}
+	return out
 }

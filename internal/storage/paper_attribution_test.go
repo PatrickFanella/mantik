@@ -108,7 +108,7 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if original.Schema != "mantik-owned-paper-attribution-v3" || original.ReceiverID != owner || original.ExecutionAvailable || original.QualificationCredit || original.Authority != "service_owned_phase_attribution_only" || len(original.Rows) != 2 {
+	if original.Schema != "mantik-owned-paper-attribution-v4" || original.ReceiverID != owner || original.ExecutionAvailable || original.QualificationCredit || original.Authority != "service_owned_phase_attribution_only" || len(original.Rows) != 2 {
 		t.Fatal(original)
 	}
 	row := original.Rows[1]
