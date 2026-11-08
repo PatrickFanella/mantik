@@ -221,7 +221,7 @@ func TestServeRejectsInvalidFeedPolicyBeforeDatabaseOrListen(t *testing.T) {
 
 func TestServeAutomaticOutcomeFlag(t *testing.T) {
 	t.Setenv("DATABASE_URL", "")
-	for _, flags := range [][]string{{"--automatic-social-research"}, {"--automatic-paper-outcomes"}, {"--automatic-paper-evaluations"}, {"--automatic-paper-outcomes", "--automatic-paper-evaluations", "--automatic-social-research"}} {
+	for _, flags := range [][]string{{"--automatic-social-research"}, {"--automatic-paper-outcomes"}, {"--automatic-paper-evaluations"}, {"--automatic-paper-decisions"}, {"--automatic-paper-outcomes", "--automatic-paper-evaluations", "--automatic-social-research", "--automatic-paper-decisions"}} {
 		var out, diag bytes.Buffer
 		err := Run(context.Background(), append([]string{"serve"}, flags...), &out, &diag)
 		if err == nil || err.Error() != "DATABASE_URL is required for serve" {

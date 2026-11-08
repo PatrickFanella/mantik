@@ -36,7 +36,8 @@ func ownedAllocationRoutes(mux *http.ServeMux, store storage.Store, clock Clock)
 		defer r.Body.Close()
 		raw, err := io.ReadAll(r.Body)
 		var c storage.OwnedAllocationCommand
-		if err != nil || workerplan.ReadBoundedShape(raw, &c, 8192) != nil || c.Validate() != nil {
+		// The decision worker's comparison identities are reserved.
+		if err != nil || workerplan.ReadBoundedShape(raw, &c, 8192) != nil || c.Validate() != nil || reservedPaperComparisonID(c.ID) {
 			ownedAllocationError(w, storage.ErrOwnedAllocationInvalid)
 			return
 		}

@@ -267,7 +267,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs.SetOutput(errOut)
 	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest, feedPolicyPath, corporateJournalPath, corporateJournalID string
 	var references referenceJournals
-	var exportDataset, automaticOutcomes, automaticEvaluations, automaticSocialResearch bool
+	var exportDataset, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions bool
 	switch args[0] {
 	case "serve":
 		fs.StringVar(&corporateJournalPath, "corporate-source-journal", "", "optional existing private journal for verified corporate acquisition reads")
@@ -276,6 +276,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		fs.StringVar(&references.polygonID, "polygon-reference-journal-id", "", "expected identity of the configured Polygon reference journal")
 		fs.StringVar(&references.issuerPath, "issuer-document-journal", "", "optional existing private issuer-document journal for custody imports")
 		fs.StringVar(&references.issuerID, "issuer-document-journal-id", "", "expected identity of the configured issuer-document journal")
+		fs.BoolVar(&automaticDecisions, "automatic-paper-decisions", false, "automatically finalize decisions on new quotes for declared strategies and compare entry candidates; no admission authority beyond the allocation owner's")
 		fs.BoolVar(&automaticSocialResearch, "automatic-social-research", false, "dispatch retained social/copy requests into research-only cases; no provider or financial authority")
 		fs.BoolVar(&automaticEvaluations, "automatic-paper-evaluations", false, "automatically retain post-deadline necessary-check assessments; no admission authority")
 		fs.BoolVar(&automaticOutcomes, "automatic-paper-outcomes", false, "automatically retain sealed forward quote outcomes; no admission authority")
@@ -306,7 +307,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	if args[0] == "serve" {
-		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, automaticSocialResearch, corporateJournalPath, corporateJournalID, references)
+		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions, corporateJournalPath, corporateJournalID, references)
 	}
 	if args[0] == "replay" {
 		if exportDataset {
@@ -430,7 +431,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 
 type referenceJournals struct{ polygonPath, polygonID, issuerPath, issuerID string }
 
-func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations, automaticSocialResearch bool, corporateJournalPath, corporateJournalID string, references referenceJournals) error {
+func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions bool, corporateJournalPath, corporateJournalID string, references referenceJournals) error {
 	var acquisitions *service.CorporateAcquisitionReader
 	if corporateJournalPath != "" || corporateJournalID != "" {
 		var err error
@@ -558,6 +559,15 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 	} else {
 		close(socialDone)
 	}
+	decisionDone := make(chan struct{})
+	if automaticDecisions {
+		go func() {
+			defer close(decisionDone)
+			service.RunPaperDecisionWorker(workerCtx, store, workerID+"-decisions", service.WallClock{})
+		}()
+	} else {
+		close(decisionDone)
+	}
 	executionDone := make(chan struct{})
 	if execution {
 		go func() {
@@ -575,6 +585,7 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 		<-evaluationDone
 		<-socialDone
 		<-executionDone
+		<-decisionDone
 	}()
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	finished := make(chan error, 1)
