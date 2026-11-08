@@ -154,3 +154,29 @@ Installed conversational client behavior, faithful natural-language interpretati
 authorized policy/action journeys, model-backed acceptance and review triage remain
 separate work. Financial evaluation, admission, durable execution, recovery/release
 acceptance and natural qualification also remain incomplete.
+
+## Scheduled reviews
+
+`paper-research-loop` runs this flow without a caller. Each cycle, every
+`--interval-seconds` (default 60, at most 3,600), it reads the finalized
+decisions and picks the first entry candidate with no retained review and fewer
+than three attempts. It makes at most one model request per cycle, so a cycle
+bounds the request rate. Abstentions are not reviewed.
+
+```bash
+./bin/mantik paper-research-loop \
+  --api-url http://127.0.0.1:40880 \
+  --receiver-id ACTUAL_RECEIVER_ID \
+  --model-config /absolute/private/model.json \
+  --capture-root /absolute/private/review-attempts
+```
+
+The review ID is derived from the decision's hash, and each attempt gets a new
+directory, `REVIEW_ID-N`, under the capture root. A restart counts attempts from
+those directories. A model outage leaves a retained failed attempt and the loop
+carries on. After three failed attempts the decision is skipped and needs an
+operator. Decisions, allocation and protective exits run in the service and never
+wait for this process. They continue through a model outage and whether or not
+the loop is running.
+
+The service's 64-review limit still applies.
