@@ -8,6 +8,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/actions"
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
+	"git.subcult.tv/subculture-collective/mantik/internal/operational"
 	"git.subcult.tv/subculture-collective/mantik/internal/routing"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
@@ -44,6 +45,36 @@ func cycleCode(err error) string {
 	}
 }
 
+// failureRefs lists the distinct identities a cycle failed on, in the order
+// the cycle reported them and up to the report bound, with their full count.
+func failureRefs(err error) ([]string, int) {
+	refs := []string{}
+	seen := map[string]bool{}
+	var walk func(error)
+	walk = func(err error) {
+		switch e := err.(type) {
+		case *workerFailure:
+			if !seen[e.ref] {
+				seen[e.ref] = true
+				if len(refs) < operational.MaxWorkerFailureRefs {
+					refs = append(refs, e.ref)
+				}
+			}
+		case interface{ Unwrap() []error }:
+			for _, child := range e.Unwrap() {
+				walk(child)
+			}
+		case interface{ Unwrap() error }:
+			walk(e.Unwrap())
+		}
+	}
+	walk(err)
+	if len(refs) == 0 {
+		return nil, 0
+	}
+	return refs, len(seen)
+}
+
 func recordWorkerCycle(ctx context.Context, store any, worker, capability string, clock Clock, interval time.Duration, cycleErr error, stopped bool, pending *pendingFailure) {
 	backend, ok := store.(storage.OperationalStore)
 	if !ok {
@@ -55,9 +86,9 @@ func recordWorkerCycle(ctx context.Context, store any, worker, capability string
 		pending.at, pending.code = now, code
 	}
 	report := domain.WorkerReport{WorkerHealth: domain.WorkerHealth{Capability: capability, WorkerID: worker, At: now, IntervalMillis: interval.Milliseconds(), ErrorCode: code, Stopped: stopped}, PriorFailureAt: pending.at, PriorErrorCode: pending.code}
-	var failure *workerFailure
-	if errors.As(cycleErr, &failure) {
-		report.EvidenceRef = failure.ref
+	report.EvidenceRefs, report.FailureCount = failureRefs(cycleErr)
+	if len(report.EvidenceRefs) > 0 {
+		report.EvidenceRef = report.EvidenceRefs[0]
 	}
 	reportCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
