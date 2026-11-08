@@ -15,10 +15,11 @@ const PaperExecutionWorkerInterval = 15 * time.Second
 const PaperExecutionWorkerCapability = "paper_execution"
 const AutomaticPaperExecutionPrefix = "automatic-execution-"
 
-// ErrProtectiveExitUnfilled reports a paper position whose exit ended
-// without closing it. Nothing closes the rest, so the worker reports it on
-// every cycle until the position is resolved.
-var ErrProtectiveExitUnfilled = errors.New("paper position left open after its exit ended")
+// ErrProtectiveExitUnfilled reports a paper position the ledger holds open
+// while no open book tracks it, so no exit can close it. Replacement exits
+// mean this marks an inconsistency; the worker reports it on every cycle
+// until the position is resolved.
+var ErrProtectiveExitUnfilled = errors.New("paper position open with no exit tracking it")
 
 type PaperExecutionWorkerStore interface {
 	storage.OwnedExecutionStore

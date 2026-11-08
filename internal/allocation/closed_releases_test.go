@@ -316,3 +316,71 @@ func TestClosedPositionReleaseNoUnusedFundingCreatesNoEffect(t *testing.T) {
 		t.Fatal(p, rs, err)
 	}
 }
+
+// An exit that expires with shares left is followed by a replacement for the
+// rest. The two books together close each position at its whole cost basis
+// and release its unused funding once. A replacement placed while the first
+// exit still works, one that sells more than remains, or a book applied
+// without the closes that came before it, are all refused.
+func TestReplacementExitBooksCloseTheRemainder(t *testing.T) {
+	ctx := context.Background()
+	l, buys, first, at := closedReleaseFixture(t, paperfill.BookMethod)
+	first = exitBookQuote(t, first, "partial", at.Add(3*time.Second), 2, 900)
+	first = terminalBookCommand(t, first, "first-expiry", "", at.Add(time.Minute))
+	single, _, _, err := ApplyExitFillBook(ctx, l, buys, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seq, _, _, err := ApplyExitFillBooks(ctx, l, buys, []paperfill.Book{first}); err != nil || !reflect.DeepEqual(seq, single) {
+		t.Fatal("one-book sequence differs", err)
+	}
+	firstProjection, err := paperfill.ReplayBook(ctx, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := func(placed time.Time, extra int64) paperfill.Book {
+		orders := []paperfill.Order{}
+		for i, o := range first.Orders {
+			left := o.Quantity - firstProjection.Orders[i].Projection.FilledQuantity
+			if left > 0 {
+				orders = append(orders, paperfill.Order{ID: o.ID, Symbol: o.Symbol, Currency: o.Currency, Side: "sell", Kind: "market", Quantity: left + extra, PlacedAt: placed, ExpiresAt: placed.Add(time.Hour), Mode: o.Mode})
+			}
+		}
+		b, err := paperfill.NewBook(first.Model, orders)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	second := exitBookQuote(t, replacement(at.Add(61*time.Second), 0), "rest", at.Add(62*time.Second), 6, 900)
+	closed, _, _, err := ApplyExitFillBooks(ctx, single, buys, []paperfill.Book{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final, p, rs, err := ApplyClosedPositionReleaseBooks(ctx, closed, buys, []paperfill.Book{first, second})
+	if err != nil || len(rs) != 2 || len(p.Snapshot.Positions) != 0 {
+		t.Fatal(p, rs, err)
+	}
+	for _, r := range p.Reservations {
+		if r.ReservedCents != 0 || r.ClosedCostCents != r.FilledCents || r.FilledCents+r.ReleasedCents != r.Proposal.NotionalCents {
+			t.Fatal(r)
+		}
+	}
+	// Retries are stable.
+	if again, _, retry, err := ApplyClosedPositionReleaseBooks(ctx, final, buys, []paperfill.Book{first, second}); err != nil || !reflect.DeepEqual(again, final) || len(retry) != 2 || !retry[0].Duplicate || !retry[1].Duplicate {
+		t.Fatal("retry", retry, err)
+	}
+	// Placed before the first exit ended.
+	early := exitBookQuote(t, replacement(at.Add(30*time.Second), 0), "early", at.Add(31*time.Second), 6, 900)
+	if _, _, _, err := ApplyExitFillBooks(ctx, single, buys, []paperfill.Book{first, early}); !errors.Is(err, ErrLedgerConflict) {
+		t.Fatal("replacement before the first exit ended", err)
+	}
+	// Sells more than the first exit left.
+	if _, _, _, err := ApplyExitFillBooks(ctx, single, buys, []paperfill.Book{first, replacement(at.Add(61*time.Second), 1)}); !errors.Is(err, ErrLedgerConflict) {
+		t.Fatal("oversized replacement", err)
+	}
+	// The replacement alone does not account for the first book's closes.
+	if _, _, _, err := ApplyExitFillBook(ctx, closed, buys, second); !errors.Is(err, ErrLedgerConflict) {
+		t.Fatal("replacement without its predecessor", err)
+	}
+}
