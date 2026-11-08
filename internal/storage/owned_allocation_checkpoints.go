@@ -100,7 +100,7 @@ func openOwnedCheckpoint(ctx context.Context, owner string, journal ownedAllocat
 			return nil, ErrOwnedAllocationInvalid
 		}
 		if _, err := allocation.ReplayLedger(ctx, l); err != nil {
-			return nil, ErrOwnedAllocationInvalid
+			return nil, ownedReplayFailure(err)
 		}
 		ids[id] = true
 	}

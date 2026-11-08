@@ -228,14 +228,16 @@ func (s ownedJournalState) bookProposals() map[string]bool {
 	return out
 }
 
+// ownedReplayFailure keeps a context error retryable. Any other failure to
+// replay a retained ledger means the retained records are invalid.
+func ownedReplayFailure(err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return ErrOwnedAllocationInvalid
+}
+
 func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (outCatalog OwnedAllocationCatalog, outState ownedJournalState, outErr error) {
-	// Steps interrupted by cancellation can disagree with the retained
-	// records; report the context error, not a conflict.
-	defer func() {
-		if err := ctx.Err(); err != nil && outErr != nil {
-			outErr = err
-		}
-	}()
 	out := OwnedAllocationCatalog{ReceiverID: owner, Records: []OwnedAllocationRecord{}, Ledgers: []allocation.Ledger{}}
 	state := ownedJournalState{}
 	assessments, err := allocationAssessmentSource(owner, assessmentSources)
@@ -376,7 +378,7 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 		var err error
 		prefixes[key], err = allocation.ReplayLedgerPrefixes(ctx, ledger)
 		if err != nil {
-			return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
+			return OwnedAllocationCatalog{}, state, ownedReplayFailure(err)
 		}
 		ledgers[key] = ledger
 	}
@@ -451,7 +453,7 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 			} else if l := ledgers[key]; l.Base != nil {
 				// The first active entry follows the sealed base.
 				if before, err = allocation.ReplayLedger(ctx, ledgerPrefix(l, 0)); err != nil {
-					return OwnedAllocationCatalog{}, state, ErrOwnedAllocationInvalid
+					return OwnedAllocationCatalog{}, state, ownedReplayFailure(err)
 				}
 			}
 			due := ownedReservationExpirations(before, r.At, state.bookProposals())
