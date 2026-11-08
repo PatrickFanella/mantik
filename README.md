@@ -572,7 +572,9 @@ fills them from retained quotes and releases orders that expire unfilled.
 A filled position that crosses its stop or target, or reaches its holding
 limit, closes with a market exit on a later quote, and its unspent notional is
 released. An execution worker steps every open book every 15 seconds and
-reports under the `paper_execution` readiness scope. Capital reads back as v3
+reports under the `paper_execution` readiness scope. Each step lists open
+positions as holding, exit pending, exit working or exit unfilled; an
+unfilled exit makes the scope not ready. Capital reads back as v3
 with open and closed positions. See
 [paper entry execution](docs/reference/owned-allocation-comparisons.md#paper-entry-execution).
 

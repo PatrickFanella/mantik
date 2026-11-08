@@ -15,6 +15,11 @@ const PaperExecutionWorkerInterval = 15 * time.Second
 const PaperExecutionWorkerCapability = "paper_execution"
 const AutomaticPaperExecutionPrefix = "automatic-execution-"
 
+// ErrProtectiveExitUnfilled reports a paper position whose exit ended
+// without closing it. Nothing closes the rest, so the worker reports it on
+// every cycle until the position is resolved.
+var ErrProtectiveExitUnfilled = errors.New("paper position left open after its exit ended")
+
 type PaperExecutionWorkerStore interface {
 	storage.OwnedExecutionStore
 	storage.PaperStrategyStore
@@ -36,9 +41,11 @@ type PaperExecutionStepper struct {
 	pending string
 }
 
-// Cycle runs one step. Effects come only from owner records, so a fresh
-// identity after a restart cannot duplicate a committed effect either: the
-// books it advances already hold it.
+// Cycle runs one step. A step that lists an exit_unfilled position still
+// succeeded, but Cycle returns ErrProtectiveExitUnfilled for it, so the
+// worker's health shows the open position. Effects come only from owner
+// records, so a fresh identity after a restart cannot duplicate a committed
+// effect either: the books it advances already hold it.
 func (s *PaperExecutionStepper) Cycle(ctx context.Context, store PaperExecutionWorkerStore, clock Clock) (storage.OwnedExecutionReceipt, error) {
 	if clock == nil || s.Worker == "" {
 		return storage.OwnedExecutionReceipt{}, storage.ErrOwnedAllocationInvalid
@@ -65,6 +72,11 @@ func (s *PaperExecutionStepper) Cycle(ctx context.Context, store PaperExecutionW
 		return receipt, &workerFailure{cause: err, ref: "paper-execution:" + c.ID}
 	}
 	s.pending = ""
+	for _, p := range receipt.Positions {
+		if p.Status == "exit_unfilled" {
+			return receipt, &workerFailure{cause: ErrProtectiveExitUnfilled, ref: "paper-position:" + p.PolicyID + "/" + p.OrderID}
+		}
+	}
 	return receipt, nil
 }
 

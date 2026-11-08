@@ -134,3 +134,28 @@ func TestPaperExecutionWorkerHealthRecoveryAndStop(t *testing.T) {
 		t.Fatal(health)
 	}
 }
+
+// A step that lists an exit_unfilled position settles its identity but
+// reports the position, so worker health names it.
+func TestPaperExecutionStepperReportsUnfilledExit(t *testing.T) {
+	store := &scriptedExecutionStore{Memory: storage.NewMemory(), answers: []func(storage.OwnedExecutionCommand) (storage.OwnedExecutionReceipt, error){
+		func(storage.OwnedExecutionCommand) (storage.OwnedExecutionReceipt, error) {
+			return storage.OwnedExecutionReceipt{Status: "no_effects", Positions: []storage.OwnedPositionStatus{{PolicyID: "policy", OrderID: "working", Status: "exit_working"}, {PolicyID: "policy", OrderID: "stranded", Status: "exit_unfilled"}}}, nil
+		},
+		func(storage.OwnedExecutionCommand) (storage.OwnedExecutionReceipt, error) {
+			return storage.OwnedExecutionReceipt{Status: "no_effects", Positions: []storage.OwnedPositionStatus{{PolicyID: "policy", OrderID: "pending", Status: "exit_pending"}}}, nil
+		},
+	}}
+	at := time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
+	clock := newFakeClock(at)
+	stepper := &PaperExecutionStepper{Worker: "worker"}
+	var failure *workerFailure
+	if _, err := stepper.Cycle(t.Context(), store, clock); !errors.Is(err, ErrProtectiveExitUnfilled) || !errors.As(err, &failure) || failure.ref != "paper-position:policy/stranded" || cycleCode(err) != "protective_exit_unfilled" {
+		t.Fatal("unfilled exit", err)
+	}
+	clock.at = at.Add(PaperExecutionWorkerInterval)
+	// A pending exit is expected while quotes are absent, not an exception.
+	if _, err := stepper.Cycle(t.Context(), store, clock); err != nil || store.ids[1] == store.ids[0] {
+		t.Fatal("pending exit", err, store.ids)
+	}
+}
