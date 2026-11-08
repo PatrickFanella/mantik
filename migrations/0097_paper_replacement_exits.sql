@@ -1,0 +1,2 @@
+-- Fence writers that leave an expired exit's remaining shares unsold.
+COMMENT ON TABLE mantik_owned_allocations IS 'Mantik owned allocation comparisons through v16 owner entry execution on cost ledgers with shared displayed liquidity, protective paper exits at stop, target or holding limit with replacement exits for expired remainders, and execution steps; paper fills only, no broker execution or qualification';

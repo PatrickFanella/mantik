@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -242,35 +241,65 @@ func TestOwnedProtectiveExitClosesPosition(t *testing.T) {
 	step("after", time.Hour, false)
 }
 
-// An exit that expires without a fill leaves the position open. The book
-// finishes, and every later step lists the position as exit_unfilled.
-func TestOwnedExitUnfilledLeavesPositionOpen(t *testing.T) {
+// An exit that expires without a fill is replaced at the first quote after
+// it ended, and the replacement closes the position. Until that quote, the
+// position is listed as exit_pending from the expiry.
+func TestOwnedReplacementExitClosesExpiredExit(t *testing.T) {
 	f := newEligibilityFixture(t)
-	all := fixtureExecutionQuotes(1)
-	// Withhold the fourth quote, so the exit placed on the third never fills.
-	f.exec = &ownedExecution{feed: f.m.decisionFeedLocked(), quotes: func(ctx context.Context, feed FeedEvidenceSnapshot, q PaperExecutionQuoteQuery) ([]paperfill.BookCommand, error) {
-		out, err := all(ctx, feed, q)
-		return slices.DeleteFunc(out, func(c paperfill.BookCommand) bool { return c.ID == "quote-fixture-4" }), err
+	// The fixture's first three quotes fill, trigger and place the exit; no
+	// quote follows for a day, so the exit expires unfilled. Two quotes after
+	// that place and fill the replacement.
+	offsets := []time.Duration{time.Second, 2 * time.Second, 3 * time.Second, 25 * time.Hour, 25*time.Hour + time.Second}
+	f.exec = &ownedExecution{feed: f.m.decisionFeedLocked(), quotes: func(_ context.Context, _ FeedEvidenceSnapshot, q PaperExecutionQuoteQuery) ([]paperfill.BookCommand, error) {
+		out := []paperfill.BookCommand{}
+		for i, offset := range offsets {
+			at := f.at.Add(offset)
+			if !at.After(q.After) || at.After(q.Through) {
+				continue
+			}
+			quote := paperfill.Quote{ID: fmt.Sprintf("quote-late-%d", i), SourceSHA256: strings.Repeat("b", 64), Symbol: q.Symbol, Currency: "USD", Quality: "usable", EvidenceClass: q.EvidenceClass, OccurredAt: at, ReceivedAt: at, BidCents: 1, AskCents: 1, BidQuantity: 100000, AskQuantity: 100000}
+			out = append(out, paperfill.BookCommand{ID: quote.ID, At: at, Quote: &quote})
+		}
+		return out, nil
 	}}
 	journal, _, err := f.append(t, ownedAllocationJournal{Records: []retainedOwnedAllocation{}}, f.command, f.at, f.complete)
 	if err != nil {
 		t.Fatal(err)
 	}
-	journal, _, err = f.step(t, journal, OwnedExecutionCommand{ID: "fill", ReceiverID: f.m.receiverID}, f.at.Add(time.Second), f.complete)
+	order := f.command.Decisions[0].ID
+	step := func(id string, offset time.Duration, effects bool, status string, since time.Duration) OwnedExecutionReceipt {
+		t.Helper()
+		next, receipt, err := f.step(t, journal, OwnedExecutionCommand{ID: id, ReceiverID: f.m.receiverID}, f.at.Add(offset), f.complete)
+		if err != nil || (receipt.Record != nil) != effects {
+			t.Fatal(id, receipt, err)
+		}
+		if status == "" {
+			if len(receipt.Positions) != 0 {
+				t.Fatal(id, "positions", receipt.Positions)
+			}
+		} else if len(receipt.Positions) != 1 || receipt.Positions[0].OrderID != order || receipt.Positions[0].Status != status || !receipt.Positions[0].Since.Equal(f.at.Add(since)) {
+			t.Fatal(id, "positions", receipt.Positions)
+		}
+		journal = next
+		return receipt
+	}
+	step("fill", time.Second, true, "holding", time.Second)
+	step("working", 3*time.Second, false, "exit_working", 3*time.Second)
+	// The exit expires a day after placement with nothing sold.
+	step("expired", 24*time.Hour+4*time.Second, false, "exit_pending", 24*time.Hour+3*time.Second)
+	step("replaced", 25*time.Hour+500*time.Millisecond, false, "exit_working", 25*time.Hour)
+	closed := step("closed", 26*time.Hour, true, "", 0)
+	effects := closed.Record.Executions[0].Entries
+	if len(effects) != 2 || effects[0].Command.Effect.Kind != "close" || effects[1].Command.Effect.Kind != "release" || !effects[0].At.Equal(f.at.Add(25*time.Hour+time.Second)) {
+		t.Fatal("replacement effects", effects)
+	}
+	catalog, err := f.replay(t, journal, f.complete)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, offset := range []time.Duration{25 * time.Hour, 26 * time.Hour} {
-		_, receipt, err := f.step(t, journal, OwnedExecutionCommand{ID: "late", ReceiverID: f.m.receiverID}, f.at.Add(offset), f.complete)
-		if err != nil || receipt.Record != nil || len(receipt.Positions) != 1 {
-			t.Fatal(offset, receipt, err)
-		}
-		if p := receipt.Positions[0]; p.Status != "exit_unfilled" || p.OrderID != f.command.Decisions[0].ID || !p.Since.Equal(f.at.Add(time.Second)) {
-			t.Fatal(offset, "position", p)
-		}
-	}
-	catalog, err := f.replay(t, journal, f.complete)
-	if err != nil || len(catalog.Capital[0].Positions) != 1 {
-		t.Fatal("open position", catalog.Capital, err)
+	c := catalog.Capital[0]
+	r := c.Reservations[0]
+	if len(c.Positions) != 0 || r.ReservedCents != 0 || r.ClosedCostCents != r.FilledCents || r.FilledCents+r.ReleasedCents != r.Proposal.NotionalCents {
+		t.Fatal("closed capital", c)
 	}
 }

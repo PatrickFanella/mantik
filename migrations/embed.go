@@ -301,3 +301,6 @@ var PaperProtectiveExits string
 
 //go:embed 0096_paper_execution_worker_health.sql
 var PaperExecutionWorkerHealth string
+
+//go:embed 0097_paper_replacement_exits.sql
+var PaperReplacementExits string

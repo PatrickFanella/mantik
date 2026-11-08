@@ -80,11 +80,12 @@ type OwnedExecutionReceipt struct {
 // OwnedPositionStatus is where one open position's protective exit stands:
 //   - holding: filled, nothing has triggered yet; Deadline is the holding
 //     deadline;
-//   - exit_pending: triggered, waiting for the next eligible quote to place
-//     the exit;
+//   - exit_pending: triggered, or the last exit ended with shares left,
+//     waiting for the next eligible quote to place an exit;
 //   - exit_working: the exit order is placed and working;
-//   - exit_unfilled: the exit ended without closing the whole position, and
-//     nothing will close the rest.
+//   - exit_unfilled: the ledger holds the position open but no open book
+//     tracks it, so no exit can close it. Replacement exits mean this marks
+//     an inconsistency.
 //
 // Since is when the position entered that status. A closed position is not
 // listed.
@@ -254,8 +255,9 @@ func sharedDisplay(displayed, used, bps int64) int64 {
 }
 
 // ownedBookState is a book advanced to a cut: its entry book, which stops
-// changing once every order in it is terminal, and one exit book per
-// triggered position, in placement order.
+// changing once every order in it is terminal, and the exit books of its
+// triggered positions in placement order. A position whose exit ended with
+// shares left has a replacement book after it.
 type ownedBookState struct {
 	entry     paperfill.Book
 	exits     []paperfill.Book
@@ -269,9 +271,15 @@ type ownedPosition struct {
 	deadline  time.Time
 	quantity  int64
 	trigger   time.Time
+	// exit is the working exit book, or nil before the first exit and after
+	// one ends with shares left. sold counts what ended exits sold, ended is
+	// when the last of them ended, and closed is set once the shares are all
+	// sold.
 	exit      *paperfill.BookAppender
 	exitBook  int
-	exitDone  bool
+	sold      int64
+	ended     time.Time
+	closed    bool
 	placedAt  time.Time
 	expiresAt time.Time
 }
@@ -284,7 +292,9 @@ type ownedPosition struct {
 // entry book (until it stops changing) and every exit book placed before it.
 // A triggered position's exit book, one market sell of its filled quantity
 // expiring a day later, is placed at the first quote after both the trigger
-// and the entry book's last command, so a closed market cannot expire it.
+// and the entry book's last command, so a closed market cannot expire it. An
+// exit that ends with shares left is replaced, at the first quote after it
+// ended, by another market sell of the rest.
 // Displayed sizes shrink by what earlier books, and this book's earlier exits,
 // filled at the same occurrence.
 func (b ownedEntryBook) advance(ctx context.Context, x ownedExecution, cut time.Time, used map[string]bookUse) (ownedBookState, error) {
@@ -374,7 +384,12 @@ func (b ownedEntryBook) advance(ctx context.Context, x ownedExecution, cut time.
 			return capacity(err)
 		}
 		last = c.At
-		pos.exitDone = p.Orders[0].Projection.Status != "working"
+		o := p.Orders[0].Projection
+		if o.Status == "working" {
+			return nil
+		}
+		pos.sold += o.FilledQuantity
+		pos.exit, pos.ended, pos.closed = nil, c.At, pos.sold == pos.quantity
 		return nil
 	}
 	advance := func(until time.Time) error {
@@ -393,7 +408,7 @@ func (b ownedEntryBook) advance(ctx context.Context, x ownedExecution, cut time.
 				if pos.trigger.IsZero() {
 					consider(pos.deadline)
 				}
-				if pos.exit != nil && !pos.exitDone {
+				if pos.exit != nil {
 					consider(pos.expiresAt)
 				}
 			}
@@ -417,7 +432,7 @@ func (b ownedEntryBook) advance(ctx context.Context, x ownedExecution, cut time.
 				}
 			}
 			for _, id := range ids {
-				if pos := positions[id]; pos.exit != nil && !pos.exitDone && pos.expiresAt.Equal(next) {
+				if pos := positions[id]; pos.exit != nil && pos.expiresAt.Equal(next) {
 					if err := applyExit(pos, paperfill.BookCommand{ID: "exit-expiry-" + workerplan.Hash(next), At: next}); err != nil {
 						return err
 					}
@@ -458,7 +473,7 @@ func (b ownedEntryBook) advance(ctx context.Context, x ownedExecution, cut time.
 		}
 		for _, id := range exitOrder(positions, ids) {
 			pos := positions[id]
-			if pos.exitDone || !pos.placedAt.Before(q.At) {
+			if pos.exit == nil || !pos.placedAt.Before(q.At) {
 				continue
 			}
 			quote := *q.Quote
@@ -466,11 +481,12 @@ func (b ownedEntryBook) advance(ctx context.Context, x ownedExecution, cut time.
 			c := q
 			c.ID = "exit-" + q.ID
 			c.Quote = &quote
-			before := pos.exit.Book()
+			exit := pos.exit
+			before := exit.Book()
 			if err := applyExit(pos, c); err != nil {
 				return out, err
 			}
-			after := pos.exit.Book()
+			after := exit.Book()
 			for _, e := range after.Entries[len(before.Entries):] {
 				for _, o := range e.Outcomes {
 					if f := o.Outcome.Fill; f != nil {
@@ -483,10 +499,10 @@ func (b ownedEntryBook) advance(ctx context.Context, x ownedExecution, cut time.
 		}
 		for _, id := range ids {
 			pos := positions[id]
-			if pos.trigger.IsZero() || pos.exit != nil || !frozen || !q.At.After(pos.trigger) || !q.At.After(frozenAt) {
+			if pos.trigger.IsZero() || pos.exit != nil || pos.closed || !frozen || !q.At.After(pos.trigger) || !q.At.After(frozenAt) || !q.At.After(pos.ended) {
 				continue
 			}
-			order := paperfill.Order{ID: id, Symbol: b.root.Orders[0].Symbol, Currency: "USD", Side: "sell", Kind: "market", Quantity: pos.quantity, PlacedAt: q.At, ExpiresAt: q.At.Add(24 * time.Hour), Mode: "ongoing_paper"}
+			order := paperfill.Order{ID: id, Symbol: b.root.Orders[0].Symbol, Currency: "USD", Side: "sell", Kind: "market", Quantity: pos.quantity - pos.sold, PlacedAt: q.At, ExpiresAt: q.At.Add(24 * time.Hour), Mode: "ongoing_paper"}
 			root, err := paperfill.NewOccurrenceBook(model, []paperfill.Order{order})
 			if err != nil {
 				return out, ErrOwnedAllocationInvalid
@@ -507,7 +523,7 @@ func (b ownedEntryBook) advance(ctx context.Context, x ownedExecution, cut time.
 	}
 	out.done = frozen
 	for _, id := range ids {
-		if pos := positions[id]; pos.exit == nil || !pos.exitDone {
+		if !positions[id].closed {
 			out.done = false
 		}
 	}
@@ -516,16 +532,18 @@ func (b ownedEntryBook) advance(ctx context.Context, x ownedExecution, cut time.
 		pos := positions[id]
 		status := OwnedPositionStatus{PolicyID: b.policyID, OrderID: id}
 		switch {
+		case pos.closed:
+			continue
 		case pos.trigger.IsZero():
 			status.Status, status.Since, status.Deadline = "holding", pos.firstFill, pos.deadline
-		case pos.exit == nil:
-			status.Status, status.Since = "exit_pending", pos.trigger
-		case !pos.exitDone:
+		case pos.exit != nil:
 			status.Status, status.Since = "exit_working", pos.placedAt
+		case !pos.ended.IsZero():
+			// The last exit ended with shares left; a replacement waits for
+			// the next eligible quote.
+			status.Status, status.Since = "exit_pending", pos.ended
 		default:
-			// A finished exit leaves the position open only when it did
-			// not fill fully; the ledger shows what remains.
-			continue
+			status.Status, status.Since = "exit_pending", pos.trigger
 		}
 		out.positions = append(out.positions, status)
 	}
@@ -622,11 +640,21 @@ func advancePolicy(ctx context.Context, ledger allocation.Ledger, books []ownedB
 		if current, _, _, err = allocation.ApplyUnfilledEntryReleases(ctx, current, book.entry); err != nil {
 			return ledger, nil, ownedExecutionConflict(err)
 		}
+		// Each exit book sells one position; a position's books, the first
+		// exit and its replacements, are applied together in order.
+		order, sequences := []string{}, map[string][]paperfill.Book{}
 		for _, exit := range book.exits {
-			if current, _, _, err = allocation.ApplyExitFillBook(ctx, current, book.entry, exit); err != nil {
+			id := exit.Orders[0].ID
+			if sequences[id] == nil {
+				order = append(order, id)
+			}
+			sequences[id] = append(sequences[id], exit)
+		}
+		for _, id := range order {
+			if current, _, _, err = allocation.ApplyExitFillBooks(ctx, current, book.entry, sequences[id]); err != nil {
 				return ledger, nil, ownedExecutionConflict(err)
 			}
-			if current, _, _, err = allocation.ApplyClosedPositionReleases(ctx, current, book.entry, exit); err != nil {
+			if current, _, _, err = allocation.ApplyClosedPositionReleaseBooks(ctx, current, book.entry, sequences[id]); err != nil {
 				return ledger, nil, ownedExecutionConflict(err)
 			}
 		}
@@ -707,9 +735,10 @@ func advanceAll(ctx context.Context, ledgers map[string]allocation.Ledger, books
 }
 
 // ownedPositionStatuses completes the open books' positions with every
-// position the ledgers still hold that no open book tracks. Such a position's
-// book has finished, so its exit ended without closing it: exit_unfilled,
-// since the ledger's last entry for that reservation.
+// position the ledgers still hold that no open book tracks: exit_unfilled,
+// since the ledger's last entry for that reservation. A book finishes only
+// once its positions close, so this marks an inconsistency, such as a journal
+// an earlier writer left with an expired exit.
 func ownedPositionStatuses(ctx context.Context, ledgers map[string]allocation.Ledger, open []OwnedPositionStatus) ([]OwnedPositionStatus, error) {
 	tracked := map[string]bool{}
 	for _, p := range open {

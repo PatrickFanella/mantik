@@ -781,10 +781,18 @@ expiries.
 basis and net proceeds, and `ApplyClosedPositionReleases` releases the
 reservation's unspent notional once the position is fully closed. Both bind
 the entry book's final hash, so they run only after the entry book is frozen.
-A book is finished when its entry orders are terminal and every position's
-exit has ended. An exit that expires without filling fully leaves the rest of
-the position open; resolving it is later work. Schema 95 fences writers whose
-books do not exit.
+An exit that expires with shares left is replaced: the first eligible quote
+after it ended places another market sell for the rest, in its own book,
+expiring a day later. This repeats until the position is closed, so a
+weekend or a thin market delays the exit but cannot end it. A position's
+exit books are applied together, in order, by `ApplyExitFillBooks` and
+`ApplyClosedPositionReleaseBooks`. A replacement may only be placed after the
+book before it ended and may only sell what is left; cost basis continues
+across the books. A book is finished when its entry orders are terminal and
+every position is closed. Schema 95 fences writers whose books do not exit,
+and schema 97 fences writers that do not replace an expired exit. A journal
+holding an exit that expired with shares left under an earlier writer fails
+replay.
 
 ### Position status
 
@@ -794,14 +802,14 @@ policy and order ID, with `policy_id`, `order_id`, `status` and `since`:
 | Status | Meaning | `since` |
 | --- | --- | --- |
 | `holding` | Filled; nothing has triggered. `deadline` is the holding deadline. | first fill |
-| `exit_pending` | Triggered; the exit waits for the next eligible quote. | trigger |
+| `exit_pending` | Triggered, or the last exit ended with shares left; the next eligible quote places an exit. | trigger, or when the last exit ended |
 | `exit_working` | The exit order is placed and working. | exit placement |
-| `exit_unfilled` | The exit ended without closing the position; nothing closes the rest. | the position's last ledger effect |
+| `exit_unfilled` | The ledger holds an open position that no open book tracks. Replacement exits mean this should not happen; it marks an inconsistency. | the position's last ledger effect |
 
 A closed position is not listed, and an exact retry lists nothing because it
 does not advance. Missing or stale quotes never produce a fill: a position
-whose exit triggered while no eligible quote arrives stays `exit_pending`, for
-example overnight after a holding deadline.
+whose exit triggered, or whose exit expired, while no eligible quote arrives
+stays `exit_pending`, for example overnight after a holding deadline.
 
 ### Execution steps
 

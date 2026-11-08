@@ -22,6 +22,16 @@ const ClosedPositionReleaseMethod = "replayed-fully-closed-position-release-v1"
 // state and atomically commit books and ledger in event order. Failures return
 // zero results and leave all inputs unchanged; no public writer imports them.
 func ApplyClosedPositionReleases(ctx context.Context, ledger Ledger, entries, exits paperfill.Book) (Ledger, LedgerProjection, []LedgerReceipt, error) {
+	return ApplyClosedPositionReleaseBooks(ctx, ledger, entries, []paperfill.Book{exits})
+}
+
+// ApplyClosedPositionReleaseBooks is ApplyClosedPositionReleases over the
+// sequence of exit books ApplyExitFillBooks accepts. A position is complete
+// when its order is filled in the last book that holds it and the books
+// together sold its whole filled quantity. The release binds the book and
+// entry that completed the close, so a position closed by one book releases
+// exactly as ApplyClosedPositionReleases releases it.
+func ApplyClosedPositionReleaseBooks(ctx context.Context, ledger Ledger, entries paperfill.Book, exits []paperfill.Book) (Ledger, LedgerProjection, []LedgerReceipt, error) {
 	fail := func(err error) (Ledger, LedgerProjection, []LedgerReceipt, error) {
 		return Ledger{}, LedgerProjection{}, nil, err
 	}
@@ -33,11 +43,7 @@ func ApplyClosedPositionReleases(ctx context.Context, ledger Ledger, entries, ex
 	if err != nil {
 		return fail(err)
 	}
-	exitProjection, err := paperfill.ReplayBook(ctx, exits)
-	if err != nil {
-		return fail(err)
-	}
-	checked, _, _, err := ApplyExitFillBook(ctx, ledger, entries, exits)
+	checked, _, _, err := ApplyExitFillBooks(ctx, ledger, entries, exits)
 	if err != nil {
 		return fail(err)
 	}
@@ -46,37 +52,43 @@ func ApplyClosedPositionReleases(ctx context.Context, ledger Ledger, entries, ex
 	if !reflect.DeepEqual(checked, ledger) {
 		return fail(ErrLedgerConflict)
 	}
-	root, err := paperfill.RootBook(exits)
-	if err != nil {
-		return fail(err)
+	sold, status := map[string]int64{}, map[string]string{}
+	orders := map[string]bool{}
+	roots := make([]paperfill.Book, len(exits))
+	for i, book := range exits {
+		exitProjection, err := paperfill.ReplayBook(ctx, book)
+		if err != nil {
+			return fail(err)
+		}
+		if roots[i], err = paperfill.RootBook(book); err != nil {
+			return fail(err)
+		}
+		for _, exit := range exitProjection.Orders {
+			orders[exit.OrderID] = true
+			sold[exit.OrderID] += exit.Projection.FilledQuantity
+			status[exit.OrderID] = exit.Projection.Status
+		}
 	}
 	type candidate struct{ quantity, amount int64 }
 	eligible := map[string]candidate{}
-	orders := map[string]bool{}
-	for _, exit := range exitProjection.Orders {
-		orders[exit.OrderID] = true
-		for _, entry := range entryProjection.Orders {
-			if entry.OrderID != exit.OrderID {
+	for _, entry := range entryProjection.Orders {
+		ep := entry.Projection
+		if !orders[entry.OrderID] || ep.Status == "working" || ep.FilledQuantity == 0 || sold[entry.OrderID] != ep.FilledQuantity || status[entry.OrderID] != "filled" {
+			continue
+		}
+		for _, r := range projection.Reservations {
+			if r.Proposal.ID != entry.OrderID {
 				continue
 			}
-			ep, xp := entry.Projection, exit.Projection
-			if ep.Status == "working" || ep.FilledQuantity == 0 || xp.FilledQuantity != ep.FilledQuantity || xp.Status != "filled" {
-				continue
+			if r.Unknown || r.FilledCents != ep.DebitCents || r.ClosedCostCents != r.FilledCents {
+				return fail(ErrLedgerConflict)
 			}
-			for _, r := range projection.Reservations {
-				if r.Proposal.ID != entry.OrderID {
-					continue
-				}
-				if r.Unknown || r.FilledCents != ep.DebitCents || r.ClosedCostCents != r.FilledCents {
-					return fail(ErrLedgerConflict)
-				}
-				amount := r.Proposal.NotionalCents - r.FilledCents
-				if amount < 0 {
-					return fail(ErrLedgerConflict)
-				}
-				if amount > 0 {
-					eligible[entry.OrderID] = candidate{ep.FilledQuantity, amount}
-				}
+			amount := r.Proposal.NotionalCents - r.FilledCents
+			if amount < 0 {
+				return fail(ErrLedgerConflict)
+			}
+			if amount > 0 {
+				eligible[entry.OrderID] = candidate{ep.FilledQuantity, amount}
 			}
 		}
 	}
@@ -87,31 +99,33 @@ func ApplyClosedPositionReleases(ctx context.Context, ledger Ledger, entries, ex
 	stages := []staged{}
 	expected := map[string]staged{}
 	closed := map[string]int64{}
-	for _, entry := range exits.Entries {
-		if err := ctx.Err(); err != nil {
-			return fail(err)
-		}
-		for _, out := range entry.Outcomes {
-			fill := out.Outcome.Fill
-			if fill == nil {
-				continue
+	for i, book := range exits {
+		for _, entry := range book.Entries {
+			if err := ctx.Err(); err != nil {
+				return fail(err)
 			}
-			target, ok := eligible[out.OrderID]
-			if !ok {
-				continue
+			for _, out := range entry.Outcomes {
+				fill := out.Outcome.Fill
+				if fill == nil {
+					continue
+				}
+				target, ok := eligible[out.OrderID]
+				if !ok {
+					continue
+				}
+				closed[out.OrderID] += fill.Quantity
+				if closed[out.OrderID] != target.quantity {
+					continue
+				}
+				// The first complete close is stable when unrelated exit observations are
+				// appended. Bind the full terminal entry book and the exit root/prefix.
+				binding := workerplan.Hash(struct{ Method, EntryBookSHA256, ExitBookRootSHA256, ClosingEntrySHA256, OrderID string }{ClosedPositionReleaseMethod, entries.SHA256, roots[i].SHA256, entry.SHA256, out.OrderID})
+				id := "closed-release-" + binding
+				effect := Effect{ID: id, SHA256: binding, DecisionID: out.OrderID, Kind: "release", AmountCents: target.amount}
+				stage := staged{LedgerCommand{ID: id, Effect: &effect}, fill.At}
+				expected[id] = stage
+				stages = append(stages, stage)
 			}
-			closed[out.OrderID] += fill.Quantity
-			if closed[out.OrderID] != target.quantity {
-				continue
-			}
-			// The first complete close is stable when unrelated exit observations are
-			// appended. Bind the full terminal entry book and the exit root/prefix.
-			binding := workerplan.Hash(struct{ Method, EntryBookSHA256, ExitBookRootSHA256, ClosingEntrySHA256, OrderID string }{ClosedPositionReleaseMethod, entries.SHA256, root.SHA256, entry.SHA256, out.OrderID})
-			id := "closed-release-" + binding
-			effect := Effect{ID: id, SHA256: binding, DecisionID: out.OrderID, Kind: "release", AmountCents: target.amount}
-			stage := staged{LedgerCommand{ID: id, Effect: &effect}, fill.At}
-			expected[id] = stage
-			stages = append(stages, stage)
 		}
 	}
 	// Reject amount-only, early, relabelled or truncated releases for the selected
