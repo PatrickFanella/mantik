@@ -303,3 +303,55 @@ func TestOwnedReplacementExitClosesExpiredExit(t *testing.T) {
 		t.Fatal("closed capital", c)
 	}
 }
+
+// A deadline that expires during an append or a step reports the deadline,
+// never an invalid or conflicting command, and nothing computed after it
+// commits: every successful result replays cleanly.
+func TestOwnedAppendsReportDeadlines(t *testing.T) {
+	f := newEligibilityFixture(t)
+	f.exec = &ownedExecution{feed: f.m.decisionFeedLocked(), quotes: fixtureExecutionQuotes(1)}
+	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(f.decide)
+	if err != nil {
+		t.Fatal(err)
+	}
+	declarations, err := paperEvaluationDeclarationCatalog(f.m.receiverID, f.m.paperEvaluationPlans, strategies, policies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	available := declarations
+	available.Records = nil
+	for _, d := range declarations.Records {
+		if !d.DeclaredAt.After(f.at) {
+			available.Records = append(available.Records, d)
+		}
+	}
+	assessments := PaperEvaluationAssessmentCatalog{ReceiverID: f.m.receiverID, Records: []PaperEvaluationAssessment{f.complete}}
+	granted, _, err := f.append(t, ownedAllocationJournal{Records: []retainedOwnedAllocation{}}, f.command, f.at, f.complete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for d := time.Microsecond; d < 300*time.Millisecond; d = d * 3 / 2 {
+		ctx, cancel := context.WithTimeout(context.Background(), d)
+		journal, _, err := appendOwnedAllocation(ctx, f.m.receiverID, ownedAllocationJournal{Records: []retainedOwnedAllocation{}}, policies, decisions, strategies, f.m.paperDecisions, f.exec, f.command, func() time.Time { return f.at }, time.Time{}, available, assessments)
+		cancel()
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatal("comparison", d, err)
+		}
+		if err == nil {
+			if _, err := f.replay(t, journal, f.complete); err != nil {
+				t.Fatal("committed comparison does not replay", d, err)
+			}
+		}
+		ctx, cancel = context.WithTimeout(context.Background(), d)
+		stepped, _, err := appendOwnedExecution(ctx, f.m.receiverID, granted, policies, decisions, strategies, f.m.paperDecisions, f.exec, OwnedExecutionCommand{ID: "step", ReceiverID: f.m.receiverID}, func() time.Time { return f.at.Add(2 * time.Second) }, time.Time{}, available, assessments)
+		cancel()
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatal("step", d, err)
+		}
+		if err == nil {
+			if _, err := f.replay(t, stepped, f.complete); err != nil {
+				t.Fatal("committed step does not replay", d, err)
+			}
+		}
+	}
+}

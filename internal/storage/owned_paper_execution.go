@@ -781,7 +781,14 @@ func ownedPositionStatuses(ctx context.Context, ledgers map[string]allocation.Le
 // appendOwnedExecution advances every open entry book to now. A step retains
 // a record only when it commits an effect; otherwise the journal is unchanged
 // and the command identity stays unused. Exact retries return the record.
-func appendOwnedExecution(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, c OwnedExecutionCommand, now func() time.Time, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments ...PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, OwnedExecutionReceipt, error) {
+func appendOwnedExecution(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, c OwnedExecutionCommand, now func() time.Time, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments ...PaperEvaluationAssessmentCatalog) (outJournal ownedAllocationJournal, outReceipt OwnedExecutionReceipt, outErr error) {
+	// As for appendOwnedAllocation, an ended context fails the step with the
+	// context error.
+	defer func() {
+		if err := ctx.Err(); err != nil {
+			outReceipt, outErr = OwnedExecutionReceipt{}, err
+		}
+	}()
 	if x == nil {
 		return journal, OwnedExecutionReceipt{}, ErrOwnedExecutionUnavailable
 	}
