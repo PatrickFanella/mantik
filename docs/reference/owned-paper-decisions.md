@@ -74,7 +74,11 @@ then every 15 seconds:
    candidates, abstentions and rejections are all retained.
 3. Every entry candidate that no allocation comparison pins gets a comparison
    of its own, `automatic-comparison-` and a hash of the decision. The
-   allocation owner reserves, defers or rejects it as for any caller.
+   allocation owner reserves, defers or rejects it as for any caller. At most
+   one candidate per strategy record, registration and evaluated quote is
+   compared, counting comparisons any caller made. A quote published between
+   the worker's feed read and finalization can give two decisions the same
+   evaluated quote, and this keeps one signal from reserving twice.
 
 Both prefixes are reserved: the decision and comparison routes reject them
 with 422. Each commit is atomic, and a failure in one pair or comparison does

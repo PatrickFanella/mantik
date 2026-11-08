@@ -736,11 +736,36 @@ func positiveAutomaticDecisions(t testing.TB, s portfolioHTTPBackend, request fu
 		t.Fatal("idle cycle retained records", len(again.Records), len(againComparisons.Records))
 	}
 	nextQuote()
+	// A caller decides and compares the center strategy on the newer quote
+	// first. The worker's own center decision evaluates the same quote, so it
+	// gets no second comparison: one signal reserves at most once.
+	var centerPin storage.PaperDecisionRecord
+	for _, d := range automatic {
+		if d.Command.StrategyID == center {
+			centerPin = d
+		}
+	}
+	var manual2 storage.PaperDecisionReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-decisions", storage.PaperDecisionCommand{ID: "manual-next", ReceiverID: owner, StrategyID: center, StrategySHA256: centerPin.Command.StrategySHA256, RegistrationID: centerPin.Command.RegistrationID}, 201), &manual2); err != nil || manual2.Record.Evaluation.Action != "entry_candidate" {
+		t.Fatal("manual decision", manual2.Record.Evaluation, err)
+	}
+	request("POST", "/v1/allocation-comparisons", storage.OwnedAllocationCommand{ID: "manual-next-comparison", ReceiverID: owner, Decisions: []storage.OwnedDecisionPin{{ID: manual2.Record.Command.ID, SHA256: manual2.Record.SHA256}}}, 201)
 	if err := service.RunPaperDecisionCycle(ctx, worker, clock); err != nil {
 		t.Fatal("next decision cycle", err)
 	}
-	if next, _ := read(); len(next.Records) != len(decisions.Records)+3 {
+	next, nextComparisons := read()
+	if len(next.Records) != len(decisions.Records)+4 {
 		t.Fatal("newer quote decisions", len(next.Records), len(decisions.Records))
+	}
+	for _, d := range next.Records {
+		if !strings.HasPrefix(d.Command.ID, service.AutomaticPaperDecisionPrefix) || d.Command.StrategyID != center || d.Evaluation.Coverage.Quote.InputID != manual2.Record.Evaluation.Coverage.Quote.InputID {
+			continue
+		}
+		for _, r := range nextComparisons.Records {
+			if r.Command.ID == service.AutomaticPaperComparisonID(d) {
+				t.Fatal("second comparison for one evaluated quote", d.Command.ID)
+			}
+		}
 	}
 	// The worker's identities are reserved.
 	request("POST", "/v1/paper-decisions", storage.PaperDecisionCommand{ID: service.AutomaticPaperDecisionPrefix + "caller", ReceiverID: owner, StrategyID: automatic[0].Command.StrategyID, StrategySHA256: automatic[0].Command.StrategySHA256, RegistrationID: automatic[0].Command.RegistrationID}, 422)

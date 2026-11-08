@@ -57,7 +57,8 @@ func AutomaticPaperComparisonID(decision storage.PaperDecisionRecord) string {
 // quote no decision has seen, the cycle finalizes one decision against it:
 // an entry candidate, an abstention or a rejection, all retained. Every entry
 // candidate that no comparison pins then gets its own comparison, which the
-// allocation owner reserves, defers or rejects. Identities derive from the
+// allocation owner reserves, defers or rejects, unless another decision on
+// the same strategy record, registration and evaluated quote already has one. Identities derive from the
 // inputs, so a retried or concurrent cycle reaches the same records. Each
 // commit is atomic; a later failure keeps the earlier ones.
 func RunPaperDecisionCycle(ctx context.Context, store PaperDecisionWorkerStore, clock Clock) error {
@@ -147,13 +148,28 @@ func RunPaperDecisionCycle(ctx context.Context, store PaperDecisionWorkerStore, 
 			pinned[p.ID] = true
 		}
 	}
+	// A quote published between the feed read and finalization can give two
+	// decisions the same evaluated quote. Compare at most one entry candidate
+	// per strategy record, registration and evaluated quote, counting
+	// comparisons any caller made, so one signal reserves at most once.
+	type signal struct{ strategy, registration, quote string }
+	key := func(d storage.PaperDecisionRecord) signal {
+		return signal{d.Command.StrategySHA256, d.Command.RegistrationID, d.Evaluation.Coverage.Quote.InputID}
+	}
+	claimed := map[signal]bool{}
+	for _, d := range decisions.Records {
+		if pinned[d.Command.ID] {
+			claimed[key(d)] = true
+		}
+	}
 	for _, d := range decisions.Records {
 		if err := ctx.Err(); err != nil {
 			return errors.Join(append(failures, err)...)
 		}
-		if d.Evaluation.Action != "entry_candidate" || pinned[d.Command.ID] {
+		if d.Evaluation.Action != "entry_candidate" || pinned[d.Command.ID] || claimed[key(d)] {
 			continue
 		}
+		claimed[key(d)] = true
 		c := storage.OwnedAllocationCommand{ID: AutomaticPaperComparisonID(d), ReceiverID: owner, Decisions: []storage.OwnedDecisionPin{{ID: d.Command.ID, SHA256: d.SHA256}}}
 		call, cancel := bounded()
 		_, err := store.CompareOwnedAllocation(call, c, clock.Now, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
