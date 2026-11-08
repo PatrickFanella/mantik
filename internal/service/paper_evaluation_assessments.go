@@ -60,7 +60,7 @@ func paperEvaluationAssessmentRoutes(mux *http.ServeMux, store storage.Store, cl
 			paperEvaluationAssessmentError(w, storage.ErrPaperEvaluationAssessmentInvalid)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		all, err := backend.PaperEvaluationAssessments(ctx, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err != nil {
@@ -87,7 +87,7 @@ func paperEvaluationAssessmentRoutes(mux *http.ServeMux, store storage.Store, cl
 				paperEvaluationAssessmentError(w, storage.ErrPaperEvaluationAssessmentInvalid)
 				return
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 			defer cancel()
 			v, err := selector.PaperEvaluationCorporateSelection(ctx, r.PathValue("id"), evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 			if err != nil {
@@ -103,7 +103,7 @@ func paperEvaluationAssessmentRoutes(mux *http.ServeMux, store storage.Store, cl
 				paperEvaluationAssessmentError(w, storage.ErrPaperEvaluationAssessmentInvalid)
 				return
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 			defer cancel()
 			v, err := chains.PaperEvaluationCorporatePageChain(ctx, r.PathValue("id"), r.PathValue("source_id"), evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 			if err != nil {
@@ -119,7 +119,7 @@ func paperEvaluationAssessmentRoutes(mux *http.ServeMux, store storage.Store, cl
 				paperEvaluationAssessmentError(w, storage.ErrPaperEvaluationAssessmentInvalid)
 				return
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 			defer cancel()
 			v, err := inspector.PaperEvaluationCorporateInspection(ctx, r.PathValue("id"), evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 			if err != nil {

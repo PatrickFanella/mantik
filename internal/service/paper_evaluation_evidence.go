@@ -21,7 +21,7 @@ func paperEvaluationEvidenceRoutes(mux *http.ServeMux, store storage.Store, cloc
 			write(w, 422, map[string]string{"error": "invalid paper evaluation evidence query"})
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		out, err := backend.PaperEvaluationEvidence(ctx, id, clock.Now, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if errors.Is(err, storage.ErrPaperEvaluationDeclarationNotFound) {

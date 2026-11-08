@@ -245,7 +245,7 @@ func paperEvaluationEntryReplayRoutes(mux *http.ServeMux, store storage.Store, c
 			write(w, 422, map[string]string{"error": "invalid entry replay query"})
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		source, err := backend.PaperEvaluationEntrySources(ctx, id, clock.Now, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if errors.Is(err, storage.ErrPaperEvaluationDeclarationNotFound) {
