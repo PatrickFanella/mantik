@@ -546,10 +546,164 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 	if fills != 1 {
 		t.Fatal("entry fills", fills)
 	}
+	positiveExitLifecycleHTTP(t, s, server.URL, owner, clock, failCommit, quote)
 	if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &catalog); err != nil {
 		t.Fatal(err)
 	}
 	return r, catalog
+}
+
+// positiveExitLifecycleHTTP closes the grant's position through the public
+// step route. Its holding deadline triggered at 15:00:20.1 with no later
+// quote, so the exit is pending. A $100 bid at 15:02:30 places the market
+// exit, and the next one fills it.
+//
+// When failCommit is set, a step whose commit fails changes nothing and
+// leaves its identity unused. Four step requests and an execution worker
+// cycle then race at one clock: exactly one commits the close, the rest
+// find nothing left. Retrying the winning identity, as a client
+// whose response was lost would, returns the same step. Cash, positions and
+// postings must then balance.
+func positiveExitLifecycleHTTP(t testing.TB, s portfolioHTTPBackend, url, owner string, clock *ownedDecisionClock, failCommit func(bool), quote func(string, int64, int64)) {
+	t.Helper()
+	post := func(body any) (int, storage.OwnedExecutionReceipt) {
+		t.Helper()
+		raw, _ := json.Marshal(body)
+		r, _ := http.NewRequestWithContext(context.Background(), "POST", url+"/v1/paper-executions", bytes.NewReader(raw))
+		r.Header.Set("Authorization", "Bearer positive-fixture-token")
+		response, err := http.DefaultClient.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		var out storage.OwnedExecutionReceipt
+		if response.StatusCode < 300 && json.NewDecoder(response.Body).Decode(&out) != nil {
+			t.Fatal("step response")
+		}
+		return response.StatusCode, out
+	}
+	catalog := func() storage.OwnedAllocationCatalog {
+		t.Helper()
+		r, _ := http.NewRequestWithContext(context.Background(), "GET", url+"/v1/allocation-comparisons", nil)
+		r.Header.Set("Authorization", "Bearer positive-fixture-token")
+		response, err := http.DefaultClient.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		var out storage.OwnedAllocationCatalog
+		if response.StatusCode != 200 || json.NewDecoder(response.Body).Decode(&out) != nil {
+			t.Fatal("catalog read", response.StatusCode)
+		}
+		return out
+	}
+	clock.at = time.Date(2026, 11, 9, 15, 2, 30, 0, time.UTC)
+	quote("exit-place", 100, 101)
+	clock.at = time.Date(2026, 11, 9, 15, 2, 31, 0, time.UTC)
+	quote("exit-fill", 100, 101)
+	clock.at = time.Date(2026, 11, 9, 15, 3, 0, 0, time.UTC)
+	before := catalog()
+	if failCommit != nil {
+		failCommit(true)
+		if code, _ := post(storage.OwnedExecutionCommand{ID: "exit-step-0", ReceiverID: owner}); code != 503 {
+			t.Fatal("failed step commit", code)
+		}
+		failCommit(false)
+		if after := catalog(); !reflect.DeepEqual(after, before) {
+			t.Fatal("failed step commit changed allocation state")
+		}
+	}
+	worker, ok := s.(service.PaperExecutionWorkerStore)
+	if !ok {
+		t.Fatal("store cannot run the execution worker")
+	}
+	codes := make([]int, 4)
+	receipts := make([]storage.OwnedExecutionReceipt, 5)
+	stepper := &service.PaperExecutionStepper{Worker: "lifecycle-worker"}
+	var workerErr error
+	var wg sync.WaitGroup
+	for i := range codes {
+		wg.Go(func() {
+			codes[i], receipts[i] = post(storage.OwnedExecutionCommand{ID: fmt.Sprintf("exit-step-%d", i), ReceiverID: owner})
+		})
+	}
+	wg.Go(func() { receipts[4], workerErr = stepper.Cycle(context.Background(), worker, clock) })
+	wg.Wait()
+	// A request that timed out may or may not have committed. Its client and
+	// the worker retry the same identity, which either returns the retained
+	// step or finds nothing left.
+	for i, code := range codes {
+		if code == 503 {
+			codes[i], receipts[i] = post(storage.OwnedExecutionCommand{ID: fmt.Sprintf("exit-step-%d", i), ReceiverID: owner})
+		}
+		if codes[i] != 200 && codes[i] != 201 {
+			t.Fatal("concurrent step", i, codes[i])
+		}
+	}
+	if workerErr != nil {
+		if receipts[4], workerErr = stepper.Cycle(context.Background(), worker, clock); workerErr != nil {
+			t.Fatal("worker retry", workerErr)
+		}
+	}
+	winner := -1
+	for i, r := range receipts {
+		if r.Record == nil {
+			if r.Status != "no_effects" || len(r.Positions) != 0 {
+				t.Fatal("losing step", i, r)
+			}
+			continue
+		}
+		if winner >= 0 {
+			t.Fatal("more than one step committed the exit", winner, i)
+		}
+		winner = i
+	}
+	if winner < 0 {
+		t.Fatal("no step committed the exit")
+	}
+	step := receipts[winner].Record
+	effects := step.Executions[0].Entries
+	// The grant spent its whole 99000-cent notional, so the close releases
+	// nothing.
+	if len(step.Executions) != 1 || len(effects) != 1 || effects[0].Command.Effect.Kind != "close" || effects[0].Command.Effect.DecisionID != "grant-decision" || effects[0].Command.Effect.ProceedsCents != 100000 || !effects[0].At.After(time.Date(2026, 11, 9, 15, 2, 31, 0, time.UTC)) {
+		t.Fatal("exit effects", effects)
+	}
+	// Every client retries its identity as if its response was lost: the
+	// winner gets the same step back, the others still find nothing to commit.
+	for i := range codes {
+		code, retry := post(storage.OwnedExecutionCommand{ID: fmt.Sprintf("exit-step-%d", i), ReceiverID: owner})
+		if i == winner && (code != 200 || !retry.Duplicate || retry.Record.SHA256 != step.SHA256) || i != winner && (code != 200 || retry.Record != nil) {
+			t.Fatal("retry after a lost response", i, code, retry)
+		}
+	}
+	after := catalog()
+	if len(after.Executions) != len(before.Executions)+1 {
+		t.Fatal("execution steps", len(after.Executions), len(before.Executions))
+	}
+	c := after.Capital[0]
+	if len(c.Positions) != 0 || c.RealizedPnLCents != 1000 || c.AvailableCashCents != 200000+c.RealizedPnLCents {
+		t.Fatal("capital after exit", c)
+	}
+	var filled, closed, proceeds int64
+	for _, e := range after.Ledgers[0].Entries {
+		if f := e.Command.Effect; f != nil && f.DecisionID == "grant-decision" {
+			switch f.Kind {
+			case "fill":
+				filled += f.AmountCents
+			case "close":
+				closed += f.AmountCents
+				proceeds += f.ProceedsCents
+			}
+		}
+	}
+	for _, r := range c.Reservations {
+		if r.ReservedCents != 0 || r.FilledCents+r.ReleasedCents != r.Proposal.NotionalCents {
+			t.Fatal("reservation after exit", r)
+		}
+		if r.Proposal.ID == "grant-decision" && (r.FilledCents != filled || r.ClosedCostCents != closed || r.ProceedsCents != proceeds || closed != filled || proceeds-closed != c.RealizedPnLCents) {
+			t.Fatal("grant postings", r, filled, closed, proceeds)
+		}
+	}
 }
 
 func TestOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T) {
