@@ -228,7 +228,14 @@ func (s ownedJournalState) bookProposals() map[string]bool {
 	return out
 }
 
-func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (OwnedAllocationCatalog, ownedJournalState, error) {
+func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (outCatalog OwnedAllocationCatalog, outState ownedJournalState, outErr error) {
+	// Steps interrupted by cancellation can disagree with the retained
+	// records; report the context error, not a conflict.
+	defer func() {
+		if err := ctx.Err(); err != nil && outErr != nil {
+			outErr = err
+		}
+	}()
 	out := OwnedAllocationCatalog{ReceiverID: owner, Records: []OwnedAllocationRecord{}, Ledgers: []allocation.Ledger{}}
 	state := ownedJournalState{}
 	assessments, err := allocationAssessmentSource(owner, assessmentSources)
@@ -610,7 +617,15 @@ func ledgerPrefix(l allocation.Ledger, n int) allocation.Ledger {
 	return l
 }
 
-func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, c OwnedAllocationCommand, now func() time.Time, sourceClock time.Time, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, OwnedAllocationReceipt, error) {
+func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, c OwnedAllocationCommand, now func() time.Time, sourceClock time.Time, declarationSource PaperEvaluationDeclarationCatalog, assessmentSources ...PaperEvaluationAssessmentCatalog) (outJournal ownedAllocationJournal, outReceipt OwnedAllocationReceipt, outErr error) {
+	// A context that ends while an append runs makes it fail with the context
+	// error: a timeout stays retryable, and nothing computed after
+	// cancellation commits.
+	defer func() {
+		if err := ctx.Err(); err != nil {
+			outReceipt, outErr = OwnedAllocationReceipt{}, err
+		}
+	}()
 	catalog, state, err := replayOwnedJournal(ctx, owner, journal, policies, decisions, strategies, retained, x, declarationSource, assessmentSources...)
 	if err != nil {
 		return journal, OwnedAllocationReceipt{}, err
