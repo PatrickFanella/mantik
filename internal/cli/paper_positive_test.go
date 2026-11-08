@@ -433,6 +433,15 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 	if len(catalog.Capital) != 1 || catalog.Capital[0].Schema != "mantik-owned-allocation-capital-v3" || len(catalog.Capital[0].Reservations) != 1 || catalog.Capital[0].AvailableCashCents != 200000-99000 {
 		t.Fatal("reserved capital not read back", catalog.Capital)
 	}
+	// Reserved with nothing filled yet: the row keeps an empty effect list
+	// across JSON, and the command accepts it.
+	var reservedRow storage.PaperAttributionRow
+	if err := json.Unmarshal(request("GET", "/v1/paper-attribution/grant-decision", nil, 200), &reservedRow); err != nil {
+		t.Fatal(err)
+	}
+	if e := reservedRow.Economics; e.Status != "reserved_unfilled" || e.Effects == nil || len(e.Effects) != 0 || e.ReservedCents == nil || *e.ReservedCents != 99000 || validateAttributionRow(reservedRow, owner) != nil {
+		t.Fatal("reserved row", reservedRow.Economics)
+	}
 
 	// Two more admitted proposals compete for the 101000 cents left under the
 	// 200000 capital limit. Each needs 99000, so exactly one reserves.

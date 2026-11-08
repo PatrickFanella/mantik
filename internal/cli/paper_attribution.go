@@ -66,6 +66,14 @@ func runPaperAttribution(ctx context.Context, args []string, out, errOut io.Writ
 			return storage.ErrPaperAttributionInvalid
 		}
 		previous = row.Decision.Command.ID
+		// A v4 row with a reservation reports its execution.
+		if c.Schema == "mantik-owned-paper-attribution-v4" && row.Economics.Status == "owned_execution_unavailable" {
+			for _, a := range row.Allocations {
+				if a.Status == "reserve_plan" {
+					return storage.ErrPaperAttributionInvalid
+				}
+			}
+		}
 		if h := row.ClaimReviewHistory; h != nil {
 			for _, review := range h.Records {
 				if claimReviews[review.Command.ID] || len(claimReviews) >= storage.MaxDecisionReviews {

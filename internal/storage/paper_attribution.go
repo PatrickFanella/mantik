@@ -59,17 +59,19 @@ type PaperEvaluationPlanAttribution struct {
 // null. RealizedPnLCents is net proceeds less the closed cost basis, set once
 // something has closed.
 type PaperEconomicAttribution struct {
-	Status           string                 `json:"status"`
-	ExecutedQuantity *int64                 `json:"executed_quantity"`
-	FeesCents        *int64                 `json:"fees_cents"`
-	RealizedPnLCents *int64                 `json:"realized_pnl_cents"`
-	BaselineStatus   string                 `json:"baseline_status"`
-	ReservedCents    *int64                 `json:"reserved_cents,omitempty"`
-	FilledCostCents  *int64                 `json:"filled_cost_cents,omitempty"`
-	ClosedCostCents  *int64                 `json:"closed_cost_cents,omitempty"`
-	NetProceedsCents *int64                 `json:"net_proceeds_cents,omitempty"`
-	ReleasedCents    *int64                 `json:"released_cents,omitempty"`
-	Effects          []PaperExecutionEffect `json:"effects,omitempty"`
+	Status           string `json:"status"`
+	ExecutedQuantity *int64 `json:"executed_quantity"`
+	FeesCents        *int64 `json:"fees_cents"`
+	RealizedPnLCents *int64 `json:"realized_pnl_cents"`
+	BaselineStatus   string `json:"baseline_status"`
+	ReservedCents    *int64 `json:"reserved_cents,omitempty"`
+	FilledCostCents  *int64 `json:"filled_cost_cents,omitempty"`
+	ClosedCostCents  *int64 `json:"closed_cost_cents,omitempty"`
+	NetProceedsCents *int64 `json:"net_proceeds_cents,omitempty"`
+	ReleasedCents    *int64 `json:"released_cents,omitempty"`
+	// Effects is null without a reservation and a list, possibly empty,
+	// with one, so a reserved decision with nothing filled keeps it.
+	Effects []PaperExecutionEffect `json:"effects"`
 }
 
 // PaperExecutionEffect is one retained ledger effect for a decision's
