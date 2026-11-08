@@ -298,3 +298,6 @@ var CompactSettledReservations string
 
 //go:embed 0095_paper_protective_exits.sql
 var PaperProtectiveExits string
+
+//go:embed 0096_paper_execution_worker_health.sql
+var PaperExecutionWorkerHealth string

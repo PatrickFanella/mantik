@@ -796,6 +796,29 @@ returns 200 with status `no_effects`, retains nothing and leaves its identity
 unused. An exact retry returns the retained step with 200. Steps appear in
 the allocation catalogue's `executions`; comparison readers never see them.
 
+### Execution worker
+
+With execution on, `serve` also runs an execution worker. It issues a step
+immediately and then every 15 seconds, so fills, protective exits and
+releases do not wait for a comparison or a caller. Its step identities start
+with `automatic-execution-`; that prefix is reserved, and the route rejects
+it with 422.
+
+The worker keeps a step identity until a response settles it. After an
+error, including one returned after the step committed, the next cycle
+retries the same identity and receives the retained step instead of a second
+one. A step with no effects retains nothing, so its identity is dropped. A
+restart starts with a fresh identity, which still cannot repeat an effect:
+effects come only from owner records, and the books already hold every
+committed one.
+
+Progress, failures and clean stop are reported under the `paper_execution`
+readiness scope. Inspect `GET /v1/readiness/paper_execution` or
+`mantik readiness --scope paper_execution`. Without an observed worker the
+scope is not configured; a stopped, stale or failed worker is not ready.
+The scope measures stepping health only and grants no qualification. Schema
+96 fences writers that reject this worker's health reports.
+
 ### Cost ledgers
 
 A policy ledger whose first record is a v16 comparison is a cost ledger
@@ -824,7 +847,7 @@ open books unadvanced. Schema 90 fences earlier writers.
 
 The active journal holds at most 256 records, comparisons and steps
 together, in at most 64 MiB; checkpoints below keep it far smaller. Unknown
-outcomes and the execution worker are later work.
+outcomes are later work.
 
 ## Checkpoints and the archive
 
