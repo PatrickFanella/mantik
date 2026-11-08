@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -36,6 +37,10 @@ type Journal struct {
 	root *os.Root
 	lock *os.File
 	ID   string
+
+	clock     func() time.Time
+	stampMu   sync.Mutex
+	lastStamp time.Time
 }
 type manifest struct {
 	Schema string `json:"schema"`
@@ -155,6 +160,27 @@ func openJournal(path string, create bool) (*Journal, error) {
 	j.ID = m.ID
 	return j, nil
 }
+
+// stamp reads the wall clock for a record whose order the journal later
+// verifies. time.Now().UTC() drops the monotonic reading, so a backward step
+// would otherwise make the journal write a record it then rejects as a
+// conflict, permanently. A reading behind the latest stamp holds at that
+// stamp until the clock catches up.
+func (j *Journal) stamp() time.Time {
+	j.stampMu.Lock()
+	defer j.stampMu.Unlock()
+	now := time.Now
+	if j.clock != nil {
+		now = j.clock
+	}
+	at := now().UTC()
+	if at.Before(j.lastStamp) {
+		return j.lastStamp
+	}
+	j.lastStamp = at
+	return at
+}
+
 func (j *Journal) Close() error {
 	a := syscall.Flock(int(j.lock.Fd()), syscall.LOCK_UN)
 	b := j.lock.Close()
@@ -601,7 +627,7 @@ func (j *Journal) FlushWithRecovery(ctx context.Context, b Binding, receiver Res
 				if attempts >= 3 {
 					return out, errors.New("research submission attempt bound reached")
 				}
-				attempt := submissionAttempt{Binding: b, InputSHA256: inputDigest(i), Number: attempts + 1, At: time.Now().UTC()}
+				attempt := submissionAttempt{Binding: b, InputSHA256: inputDigest(i), Number: attempts + 1, At: j.stamp()}
 				attempt.SHA256, err = attemptDigest(attempt)
 				if err != nil {
 					return out, err
@@ -638,7 +664,7 @@ func (j *Journal) FlushWithRecovery(ctx context.Context, b Binding, receiver Res
 			} else {
 				out.Reconciled++
 			}
-			ack := acknowledgement{Binding: b, InputSHA256: inputDigest(i), Receipt: old.Receipt, At: time.Now().UTC()}
+			ack := acknowledgement{Binding: b, InputSHA256: inputDigest(i), Receipt: old.Receipt, At: j.stamp()}
 			ack.SHA256, err = ackDigest(ack)
 			if err != nil {
 				return out, err
