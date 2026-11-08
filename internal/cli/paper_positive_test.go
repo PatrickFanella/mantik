@@ -473,6 +473,10 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 		})
 	}
 	wg.Wait()
+	// A failed request above ended only its own goroutine.
+	if t.Failed() {
+		t.FailNow()
+	}
 	reserved, deferred := 0, 0
 	for _, res := range results {
 		switch status := res.Record.Entry.Plan.Decisions[0].Status; status {

@@ -41,7 +41,7 @@ func ownedAdmissionReviewRoutes(mux *http.ServeMux, store storage.Store, clock C
 			ownedAdmissionReviewError(w, storage.ErrOwnedAdmissionReviewInvalid)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		v, err := backend.ReviewOwnedAdmission(ctx, c, clock.Now, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err != nil {
@@ -60,7 +60,7 @@ func ownedAdmissionReviewRoutes(mux *http.ServeMux, store storage.Store, clock C
 			ownedAdmissionReviewError(w, storage.ErrOwnedAdmissionReviewInvalid)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		all, err := backend.OwnedAdmissionReviews(ctx, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err != nil {

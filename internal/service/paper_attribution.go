@@ -20,7 +20,7 @@ func paperAttributionRoutes(mux *http.ServeMux, store storage.Store) {
 			write(w, 422, map[string]string{"error": "invalid paper attribution query"})
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		all, err := backend.PaperAttribution(ctx, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err != nil {
