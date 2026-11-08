@@ -2,7 +2,7 @@
 
 ## Paper execution
 
-Current service catalogues use `mantik-owned-paper-attribution-v4`. A row whose
+Current service catalogues use `mantik-owned-paper-attribution-v5`. A row whose
 decision the allocation owner reserved now carries its paper execution in
 `economics`:
 
@@ -22,8 +22,29 @@ decision the allocation owner reserved now carries its paper execution in
 
 Fees sit inside each fill's cost and each close's net proceeds, and the ledger
 does not retain share counts, so `fees_cents` and `executed_quantity` stay
-null. Passive and no-action baselines remain `economic_baselines_unavailable`.
-These are paper fills from retained quotes, not qualification.
+null. These are paper fills from retained quotes, not qualification.
+
+Since v5 each row compares the decision with two alternatives in
+`economics.baseline`, in whole basis points rounded toward zero:
+
+- Passive holds from the retained forward assessment's entry price to its
+  forward quote. The latest `observed` assessment supplies both.
+- No-action is cash, so `excess_over_no_action_bps` equals the strategy's own
+  return.
+
+`baseline_status` says what is available:
+
+| Status | Meaning |
+|---|---|
+| `passive_and_no_action_compared` | Closed position and an observed forward quote: all figures set. |
+| `passive_observation_unavailable` | Closed position, no observed forward quote yet: `baseline` is null. |
+| `position_not_closed` | Reserved or open: no strategy return yet. Passive figures appear if observed. |
+| `no_capital_committed` | Abstained, rejected, or released unfilled. Passive figures, if any, show the move the decision passed on. |
+
+The passive window is the strategy's forward horizon, which can be longer or
+shorter than the time a position was held, so a difference is not a like-for-like
+holding-period return. The method is `owned-forward-quote-hold-vs-cash-v1`.
+Catalogues from before v5 keep `economic_baselines_unavailable`.
 
 The CLI and interactive view validate the sums, status and realized result
 against the effects before display, and show each effect. They now also accept
@@ -76,8 +97,7 @@ reviews. The authenticated targeted
 read is `GET /v1/paper-attribution/{decision_id}`. Both use the existing bearer
 token, accept no query parameters and make no model or provider requests.
 
-This is a read-only part of #24. Passive/no-action economic comparisons,
-social/copy observation-delay analysis, calibrated forecast quality and
+This is a read-only part of #24. Social/copy observation-delay analysis, calibrated forecast quality and
 remaining CLI/TUI presentation remain unfinished; funded paper execution is
 covered above. Issue #24 stays open. These
 readbacks do not supply the admission or atomic funded effects still needed by
@@ -129,7 +149,7 @@ its own reason; it is not recast as a failed job. Assessment statuses such as
 Forward quote deltas describe observations, not fills, realized returns or a
 passive portfolio. There is no owned execution/economic-effect issuer for this
 path yet. Accordingly each row has `economics.status: owned_execution_unavailable`
-and `baseline_status: economic_baselines_unavailable`. Executed quantity, fees
+and `baseline_status: no_capital_committed`. Executed quantity, fees
 and realized PnL are JSON `null`. They are never filled with zero from a missing
 receipt, a positive price delta, a cost ceiling or a successful workflow.
 
@@ -215,8 +235,7 @@ The command preserves full JSON for inspection rather than summarizing absent
 measurements as zero.
 
 This delivers CLI readback for the implemented phase attribution. The interactive
-TUI, calibrated forecasts, economic baselines, funded execution measurements and
-social/copy delay analysis remain open under #24 and its dependencies.
+TUI, calibrated forecasts and social/copy delay analysis remain open under #24 and its dependencies.
 
 
 The terminal readback displays `EVALUATION_PLANS` with the captured source hash,

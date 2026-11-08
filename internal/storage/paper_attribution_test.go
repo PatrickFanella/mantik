@@ -108,14 +108,14 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if original.Schema != "mantik-owned-paper-attribution-v4" || original.ReceiverID != owner || original.ExecutionAvailable || original.QualificationCredit || original.Authority != "service_owned_phase_attribution_only" || len(original.Rows) != 2 {
+	if original.Schema != "mantik-owned-paper-attribution-v5" || original.ReceiverID != owner || original.ExecutionAvailable || original.QualificationCredit || original.Authority != "service_owned_phase_attribution_only" || len(original.Rows) != 2 {
 		t.Fatal(original)
 	}
 	row := original.Rows[1]
 	if !reflect.DeepEqual(row.Decision, decision.Record) || row.DefinitionSHA256 != strategy.Record.DefinitionSHA256 || row.EvidenceClass != d.InputEvidenceClass || row.Method != paperstrategy.Method || row.Symbol != "SPY" || row.QualificationCredit || len(row.Observations) != 2 || len(row.Allocations) != 1 {
 		t.Fatal(row)
 	}
-	if row.Observations[0].Evaluation.PriceDeltaCents != 100 || row.Economics.FeesCents != nil || row.Economics.RealizedPnLCents != nil || row.Economics.ExecutedQuantity != nil || row.Economics.BaselineStatus != "economic_baselines_unavailable" {
+	if row.Observations[0].Evaluation.PriceDeltaCents != 100 || row.Economics.FeesCents != nil || row.Economics.RealizedPnLCents != nil || row.Economics.ExecutedQuantity != nil || row.Economics.BaselineStatus != "no_capital_committed" {
 		t.Fatal("price change became economic outcome", row)
 	}
 	a := row.Allocations[0]

@@ -48,7 +48,7 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Finalized no-action decision; not a workflow failure.", "waiting_horizon", "not_applicable", "quote_delta_cents=unavailable", "not trading P&L", "fees=unavailable", "realized_pnl=unavailable", "funding bound, not incurred expense", "admission_unavailable", "not_calibrated_forecast", "economic_baselines_unavailable", "no independent sample count", "ADMISSION_READINESS", "EVALUATION_PLANS", "declaration_unavailable", "qualification=false", "relevant_evaluation_receipt_unavailable", "owned_execution_evidence_unavailable"} {
+	for _, want := range []string{"Finalized no-action decision; not a workflow failure.", "waiting_horizon", "not_applicable", "quote_delta_cents=unavailable", "not trading P&L", "fees=unavailable", "realized_pnl=unavailable", "funding bound, not incurred expense", "admission_unavailable", "not_calibrated_forecast", "no_capital_committed", "no independent sample count", "ADMISSION_READINESS", "EVALUATION_PLANS", "declaration_unavailable", "qualification=false", "relevant_evaluation_receipt_unavailable", "owned_execution_evidence_unavailable"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}

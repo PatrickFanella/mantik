@@ -56,18 +56,18 @@ func runPaperAttribution(ctx context.Context, args []string, out, errOut io.Writ
 	}
 	hash := c.SHA256
 	c.SHA256 = ""
-	if (c.Schema != "mantik-owned-paper-attribution-v1" && c.Schema != "mantik-owned-paper-attribution-v2" && c.Schema != "mantik-owned-paper-attribution-v3" && c.Schema != "mantik-owned-paper-attribution-v4") || c.ReceiverID != *receiver || !paperStrategyPin.MatchString(c.SourceSHA256) || c.Authority != "service_owned_phase_attribution_only" || c.ExecutionAvailable || c.QualificationCredit || c.Rows == nil || len(c.Rows) > storage.MaxPaperDecisions || !paperStrategyPin.MatchString(hash) || workerplan.Hash(c) != hash {
+	if (c.Schema != "mantik-owned-paper-attribution-v1" && c.Schema != "mantik-owned-paper-attribution-v2" && c.Schema != "mantik-owned-paper-attribution-v3" && c.Schema != "mantik-owned-paper-attribution-v4" && c.Schema != "mantik-owned-paper-attribution-v5") || c.ReceiverID != *receiver || !paperStrategyPin.MatchString(c.SourceSHA256) || c.Authority != "service_owned_phase_attribution_only" || c.ExecutionAvailable || c.QualificationCredit || c.Rows == nil || len(c.Rows) > storage.MaxPaperDecisions || !paperStrategyPin.MatchString(hash) || workerplan.Hash(c) != hash {
 		return storage.ErrPaperAttributionInvalid
 	}
 	previous := ""
 	claimReviews := map[string]bool{}
 	for _, row := range c.Rows {
-		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID <= previous || c.Schema != "mantik-owned-paper-attribution-v1" && row.AdmissionReviewHistory == nil || (c.Schema == "mantik-owned-paper-attribution-v3" || c.Schema == "mantik-owned-paper-attribution-v4") != (row.ClaimReviewHistory != nil) || c.Schema != "mantik-owned-paper-attribution-v4" && row.Economics.Status != "owned_execution_unavailable" {
+		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID <= previous || c.Schema != "mantik-owned-paper-attribution-v1" && row.AdmissionReviewHistory == nil || (c.Schema == "mantik-owned-paper-attribution-v3" || c.Schema == "mantik-owned-paper-attribution-v4" || c.Schema == "mantik-owned-paper-attribution-v5") != (row.ClaimReviewHistory != nil) || c.Schema != "mantik-owned-paper-attribution-v4" && c.Schema != "mantik-owned-paper-attribution-v5" && row.Economics.Status != "owned_execution_unavailable" {
 			return storage.ErrPaperAttributionInvalid
 		}
 		previous = row.Decision.Command.ID
-		// A v4 row with a reservation reports its execution.
-		if c.Schema == "mantik-owned-paper-attribution-v4" && row.Economics.Status == "owned_execution_unavailable" {
+		// A v4 or later row with a reservation reports its execution.
+		if (c.Schema == "mantik-owned-paper-attribution-v4" || c.Schema == "mantik-owned-paper-attribution-v5") && row.Economics.Status == "owned_execution_unavailable" {
 			for _, a := range row.Allocations {
 				if a.Status == "reserve_plan" {
 					return storage.ErrPaperAttributionInvalid
@@ -283,7 +283,7 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 // them, and nothing is inferred that the ledger does not retain.
 func validateAttributionEconomics(r storage.PaperAttributionRow) error {
 	e := r.Economics
-	if e.BaselineStatus != "economic_baselines_unavailable" || e.ExecutedQuantity != nil || e.FeesCents != nil {
+	if e.ExecutedQuantity != nil || e.FeesCents != nil {
 		return storage.ErrPaperAttributionInvalid
 	}
 	var reserved int64
@@ -338,7 +338,36 @@ func validateAttributionEconomics(r storage.PaperAttributionRow) error {
 	if (closed > 0) != (e.RealizedPnLCents != nil) || e.RealizedPnLCents != nil && *e.RealizedPnLCents != proceeds-closed {
 		return storage.ErrPaperAttributionInvalid
 	}
+	return validateAttributionBaseline(r)
+}
+
+// validateAttributionBaseline rejects a baseline the row's own evidence does
+// not produce. Rows from before v5 carry the old fixed status and no figures.
+func validateAttributionBaseline(r storage.PaperAttributionRow) error {
+	e := r.Economics
+	if e.BaselineStatus == "economic_baselines_unavailable" && e.Baseline == nil {
+		return nil
+	}
+	status, baseline := storage.PaperAttributionBaseline(e, r.Observations)
+	if status != e.BaselineStatus || !reflect.DeepEqual(baseline, e.Baseline) {
+		return storage.ErrPaperAttributionInvalid
+	}
 	return nil
+}
+
+// renderBaseline formats the row's baseline figures, naming each absent one.
+func renderBaseline(e storage.PaperEconomicAttribution) string {
+	number := func(v *int64) string {
+		if v == nil {
+			return "unavailable"
+		}
+		return strconv.FormatInt(*v, 10)
+	}
+	b := e.Baseline
+	if b == nil {
+		return strconv.Quote(e.BaselineStatus)
+	}
+	return fmt.Sprintf("%s passive_return_bps=%s strategy_return_bps=%s excess_over_passive_bps=%s excess_over_no_action_bps=%s (no-action is cash; passive runs over the forward horizon)", strconv.Quote(e.BaselineStatus), number(b.PassiveReturnBPS), number(b.StrategyReturnBPS), number(b.ExcessOverPassiveBPS), number(b.ExcessOverNoActionBPS))
 }
 
 func renderPaperAttribution(out io.Writer, receiver string, rows []storage.PaperAttributionRow) error {
@@ -412,9 +441,9 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 			for _, x := range e.Effects {
 				fmt.Fprintf(&b, "    EFFECT %s %s at=%s amount_cents=%d proceeds_cents=%d record=%s\n", strconv.Quote(x.Kind), strconv.Quote(x.EffectID), x.At.UTC().Format(time.RFC3339Nano), x.AmountCents, x.ProceedsCents, strconv.Quote(x.RecordID))
 			}
-			fmt.Fprintf(&b, "  BASELINES %s\n  ROW SHA256 %s\n", strconv.Quote(e.BaselineStatus), r.SHA256)
+			fmt.Fprintf(&b, "  BASELINES %s\n  ROW SHA256 %s\n", renderBaseline(e), r.SHA256)
 		} else {
-			fmt.Fprintf(&b, "  ECONOMICS %s executed_quantity=unavailable fees=unavailable realized_pnl=unavailable\n  BASELINES %s\n  ROW SHA256 %s\n", strconv.Quote(r.Economics.Status), strconv.Quote(r.Economics.BaselineStatus), r.SHA256)
+			fmt.Fprintf(&b, "  ECONOMICS %s executed_quantity=unavailable fees=unavailable realized_pnl=unavailable\n  BASELINES %s\n  ROW SHA256 %s\n", strconv.Quote(r.Economics.Status), renderBaseline(r.Economics), r.SHA256)
 		}
 	}
 	fmt.Fprintln(&b, "Assessments may repeat one decision; no independent sample count or performance rate is inferred. Use --format json for complete evidence and pins.")
