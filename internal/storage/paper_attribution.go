@@ -64,14 +64,75 @@ type PaperEconomicAttribution struct {
 	FeesCents        *int64 `json:"fees_cents"`
 	RealizedPnLCents *int64 `json:"realized_pnl_cents"`
 	BaselineStatus   string `json:"baseline_status"`
-	ReservedCents    *int64 `json:"reserved_cents,omitempty"`
-	FilledCostCents  *int64 `json:"filled_cost_cents,omitempty"`
-	ClosedCostCents  *int64 `json:"closed_cost_cents,omitempty"`
-	NetProceedsCents *int64 `json:"net_proceeds_cents,omitempty"`
-	ReleasedCents    *int64 `json:"released_cents,omitempty"`
+	// Baseline is null when no passive or no-action figure exists yet.
+	Baseline         *PaperBaselineComparison `json:"baseline,omitempty"`
+	ReservedCents    *int64                   `json:"reserved_cents,omitempty"`
+	FilledCostCents  *int64                   `json:"filled_cost_cents,omitempty"`
+	ClosedCostCents  *int64                   `json:"closed_cost_cents,omitempty"`
+	NetProceedsCents *int64                   `json:"net_proceeds_cents,omitempty"`
+	ReleasedCents    *int64                   `json:"released_cents,omitempty"`
 	// Effects is null without a reservation and a list, possibly empty,
 	// with one, so a reserved decision with nothing filled keeps it.
 	Effects []PaperExecutionEffect `json:"effects"`
+}
+
+// PaperBaselineMethod is the comparison paperAttributionBaseline computes.
+const PaperBaselineMethod = "owned-forward-quote-hold-vs-cash-v1"
+
+// PaperBaselineComparison sets a decision against two alternatives, in whole
+// basis points rounded toward zero. Passive is holding from the assessment's
+// entry price to its forward quote. No-action is cash, which earns nothing, so
+// the excess over it equals the strategy's own return. The passive window is
+// the strategy's forward horizon and can differ from how long the position was
+// held.
+type PaperBaselineComparison struct {
+	Method                string `json:"method"`
+	OutcomeID             string `json:"outcome_id,omitempty"`
+	EntryPriceCents       *int64 `json:"entry_price_cents,omitempty"`
+	ObservedPriceCents    *int64 `json:"observed_price_cents,omitempty"`
+	PassiveReturnBPS      *int64 `json:"passive_return_bps,omitempty"`
+	StrategyReturnBPS     *int64 `json:"strategy_return_bps,omitempty"`
+	ExcessOverPassiveBPS  *int64 `json:"excess_over_passive_bps,omitempty"`
+	ExcessOverNoActionBPS *int64 `json:"excess_over_no_action_bps,omitempty"`
+}
+
+// PaperAttributionBaseline derives a row's baseline status and comparison from
+// its execution result and retained forward observations. The CLI calls it
+// too, so a display cannot show figures the row does not support.
+func PaperAttributionBaseline(e PaperEconomicAttribution, observations []PaperOutcomeRecord) (string, *PaperBaselineComparison) {
+	out := &PaperBaselineComparison{Method: PaperBaselineMethod}
+	var observed *PaperOutcomeRecord
+	for i := range observations {
+		o := &observations[i]
+		if o.Evaluation.Status == "observed" && o.Evaluation.EntryPriceCents > 0 && (observed == nil || o.EvaluatedAt.After(observed.EvaluatedAt)) {
+			observed = o
+		}
+	}
+	var passive *int64
+	if observed != nil {
+		entry, price, bps := observed.Evaluation.EntryPriceCents, observed.Evaluation.ObservedPriceCents, observed.Evaluation.PriceDeltaCents*10000/observed.Evaluation.EntryPriceCents
+		out.OutcomeID, out.EntryPriceCents, out.ObservedPriceCents, out.PassiveReturnBPS, passive = observed.Command.ID, &entry, &price, &bps, &bps
+	}
+	switch e.Status {
+	case "position_closed":
+		if passive == nil {
+			return "passive_observation_unavailable", nil
+		}
+		strategy := *e.RealizedPnLCents * 10000 / *e.ClosedCostCents
+		excess, noAction := strategy-*passive, strategy
+		out.StrategyReturnBPS, out.ExcessOverPassiveBPS, out.ExcessOverNoActionBPS = &strategy, &excess, &noAction
+		return "passive_and_no_action_compared", out
+	case "position_open", "reserved_unfilled":
+		if passive == nil {
+			return "position_not_closed", nil
+		}
+		return "position_not_closed", out
+	default:
+		if passive == nil {
+			return "no_capital_committed", nil
+		}
+		return "no_capital_committed", out
+	}
 }
 
 // PaperExecutionEffect is one retained ledger effect for a decision's
@@ -132,7 +193,7 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 	if decisions.ReceiverID != strategies.ReceiverID || outcomes.ReceiverID != decisions.ReceiverID || allocations.ReceiverID != decisions.ReceiverID {
 		return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
 	}
-	out := PaperAttributionCatalog{Schema: "mantik-owned-paper-attribution-v4", ReceiverID: decisions.ReceiverID, Rows: []PaperAttributionRow{}, Authority: "service_owned_phase_attribution_only"}
+	out := PaperAttributionCatalog{Schema: "mantik-owned-paper-attribution-v5", ReceiverID: decisions.ReceiverID, Rows: []PaperAttributionRow{}, Authority: "service_owned_phase_attribution_only"}
 	reviews, err := ownedAdmissionReviewCatalog(ctx, decisions.ReceiverID, allReviews, allocations)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
@@ -216,6 +277,7 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 			}
 		}
 		row.Economics = paperExecutionAttribution(d.Command.ID, row.Allocations, allocations)
+		row.Economics.BaselineStatus, row.Economics.Baseline = PaperAttributionBaseline(row.Economics, row.Observations)
 		scoped := OwnedAdmissionReviewCatalog{ReceiverID: out.ReceiverID, Records: []OwnedAdmissionReview{}, CurrentIDs: []string{}}
 		for _, review := range reviews.Records {
 			if review.Command.DecisionID != d.Command.ID {
@@ -407,7 +469,7 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 // records and execution steps, archived ones included, so it survives
 // checkpoints that seal settled reservations out of the ledgers.
 func paperExecutionAttribution(decisionID string, choices []PaperAllocationAttribution, allocations OwnedAllocationCatalog) PaperEconomicAttribution {
-	out := PaperEconomicAttribution{Status: "owned_execution_unavailable", BaselineStatus: "economic_baselines_unavailable"}
+	out := PaperEconomicAttribution{Status: "owned_execution_unavailable"}
 	var reserved int64
 	for _, c := range choices {
 		if c.Status == "reserve_plan" {

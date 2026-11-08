@@ -29,7 +29,7 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	clock.panicRead = true
 	defer func() { clock.panicRead = false }()
 	var all storage.PaperAttributionCatalog
-	if err := json.Unmarshal(request("GET", "/v1/paper-attribution", nil, 200), &all); err != nil || all.Schema != "mantik-owned-paper-attribution-v4" || len(all.Rows) != 5 || all.ReceiverID != candidate.Command.ReceiverID || all.ExecutionAvailable || all.QualificationCredit || all.Authority != "service_owned_phase_attribution_only" {
+	if err := json.Unmarshal(request("GET", "/v1/paper-attribution", nil, 200), &all); err != nil || all.Schema != "mantik-owned-paper-attribution-v5" || len(all.Rows) != 5 || all.ReceiverID != candidate.Command.ReceiverID || all.ExecutionAvailable || all.QualificationCredit || all.Authority != "service_owned_phase_attribution_only" {
 		t.Fatal(all, err)
 	}
 	hash := all.SHA256
@@ -108,7 +108,7 @@ func paperAttributionHTTP(t *testing.T, request func(string, string, any, int) [
 	if c == nil || c.SourceSHA256 != comparisons.Records[0].EvaluationContext.SourceSHA256 || !reflect.DeepEqual(c.Binding, comparisons.Records[0].EvaluationContext.Decisions[0]) || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit {
 		t.Fatal("HTTP evaluation context changed owner record", c)
 	}
-	if row.Economics.ExecutedQuantity != nil || row.Economics.FeesCents != nil || row.Economics.RealizedPnLCents != nil || row.QualificationCredit || row.Economics.Status != "owned_execution_unavailable" || row.Economics.BaselineStatus != "economic_baselines_unavailable" {
+	if row.Economics.ExecutedQuantity != nil || row.Economics.FeesCents != nil || row.Economics.RealizedPnLCents != nil || row.QualificationCredit || row.Economics.Status != "owned_execution_unavailable" || row.Economics.BaselineStatus != "no_capital_committed" {
 		t.Fatal("invented economics", row)
 	}
 	hash = row.SHA256

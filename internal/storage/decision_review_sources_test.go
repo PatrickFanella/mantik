@@ -317,7 +317,7 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 		t.Fatal(final, err)
 	}
 	attribution, err := s.PaperAttribution(ctx, eval, oe)
-	if err != nil || attribution.Schema != "mantik-owned-paper-attribution-v4" {
+	if err != nil || attribution.Schema != "mantik-owned-paper-attribution-v5" {
 		t.Fatal(attribution, err)
 	}
 	for _, row := range attribution.Rows {
