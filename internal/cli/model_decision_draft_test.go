@@ -143,6 +143,7 @@ func modelDecisionDraftContracts(t *testing.T, base string, d storage.PaperDecis
 			}
 		}
 	}
+	researchLoopContracts(t, base, d)
 	// Manufacture a lost review response after the actual service has committed,
 	// and an unavailable POST that never reaches it. Reconciliation must resolve
 	// only the owner's current readback, without touching the model or POSTing.
