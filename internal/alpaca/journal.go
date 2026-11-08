@@ -158,6 +158,10 @@ func openJournal(path string, create bool) (*Journal, error) {
 		return nil, errors.New("invalid or unavailable journal manifest")
 	}
 	j.ID = m.ID
+	if err := j.finishRollover(); err != nil {
+		_ = j.Close()
+		return nil, err
+	}
 	return j, nil
 }
 
