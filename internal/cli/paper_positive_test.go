@@ -509,6 +509,12 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 	if err := json.Unmarshal(request("POST", "/v1/paper-executions", storage.OwnedExecutionCommand{ID: "execution-idle", ReceiverID: owner}, 200), &idle); err != nil || idle.Record != nil || idle.Status != "no_effects" {
 		t.Fatal("idle execution step", idle, err)
 	}
+	// The grant's 10-second holding deadline after its fill triggered its
+	// exit at 15:00:20.1. No later quote arrives to place the exit, so the
+	// step lists it as pending instead of inventing a fill.
+	if len(idle.Positions) != 1 || idle.Positions[0].OrderID != "grant-decision" || idle.Positions[0].Status != "exit_pending" || !idle.Positions[0].Since.Equal(time.Date(2026, 11, 9, 15, 0, 20, 100000000, time.UTC)) {
+		t.Fatal("idle positions", idle.Positions)
+	}
 	if err := json.Unmarshal(request("GET", "/v1/allocation-comparisons", nil, 200), &catalog); err != nil {
 		t.Fatal(err)
 	}

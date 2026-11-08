@@ -71,6 +71,29 @@ type OwnedExecutionReceipt struct {
 	Record    *OwnedExecutionRecord `json:"record"`
 	Duplicate bool                  `json:"duplicate"`
 	Status    string                `json:"status"`
+	// Positions lists every open paper position at a new step's clock. An
+	// exact retry returns the retained step without advancing, so it lists
+	// none.
+	Positions []OwnedPositionStatus `json:"positions,omitempty"`
+}
+
+// OwnedPositionStatus is where one open position's protective exit stands:
+//   - holding: filled, nothing has triggered yet; Deadline is the holding
+//     deadline;
+//   - exit_pending: triggered, waiting for the next eligible quote to place
+//     the exit;
+//   - exit_working: the exit order is placed and working;
+//   - exit_unfilled: the exit ended without closing the whole position, and
+//     nothing will close the rest.
+//
+// Since is when the position entered that status. A closed position is not
+// listed.
+type OwnedPositionStatus struct {
+	PolicyID string    `json:"policy_id"`
+	OrderID  string    `json:"order_id"`
+	Status   string    `json:"status"`
+	Since    time.Time `json:"since"`
+	Deadline time.Time `json:"deadline,omitzero"`
 }
 type OwnedExecutionStore interface {
 	ExecuteOwnedAllocations(context.Context, OwnedExecutionCommand, func() time.Time, PaperDecisionEvaluator, ...PaperOutcomeEvaluator) (OwnedExecutionReceipt, error)
@@ -234,10 +257,11 @@ func sharedDisplay(displayed, used, bps int64) int64 {
 // changing once every order in it is terminal, and one exit book per
 // triggered position, in placement order.
 type ownedBookState struct {
-	entry  paperfill.Book
-	exits  []paperfill.Book
-	done   bool
-	doneAt time.Time
+	entry     paperfill.Book
+	exits     []paperfill.Book
+	done      bool
+	doneAt    time.Time
+	positions []OwnedPositionStatus
 }
 
 type ownedPosition struct {
@@ -488,6 +512,23 @@ func (b ownedEntryBook) advance(ctx context.Context, x ownedExecution, cut time.
 		}
 	}
 	out.doneAt = last
+	for _, id := range ids {
+		pos := positions[id]
+		status := OwnedPositionStatus{PolicyID: b.policyID, OrderID: id}
+		switch {
+		case pos.trigger.IsZero():
+			status.Status, status.Since, status.Deadline = "holding", pos.firstFill, pos.deadline
+		case pos.exit == nil:
+			status.Status, status.Since = "exit_pending", pos.trigger
+		case !pos.exitDone:
+			status.Status, status.Since = "exit_working", pos.placedAt
+		default:
+			// A finished exit leaves the position open only when it did
+			// not fill fully; the ledger shows what remains.
+			continue
+		}
+		out.positions = append(out.positions, status)
+	}
 	return out, nil
 }
 
@@ -629,15 +670,17 @@ func executedProposals(books []ownedEntryBook) map[string]bool {
 // advanceAll advances every policy with an open book to cut, in policy ID
 // order, starting from each policy's current ledger. A done book commits
 // nothing new, though it still counts toward the liquidity later books share.
-func advanceAll(ctx context.Context, ledgers map[string]allocation.Ledger, books []ownedEntryBook, x ownedExecution, cut time.Time) ([]OwnedExecutionAdvance, error) {
+func advanceAll(ctx context.Context, ledgers map[string]allocation.Ledger, books []ownedEntryBook, x ownedExecution, cut time.Time) ([]OwnedExecutionAdvance, []OwnedPositionStatus, error) {
 	advanced, err := advancedBooks(ctx, books, x, cut)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	byPolicy := map[string][]ownedBookState{}
+	positions := []OwnedPositionStatus{}
 	for i, b := range books {
 		if state, ok := advanced[i]; ok {
 			byPolicy[b.policyID] = append(byPolicy[b.policyID], state)
+			positions = append(positions, state.positions...)
 		}
 	}
 	ids := []string{}
@@ -649,17 +692,60 @@ func advanceAll(ctx context.Context, ledgers map[string]allocation.Ledger, books
 	for _, id := range ids {
 		ledger, ok := ledgers[id]
 		if !ok {
-			return nil, ErrOwnedAllocationInvalid
+			return nil, nil, ErrOwnedAllocationInvalid
 		}
 		next, added, err := advancePolicy(ctx, ledger, byPolicy[id])
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if len(added) > 0 {
 			ledgers[id] = next
 			out = append(out, OwnedExecutionAdvance{PolicyID: id, Entries: added})
 		}
 	}
+	return out, positions, nil
+}
+
+// ownedPositionStatuses completes the open books' positions with every
+// position the ledgers still hold that no open book tracks. Such a position's
+// book has finished, so its exit ended without closing it: exit_unfilled,
+// since the ledger's last entry for that reservation.
+func ownedPositionStatuses(ctx context.Context, ledgers map[string]allocation.Ledger, open []OwnedPositionStatus) ([]OwnedPositionStatus, error) {
+	tracked := map[string]bool{}
+	for _, p := range open {
+		tracked[p.PolicyID+"/"+p.OrderID] = true
+	}
+	out := slices.Clone(open)
+	ids := []string{}
+	for id := range ledgers {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	for _, id := range ids {
+		l := ledgers[id]
+		projection, err := allocation.ReplayLedger(ctx, l)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range projection.Reservations {
+			if r.FilledCents <= r.ClosedCostCents || tracked[id+"/"+r.Proposal.ID] {
+				continue
+			}
+			since := time.Time{}
+			for _, e := range l.Entries {
+				if f := e.Command.Effect; f != nil && f.DecisionID == r.Proposal.ID {
+					since = e.At
+				}
+			}
+			out = append(out, OwnedPositionStatus{PolicyID: id, OrderID: r.Proposal.ID, Status: "exit_unfilled", Since: since})
+		}
+	}
+	slices.SortFunc(out, func(a, b OwnedPositionStatus) int {
+		if c := strings.Compare(a.PolicyID, b.PolicyID); c != 0 {
+			return c
+		}
+		return strings.Compare(a.OrderID, b.OrderID)
+	})
 	return out, nil
 }
 
@@ -722,12 +808,16 @@ func appendOwnedExecution(ctx context.Context, owner string, journal ownedAlloca
 	for _, l := range catalog.Ledgers {
 		ledgers[l.Policy.Command.Policy.ID] = l
 	}
-	advances, err := advanceAll(ctx, ledgers, state.books, *x, at)
+	advances, open, err := advanceAll(ctx, ledgers, state.books, *x, at)
+	if err != nil {
+		return journal, OwnedExecutionReceipt{}, err
+	}
+	positions, err := ownedPositionStatuses(ctx, ledgers, open)
 	if err != nil {
 		return journal, OwnedExecutionReceipt{}, err
 	}
 	if len(advances) == 0 {
-		return journal, OwnedExecutionReceipt{Status: "no_effects"}, nil
+		return journal, OwnedExecutionReceipt{Status: "no_effects", Positions: positions}, nil
 	}
 	if len(journal.Records) >= maxOwnedAllocations {
 		return journal, OwnedExecutionReceipt{}, ErrOwnedAllocationCapacity
@@ -746,7 +836,7 @@ func appendOwnedExecution(ctx context.Context, owner string, journal ownedAlloca
 		return journal, OwnedExecutionReceipt{}, ErrOwnedAllocationCapacity
 	}
 	record := clone(r)
-	return journal, OwnedExecutionReceipt{Record: &record, Status: "effects_committed"}, nil
+	return journal, OwnedExecutionReceipt{Record: &record, Status: "effects_committed", Positions: positions}, nil
 }
 
 func (m *Memory) ExecuteOwnedAllocations(ctx context.Context, c OwnedExecutionCommand, now func() time.Time, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedExecutionReceipt, error) {

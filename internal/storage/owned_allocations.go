@@ -398,7 +398,7 @@ func replayOwnedJournal(ctx context.Context, owner string, journal ownedAllocati
 					before[b.policyID] = ledgerPrefix(l, indices[b.policyID])
 				}
 			}
-			expected, err := advanceAll(ctx, before, state.books, *x, at)
+			expected, _, err := advanceAll(ctx, before, state.books, *x, at)
 			if err != nil {
 				return OwnedAllocationCatalog{}, state, err
 			}
@@ -696,7 +696,7 @@ func appendOwnedAllocation(ctx context.Context, owner string, journal ownedAlloc
 	}
 	var executions []OwnedExecutionAdvance
 	if x != nil {
-		executions, err = advanceAll(ctx, ledgers, state.books, *x, at)
+		executions, _, err = advanceAll(ctx, ledgers, state.books, *x, at)
 		if err != nil {
 			return journal, OwnedAllocationReceipt{}, err
 		}

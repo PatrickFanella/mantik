@@ -37,6 +37,8 @@ func cycleCode(err error) string {
 		return "reconciliation_conflict"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "operation_timeout"
+	case errors.Is(err, ErrProtectiveExitUnfilled):
+		return "protective_exit_unfilled"
 	default:
 		return "cycle_failed"
 	}

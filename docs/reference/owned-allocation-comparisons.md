@@ -786,6 +786,23 @@ exit has ended. An exit that expires without filling fully leaves the rest of
 the position open; resolving it is later work. Schema 95 fences writers whose
 books do not exit.
 
+### Position status
+
+A new step's response lists every open position in `positions`, ordered by
+policy and order ID, with `policy_id`, `order_id`, `status` and `since`:
+
+| Status | Meaning | `since` |
+| --- | --- | --- |
+| `holding` | Filled; nothing has triggered. `deadline` is the holding deadline. | first fill |
+| `exit_pending` | Triggered; the exit waits for the next eligible quote. | trigger |
+| `exit_working` | The exit order is placed and working. | exit placement |
+| `exit_unfilled` | The exit ended without closing the position; nothing closes the rest. | the position's last ledger effect |
+
+A closed position is not listed, and an exact retry lists nothing because it
+does not advance. Missing or stale quotes never produce a fill: a position
+whose exit triggered while no eligible quote arrives stays `exit_pending`, for
+example overnight after a holding deadline.
+
 ### Execution steps
 
 `POST /v1/paper-executions` takes `{"id","receiver_id"}` and advances every
@@ -811,6 +828,13 @@ one. A step with no effects retains nothing, so its identity is dropped. A
 restart starts with a fresh identity, which still cannot repeat an effect:
 effects come only from owner records, and the books already hold every
 committed one.
+
+A step that lists an `exit_unfilled` position still settles its identity, but
+the worker reports the cycle as failed with code `protective_exit_unfilled`
+and the evidence reference `paper-position:<policy>/<order>`. The scope stays
+not ready, with an open `worker_protective_exit_unfilled` exception, on every
+cycle while the position is open. `exit_pending` is expected while quotes are
+absent and is not an exception.
 
 Progress, failures and clean stop are reported under the `paper_execution`
 readiness scope. Inspect `GET /v1/readiness/paper_execution` or

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -173,7 +175,8 @@ func TestSharedDisplayRestoresRemainingCapacity(t *testing.T) {
 
 // A filled entry that crosses its stop is closed by a market exit placed on
 // the next quote and filled on the one after, and the unspent notional is
-// released. The fixture's quotes arrive one second apart from the grant.
+// released. The fixture's quotes arrive one second apart from the grant. Each
+// new step lists the open position's protective status.
 func TestOwnedProtectiveExitClosesPosition(t *testing.T) {
 	f := newEligibilityFixture(t)
 	f.exec = &ownedExecution{feed: f.m.decisionFeedLocked(), quotes: fixtureExecutionQuotes(1)}
@@ -181,25 +184,48 @@ func TestOwnedProtectiveExitClosesPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := OwnedExecutionCommand{ID: "entry", ReceiverID: f.m.receiverID}
-	journal, entry, err := f.step(t, journal, command, f.at.Add(2*time.Second), f.complete)
-	if err != nil || entry.Record == nil {
-		t.Fatal("entry step", entry, err)
+	granted, err := f.replay(t, journal, f.complete)
+	if err != nil || len(granted.Ledgers) != 1 {
+		t.Fatal(err)
 	}
-	// The exit is working at the third quote but has nothing to fill yet.
-	command.ID = "working"
-	if _, idle, err := f.step(t, journal, command, f.at.Add(3*time.Second), f.complete); err != nil || idle.Record != nil {
-		t.Fatal("exit filled before a later quote", idle, err)
+	policy := granted.Ledgers[0].Policy.Command.Policy.ID
+	order := f.command.Decisions[0].ID
+	step := func(id string, offset time.Duration, effects bool, want ...OwnedPositionStatus) {
+		t.Helper()
+		next, receipt, err := f.step(t, journal, OwnedExecutionCommand{ID: id, ReceiverID: f.m.receiverID}, f.at.Add(offset), f.complete)
+		if err != nil || (receipt.Record != nil) != effects {
+			t.Fatal(id, receipt, err)
+		}
+		if len(receipt.Positions) != len(want) {
+			t.Fatal(id, "positions", receipt.Positions)
+		}
+		for i, w := range want {
+			w.PolicyID, w.OrderID = policy, order
+			got := receipt.Positions[i]
+			if w.Deadline.IsZero() {
+				got.Deadline = time.Time{}
+			}
+			if !reflect.DeepEqual(got, w) {
+				t.Fatal(id, "position", receipt.Positions[i], w)
+			}
+		}
+		journal = next
 	}
-	command.ID = "exit"
-	journal, exit, err := f.step(t, journal, command, f.at.Add(10*time.Second), f.complete)
-	if err != nil || exit.Record == nil || len(exit.Record.Executions) != 1 {
+	// The first quote fills the entry; nothing has triggered.
+	step("fill", time.Second, true, OwnedPositionStatus{Status: "holding", Since: f.at.Add(time.Second)})
+	// The second quote crosses the stop; the exit waits for the next quote.
+	step("trigger", 2*time.Second, false, OwnedPositionStatus{Status: "exit_pending", Since: f.at.Add(2 * time.Second)})
+	// The third quote places the exit, which has nothing to fill yet.
+	step("working", 3*time.Second, false, OwnedPositionStatus{Status: "exit_working", Since: f.at.Add(3 * time.Second)})
+	_, exit, err := f.step(t, journal, OwnedExecutionCommand{ID: "exit", ReceiverID: f.m.receiverID}, f.at.Add(10*time.Second), f.complete)
+	if err != nil || exit.Record == nil || len(exit.Record.Executions) != 1 || len(exit.Positions) != 0 {
 		t.Fatal("exit step", exit, err)
 	}
 	effects := exit.Record.Executions[0].Entries
 	if len(effects) != 2 || effects[0].Command.Effect.Kind != "close" || effects[1].Command.Effect.Kind != "release" || !effects[0].At.Equal(f.at.Add(4*time.Second)) || !effects[1].At.Equal(effects[0].At) {
 		t.Fatal("exit effects", effects)
 	}
+	step("exit", 10*time.Second, true)
 	catalog, err := f.replay(t, journal, f.complete)
 	if err != nil {
 		t.Fatal(err)
@@ -209,8 +235,42 @@ func TestOwnedProtectiveExitClosesPosition(t *testing.T) {
 	if c.Schema != "mantik-owned-allocation-capital-v3" || len(c.Positions) != 0 || r.ReservedCents != 0 || r.FilledCents == 0 || r.ClosedCostCents != r.FilledCents || r.FilledCents+r.ReleasedCents != r.Proposal.NotionalCents || c.RealizedPnLCents != r.ProceedsCents-r.ClosedCostCents {
 		t.Fatal("closed capital", c)
 	}
-	command.ID = "after"
-	if _, idle, err := f.step(t, journal, command, f.at.Add(time.Hour), f.complete); err != nil || idle.Record != nil {
-		t.Fatal("finished book stepped again", idle, err)
+	// A retry lists nothing; a finished book has no position to list.
+	if _, retry, err := f.step(t, journal, OwnedExecutionCommand{ID: "exit", ReceiverID: f.m.receiverID}, f.at.Add(time.Hour), f.complete); err != nil || !retry.Duplicate || retry.Positions != nil {
+		t.Fatal("retry", retry, err)
+	}
+	step("after", time.Hour, false)
+}
+
+// An exit that expires without a fill leaves the position open. The book
+// finishes, and every later step lists the position as exit_unfilled.
+func TestOwnedExitUnfilledLeavesPositionOpen(t *testing.T) {
+	f := newEligibilityFixture(t)
+	all := fixtureExecutionQuotes(1)
+	// Withhold the fourth quote, so the exit placed on the third never fills.
+	f.exec = &ownedExecution{feed: f.m.decisionFeedLocked(), quotes: func(ctx context.Context, feed FeedEvidenceSnapshot, q PaperExecutionQuoteQuery) ([]paperfill.BookCommand, error) {
+		out, err := all(ctx, feed, q)
+		return slices.DeleteFunc(out, func(c paperfill.BookCommand) bool { return c.ID == "quote-fixture-4" }), err
+	}}
+	journal, _, err := f.append(t, ownedAllocationJournal{Records: []retainedOwnedAllocation{}}, f.command, f.at, f.complete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal, _, err = f.step(t, journal, OwnedExecutionCommand{ID: "fill", ReceiverID: f.m.receiverID}, f.at.Add(time.Second), f.complete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, offset := range []time.Duration{25 * time.Hour, 26 * time.Hour} {
+		_, receipt, err := f.step(t, journal, OwnedExecutionCommand{ID: "late", ReceiverID: f.m.receiverID}, f.at.Add(offset), f.complete)
+		if err != nil || receipt.Record != nil || len(receipt.Positions) != 1 {
+			t.Fatal(offset, receipt, err)
+		}
+		if p := receipt.Positions[0]; p.Status != "exit_unfilled" || p.OrderID != f.command.Decisions[0].ID || !p.Since.Equal(f.at.Add(time.Second)) {
+			t.Fatal(offset, "position", p)
+		}
+	}
+	catalog, err := f.replay(t, journal, f.complete)
+	if err != nil || len(catalog.Capital[0].Positions) != 1 {
+		t.Fatal("open position", catalog.Capital, err)
 	}
 }
