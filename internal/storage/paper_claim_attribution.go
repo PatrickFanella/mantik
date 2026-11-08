@@ -102,7 +102,6 @@ func withClaimReviewAttribution(ctx context.Context, out PaperAttributionCatalog
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	out.Schema = "mantik-owned-paper-attribution-v3"
 	out.SourceSHA256 = workerplan.Hash(struct {
 		Previous string
 		Reviews  DecisionReviewCatalog

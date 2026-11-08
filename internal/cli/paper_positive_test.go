@@ -704,6 +704,44 @@ func positiveExitLifecycleHTTP(t testing.TB, s portfolioHTTPBackend, url, owner 
 			t.Fatal("grant postings", r, filled, closed, proceeds)
 		}
 	}
+	positiveExecutionAttribution(t, url, owner, filled, proceeds)
+}
+
+// positiveExecutionAttribution reads the closed grant back through the
+// attribution route and the paper-attribution command: the row joins the
+// reservation to its fill and close effects and the realized result, and the
+// command validates the whole catalogue before rendering it.
+func positiveExecutionAttribution(t testing.TB, url, owner string, filled, proceeds int64) {
+	t.Helper()
+	r, _ := http.NewRequestWithContext(context.Background(), "GET", url+"/v1/paper-attribution/grant-decision", nil)
+	r.Header.Set("Authorization", "Bearer positive-fixture-token")
+	response, err := http.DefaultClient.Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var row storage.PaperAttributionRow
+	if response.StatusCode != 200 || json.NewDecoder(response.Body).Decode(&row) != nil {
+		t.Fatal("attribution row", response.StatusCode)
+	}
+	e := row.Economics
+	if e.Status != "position_closed" || e.ReservedCents == nil || *e.ReservedCents != 99000 || *e.FilledCostCents != filled || *e.ClosedCostCents != filled || *e.NetProceedsCents != proceeds || *e.ReleasedCents != 0 || e.RealizedPnLCents == nil || *e.RealizedPnLCents != proceeds-filled || len(e.Effects) != 2 || e.Effects[0].Kind != "fill" || e.Effects[1].Kind != "close" || e.ExecutedQuantity != nil || e.FeesCents != nil {
+		t.Fatal("execution attribution", e)
+	}
+	if validateAttributionRow(row, owner) != nil {
+		t.Fatal("command rejects the closed grant's row")
+	}
+	t.Setenv("MANTIK_API_TOKEN", "positive-fixture-token")
+	var out, diag bytes.Buffer
+	if err := Run(context.Background(), []string{"paper-attribution", "--api-url", url, "--receiver-id", owner}, &out, &diag); err != nil {
+		t.Fatal("paper-attribution", err, diag.String())
+	}
+	text := out.String()
+	for _, want := range []string{"EXECUTION paper", `ECONOMICS "position_closed"`, "realized_pnl_cents=1000", `EFFECT "close"`, `status="reserve_plan"`} {
+		if !strings.Contains(text, want) {
+			t.Fatal("paper-attribution output lacks", want, text)
+		}
+	}
 }
 
 func TestOwnedPositiveEvaluationAndEligibilityHTTP(t *testing.T) {

@@ -10,7 +10,9 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
@@ -54,13 +56,13 @@ func runPaperAttribution(ctx context.Context, args []string, out, errOut io.Writ
 	}
 	hash := c.SHA256
 	c.SHA256 = ""
-	if (c.Schema != "mantik-owned-paper-attribution-v1" && c.Schema != "mantik-owned-paper-attribution-v2" && c.Schema != "mantik-owned-paper-attribution-v3") || c.ReceiverID != *receiver || !paperStrategyPin.MatchString(c.SourceSHA256) || c.Authority != "service_owned_phase_attribution_only" || c.ExecutionAvailable || c.QualificationCredit || c.Rows == nil || len(c.Rows) > storage.MaxPaperDecisions || !paperStrategyPin.MatchString(hash) || workerplan.Hash(c) != hash {
+	if (c.Schema != "mantik-owned-paper-attribution-v1" && c.Schema != "mantik-owned-paper-attribution-v2" && c.Schema != "mantik-owned-paper-attribution-v3" && c.Schema != "mantik-owned-paper-attribution-v4") || c.ReceiverID != *receiver || !paperStrategyPin.MatchString(c.SourceSHA256) || c.Authority != "service_owned_phase_attribution_only" || c.ExecutionAvailable || c.QualificationCredit || c.Rows == nil || len(c.Rows) > storage.MaxPaperDecisions || !paperStrategyPin.MatchString(hash) || workerplan.Hash(c) != hash {
 		return storage.ErrPaperAttributionInvalid
 	}
 	previous := ""
 	claimReviews := map[string]bool{}
 	for _, row := range c.Rows {
-		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID <= previous || c.Schema != "mantik-owned-paper-attribution-v1" && row.AdmissionReviewHistory == nil || (c.Schema == "mantik-owned-paper-attribution-v3") != (row.ClaimReviewHistory != nil) {
+		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID <= previous || c.Schema != "mantik-owned-paper-attribution-v1" && row.AdmissionReviewHistory == nil || (c.Schema == "mantik-owned-paper-attribution-v3" || c.Schema == "mantik-owned-paper-attribution-v4") != (row.ClaimReviewHistory != nil) || c.Schema != "mantik-owned-paper-attribution-v4" && row.Economics.Status != "owned_execution_unavailable" {
 			return storage.ErrPaperAttributionInvalid
 		}
 		previous = row.Decision.Command.ID
@@ -85,7 +87,7 @@ func runPaperAttribution(ctx context.Context, args []string, out, errOut io.Writ
 func validateAttributionRow(r storage.PaperAttributionRow, receiver string) error {
 	hash := r.SHA256
 	r.SHA256 = ""
-	if r.Decision.Validate() != nil || r.Decision.Command.ReceiverID != receiver || r.Method == "" || r.Symbol == "" || !paperStrategyPin.MatchString(r.DefinitionSHA256) || r.ForecastStatus != "native_predicate_not_calibrated_forecast" || r.QualificationCredit || r.Observations == nil || len(r.Observations) > storage.MaxPaperOutcomes || r.Allocations == nil || len(r.Allocations) > storage.MaxOwnedAllocations || r.Economics.Status != "owned_execution_unavailable" || r.Economics.BaselineStatus != "economic_baselines_unavailable" || r.Economics.ExecutedQuantity != nil || r.Economics.FeesCents != nil || r.Economics.RealizedPnLCents != nil || !paperStrategyPin.MatchString(hash) || workerplan.Hash(r) != hash {
+	if r.Decision.Validate() != nil || r.Decision.Command.ReceiverID != receiver || r.Method == "" || r.Symbol == "" || !paperStrategyPin.MatchString(r.DefinitionSHA256) || r.ForecastStatus != "native_predicate_not_calibrated_forecast" || r.QualificationCredit || r.Observations == nil || len(r.Observations) > storage.MaxPaperOutcomes || r.Allocations == nil || len(r.Allocations) > storage.MaxOwnedAllocations || validateAttributionEconomics(r) != nil || !paperStrategyPin.MatchString(hash) || workerplan.Hash(r) != hash {
 		return storage.ErrPaperAttributionInvalid
 	}
 	switch r.EvidenceClass {
@@ -108,7 +110,7 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 		previous = o.Command.ID
 	}
 	for _, a := range r.Allocations {
-		if !paperaccount.ID.MatchString(a.ComparisonID) || !paperStrategyPin.MatchString(a.RecordSHA256) || !paperStrategyPin.MatchString(a.PolicySHA256) || !paperaccount.ID.MatchString(a.AccountID) || a.At.IsZero() || a.Status != "defer" && a.Status != "reject" || len(a.Reasons) == 0 || a.RequestedFundingCents <= 0 {
+		if !paperaccount.ID.MatchString(a.ComparisonID) || !paperStrategyPin.MatchString(a.RecordSHA256) || !paperStrategyPin.MatchString(a.PolicySHA256) || !paperaccount.ID.MatchString(a.AccountID) || a.At.IsZero() || a.Status != "defer" && a.Status != "reject" && a.Status != "reserve_plan" || a.Status != "reserve_plan" && len(a.Reasons) == 0 || a.RequestedFundingCents <= 0 {
 			return storage.ErrPaperAttributionInvalid
 		}
 		if a.AdmissionReadiness != nil && validateAttributionReadiness(*a.AdmissionReadiness, a, r, receiver) != nil {
@@ -193,7 +195,7 @@ func validateAttributionRow(r storage.PaperAttributionRow, receiver string) erro
 func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.PaperAllocationAttribution, r storage.PaperAttributionRow, receiver string) error {
 	h := c.SHA256
 	c.SHA256 = ""
-	if !paperStrategyPin.MatchString(h) || workerplan.Hash(c) != h || c.ReceiverID != receiver || c.DecisionID != r.Decision.Command.ID || c.DecisionSHA256 != r.Decision.SHA256 || c.StrategyID != r.Decision.Command.StrategyID || c.StrategySHA256 != r.Decision.Command.StrategySHA256 || c.DefinitionSHA256 != r.DefinitionSHA256 || c.BasisSHA256 != r.Decision.BasisSHA256 || c.EvidenceClass != r.EvidenceClass || !c.CheckedAt.Equal(a.At) || c.Authority != "service_owned_admission_readiness_only" || c.AdmissionAvailable || c.ExecutionAvailable || c.QualificationCredit || c.Status != "deferred" && c.Status != "expired" || c.Gates == nil || c.ReconsiderTriggers == nil {
+	if !paperStrategyPin.MatchString(h) || workerplan.Hash(c) != h || c.ReceiverID != receiver || c.DecisionID != r.Decision.Command.ID || c.DecisionSHA256 != r.Decision.SHA256 || c.StrategyID != r.Decision.Command.StrategyID || c.StrategySHA256 != r.Decision.Command.StrategySHA256 || c.DefinitionSHA256 != r.DefinitionSHA256 || c.BasisSHA256 != r.Decision.BasisSHA256 || c.EvidenceClass != r.EvidenceClass || !c.CheckedAt.Equal(a.At) || c.Authority != "service_owned_admission_readiness_only" || c.ExecutionAvailable || c.QualificationCredit || c.Status != "deferred" && c.Status != "expired" && c.Status != "eligible" || c.Gates == nil || c.ReconsiderTriggers == nil {
 		return storage.ErrPaperAttributionInvalid
 	}
 	expectedStatus := "deferred"
@@ -232,7 +234,7 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 		if c.AdmissionAvailable != c.PaperOperationallyEligible || c.ExecutionAvailable || c.QualificationCredit {
 			return storage.ErrPaperAttributionInvalid
 		}
-	} else if c.EvaluationComplete || c.PaperOperationallyEligible {
+	} else if c.EvaluationComplete || c.PaperOperationallyEligible || c.AdmissionAvailable {
 		return storage.ErrPaperAttributionInvalid
 	}
 	if c.QuoteInputID != r.Decision.Evaluation.Coverage.Quote.InputID || c.ValidUntil.IsZero() || c.Status != expectedStatus || !reflect.DeepEqual(c.Gates, gates) || !reflect.DeepEqual(c.ReconsiderTriggers, triggers) {
@@ -268,11 +270,80 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 	return nil
 }
 
+// validateAttributionEconomics checks that a row's execution attribution is
+// internally consistent: its sums match its effects, its status follows from
+// them, and nothing is inferred that the ledger does not retain.
+func validateAttributionEconomics(r storage.PaperAttributionRow) error {
+	e := r.Economics
+	if e.BaselineStatus != "economic_baselines_unavailable" || e.ExecutedQuantity != nil || e.FeesCents != nil {
+		return storage.ErrPaperAttributionInvalid
+	}
+	var reserved int64
+	for _, a := range r.Allocations {
+		if a.Status == "reserve_plan" {
+			reserved += a.RequestedFundingCents
+		}
+	}
+	if e.Status == "owned_execution_unavailable" {
+		if e.RealizedPnLCents != nil || e.ReservedCents != nil || e.FilledCostCents != nil || e.ClosedCostCents != nil || e.NetProceedsCents != nil || e.ReleasedCents != nil || e.Effects != nil {
+			return storage.ErrPaperAttributionInvalid
+		}
+		return nil
+	}
+	if e.ReservedCents == nil || e.FilledCostCents == nil || e.ClosedCostCents == nil || e.NetProceedsCents == nil || e.ReleasedCents == nil || e.Effects == nil || *e.ReservedCents != reserved || reserved <= 0 || len(e.Effects) > allocation.MaxLedgerEntries {
+		return storage.ErrPaperAttributionInvalid
+	}
+	var filled, closed, proceeds, released int64
+	var previous time.Time
+	for _, x := range e.Effects {
+		if !paperaccount.ID.MatchString(x.RecordID) || x.EffectID == "" || x.At.IsZero() || x.At.Before(previous) || x.AmountCents < 0 {
+			return storage.ErrPaperAttributionInvalid
+		}
+		previous = x.At
+		switch x.Kind {
+		case "fill":
+			filled += x.AmountCents
+		case "close":
+			closed += x.AmountCents
+			proceeds += x.ProceedsCents
+		case "release":
+			released += x.AmountCents
+		default:
+			return storage.ErrPaperAttributionInvalid
+		}
+		if x.Kind != "close" && x.ProceedsCents != 0 {
+			return storage.ErrPaperAttributionInvalid
+		}
+	}
+	status := "position_closed"
+	switch {
+	case filled == 0 && released == 0:
+		status = "reserved_unfilled"
+	case filled == 0:
+		status = "released_unfilled"
+	case closed < filled:
+		status = "position_open"
+	}
+	if *e.FilledCostCents != filled || *e.ClosedCostCents != closed || *e.NetProceedsCents != proceeds || *e.ReleasedCents != released || e.Status != status || closed > filled || filled+released > reserved {
+		return storage.ErrPaperAttributionInvalid
+	}
+	if (closed > 0) != (e.RealizedPnLCents != nil) || e.RealizedPnLCents != nil && *e.RealizedPnLCents != proceeds-closed {
+		return storage.ErrPaperAttributionInvalid
+	}
+	return nil
+}
+
 func renderPaperAttribution(out io.Writer, receiver string, rows []storage.PaperAttributionRow) error {
 	// Build the complete output before writing so malformed rows never yield a
 	// partial success display. Quote source strings to contain terminal controls.
 	var b strings.Builder
-	fmt.Fprintf(&b, "RECEIVER %s\nQUALIFICATION false  EXECUTION unavailable\n", strconv.Quote(receiver))
+	execution := "unavailable"
+	for _, r := range rows {
+		if r.Economics.FilledCostCents != nil {
+			execution = "paper"
+		}
+	}
+	fmt.Fprintf(&b, "RECEIVER %s\nQUALIFICATION false  EXECUTION %s\n", strconv.Quote(receiver), execution)
 	if len(rows) == 0 {
 		fmt.Fprintln(&b, "No finalized decisions retained; insufficient evidence.")
 	}
@@ -324,7 +395,19 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 				fmt.Fprintf(&b, "    SOURCE_TIMING review=%s capture=%s observed_delay_seconds=%d retained_delay_seconds=%d relation=%s decision_input_verified=false\n", strconv.Quote(timing.ReviewID), strconv.Quote(timing.CaptureID), timing.ObservationDelaySeconds, timing.AvailabilityDelaySeconds, strconv.Quote(timing.ClockRelation))
 			}
 		}
-		fmt.Fprintf(&b, "  ECONOMICS %s executed_quantity=unavailable fees=unavailable realized_pnl=unavailable\n  BASELINES %s\n  ROW SHA256 %s\n", strconv.Quote(r.Economics.Status), strconv.Quote(r.Economics.BaselineStatus), r.SHA256)
+		if e := r.Economics; e.FilledCostCents != nil {
+			realized := "unavailable"
+			if e.RealizedPnLCents != nil {
+				realized = strconv.FormatInt(*e.RealizedPnLCents, 10)
+			}
+			fmt.Fprintf(&b, "  ECONOMICS %s reserved_cents=%d filled_cost_cents=%d closed_cost_cents=%d net_proceeds_cents=%d released_cents=%d realized_pnl_cents=%s (paper fills; fees inside cost and proceeds; quantity not retained)\n", strconv.Quote(e.Status), *e.ReservedCents, *e.FilledCostCents, *e.ClosedCostCents, *e.NetProceedsCents, *e.ReleasedCents, realized)
+			for _, x := range e.Effects {
+				fmt.Fprintf(&b, "    EFFECT %s %s at=%s amount_cents=%d proceeds_cents=%d record=%s\n", strconv.Quote(x.Kind), strconv.Quote(x.EffectID), x.At.UTC().Format(time.RFC3339Nano), x.AmountCents, x.ProceedsCents, strconv.Quote(x.RecordID))
+			}
+			fmt.Fprintf(&b, "  BASELINES %s\n  ROW SHA256 %s\n", strconv.Quote(e.BaselineStatus), r.SHA256)
+		} else {
+			fmt.Fprintf(&b, "  ECONOMICS %s executed_quantity=unavailable fees=unavailable realized_pnl=unavailable\n  BASELINES %s\n  ROW SHA256 %s\n", strconv.Quote(r.Economics.Status), strconv.Quote(r.Economics.BaselineStatus), r.SHA256)
+		}
 	}
 	fmt.Fprintln(&b, "Assessments may repeat one decision; no independent sample count or performance rate is inferred. Use --format json for complete evidence and pins.")
 	_, err := io.WriteString(out, b.String())

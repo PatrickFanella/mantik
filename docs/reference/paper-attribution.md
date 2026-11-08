@@ -1,8 +1,39 @@
 # Service-owned paper attribution readbacks
 
+## Paper execution
+
+Current service catalogues use `mantik-owned-paper-attribution-v4`. A row whose
+decision the allocation owner reserved now carries its paper execution in
+`economics`:
+
+- `effects`: every retained fill, close and release effect for the decision's
+  proposal, in clock order, each with the comparison or execution step that
+  committed it (`record_id`), its effect ID, amount and net proceeds. They come
+  from comparison records and execution steps, archived ones included, so
+  checkpoints that seal settled reservations do not remove them.
+- `reserved_cents`, `filled_cost_cents`, `closed_cost_cents`,
+  `net_proceeds_cents` and `released_cents`: the sums of those effects, with the
+  reservation from the `reserve_plan` allocation.
+- `realized_pnl_cents`: net proceeds less the closed cost basis, set once
+  something has closed.
+- `status`: `reserved_unfilled`, `released_unfilled`, `position_open` or
+  `position_closed`. A decision without a reservation stays
+  `owned_execution_unavailable` with every value null.
+
+Fees sit inside each fill's cost and each close's net proceeds, and the ledger
+does not retain share counts, so `fees_cents` and `executed_quantity` stay
+null. Passive and no-action baselines remain `economic_baselines_unavailable`.
+These are paper fills from retained quotes, not qualification.
+
+The CLI and interactive view validate the sums, status and realized result
+against the effects before display, and show each effect. They now also accept
+`reserve_plan` allocations and `eligible` readiness records, which they
+rejected before, so a receiver with a funded decision can read attribution
+again. Older v1–v3 catalogues remain accepted, with execution unavailable.
+
 ## Post-decision claim reviews and source delays
 
-Current service catalogues use `mantik-owned-paper-attribution-v3`. Every row
+Since `mantik-owned-paper-attribution-v3`, every row
 includes `claim_review_history` with the actual retained typed decision reviews,
 their contradictions/unsupported-field cases, and a digest. The service replays
 the complete decision-review owner and any bound social/copy journal under the
@@ -45,9 +76,10 @@ reviews. The authenticated targeted
 read is `GET /v1/paper-attribution/{decision_id}`. Both use the existing bearer
 token, accept no query parameters and make no model or provider requests.
 
-This is a read-only part of #24. Funded execution attribution, passive/no-action
-economic comparisons, social/copy observation-delay analysis, calibrated forecast
-quality and remaining CLI/TUI presentation remain unfinished. Issue #24 stays open. These
+This is a read-only part of #24. Passive/no-action economic comparisons,
+social/copy observation-delay analysis, calibrated forecast quality and
+remaining CLI/TUI presentation remain unfinished; funded paper execution is
+covered above. Issue #24 stays open. These
 readbacks do not supply the admission or atomic funded effects still needed by
 #19/#20/#21, and they do not start a soak or grant qualification.
 
