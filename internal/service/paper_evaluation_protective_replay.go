@@ -425,7 +425,7 @@ func paperEvaluationProtectiveReplayRoutes(mux *http.ServeMux, store storage.Sto
 			write(w, 422, map[string]string{"error": "invalid protective replay query"})
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		s, err := backend.PaperEvaluationEntrySources(ctx, id, clock.Now, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if errors.Is(err, storage.ErrPaperEvaluationDeclarationNotFound) {

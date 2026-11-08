@@ -66,7 +66,7 @@ func automaticSocialResearchOwner(t *testing.T, s socialWorkerBackend) {
 	}()
 	select {
 	case <-clock.waiting:
-	case <-time.After(5 * time.Second):
+	case <-time.After(60 * time.Second):
 		t.Fatal("worker did not complete cycle")
 	}
 	records, err := s.SocialResearchDispatches(ctx)
@@ -99,7 +99,7 @@ func automaticSocialResearchOwner(t *testing.T, s socialWorkerBackend) {
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(60 * time.Second):
 		t.Fatal("worker failed to stop")
 	}
 	if err = service.RunSocialResearchCycle(ctx, s, &ownedDecisionClock{at: at}); err != nil {

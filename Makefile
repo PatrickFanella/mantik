@@ -47,8 +47,10 @@ build: ## Build the Mantik CLI/service
 demo: build ## Run the synthetic paper lifecycle without dependencies
 	./bin/mantik demo
 
+# The storage package alone takes 7-8 minutes under the race detector on a
+# shared runner, close to Go's default 10-minute limit per package.
 test-race: ## Verify concurrent operation with the race detector
-	go test -race ./...
+	go test -race -timeout=30m ./...
 
 test-integration: ## Verify persistence using a new disposable PostgreSQL container
 	python3 scripts/test-integration.py

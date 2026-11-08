@@ -89,7 +89,7 @@ func paperDecisionRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			paperDecisionError(w, storage.ErrPaperDecisionInvalid)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		v, err := backend.FinalizePaperDecision(ctx, c, clock.Now, evaluateOwnedPaperDecision)
 		if err != nil {
@@ -107,7 +107,7 @@ func paperDecisionRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			paperDecisionError(w, storage.ErrPaperDecisionInvalid)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		all, err := backend.PaperDecisions(ctx, evaluateOwnedPaperDecision)
 		if err != nil {

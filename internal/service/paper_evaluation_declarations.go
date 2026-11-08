@@ -41,7 +41,7 @@ func paperEvaluationDeclarationRoutes(mux *http.ServeMux, store storage.Store, c
 			fail(w, storage.ErrPaperEvaluationDeclarationInvalid)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		receipt, err := backend.DeclarePaperEvaluation(ctx, c, clock.Now)
 		if err != nil {
@@ -60,7 +60,7 @@ func paperEvaluationDeclarationRoutes(mux *http.ServeMux, store storage.Store, c
 			fail(w, storage.ErrPaperEvaluationDeclarationInvalid)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		all, err := backend.PaperEvaluationDeclarations(ctx)
 		if err != nil {

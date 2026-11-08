@@ -66,7 +66,9 @@ func RunPaperDecisionCycle(ctx context.Context, store PaperDecisionWorkerStore, 
 		return storage.ErrPaperDecisionInvalid
 	}
 	// Each store call has its own deadline, so many pairs do not share one.
-	bounded := func() (context.Context, context.CancelFunc) { return context.WithTimeout(ctx, 20*time.Second) }
+	bounded := func() (context.Context, context.CancelFunc) {
+		return context.WithTimeout(ctx, raceDeadlineScale*20*time.Second)
+	}
 	at := clock.Now().UTC()
 	if at.IsZero() || at.Year() < 1 || at.Year() > 9998 {
 		return storage.ErrPaperDecisionInvalid

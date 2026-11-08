@@ -35,7 +35,7 @@ func paperExecutionRoutes(mux *http.ServeMux, store storage.Store, clock Clock) 
 			ownedAllocationError(w, storage.ErrOwnedAllocationInvalid)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		result, err := backend.ExecuteOwnedAllocations(ctx, c, clock.Now, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if errors.Is(err, storage.ErrOwnedExecutionUnavailable) {

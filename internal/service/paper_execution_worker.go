@@ -55,7 +55,7 @@ func (s *PaperExecutionStepper) Cycle(ctx context.Context, store PaperExecutionW
 	if at.IsZero() || at.Year() < 1 || at.Year() > 9998 {
 		return storage.OwnedExecutionReceipt{}, storage.ErrOwnedAllocationInvalid
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, raceDeadlineScale*20*time.Second)
 	defer cancel()
 	strategies, err := store.PaperStrategies(ctx)
 	if err != nil {
