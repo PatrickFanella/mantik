@@ -16,8 +16,12 @@ type WorkerHealth struct {
 	LastSuccessAt  time.Time `json:"last_success_at"`
 	IntervalMillis int64     `json:"interval_millis"`
 	EvidenceRef    string    `json:"evidence_ref,omitempty"`
-	ErrorCode      string    `json:"error_code,omitempty"`
-	Stopped        bool      `json:"stopped"`
+	// EvidenceRefs names what a failed cycle failed on, up to a bound.
+	// FailureCount counts all of them, including any past the bound.
+	EvidenceRefs []string `json:"evidence_refs,omitempty"`
+	FailureCount int      `json:"failure_count,omitempty"`
+	ErrorCode    string   `json:"error_code,omitempty"`
+	Stopped      bool     `json:"stopped"`
 }
 
 // WorkerReport includes a locally retained failure if storage was unavailable.

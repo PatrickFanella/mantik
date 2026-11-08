@@ -59,6 +59,13 @@ func faultID(capability, code, subject string) string {
 	return fmt.Sprintf("exception-%x", hash[:16])
 }
 
+// MaxWorkerFailureRefs bounds the identities one worker report carries, and
+// MaxExceptionRefs the identities an open exception accumulates across cycles.
+const (
+	MaxWorkerFailureRefs = 16
+	MaxExceptionRefs     = 64
+)
+
 // Sync retains detected action, timer, and protection failures and their recovery.
 // Its stable fault identities coalesce repeated observations rather than hiding them.
 func Sync(s *domain.State, now time.Time) []domain.Event {
@@ -75,7 +82,7 @@ func Sync(s *domain.State, now time.Time) []domain.Event {
 			e = domain.OperationalException{ID: id, CaseID: s.Case.ID, At: at, Code: code, Capability: capability, Severity: severity, ActionID: actionID, DefinitionID: definitionID, EvidenceRefs: refs}
 		}
 		for _, ref := range refs {
-			if !slices.Contains(e.EvidenceRefs, ref) {
+			if len(e.EvidenceRefs) < MaxExceptionRefs && !slices.Contains(e.EvidenceRefs, ref) {
 				e.EvidenceRefs = append(e.EvidenceRefs, ref)
 			}
 		}
@@ -164,9 +171,10 @@ func Sync(s *domain.State, now time.Time) []domain.Event {
 	for cap, w := range s.Operations.Workers {
 		if w.ErrorCode != "" {
 			refs := []string{"worker:" + w.WorkerID}
-			if w.EvidenceRef != "" {
+			if w.EvidenceRef != "" && !slices.Contains(w.EvidenceRefs, w.EvidenceRef) {
 				refs = append(refs, w.EvidenceRef)
 			}
+			refs = append(refs, w.EvidenceRefs...)
 			upsert(cap, "worker_"+w.ErrorCode, cap, "error", "", "", w.At, refs)
 		}
 	}
@@ -209,7 +217,7 @@ func Sync(s *domain.State, now time.Time) []domain.Event {
 // Report persists worker progress and previously unrecordable outage evidence.
 func Report(s *domain.State, r domain.WorkerReport) ([]domain.Event, error) {
 	Normalize(s)
-	if !slices.Contains([]string{"action_delivery", "protective_monitoring", "paper_outcome_collection", "paper_evaluation_assessment", "social_research_dispatch", "paper_execution", "paper_decision"}, r.Capability) || r.WorkerID == "" || len(r.WorkerID) > 80 || r.At.IsZero() || r.IntervalMillis < 100 || r.IntervalMillis > 60000 {
+	if !slices.Contains([]string{"action_delivery", "protective_monitoring", "paper_outcome_collection", "paper_evaluation_assessment", "social_research_dispatch", "paper_execution", "paper_decision"}, r.Capability) || r.WorkerID == "" || len(r.WorkerID) > 80 || r.At.IsZero() || r.IntervalMillis < 100 || r.IntervalMillis > 60000 || len(r.EvidenceRefs) > MaxWorkerFailureRefs {
 		return nil, errors.New("invalid worker report")
 	}
 	if r.At.Before(s.Operations.Workers[r.Capability].At) {
