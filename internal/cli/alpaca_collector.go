@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
@@ -26,6 +27,74 @@ func (r remoteCollectorControl) Command(ctx context.Context, receiver string, c 
 	err := request(ctx, r.base, "/v1/feed-collectors", body, &out)
 	return out, err
 }
+
+// runAlpacaCollectorLoop repeats finite regular-session runs on one journal
+// and registration until the process is stopped or the loop gives up.
+func runAlpacaCollectorLoop(ctx context.Context, args []string, out, errOut io.Writer) error {
+	fs := flag.NewFlagSet("alpaca-collector-loop", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	var root, path, credentials, base, receiver, registration string
+	windowSeconds := 480
+	fs.StringVar(&root, "journal", "", "absolute private journal directory")
+	fs.StringVar(&path, "spec", "", "quote session template JSON; its id, at most 15 characters, prefixes each run")
+	fs.StringVar(&credentials, "credentials-file", "", "private mode-0600 provider credentials file")
+	fs.StringVar(&base, "api-url", defaultURL, "exact receiver service origin")
+	fs.StringVar(&receiver, "receiver-id", "", "expected persistent receiver identity")
+	fs.StringVar(&registration, "collector-registration-id", "", "existing immutable registration")
+	fs.IntVar(&windowSeconds, "regular-session-seconds", windowSeconds, "wall-clock limit of each run, 1–3600 seconds")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if root == "" || path == "" || credentials == "" || receiver == "" || registration == "" || fs.NArg() != 0 {
+		return errors.New("collector loop requires journal, spec, credentials-file, receiver and registration, and no positional arguments")
+	}
+	session, err := readSessionSpec(path)
+	if err != nil {
+		return err
+	}
+	key, secret, err := collectionCredentials(credentials)
+	if err != nil {
+		return err
+	}
+	client, err := alpaca.NewClient(key, secret, session.Collection.Feed)
+	if err != nil {
+		return err
+	}
+	control, delivery := remoteCollectorControl{base: base}, remoteResearchReceiver{base: base}
+	loop := alpaca.CollectorLoop{
+		Session: session, WindowSeconds: windowSeconds,
+		Binding: alpaca.Binding{APIURL: base, ReceiverID: receiver, CollectorRegistrationID: registration},
+		Now:     time.Now, Wait: waitContext,
+		Run: func(ctx context.Context, spec alpaca.CollectorSpec) (alpaca.CollectorStatus, error) {
+			j, err := alpaca.OpenExistingJournal(root)
+			if err != nil {
+				return alpaca.CollectorStatus{}, err
+			}
+			defer func() { _ = j.Close() }()
+			return j.RunCollector(ctx, client, spec, control, delivery)
+		},
+		Report: func(status alpaca.CollectorStatus, _ error) { _ = emit(out, status) },
+	}
+	return loop.RunCollectorLoop(ctx)
+}
+
+func waitContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 func runAlpacaCollector(ctx context.Context, command string, args []string, out, errOut io.Writer) error {
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(errOut)
