@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -12,16 +13,22 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
-// fixtureExecutionQuotes returns one usable quote a second after each book's
-// placement, past the model's 100 ms latency, so every entry order fills.
+// fixtureExecutionQuotes returns four usable quotes one second apart after
+// each book's placement, past the model's 100 ms latency, at one price for
+// bid and ask. With ask 1 the entry fills on the first and the stop triggers
+// on the second; the exit is placed on the third and fills on the fourth.
 func fixtureExecutionQuotes(ask int64) PaperExecutionQuoteSource {
 	return func(_ context.Context, _ FeedEvidenceSnapshot, q PaperExecutionQuoteQuery) ([]paperfill.BookCommand, error) {
-		at := q.After.Add(time.Second)
-		if at.After(q.Through) {
-			return nil, nil
+		out := []paperfill.BookCommand{}
+		for i := 1; i <= 4; i++ {
+			at := q.After.Add(time.Duration(i) * time.Second)
+			if at.After(q.Through) {
+				break
+			}
+			quote := paperfill.Quote{ID: fmt.Sprintf("quote-fixture-%d", i), SourceSHA256: strings.Repeat("a", 64), Symbol: q.Symbol, Currency: "USD", Quality: "usable", EvidenceClass: q.EvidenceClass, OccurredAt: at, ReceivedAt: at, BidCents: ask, AskCents: ask, BidQuantity: 100000, AskQuantity: 100000}
+			out = append(out, paperfill.BookCommand{ID: quote.ID, At: at, Quote: &quote})
 		}
-		quote := paperfill.Quote{ID: "quote-fixture", SourceSHA256: strings.Repeat("a", 64), Symbol: q.Symbol, Currency: "USD", Quality: "usable", EvidenceClass: q.EvidenceClass, OccurredAt: at, ReceivedAt: at, BidCents: ask, AskCents: ask, BidQuantity: 100000, AskQuantity: 100000}
-		return []paperfill.BookCommand{{ID: quote.ID, At: at, Quote: &quote}}, nil
+		return out, nil
 	}
 }
 
@@ -111,7 +118,7 @@ func TestOwnedEntryBooksShareOccurrenceLiquidity(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return ownedEntryBook{policyID: "policy", query: query, root: root, expires: []time.Time{t0.Add(time.Minute)}}
+		return ownedEntryBook{policyID: "policy", query: query, root: root, expires: []time.Time{t0.Add(time.Minute)}, protection: map[string]ownedProtection{id: {StopCents: 1, TargetCents: 1000000, HoldingSeconds: 3600}}}
 	}
 	at := t0.Add(2 * time.Second)
 	quote := paperfill.Quote{ID: "quote-shared", SourceSHA256: strings.Repeat("a", 64), Symbol: "SPY", Currency: "USD", Quality: "usable", EvidenceClass: query.EvidenceClass, OccurredAt: at, ReceivedAt: at, BidCents: 99, AskCents: 100, BidQuantity: 20, AskQuantity: 20}
@@ -122,7 +129,7 @@ func TestOwnedEntryBooksShareOccurrenceLiquidity(t *testing.T) {
 		return []paperfill.BookCommand{{ID: quote.ID, At: at, Quote: &quote}}, nil
 	}}
 	books := []ownedEntryBook{book("first", t0), book("second", t0.Add(time.Second))}
-	advanced, err := advancedBooks(context.Background(), books, x, t0, t0.Add(3*time.Second))
+	advanced, err := advancedBooks(context.Background(), books, x, t0.Add(3*time.Second))
 	if err != nil || len(advanced) != 2 {
 		t.Fatal(len(advanced), err)
 	}
@@ -134,17 +141,18 @@ func TestOwnedEntryBooksShareOccurrenceLiquidity(t *testing.T) {
 		return p.Orders[0].Projection.FilledQuantity
 	}
 	// Capacity is 20*5000/10000 = 10 shares: 6 to the first book, 4 left.
-	if filled(advanced[0]) != 6 || filled(advanced[1]) != 4 {
-		t.Fatal("shared fills", filled(advanced[0]), filled(advanced[1]))
+	if filled(advanced[0].entry) != 6 || filled(advanced[1].entry) != 4 {
+		t.Fatal("shared fills", filled(advanced[0].entry), filled(advanced[1].entry))
 	}
-	// A settled earlier book still counts when a later open book overlaps it.
+	// A done earlier book still counts when a later open book overlaps it.
 	books[0].expires = []time.Time{t0.Add(2500 * time.Millisecond)}
 	books[0].root.Orders[0].ExpiresAt = books[0].expires[0]
 	if books[0].root, err = paperfill.NewOccurrenceBook(model, books[0].root.Orders); err != nil {
 		t.Fatal(err)
 	}
-	advanced, err = advancedBooks(context.Background(), books, x, t0.Add(2500*time.Millisecond), t0.Add(3*time.Second))
-	if err != nil || len(advanced) != 1 || filled(advanced[1]) != 4 {
+	books[0].done, books[0].doneAt = true, t0.Add(2500*time.Millisecond)
+	advanced, err = advancedBooks(context.Background(), books, x, t0.Add(3*time.Second))
+	if err != nil || len(advanced) != 1 || filled(advanced[1].entry) != 4 {
 		t.Fatal("settled book liquidity", len(advanced), err)
 	}
 }
@@ -160,5 +168,49 @@ func TestSharedDisplayRestoresRemainingCapacity(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A filled entry that crosses its stop is closed by a market exit placed on
+// the next quote and filled on the one after, and the unspent notional is
+// released. The fixture's quotes arrive one second apart from the grant.
+func TestOwnedProtectiveExitClosesPosition(t *testing.T) {
+	f := newEligibilityFixture(t)
+	f.exec = &ownedExecution{feed: f.m.decisionFeedLocked(), quotes: fixtureExecutionQuotes(1)}
+	journal, _, err := f.append(t, ownedAllocationJournal{Records: []retainedOwnedAllocation{}}, f.command, f.at, f.complete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := OwnedExecutionCommand{ID: "entry", ReceiverID: f.m.receiverID}
+	journal, entry, err := f.step(t, journal, command, f.at.Add(2*time.Second), f.complete)
+	if err != nil || entry.Record == nil {
+		t.Fatal("entry step", entry, err)
+	}
+	// The exit is working at the third quote but has nothing to fill yet.
+	command.ID = "working"
+	if _, idle, err := f.step(t, journal, command, f.at.Add(3*time.Second), f.complete); err != nil || idle.Record != nil {
+		t.Fatal("exit filled before a later quote", idle, err)
+	}
+	command.ID = "exit"
+	journal, exit, err := f.step(t, journal, command, f.at.Add(10*time.Second), f.complete)
+	if err != nil || exit.Record == nil || len(exit.Record.Executions) != 1 {
+		t.Fatal("exit step", exit, err)
+	}
+	effects := exit.Record.Executions[0].Entries
+	if len(effects) != 2 || effects[0].Command.Effect.Kind != "close" || effects[1].Command.Effect.Kind != "release" || !effects[0].At.Equal(f.at.Add(4*time.Second)) || !effects[1].At.Equal(effects[0].At) {
+		t.Fatal("exit effects", effects)
+	}
+	catalog, err := f.replay(t, journal, f.complete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := catalog.Capital[0]
+	r := c.Reservations[0]
+	if c.Schema != "mantik-owned-allocation-capital-v3" || len(c.Positions) != 0 || r.ReservedCents != 0 || r.FilledCents == 0 || r.ClosedCostCents != r.FilledCents || r.FilledCents+r.ReleasedCents != r.Proposal.NotionalCents || c.RealizedPnLCents != r.ProceedsCents-r.ClosedCostCents {
+		t.Fatal("closed capital", c)
+	}
+	command.ID = "after"
+	if _, idle, err := f.step(t, journal, command, f.at.Add(time.Hour), f.complete); err != nil || idle.Record != nil {
+		t.Fatal("finished book stepped again", idle, err)
 	}
 }

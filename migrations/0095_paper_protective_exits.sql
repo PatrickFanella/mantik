@@ -1,0 +1,2 @@
+-- Fence writers whose entry books do not close filled positions at their stop, target or holding limit.
+COMMENT ON TABLE mantik_owned_allocations IS 'Mantik owned allocation comparisons through v16 owner entry execution on cost ledgers with shared displayed liquidity, protective paper exits at stop, target or holding limit, and execution steps; paper fills only, no broker execution or qualification';
