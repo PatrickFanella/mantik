@@ -623,7 +623,9 @@ func positiveExitLifecycleHTTP(t testing.TB, s portfolioHTTPBackend, url, owner 
 	var workerErr error
 	var wg sync.WaitGroup
 	for i := range codes {
-		wg.Go(func() { codes[i], receipts[i] = post(storage.OwnedExecutionCommand{ID: fmt.Sprintf("exit-step-%d", i), ReceiverID: owner}) })
+		wg.Go(func() {
+			codes[i], receipts[i] = post(storage.OwnedExecutionCommand{ID: fmt.Sprintf("exit-step-%d", i), ReceiverID: owner})
+		})
 	}
 	wg.Go(func() { receipts[4], workerErr = stepper.Cycle(context.Background(), worker, clock) })
 	wg.Wait()
