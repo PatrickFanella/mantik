@@ -12,8 +12,9 @@ import (
 func TestPostgresContractsAllocationIndexUpgrade(t *testing.T) {
 	p := timerPostgres(t, "allocationindexupgrade")
 	ctx := t.Context()
-	if _, err := p.pool.Exec(ctx, `DROP TABLE mantik_owned_allocation_decision_refs,mantik_owned_allocation_members,mantik_owned_allocation_batches,mantik_owned_allocation_checkpoints;
-DELETE FROM mantik_schema WHERE version=109;
+	if _, err := p.pool.Exec(ctx, `DROP INDEX mantik_paper_history_page;
+DROP TABLE mantik_owned_allocation_decision_refs,mantik_owned_allocation_members,mantik_owned_allocation_batches,mantik_owned_allocation_checkpoints;
+DELETE FROM mantik_schema WHERE version>=109;
 CREATE FUNCTION reject_allocation_index_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=109 THEN RAISE EXCEPTION 'allocation index migration rollback fixture'; END IF; RETURN NEW; END $$;
 CREATE TRIGGER reject_allocation_index_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_allocation_index_migration()`); err != nil {
 		t.Fatal(err)
