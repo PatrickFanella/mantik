@@ -89,6 +89,11 @@ Physical paper retirement remains disabled until pending outcomes, open
 allocation/review references and the remaining retention transaction are ready.
 This unit does not extend active limits or qualify an unattended run.
 
+Version 4 receipts require a binary that supports their window selection.
+Earlier readers fail closed on this evidence version. Preserve matching binaries
+and backups when planning rollback; existing version 3 receipts remain readable
+without rewriting their payloads or hashes.
+
 ## Retained observed portfolio accounting
 
 Schema 75 is a compatibility fence for v6 records. The migration changes table
