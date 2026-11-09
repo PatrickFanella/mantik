@@ -162,7 +162,11 @@ func (m *Memory) AuditPaperFeed(ctx context.Context, de PaperDecisionEvaluator, 
 		if err != nil {
 			return PaperFeedAudit{}, err
 		}
-		if err := verifyPaperFeedCheckpoint(c, a, m.paperDecisions, m.paperOutcomes, strategies, e, epoch); err != nil {
+		owners, err := m.paperCheckpointOwnersLocked(ctx, c.PaperArchiveSequence, c.CutAt)
+		if err != nil {
+			return PaperFeedAudit{}, err
+		}
+		if err := verifyPaperFeedCheckpoint(c, a, owners.decisions, owners.outcomes, strategies, e, epoch); err != nil {
 			return PaperFeedAudit{}, err
 		}
 		previous = c.SHA256
@@ -228,7 +232,11 @@ func (p *Postgres) AuditPaperFeed(ctx context.Context, de PaperDecisionEvaluator
 		if err != nil {
 			return PaperFeedAudit{}, err
 		}
-		if err := verifyPaperFeedCheckpoint(c, a, decisions, outcomes, strategies, e, epoch); err != nil {
+		owners, err := readPaperCheckpointOwners(ctx, tx, c.PaperArchiveSequence, c.CutAt)
+		if err != nil {
+			return PaperFeedAudit{}, err
+		}
+		if err := verifyPaperFeedCheckpoint(c, a, owners.decisions, owners.outcomes, strategies, e, epoch); err != nil {
 			return PaperFeedAudit{}, err
 		}
 		previous = c.SHA256

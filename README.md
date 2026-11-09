@@ -1059,4 +1059,10 @@ envelopes and hashes. The authenticated `/v1/paper-record-archives` routes expos
 creation, paged headers, targeted originals and full audit. Active paper records
 remain retained; physical retirement and automatic retention are still pending.
 
+Schema 106 makes historical paper/source checkpoint replay select its complete
+owner set from indexed creation/retirement intervals and its exact original
+clock cut. It prepares original-archive lookup after approved retirement while
+continuing to reject missing unretired records. Existing payloads and hashes
+stay unchanged; no production writer can retire paper owners in this version.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

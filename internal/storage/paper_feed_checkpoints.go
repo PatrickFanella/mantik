@@ -443,7 +443,11 @@ func (m *Memory) PaperFeedCheckpoint(ctx context.Context, sequence int64, de Pap
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	if err := verifyPaperFeedCheckpoint(c, a, m.paperDecisions, m.paperOutcomes, strategies, &paperFeedArchiveEvaluators{de, oe}, epoch); err != nil {
+	owners, err := m.paperCheckpointOwnersLocked(ctx, c.PaperArchiveSequence, c.CutAt)
+	if err != nil {
+		return PaperFeedCheckpoint{}, err
+	}
+	if err := verifyPaperFeedCheckpoint(c, a, owners.decisions, owners.outcomes, strategies, &paperFeedArchiveEvaluators{de, oe}, epoch); err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -490,11 +494,7 @@ func (p *Postgres) PaperFeedCheckpoint(ctx context.Context, sequence int64, de P
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	decisions, err := readPaperDecisions(ctx, tx)
-	if err != nil {
-		return PaperFeedCheckpoint{}, err
-	}
-	outcomes, err := readPaperOutcomes(ctx, tx)
+	owners, err := readPaperCheckpointOwners(ctx, tx, c.PaperArchiveSequence, c.CutAt)
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
@@ -502,7 +502,7 @@ func (p *Postgres) PaperFeedCheckpoint(ctx context.Context, sequence int64, de P
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	if err := verifyPaperFeedCheckpoint(c, a, decisions, outcomes, strategies, &paperFeedArchiveEvaluators{de, oe}, epoch); err != nil {
+	if err := verifyPaperFeedCheckpoint(c, a, owners.decisions, owners.outcomes, strategies, &paperFeedArchiveEvaluators{de, oe}, epoch); err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

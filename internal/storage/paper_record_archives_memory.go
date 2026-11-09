@@ -61,7 +61,7 @@ func (m *Memory) ArchivePaperRecords(ctx context.Context, owner string, now func
 	if err != nil {
 		return PaperRecordArchiveReceipt{}, err
 	}
-	if err := checkPaperArchiveEpochs(a.Sequence, records, m.paperRecordEpochs); err != nil {
+	if err := checkPaperArchiveEpochs(a.Sequence, records, m.paperRecordEpochs, m.paperRecordRetiredEpochs); err != nil {
 		return PaperRecordArchiveReceipt{}, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -83,8 +83,8 @@ func (m *Memory) ArchivePaperRecords(ctx context.Context, owner string, now func
 	return PaperRecordArchiveReceipt{a.PaperRecordArchiveHeader, false}, nil
 }
 
-func (m *Memory) paperRecordArchiveLocked(ctx context.Context, sequence int64, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperRecordArchive, error) {
-	if sequence < 1 || de == nil || oe == nil {
+func (m *Memory) paperRecordArchivePayloadLocked(sequence int64) (PaperRecordArchive, error) {
+	if sequence < 1 {
 		return PaperRecordArchive{}, ErrPaperRecordArchiveInvalid
 	}
 	if sequence > int64(len(m.paperRecordArchives)) {
@@ -100,7 +100,7 @@ func (m *Memory) paperRecordArchiveLocked(ctx context.Context, sequence int64, d
 			return PaperRecordArchive{}, ErrPaperRecordArchiveConflict
 		}
 	}
-	if err := checkPaperArchiveEpochs(sequence, a.Records, m.paperRecordEpochs); err != nil {
+	if err := checkPaperArchiveEpochs(sequence, a.Records, m.paperRecordEpochs, m.paperRecordRetiredEpochs); err != nil {
 		return PaperRecordArchive{}, err
 	}
 	for _, r := range a.Records {
@@ -109,6 +109,17 @@ func (m *Memory) paperRecordArchiveLocked(ctx context.Context, sequence int64, d
 		if m.paperRecordEpochs[key] != r.PaperRecordEpoch || original != r.CreatedEpoch+1 || original > sequence {
 			return PaperRecordArchive{}, ErrPaperRecordArchiveConflict
 		}
+	}
+	return a, nil
+}
+
+func (m *Memory) paperRecordArchiveLocked(ctx context.Context, sequence int64, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperRecordArchive, error) {
+	if de == nil || oe == nil {
+		return PaperRecordArchive{}, ErrPaperRecordArchiveInvalid
+	}
+	a, err := m.paperRecordArchivePayloadLocked(sequence)
+	if err != nil {
+		return PaperRecordArchive{}, err
 	}
 	view, err := m.feedCustodyLocked(a.Context.Feed.Retention)
 	if err != nil {

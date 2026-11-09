@@ -51,6 +51,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 
 type Memory struct {
 	paperRecordEpochs          map[string]PaperRecordEpoch
+	paperRecordRetiredEpochs   map[string]int64
 	paperRecordArchives        []PaperRecordArchive
 	paperArchiveMembers        [][]PaperArchiveRecordPin
 	paperArchiveSeals          []PaperRecordArchiveHeader
