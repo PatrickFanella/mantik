@@ -328,3 +328,6 @@ var FeedRetention string
 
 //go:embed 0105_paper_record_archives.sql
 var PaperRecordArchives string
+
+//go:embed 0106_paper_owner_intervals.sql
+var PaperOwnerIntervals string

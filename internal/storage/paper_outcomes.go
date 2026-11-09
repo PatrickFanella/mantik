@@ -198,6 +198,18 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 		}
 	}
 	eval = memoPaperOutcomeEvaluator(eval)
+	// Repeated basis hashes are only a performance hint. The record cache still
+	// requires full input equality; unique inputs keep the ordinary constructor.
+	type repeatedInput struct {
+		schema, basis string
+		at            time.Time
+	}
+	groups := map[repeatedInput]int{}
+	for _, v := range all {
+		r := v.Record
+		groups[repeatedInput{r.Schema, r.BasisSHA256, r.EvaluatedAt.UTC()}]++
+	}
+	var replay func(string, PaperOutcomeCommand, PaperOutcomeBasis, time.Time) (PaperOutcomeRecord, error)
 	// The actual owner snapshot is fixed for this catalogue call. Reuse only
 	// successful custody checks for a fully equal command, basis, clock and mode.
 	index := newFeedPrefixIndex(feed)
@@ -236,7 +248,16 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 				return out, err
 			}
 		}
-		expected, err := paperOutcomeForSchema(r.Schema, r.Command, b, r.EvaluatedAt, eval)
+		var expected PaperOutcomeRecord
+		var err error
+		if groups[repeatedInput{r.Schema, r.BasisSHA256, r.EvaluatedAt.UTC()}] > 1 {
+			if replay == nil {
+				replay = memoPaperOutcomeRecords(eval)
+			}
+			expected, err = replay(r.Schema, r.Command, b, r.EvaluatedAt)
+		} else {
+			expected, err = paperOutcomeForSchema(r.Schema, r.Command, b, r.EvaluatedAt, eval)
+		}
 		if err != nil || !reflect.DeepEqual(expected, r) {
 			return out, ErrPaperOutcomeInvalid
 		}

@@ -57,10 +57,10 @@ func readPaperRecordEpochs(ctx context.Context, tx pgx.Tx, keys []string) (map[s
 	return out, rows.Err()
 }
 
-func checkPaperArchiveEpochs(sequence int64, records []ArchivedPaperRecord, epochs map[string]PaperRecordEpoch) error {
+func checkPaperArchiveEpochs(sequence int64, records []ArchivedPaperRecord, epochs map[string]PaperRecordEpoch, retired map[string]int64) error {
 	expected := 0
-	for _, e := range epochs {
-		if e.CreatedEpoch < sequence {
+	for key, e := range epochs {
+		if paperOwnerAtEpoch(e.CreatedEpoch, retired[key], sequence-1) {
 			expected++
 		}
 	}
@@ -68,7 +68,7 @@ func checkPaperArchiveEpochs(sequence int64, records []ArchivedPaperRecord, epoc
 		return ErrPaperRecordArchiveConflict
 	}
 	for _, r := range records {
-		if e, ok := epochs[r.Kind+":"+r.ID]; !ok || e != r.PaperRecordEpoch || e.CreatedEpoch >= sequence {
+		if e, ok := epochs[r.Kind+":"+r.ID]; !ok || e != r.PaperRecordEpoch || !paperOwnerAtEpoch(e.CreatedEpoch, retired[r.Kind+":"+r.ID], sequence-1) {
 			return ErrPaperRecordArchiveConflict
 		}
 	}

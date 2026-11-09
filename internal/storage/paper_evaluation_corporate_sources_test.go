@@ -184,11 +184,11 @@ func evaluationCorporateSourceCuts(t *testing.T, s corporateAssessmentBackend) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	set(legacy)
+	setPredecessorAssessment(t, s, legacy)
 	old, err := s.AssessPaperEvaluation(ctx, c, noClock, de, oe)
 	oldInspection, inspectErr := s.PaperEvaluationCorporateInspection(ctx, c.ID, de, oe)
 	oldChain, chainErr := s.PaperEvaluationCorporatePageChain(ctx, c.ID, source.ID, de, oe)
-	set(r.Record)
+	setPredecessorAssessment(t, s, r.Record)
 	if chainErr != nil || oldChain.Status != "source_cut_unavailable_for_legacy_assessment" || len(oldChain.Pages) != 0 {
 		t.Fatal("legacy chain invented source cut", chainErr)
 	}

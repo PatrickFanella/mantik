@@ -439,11 +439,15 @@ func (m *Memory) PaperFeedCheckpoint(ctx context.Context, sequence int64, de Pap
 		return PaperFeedCheckpoint{}, err
 	}
 	a := m.feedArchives[c.Archive.Sequence-1]
-	a.Source.custody, err = m.feedCustodyLocked(a.Source.Retention)
+	owners, err := m.paperCheckpointOwnersLocked(ctx, c.PaperArchiveSequence, c.CutAt)
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	if err := verifyPaperFeedCheckpoint(c, a, m.paperDecisions, m.paperOutcomes, strategies, &paperFeedArchiveEvaluators{de, oe}, epoch); err != nil {
+	a.Source.custody, err = m.feedCustodyForOwnersLocked(a.Source.Retention, paperFeedCustodyKeys(owners.decisions, owners.outcomes))
+	if err != nil {
+		return PaperFeedCheckpoint{}, err
+	}
+	if err := verifyPaperFeedCheckpoint(c, a, owners.decisions, owners.outcomes, strategies, &paperFeedArchiveEvaluators{de, oe}, epoch); err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -482,19 +486,15 @@ func (p *Postgres) PaperFeedCheckpoint(ctx context.Context, sequence int64, de P
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	a.Source.custody, err = readFeedCustody(ctx, tx, a.Source.Retention)
-	if err != nil {
-		return PaperFeedCheckpoint{}, err
-	}
 	strategies, err := readPaperStrategies(ctx, tx, owner)
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	decisions, err := readPaperDecisions(ctx, tx)
+	owners, err := readPaperCheckpointOwners(ctx, tx, c.PaperArchiveSequence, c.CutAt)
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	outcomes, err := readPaperOutcomes(ctx, tx)
+	a.Source.custody, err = readFeedCustodyForOwners(ctx, tx, a.Source.Retention, paperFeedCustodyKeys(owners.decisions, owners.outcomes))
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
@@ -502,7 +502,7 @@ func (p *Postgres) PaperFeedCheckpoint(ctx context.Context, sequence int64, de P
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	if err := verifyPaperFeedCheckpoint(c, a, decisions, outcomes, strategies, &paperFeedArchiveEvaluators{de, oe}, epoch); err != nil {
+	if err := verifyPaperFeedCheckpoint(c, a, owners.decisions, owners.outcomes, strategies, &paperFeedArchiveEvaluators{de, oe}, epoch); err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

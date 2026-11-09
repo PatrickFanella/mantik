@@ -55,7 +55,7 @@ func readPaperArchiveMembers(ctx context.Context, tx pgx.Tx, a PaperRecordArchiv
 	// Immutable creation epochs independently close the complete owner set.
 	// Rehashing or deleting both a manifest and its member rows cannot omit a
 	// record which actually existed when this archive committed.
-	rows, err := tx.Query(ctx, "SELECT e.kind,e.record_id,coalesce(m.created_epoch,-1),coalesce(m.record_sha256,''),coalesce(m.payload_sha256,''),e.created_epoch,e.record_sha256,e.at_seconds,e.at_nanos FROM mantik_paper_record_epochs e LEFT JOIN mantik_paper_archive_members m ON m.archive_sequence=$1 AND m.kind=e.kind AND m.record_id=e.record_id WHERE e.created_epoch<$1 ORDER BY e.kind,e.record_id LIMIT $2", a.Sequence, maxPaperArchiveRecords+1)
+	rows, err := tx.Query(ctx, "SELECT e.kind,e.record_id,coalesce(m.created_epoch,-1),coalesce(m.record_sha256,''),coalesce(m.payload_sha256,''),e.created_epoch,e.record_sha256,e.at_seconds,e.at_nanos FROM mantik_paper_record_epochs e LEFT JOIN mantik_paper_archive_members m ON m.archive_sequence=$1 AND m.kind=e.kind AND m.record_id=e.record_id WHERE int8range(e.created_epoch,e.retired_epoch,'[)') @> ($1::bigint-1) ORDER BY e.kind,e.record_id LIMIT $2", a.Sequence, maxPaperArchiveRecords+1)
 	if err != nil {
 		return err
 	}
@@ -84,8 +84,8 @@ func readPaperArchiveMembers(ctx context.Context, tx pgx.Tx, a PaperRecordArchiv
 	return nil
 }
 
-func readPaperRecordArchive(ctx context.Context, tx pgx.Tx, sequence int64, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator) (PaperRecordArchive, error) {
-	if sequence < 1 || de == nil || oe == nil {
+func readPaperRecordArchivePayload(ctx context.Context, tx pgx.Tx, sequence int64) (PaperRecordArchive, error) {
+	if sequence < 1 {
 		return PaperRecordArchive{}, ErrPaperRecordArchiveInvalid
 	}
 	h, err := readPaperRecordArchiveHeader(ctx, tx, sequence)
@@ -116,11 +116,23 @@ func readPaperRecordArchive(ctx context.Context, tx pgx.Tx, sequence int64, de P
 	if err := readPaperArchiveMembers(ctx, tx, a); err != nil {
 		return PaperRecordArchive{}, err
 	}
-	a.Context.Feed.custody, err = readFeedCustody(ctx, tx, a.Context.Feed.Retention)
+	return a, nil
+}
+
+func readPaperRecordArchive(ctx context.Context, tx pgx.Tx, sequence int64, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator) (PaperRecordArchive, error) {
+	if de == nil || oe == nil {
+		return PaperRecordArchive{}, ErrPaperRecordArchiveInvalid
+	}
+	a, err := readPaperRecordArchivePayload(ctx, tx, sequence)
 	if err != nil {
 		return PaperRecordArchive{}, err
 	}
+	owner := a.ReceiverID
 	owners, err := decodePaperArchiveOwners(a.Records)
+	if err != nil {
+		return PaperRecordArchive{}, err
+	}
+	a.Context.Feed.custody, err = readFeedCustodyForOwners(ctx, tx, a.Context.Feed.Retention, paperFeedCustodyKeys(owners.decisions, owners.outcomes))
 	if err != nil {
 		return PaperRecordArchive{}, err
 	}

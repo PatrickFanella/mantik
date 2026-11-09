@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpacarecord"
@@ -75,14 +76,11 @@ func corporateCutPage(pin PaperEvaluationCorporateSourcePin, r CorporateActionSo
 
 // Both catalogues are replayed from the same owner snapshot. Never join public
 // readbacks, choose a latest revision or populate legacy assessments retroactively.
-func inspectAssessmentCorporateSources(ctx context.Context, owner, id string, all map[string]PaperEvaluationAssessment, s paperEvaluationSources) (PaperEvaluationCorporateInspection, error) {
+func inspectAssessmentCorporateSources(ctx context.Context, id string, cat PaperEvaluationAssessmentCatalog, records []CorporateActionSourceRecord) (PaperEvaluationCorporateInspection, error) {
 	if !paperaccount.ID.MatchString(id) {
 		return PaperEvaluationCorporateInspection{}, ErrPaperEvaluationAssessmentInvalid
 	}
-	cat, err := paperEvaluationAssessmentCatalog(ctx, owner, all, s)
-	if err != nil {
-		return PaperEvaluationCorporateInspection{}, err
-	}
+	owner := cat.ReceiverID
 	var assessment *PaperEvaluationAssessment
 	for _, v := range cat.Records {
 		if v.Command.ID == id {
@@ -97,6 +95,10 @@ func inspectAssessmentCorporateSources(ctx context.Context, owner, id string, al
 	a := *assessment
 	out := PaperEvaluationCorporateInspection{Schema: "mantik-owned-assessment-corporate-sources-v1", ReceiverID: owner, AssessmentID: id, AssessmentSHA256: a.SHA256, DeclarationID: a.Command.DeclarationID, DeclarationSHA256: a.Command.DeclarationSHA256, AsOf: a.AssessedAt, Pages: []PaperEvaluationCorporatePage{}, Status: "source_cut_unavailable_for_legacy_assessment", Authority: "service_owned_assessment_source_inspection_only"}
 	if a.CorporateSourceCut != nil {
+		cut, err := ownedCorporateEvaluationCut(ctx, a.Evidence, records)
+		if err != nil || !reflect.DeepEqual(cut, *a.CorporateSourceCut) {
+			return PaperEvaluationCorporateInspection{}, ErrPaperEvaluationAssessmentInvalid
+		}
 		out.SourceCutSHA256 = a.CorporateSourceCut.SHA256
 		out.Status = "retained_source_inventory_only"
 		for _, pin := range a.CorporateSourceCut.Sources {
@@ -104,7 +106,7 @@ func inspectAssessmentCorporateSources(ctx context.Context, owner, id string, al
 				return PaperEvaluationCorporateInspection{}, err
 			}
 			// Catalogue replay already proved the exact prefix and owner hashes.
-			page, err := corporateCutPage(pin, s.corporateSources[pin.Sequence-1])
+			page, err := corporateCutPage(pin, records[pin.Sequence-1])
 			if err != nil {
 				return PaperEvaluationCorporateInspection{}, err
 			}
@@ -124,11 +126,11 @@ func (m *Memory) PaperEvaluationCorporateInspection(ctx context.Context, id stri
 	if err := ctx.Err(); err != nil {
 		return PaperEvaluationCorporateInspection{}, err
 	}
-	s, err := m.paperEvaluationSourcesLocked(de, oe)
+	cat, records, err := m.assessmentInspectionSourcesLocked(ctx, de, oe)
 	if err != nil {
 		return PaperEvaluationCorporateInspection{}, err
 	}
-	return inspectAssessmentCorporateSources(ctx, m.receiverID, id, m.evaluationAssessments, s)
+	return inspectAssessmentCorporateSources(ctx, id, cat, records)
 }
 func (p *Postgres) PaperEvaluationCorporateInspection(ctx context.Context, id string, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationCorporateInspection, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -136,15 +138,11 @@ func (p *Postgres) PaperEvaluationCorporateInspection(ctx context.Context, id st
 		return PaperEvaluationCorporateInspection{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe, p.portfolioEvaluator)
+	cat, records, err := readAssessmentInspectionSources(ctx, tx, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return PaperEvaluationCorporateInspection{}, err
 	}
-	all, err := readPaperEvaluationAssessments(ctx, tx)
-	if err != nil {
-		return PaperEvaluationCorporateInspection{}, err
-	}
-	out, err := inspectAssessmentCorporateSources(ctx, s.declarations.ReceiverID, id, all, s)
+	out, err := inspectAssessmentCorporateSources(ctx, id, cat, records)
 	if err != nil {
 		return PaperEvaluationCorporateInspection{}, err
 	}
@@ -152,4 +150,30 @@ func (p *Postgres) PaperEvaluationCorporateInspection(ctx context.Context, id st
 		return PaperEvaluationCorporateInspection{}, err
 	}
 	return out, nil
+}
+
+func (m *Memory) assessmentInspectionSourcesLocked(ctx context.Context, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationAssessmentCatalog, []CorporateActionSourceRecord, error) {
+	cat, err := m.paperAssessmentOwnersLocked(ctx, de, oe)
+	if err != nil {
+		return PaperEvaluationAssessmentCatalog{}, nil, err
+	}
+	sources, err := corporateActionSourceCatalog(ctx, m.receiverID, m.corporateActionSources)
+	return cat, sources.Records, err
+}
+
+func readAssessmentInspectionSources(ctx context.Context, tx pgx.Tx, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator) (PaperEvaluationAssessmentCatalog, []CorporateActionSourceRecord, error) {
+	var owner string
+	if err := tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton").Scan(&owner); err != nil {
+		return PaperEvaluationAssessmentCatalog{}, nil, err
+	}
+	all, err := readPaperEvaluationAssessments(ctx, tx)
+	if err != nil {
+		return PaperEvaluationAssessmentCatalog{}, nil, err
+	}
+	cat, err := readPaperAssessmentOwners(ctx, tx, owner, all, de, oe, portfolio)
+	if err != nil {
+		return PaperEvaluationAssessmentCatalog{}, nil, err
+	}
+	sources, err := readCorporateActionSources(ctx, tx, false)
+	return cat, sources.Records, err
 }

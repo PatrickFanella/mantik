@@ -49,6 +49,36 @@ unqualified. Forward-quote outcomes do not become fills, economic returns,
 benchmark results or realized PnL. A blocked assessment is not a retirement
 event, and an incomplete assessment cannot authorize an allocation.
 
+## Historical assessment replay
+
+Assessment catalogue reads and exact POST retries resolve each actual assessment
+owner's immutable creation epoch. An assessment already sealed by a paper archive
+uses its first archive at `created_epoch+1`; an unarchived owner uses the current
+native source snapshot. The resolver checks the actual record hash and exact
+clock, original archive header/body/membership and the complete original native
+decision/outcome catalogues before recomputing the assessment. It grants no
+authority based only on a stored result or a self-rehashed summary.
+
+This preserves the original evidence source hash, including issuance-time rows
+outside the declared sample window. Later active records and removal of old
+paper inputs do not reinterpret an archived assessment. Existing schemas,
+recipes, payloads and hashes remain unchanged. All retained assessment owners
+are verified before an exact retry returns its original receipt, without reading
+a replacement clock. Missing first originals fail instead of selecting later
+copies. Reads group owners by their first archive and retain one bounded archive
+context at a time, within the existing record and catalogue byte limits.
+
+Corporate-source inspection, page chains and predeclared source selection use
+the same assessment replay in the same owner snapshot. They additionally check
+the pinned corporate cut against its actual source owner. A legacy assessment
+without that cut retains its explicit unavailable status.
+
+Physical paper retirement is still disabled. New assessment issuance still
+uses current retained paper inputs; archive-aware selection of all applicable
+historical samples and the allocation/admission consumers remain required before
+retirement can be enabled. This replay unit does not extend active limits or
+qualify an unattended run.
+
 ## Retained observed portfolio accounting
 
 Schema 75 is a compatibility fence for v6 records. The migration changes table

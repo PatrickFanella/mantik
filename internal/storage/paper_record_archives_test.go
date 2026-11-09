@@ -107,7 +107,7 @@ func paperRecordArchiveContract(t *testing.T, s paperArchiveBackend) {
 	at = at.Add(time.Second)
 	if pg, ok := s.(*Postgres); ok {
 		dropPaperRecordArchiveSchema(t, pg)
-		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=105"); err != nil {
+		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=105"); err != nil {
 			t.Fatal(err)
 		}
 		if err := pg.migrate(ctx); err != nil {
@@ -274,7 +274,7 @@ func paperRecordArchiveContract(t *testing.T, s paperArchiveBackend) {
 		if _, err := pg.pool.Exec(ctx, "ALTER TABLE mantik_paper_record_epochs ENABLE TRIGGER mantik_immutable_paper_epochs"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=105"); err != nil {
+		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=105"); err != nil {
 			t.Fatal(err)
 		}
 		if err := pg.migrate(ctx); err == nil {
@@ -317,7 +317,7 @@ func paperRecordArchiveContract(t *testing.T, s paperArchiveBackend) {
 		t.Fatal("archive readback was not detached", err)
 	}
 	if pg, ok := s.(*Postgres); ok {
-		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=105"); err != nil {
+		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=105"); err != nil {
 			t.Fatal(err)
 		}
 		if err := pg.migrate(ctx); err != nil {

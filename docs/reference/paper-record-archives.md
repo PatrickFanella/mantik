@@ -72,12 +72,45 @@ their payloads. Inserts and their identity reservations commit together. Databas
 triggers also record the correct epoch for already-running older paper writers.
 Deleting an active row cannot make its original identity reusable.
 
-Archive sequence `N` closes the actual owner set created before epoch `N`.
+Archive sequence `N` closes the actual owner set present in epoch `N-1`.
 Immutable creation metadata independently determines that complete set. Rewriting
 an archive body, header, batch summary and membership rows to omit an owner is
 rejected against the original creation records. Later records use a later epoch
 and leave the earlier snapshot unchanged, even across clock representation or
 historical event-time differences.
+
+Schema 106 adds indexed owner intervals for historical paper/source checkpoint
+replay. A checkpoint selects the actual decision/outcome identities created by
+its paper archive epoch, with original event times at or before its exact
+seconds/nanoseconds cut. Later records cannot enter an earlier epoch merely
+because their event clock is historical. The checkpoint's own pins do not supply
+the owner list; native replay must match the independently selected complete set.
+
+An interval's optional `retired_epoch` is its exclusive end. This metadata is
+separate from the immutable creation pin and does not change existing payloads,
+record hashes or checkpoint envelopes. Archive `N` retains membership at epoch
+`N-1`, so a later retirement cannot remove an owner from its original archive.
+The existing immutable-epoch guard still rejects retirement writes in schema
+106. No endpoint or scheduler removes active paper records yet.
+
+Historical replay reads matching active originals first. After an authorized
+retirement, the resolver can load missing records from their original archive
+at `created_epoch+1`, verifying its header, body, independent membership and
+matching creation pins before native checkpoint replay. A missing unretired
+active row remains a conflict even if an archived copy exists. Selection is
+bounded by the original checkpoint capacities and a 64 MiB total payload budget;
+the resolver retains at most one raw archive segment at a time. PostgreSQL uses
+the owner interval index and original-ID table indexes, without joining all
+historical payloads into the current catalogue.
+
+Private source-custody views use the same owner scope. Working reads load seals
+only for actual active decision/outcome IDs; historical checkpoint inspection
+uses its independently selected owner interval, and archive inspection uses its
+sealed original membership. Each scope reads at most 512 source seals by their
+original-ID index. Unrelated historical seals do not fill that working budget.
+A required missing or changed seal still fails native replay. Complete audits
+continue through every checkpoint and archive; this selection does not turn a
+partial history check into a complete audit.
 
 After a paper archive exists, new feed/paper custody checkpoints use
 `mantik-paper-feed-checkpoint-v2` and bind the actual `paper_archive_sequence`.
@@ -91,12 +124,18 @@ established paper/protection reads.
 
 ## Recovery and remaining work
 
+Assessment inspection and exact retries now use the original paper archive's
+native source context when the assessment has been sealed. They rederive the
+original assessment after its input rows move, preserving legacy recipes and
+the complete original evidence hash. Corporate-source readbacks use the same
+resolver. See [historical assessment replay](paper-evaluation-assessments.md#historical-assessment-replay).
+
 Backups must include `mantik_paper_record_archives`,
 `mantik_paper_record_epochs`, `mantik_paper_archive_members` and
 `mantik_paper_archive_batches`, together with all original source owners, feed
 archives/indexes, custody checkpoints, retention metadata and receiver/schema
 history. Archive payloads, batch roots, membership and original identity metadata
-are immutable. Schema-104 startup binaries refuse schema 105; rollback requires
+are immutable. Predecessor startup binaries refuse schema 106; rollback requires
 matching binaries and an isolated restored backup. Removing migration records
 or custody rows in place is unsupported.
 
@@ -105,7 +144,9 @@ decisions, waiting outcomes and an actual assessment. Restore replays its origin
 evidence, verifies first-ID lookup and exact retries, and checks archive audit
 without starting workers or making provider requests.
 
-Physical paper retirement still requires historical owner views for assessments,
-pending outcomes, allocation references and reviews. Admission-review and other
+Historical paper/source checkpoints and existing assessment inspection now have
+bounded original owner views. Physical paper retirement still requires complete
+historical sample selection for new assessments, pending outcomes, allocation
+references and reviews. Admission-review and other
 workflow/source retention, automatic scheduling and growing-history operational
 cost checks also remain part of the complete archive work.
