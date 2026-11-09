@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -123,20 +122,7 @@ func legacyLeakageReplay(t *testing.T, s assessmentBackend, current PaperEvaluat
 	if err != nil {
 		t.Fatal(err)
 	}
-	set := func(r PaperEvaluationAssessment) {
-		switch b := s.(type) {
-		case *Memory:
-			b.evaluationAssessments[r.Command.ID] = clone(r)
-		case *Postgres:
-			raw, e := json.Marshal(r)
-			if e != nil {
-				t.Fatal(e)
-			}
-			if _, e = b.pool.Exec(context.Background(), "UPDATE mantik_paper_evaluation_assessments SET payload=$1 WHERE id=$2", raw, r.Command.ID); e != nil {
-				t.Fatal(e)
-			}
-		}
-	}
+	set := func(r PaperEvaluationAssessment) { setPredecessorAssessment(t, s, r) }
 	set(old)
 	defer set(current.Record)
 	check := func(backend PaperEvaluationAssessmentStore) {

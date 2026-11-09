@@ -1059,4 +1059,29 @@ envelopes and hashes. The authenticated `/v1/paper-record-archives` routes expos
 creation, paged headers, targeted originals and full audit. Active paper records
 remain retained; physical retirement and automatic retention are still pending.
 
+Schema 106 makes historical paper/source checkpoint replay select its complete
+owner set from indexed creation/retirement intervals and its exact original
+clock cut. It prepares original-archive lookup after approved retirement while
+continuing to reject missing unretired records. Existing payloads and hashes
+stay unchanged; no production writer can retire paper owners in this version.
+Private source-custody reads select seals for the actual working owners or the
+specific historical cut, so unrelated historical seals do not consume the
+512-record read budget. Missing required seals continue to fail replay.
+Assessment inspection and exact retries replay their first archived native
+source context, preserving complete original evidence and legacy hashes after
+input rows move. New assessment sample selection and the remaining consumers
+must gain archive access before physical paper retirement can be enabled.
+
+Schema 107 retains immutable strategy/version, decision identity and exact
+decision-clock metadata beside each decision/outcome creation epoch. Archive
+reads compare that metadata with the original owner envelope. The index prepares
+window selection across active and archived records; it does not yet change new
+assessment selection or enable physical paper retirement.
+
+Schema 108 gives the sample index native byte ordering for tied timestamps and
+IDs. Private readers page decision/outcome metadata for exact declared strategy
+versions and decision windows across active and archived owners, independently
+of the active catalogue limit. Payload resolution and native evaluation remain
+required before those selections can become new assessment evidence.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

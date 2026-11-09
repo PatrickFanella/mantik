@@ -256,35 +256,43 @@ func paperArchiveContext(s paperEvaluationSources, social []socialwatch.Journal)
 	return PaperArchiveContext{s.feed, s.strategies, s.policies, s.declarations, s.corporateSources, s.referenceSources, social}
 }
 
-func verifyPaperArchiveOwners(ctx context.Context, c PaperArchiveContext, o paperArchiveOwners, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator, reader archivedFeedWindowReader) error {
+func paperArchiveEvaluationSources(ctx context.Context, c PaperArchiveContext, o paperArchiveOwners, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator) (paperEvaluationSources, error) {
 	owner := c.Feed.ReceiverID
 	if de == nil || oe == nil || c.Strategies.Validate() != nil || c.Policies.Validate() != nil || c.Strategies.ReceiverID != owner || c.Policies.ReceiverID != owner {
-		return ErrPaperRecordArchiveConflict
+		return paperEvaluationSources{}, ErrPaperRecordArchiveConflict
 	}
 	decisions, err := paperDecisionCatalog(owner, o.decisions, c.Strategies, c.Feed, de)
 	if err != nil {
-		return err
+		return paperEvaluationSources{}, err
 	}
 	outcomes, err := paperOutcomeCatalog(owner, o.outcomes, o.decisions, c.Strategies, c.Feed, de, oe)
 	if err != nil {
-		return err
+		return paperEvaluationSources{}, err
 	}
 	plans := map[string]PaperEvaluationDeclaration{}
 	for _, r := range c.Declarations.Records {
 		if _, exists := plans[r.Command.ID]; exists {
-			return ErrPaperRecordArchiveConflict
+			return paperEvaluationSources{}, ErrPaperRecordArchiveConflict
 		}
 		plans[r.Command.ID] = r
 	}
 	actual, err := paperEvaluationDeclarationCatalog(owner, plans, c.Strategies, c.Policies)
 	if err != nil || !reflect.DeepEqual(actual, c.Declarations) {
-		return ErrPaperRecordArchiveConflict
+		return paperEvaluationSources{}, ErrPaperRecordArchiveConflict
 	}
-	s := paperEvaluationSources{feed: c.Feed, policies: c.Policies, retainedOutcomes: o.outcomes, portfolioEvaluator: portfolio, corporateSources: c.CorporateSources, referenceSources: c.ReferenceSources, declarations: c.Declarations, decisions: decisions, outcomes: outcomes, retained: o.decisions, sourceClock: c.Feed.Collectors.LastClock, strategies: c.Strategies}
+	return paperEvaluationSources{feed: c.Feed, policies: c.Policies, retainedOutcomes: o.outcomes, portfolioEvaluator: portfolio, corporateSources: c.CorporateSources, referenceSources: c.ReferenceSources, declarations: c.Declarations, decisions: decisions, outcomes: outcomes, retained: o.decisions, sourceClock: c.Feed.Collectors.LastClock, strategies: c.Strategies}, nil
+}
+
+func verifyPaperArchiveOwners(ctx context.Context, c PaperArchiveContext, o paperArchiveOwners, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator, reader archivedFeedWindowReader) error {
+	owner := c.Feed.ReceiverID
+	s, err := paperArchiveEvaluationSources(ctx, c, o, de, oe, portfolio)
+	if err != nil {
+		return err
+	}
 	if _, err := paperEvaluationAssessmentCatalog(ctx, owner, o.assessments, s); err != nil {
 		return err
 	}
-	if _, err := decisionReviewCatalog(owner, o.reviews, decisions, c.SocialSources...); err != nil {
+	if _, err := decisionReviewCatalog(owner, o.reviews, s.decisions, c.SocialSources...); err != nil {
 		return err
 	}
 	return auditOriginalPaperFeed(ctx, c.Feed, o.decisions, o.outcomes, c.Strategies, &paperFeedArchiveEvaluators{de, oe}, time.Time{}, reader)

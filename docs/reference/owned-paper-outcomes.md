@@ -71,7 +71,7 @@ their membership completeness remains unproven.
 Exact command retries return the original assessment without reading a new
 clock. To assess again after a waiting/missing result, submit a new ID; the
 previous result remains visible. Changed content under an existing ID conflicts.
-There are at most 64 assessments with a maximum 4 MiB private envelope each.
+There are at most 256 assessments with a maximum 4 MiB private envelope each.
 Capacity errors preserve history; this registry offers no eviction, deletion,
 background scheduling or operational availability guarantee.
 
@@ -180,6 +180,15 @@ remain separate, even when JSON encodes them identically. Callback inputs are
 detached, failed evaluations are not cached, and the cache ends with the read. Retained cache inputs total at most 4 MiB
 of serialized basis/clock bytes; inputs beyond that budget are evaluated
 without retention.
+
+Repeated schema/basis/clock populations can also reuse a successful native record
+construction within that read. The record cache requires full detached input
+equality and the same command scope; only the outcome request ID may differ.
+Each row gets its own checked command, recomputed envelope hash and validation
+against its retained record. Actual source custody is checked before this reuse.
+Unique populations use the ordinary constructor. Record-cache keys and templates
+have a separate 4 MiB serialized budget; noncanonical, oversized or failed inputs
+are not retained. All caches end with the catalogue read.
 
 Each retained record remains independently validated and retains its original
 bytes, ID, timestamp and evidence class. The reuse does not consolidate outcome

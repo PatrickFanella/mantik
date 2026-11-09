@@ -24,14 +24,7 @@ func legacyAssessmentFixture(t *testing.T, s assessmentBackend, r PaperEvaluatio
 	if strings.Contains(string(raw), `"warm_up":`) {
 		t.Fatal("legacy bytes acquired warm-up result")
 	}
-	switch b := s.(type) {
-	case *Memory:
-		b.evaluationAssessments[old.Command.ID] = clone(old)
-	case *Postgres:
-		if _, err = b.pool.Exec(context.Background(), "UPDATE mantik_paper_evaluation_assessments SET payload=$1 WHERE id=$2", raw, old.Command.ID); err != nil {
-			t.Fatal(err)
-		}
-	}
+	setPredecessorAssessment(t, s, old)
 	got, err := s.AssessPaperEvaluation(context.Background(), old.Command, func() time.Time { t.Fatal("legacy retry consulted clock"); return time.Time{} }, de, oe)
 	if err != nil || !got.Duplicate || !reflect.DeepEqual(got.Record, old) {
 		t.Fatal("legacy recipe retry changed", got, err)

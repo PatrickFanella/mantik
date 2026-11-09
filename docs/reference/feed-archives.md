@@ -323,6 +323,13 @@ therefore does not make established paper/protection reads depend on archive
 availability. Historical source inspection and new research that needs retired
 observations can fail when those originals are unavailable.
 
+Source-seal reads are scoped to actual active paper owners or the complete
+historical owner set being inspected. They use original-ID index lookups within
+the 512-owner read budget instead of scanning all historical seals. Historical
+checkpoint and paper-archive replay still require their original owners' seals,
+including records which have left the working set. Missing required custody is
+an error; unrelated history does not occupy the working view.
+
 `GET /v1/feed-archives/paper-custody-audit` accepts no query or body. It performs
 the complete source/index/retirement audit, then independently reconstructs every
 retained paper record's original observation window and replays its evaluator.

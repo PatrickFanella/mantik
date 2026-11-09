@@ -17,16 +17,35 @@ Go 1.26.9 test container. They share only the disposable database network
 namespace, publish no ports, and copy test source rather than bind-mounting a
 host path. Cleanup removes only those containers. It does not read a supplied
 DATABASE_URL or touch existing database volumes. The storage and CLI integration
-packages run sequentially (`go test -p 1`) against this disposable server, so
-CPU-heavy storage contracts do not compete with HTTP contracts that enforce
-production request deadlines. Concurrent transaction checks inside each package
-and the race detector remain enabled. Each package has an explicit fifteen-minute
-test budget (`-timeout=15m`), within the unchanged thirty-minute hosted CI job
-limit. This replaces Go's implicit ten-minute package alarm: merged-main run
-16524 exhausted it while `TestPostgresContractsLocalCaptures` itself had run for
-one second and was validating retained JSON. Application request timeouts and
-all assertions retain their existing values. A timed-out HTTP request still
-fails the suite; the harness does not retry requests or increase application deadlines.
+packages and their test groups run sequentially against this disposable server.
+The race detector and concurrent transaction checks inside each test remain
+enabled. Each group has a thirty-minute test budget. Application request
+timeouts and assertions retain their existing values; the harness does not
+retry failed requests.
+
+`scripts/testshard` compiles one test binary per package and partitions its
+actual registry into two deterministic groups. Every selected top-level test,
+example and fuzz seed runs once, including all its subtests, from the package's
+working directory. It reports the inventory and selected-name hashes and runs
+with `-count=1`. `make test-race` runs both storage groups and race-checks all
+other packages with Go's ordinary runner. This avoids a single package alarm
+exhausting thirty minutes across unrelated tests on slower shared runners.
+
+Hosted CI runs unit checks, other-package race checks, both storage race groups,
+four integration groups and image builds in separate jobs. The required
+`CI / verify` gate runs even after a dependency fails and accepts only success
+from every job. Each verification job has a sixty-minute ceiling. The storage
+integration group zero also performs the complete snapshot-bound dump/restore,
+native owner replay and wrong-owner rejection contract. No other group can
+substitute for that proof. The default local integration command runs every
+group and the same recovery contract. To run one integration group:
+
+```bash
+python3 scripts/test-integration.py --package storage --shard 0
+python3 scripts/test-integration.py --package storage --shard 1
+python3 scripts/test-integration.py --package cli --shard 0
+python3 scripts/test-integration.py --package cli --shard 1
+```
 
 Allocation contracts exercise the complete 32-comparison capacity, overflow,
 exact retry and database reopen before their corruption/legacy cases. Those

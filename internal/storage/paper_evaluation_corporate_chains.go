@@ -68,11 +68,12 @@ func sealAssessmentCorporateChain(out PaperEvaluationCorporateChain) (PaperEvalu
 
 // The explicit root selects an inspection, never a qualified dataset. Every
 // candidate is resolved from the replayed assessment cut in one owner snapshot.
-func inspectAssessmentCorporateChain(ctx context.Context, owner, id, rootID string, all map[string]PaperEvaluationAssessment, s paperEvaluationSources) (PaperEvaluationCorporateChain, error) {
+func inspectAssessmentCorporateChain(ctx context.Context, id, rootID string, cat PaperEvaluationAssessmentCatalog, records []CorporateActionSourceRecord) (PaperEvaluationCorporateChain, error) {
 	if !paperaccount.ID.MatchString(rootID) {
 		return PaperEvaluationCorporateChain{}, ErrPaperEvaluationAssessmentInvalid
 	}
-	inspection, err := inspectAssessmentCorporateSources(ctx, owner, id, all, s)
+	owner := cat.ReceiverID
+	inspection, err := inspectAssessmentCorporateSources(ctx, id, cat, records)
 	if err != nil {
 		return PaperEvaluationCorporateChain{}, err
 	}
@@ -87,7 +88,7 @@ func inspectAssessmentCorporateChain(ctx context.Context, owner, id, rootID stri
 		if err := ctx.Err(); err != nil {
 			return PaperEvaluationCorporateChain{}, err
 		}
-		page, err := corporateCutPage(p.Pin, s.corporateSources[p.Pin.Sequence-1])
+		page, err := corporateCutPage(p.Pin, records[p.Pin.Sequence-1])
 		if err != nil {
 			return PaperEvaluationCorporateChain{}, err
 		}
@@ -198,11 +199,11 @@ func (m *Memory) PaperEvaluationCorporatePageChain(ctx context.Context, id, root
 	if err := ctx.Err(); err != nil {
 		return PaperEvaluationCorporateChain{}, err
 	}
-	s, err := m.paperEvaluationSourcesLocked(de, oe)
+	cat, records, err := m.assessmentInspectionSourcesLocked(ctx, de, oe)
 	if err != nil {
 		return PaperEvaluationCorporateChain{}, err
 	}
-	return inspectAssessmentCorporateChain(ctx, m.receiverID, id, rootID, m.evaluationAssessments, s)
+	return inspectAssessmentCorporateChain(ctx, id, rootID, cat, records)
 }
 func (p *Postgres) PaperEvaluationCorporatePageChain(ctx context.Context, id, rootID string, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationCorporateChain, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -210,15 +211,11 @@ func (p *Postgres) PaperEvaluationCorporatePageChain(ctx context.Context, id, ro
 		return PaperEvaluationCorporateChain{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe, p.portfolioEvaluator)
+	cat, records, err := readAssessmentInspectionSources(ctx, tx, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return PaperEvaluationCorporateChain{}, err
 	}
-	all, err := readPaperEvaluationAssessments(ctx, tx)
-	if err != nil {
-		return PaperEvaluationCorporateChain{}, err
-	}
-	out, err := inspectAssessmentCorporateChain(ctx, s.declarations.ReceiverID, id, rootID, all, s)
+	out, err := inspectAssessmentCorporateChain(ctx, id, rootID, cat, records)
 	if err != nil {
 		return PaperEvaluationCorporateChain{}, err
 	}

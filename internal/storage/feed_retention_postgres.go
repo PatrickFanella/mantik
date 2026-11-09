@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"github.com/jackc/pgx/v5"
 )
@@ -28,9 +30,55 @@ func readFeedRetention(ctx context.Context, tx pgx.Tx) (*FeedRetention, error) {
 	return &r, nil
 }
 
+func paperFeedCustodyKeys(decisions map[string]retainedPaperDecision, outcomes map[string]retainedPaperOutcome) []string {
+	return (paperArchiveOwners{decisions: decisions, outcomes: outcomes}).keys()
+}
+
 func readFeedCustody(ctx context.Context, tx pgx.Tx, r *FeedRetention) (*feedCustodyView, error) {
 	if r == nil {
 		return nil, nil
+	}
+	rows, err := tx.Query(ctx, "SELECT kind,id FROM (SELECT 'decision' AS kind,id FROM mantik_paper_decisions UNION ALL SELECT 'outcome',id FROM mantik_paper_outcomes) owners LIMIT $1", MaxPaperDecisions+MaxPaperOutcomes+1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	keys := []string{}
+	for rows.Next() {
+		var kind, id string
+		if err := rows.Scan(&kind, &id); err != nil {
+			return nil, err
+		}
+		keys = append(keys, kind+":"+id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	return readFeedCustodyForOwners(ctx, tx, r, keys)
+}
+
+// The scope is derived by an owner reader from actual active identities or a
+// closed historical owner interval. It never comes from a request manifest.
+const paperFeedCustodySealQuery = "SELECT s.kind,s.record_id,s.retention_sequence,s.record_sha256,s.basis_sha256,s.payload FROM unnest($2::text[],$3::text[]) AS owner(kind,id) JOIN LATERAL (SELECT * FROM mantik_paper_feed_source_seals WHERE kind=owner.kind AND record_id=owner.id AND retention_sequence<=$1 LIMIT 1) s ON true"
+
+func readFeedCustodyForOwners(ctx context.Context, tx pgx.Tx, r *FeedRetention, keys []string) (*feedCustodyView, error) {
+	if r == nil {
+		return nil, nil
+	}
+	if len(keys) > MaxPaperDecisions+MaxPaperOutcomes {
+		return nil, ErrFeedArchiveCapacity
+	}
+	if r.Validate() != nil {
+		return nil, ErrFeedArchiveConflict
+	}
+	kinds, ids := make([]string, len(keys)), make([]string, len(keys))
+	for i, key := range keys {
+		var ok bool
+		kinds[i], ids[i], ok = strings.Cut(key, ":")
+		if !ok || kinds[i] != "decision" && kinds[i] != "outcome" || !paperaccount.ID.MatchString(ids[i]) {
+			return nil, ErrFeedArchiveConflict
+		}
 	}
 	cp, err := readPaperFeedCheckpoint(ctx, tx, r.Checkpoint.Sequence)
 	if err != nil {
@@ -40,7 +88,7 @@ func readFeedCustody(ctx context.Context, tx pgx.Tx, r *FeedRetention) (*feedCus
 		return nil, ErrFeedArchiveConflict
 	}
 	v := &feedCustodyView{checkpoint: cp, seals: map[string]PaperFeedSourcePin{}}
-	rows, err := tx.Query(ctx, "SELECT kind,record_id,retention_sequence,record_sha256,basis_sha256,payload FROM mantik_paper_feed_source_seals WHERE retention_sequence<=$1 ORDER BY kind,record_id LIMIT $2", r.Sequence, MaxPaperDecisions+MaxPaperOutcomes+1)
+	rows, err := tx.Query(ctx, paperFeedCustodySealQuery, r.Sequence, kinds, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -80,8 +128,15 @@ func writePaperFeedSourceSeal(ctx context.Context, tx pgx.Tx, retirement *FeedRe
 }
 
 func (m *Memory) feedCustodyLocked(r *FeedRetention) (*feedCustodyView, error) {
+	return m.feedCustodyForOwnersLocked(r, paperFeedCustodyKeys(m.paperDecisions, m.paperOutcomes))
+}
+
+func (m *Memory) feedCustodyForOwnersLocked(r *FeedRetention, keys []string) (*feedCustodyView, error) {
 	if r == nil {
 		return nil, nil
+	}
+	if len(keys) > MaxPaperDecisions+MaxPaperOutcomes {
+		return nil, ErrFeedArchiveCapacity
 	}
 	if r.Validate() != nil || r.Checkpoint.Sequence > int64(len(m.paperFeedCheckpoints)) {
 		return nil, ErrFeedArchiveConflict
@@ -93,5 +148,18 @@ func (m *Memory) feedCustodyLocked(r *FeedRetention) (*feedCustodyView, error) {
 	if cp.Validate() != nil || cp.PaperFeedCheckpointHeader != r.Checkpoint || !reflect.DeepEqual(cp.Prefixes, r.Prefixes) {
 		return nil, ErrFeedArchiveConflict
 	}
-	return &feedCustodyView{checkpoint: cp, seals: m.paperFeedSourceSeals}, nil
+	seals := map[string]PaperFeedSourcePin{}
+	for _, key := range keys {
+		kind, id, ok := strings.Cut(key, ":")
+		if !ok || kind != "decision" && kind != "outcome" || !paperaccount.ID.MatchString(id) {
+			return nil, ErrFeedArchiveConflict
+		}
+		if pin, ok := m.paperFeedSourceSeals[key]; ok {
+			if pin.Kind != kind || pin.ID != id {
+				return nil, ErrFeedArchiveConflict
+			}
+			seals[key] = pin
+		}
+	}
+	return &feedCustodyView{checkpoint: cp, seals: seals}, nil
 }
