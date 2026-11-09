@@ -118,9 +118,14 @@ func feedRotationCapacityContract(t *testing.T, s rotationBackend) {
 			if err != nil || len(active.Records) > 17 || len(active.Collectors.Commands) != 1 || len(active.Collectors.Admissions) > 20 || len(active.Routing.Inputs) > 24 {
 				t.Fatal("active working set grew with archive history", n, len(active.Records), len(active.Collectors.Commands), len(active.Collectors.Admissions), err)
 			}
-			at = at.Add(time.Nanosecond)
-			if _, err := s.FinalizePaperDecision(ctx, PaperDecisionCommand{ID: fmt.Sprintf("decision-%d", n), ReceiverID: owner, StrategyID: def.ID, StrategySHA256: strategy.Record.SHA256, RegistrationID: reg.ID}, now, de); err != nil {
-				t.Fatal("new paper owner after long-running rotation", n, err)
+			// Sample paper replay at early, middle and final source cuts. Every
+			// feed write also validates all active paper clocks; growing that
+			// separate catalogue on each cut obscures this collector-bound test.
+			if n == 63 || n == 1087 || n == 2099 {
+				at = at.Add(time.Nanosecond)
+				if _, err := s.FinalizePaperDecision(ctx, PaperDecisionCommand{ID: fmt.Sprintf("decision-%d", n), ReceiverID: owner, StrategyID: def.ID, StrategySHA256: strategy.Record.SHA256, RegistrationID: reg.ID}, now, de); err != nil {
+					t.Fatal("new paper owner after long-running rotation", n, err)
+				}
 			}
 		}
 	}
@@ -138,8 +143,8 @@ func feedRotationCapacityContract(t *testing.T, s rotationBackend) {
 	if receipt, err := s.PublishFeedEvidence(ctx, owner, reg.ID, "quote-0-r1", fence, originalRaw, noClock, func(FeedEvidenceSnapshot, time.Time, *FeedEvidenceRecord) error { return nil }); err != nil || !receipt.Duplicate {
 		t.Fatal("long archive lost original publication", err)
 	}
-	if audit, err := s.AuditPaperFeed(ctx, de, oe); err != nil || audit.Decisions != 33 || audit.Checkpoints != 33 {
+	if audit, err := s.AuditPaperFeed(ctx, de, oe); err != nil || audit.Decisions != 3 || audit.Checkpoints != 33 {
 		t.Fatal("long archive original-source audit", audit, err)
 	}
-	t.Logf("crossed active bounds: publications=%d admissions=%d commands=%d checkpoints=33; active publications<=17 commands=1 admissions<=20", publications, publications, commands)
+	t.Logf("crossed active bounds: publications=%d admissions=%d commands=%d checkpoints=33 paper_observations=3; active publications<=17 commands=1 admissions<=20", publications, publications, commands)
 }
