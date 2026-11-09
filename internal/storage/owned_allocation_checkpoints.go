@@ -256,9 +256,13 @@ func (m *Memory) ownedAllocationHistoryLocked() ownedAllocationJournal {
 
 // commitOwnedAllocationsLocked archives what an append sealed and keeps the
 // new active journal.
-func (m *Memory) commitOwnedAllocationsLocked(next ownedAllocationJournal) {
+func (m *Memory) commitOwnedAllocationsLocked(next ownedAllocationJournal) error {
+	if err := m.retainOwnedAllocationIndexLocked(next); err != nil {
+		return err
+	}
 	m.ownedAllocationArchive = append(m.ownedAllocationArchive, clone(next.sealing)...)
 	m.ownedAllocations = clone(next)
+	return nil
 }
 
 // readOwnedAllocationArchive loads the sealed history in sequence order.

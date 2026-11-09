@@ -235,15 +235,23 @@ func (m *Memory) admissionReviewSourcesLocked(ctx context.Context, de PaperDecis
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
+	if _, err := m.activePaperOutcomesLocked(ctx, s, m.decisionFeedLocked(), de, oe); err != nil {
+		return OwnedAllocationCatalog{}, err
+	}
 	plans, err := paperEvaluationDeclarationCatalog(m.receiverID, m.paperEvaluationPlans, s, p)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
-	actual, err := m.allocationAssessmentOwnersLocked(ctx, de, oe)
+	actual, err := m.paperAssessmentOwnersLocked(ctx, de, oe)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
-	return replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocationHistoryLocked(), p, d, s, m.paperDecisions, m.ownedExecutionLocked(), plans, actual)
+	journal := m.ownedAllocationHistoryLocked()
+	d, retained, err := m.allocationOwnerDecisionsLocked(ctx, d, journal, nil, de)
+	if err != nil {
+		return OwnedAllocationCatalog{}, err
+	}
+	return replayOwnedAllocations(ctx, m.receiverID, journal, p, d, s, retained, m.ownedExecutionLocked(), plans, actual)
 }
 func (m *Memory) ReviewOwnedAdmission(ctx context.Context, c OwnedAdmissionReviewCommand, now func() time.Time, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (OwnedAdmissionReviewReceipt, error) {
 	m.mu.Lock()
@@ -313,8 +321,15 @@ func (p *Postgres) admissionReviewAccess(ctx context.Context, write bool, c Owne
 		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, write, de, oe, p.portfolioEvaluator)
+	s, err := readPaperEvaluationContext(ctx, tx, write, p.portfolioEvaluator)
 	if err != nil {
+		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
+	}
+	s.decisions, err = readActivePaperDecisions(ctx, tx, s.declarations.ReceiverID, s.retained, s.strategies, s.feed, de)
+	if err != nil {
+		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
+	}
+	if _, err := readActivePaperOutcomes(ctx, tx, s.declarations.ReceiverID, s.retainedOutcomes, s.retained, s.strategies, s.feed, de, oe); err != nil {
 		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
 	}
 	assessments, err := readPaperEvaluationAssessments(ctx, tx)
@@ -342,6 +357,10 @@ func (p *Postgres) admissionReviewAccess(ctx context.Context, write bool, c Owne
 		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
 	}
 	journal, err := readOwnedAllocationHistory(ctx, tx)
+	if err != nil {
+		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
+	}
+	s.decisions, s.retained, err = readAllocationOwnerDecisions(ctx, tx, s.decisions, s.retained, journal, nil, de)
 	if err != nil {
 		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
 	}

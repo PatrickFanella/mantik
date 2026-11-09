@@ -5,6 +5,14 @@ uniquely named test containers. It never accepts a development or production
 database. The recovery seed retains a synthetic storage fixture's source,
 strategy, policy, finalized decision and deferred allocation comparison.
 
+The allocation fixture also seals one original comparison and appends a second,
+populating the original archive, checkpoint, segment-membership and
+decision-reference tables. All four schema-109 index tables must contain rows
+in the exported snapshot and match after restore. Seed and restored replay load
+the same original segment, re-execute it with the compiled storage-fixture
+owner inputs, and require the rebuilt checkpoint to equal the retained original.
+These checks exercise populated custody rather than only restored table shapes.
+
 The dump uses the same exported PostgreSQL snapshot as its public-table data
 identity. A write committed after that snapshot remains in the source database
 and is absent from the restored copy. The restore must match the snapshot's

@@ -910,7 +910,9 @@ func (m *Memory) ExecuteOwnedAllocations(ctx context.Context, c OwnedExecutionCo
 		return OwnedExecutionReceipt{}, err
 	}
 	if r.Record != nil && !r.Duplicate {
-		m.commitOwnedAllocationsLocked(next)
+		if err := m.commitOwnedAllocationsLocked(next); err != nil {
+			return OwnedExecutionReceipt{}, err
+		}
 	}
 	return r, nil
 }
