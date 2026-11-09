@@ -55,7 +55,7 @@ func readPaperArchiveMembers(ctx context.Context, tx pgx.Tx, a PaperRecordArchiv
 	// Immutable creation epochs independently close the complete owner set.
 	// Rehashing or deleting both a manifest and its member rows cannot omit a
 	// record which actually existed when this archive committed.
-	rows, err := tx.Query(ctx, "SELECT e.kind,e.record_id,coalesce(m.created_epoch,-1),coalesce(m.record_sha256,''),coalesce(m.payload_sha256,''),e.created_epoch,e.record_sha256,e.at_seconds,e.at_nanos,e.strategy_id,e.strategy_sha256,e.decision_id,e.decision_sha256,e.decision_at_seconds,e.decision_at_nanos FROM mantik_paper_record_epochs e LEFT JOIN mantik_paper_archive_members m ON m.archive_sequence=$1 AND m.kind=e.kind AND m.record_id=e.record_id WHERE int8range(e.created_epoch,e.retired_epoch,'[)') @> ($1::bigint-1) ORDER BY e.kind,e.record_id LIMIT $2", a.Sequence, maxPaperArchiveRecords+1)
+	rows, err := tx.Query(ctx, "SELECT e.kind,e.record_id,coalesce(m.created_epoch,-1),coalesce(m.record_sha256,''),coalesce(m.payload_sha256,''),e.created_epoch,e.record_sha256,e.at_seconds,e.at_nanos,e.strategy_id,e.strategy_sha256,e.decision_id,e.decision_sha256,e.decision_at_seconds,e.decision_at_nanos FROM mantik_paper_record_epochs e LEFT JOIN mantik_paper_archive_members m ON m.archive_sequence=$1 AND m.kind=e.kind AND m.record_id=e.record_id WHERE int8range(e.created_epoch,e.retired_epoch,'[)') @> ($1::bigint-1) ORDER BY e.kind COLLATE \"C\",e.record_id COLLATE \"C\" LIMIT $2", a.Sequence, maxPaperArchiveRecords+1)
 	if err != nil {
 		return err
 	}

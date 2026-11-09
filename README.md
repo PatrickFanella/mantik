@@ -1098,4 +1098,11 @@ journal. Older unindexed segments retain their full-history read and audit path.
 Historical attribution paging, old-index backfill, compact identity indexes and
 automatic paper retirement remain required for the complete archive.
 
+Schema 110 adds native decision/outcome history pages through the authenticated
+`GET /v1/paper-history` route and `mantik paper-history`. Each cursor keeps the
+first page's closed archive boundary as new records arrive. Pages replay their
+selected originals and outcome dependencies against original feed custody;
+missing unretired rows still fail. This supplies sealed source history, while
+financial attribution paging and physical paper retirement remain unfinished.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.
