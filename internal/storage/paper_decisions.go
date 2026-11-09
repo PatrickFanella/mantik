@@ -531,15 +531,11 @@ func (p *Postgres) FinalizePaperDecision(ctx context.Context, c PaperDecisionCom
 	// Feed publication/submission locks collector -> state, while capital policy
 	// and fixture binding lock state -> receiver. Receiver-first here can cycle
 	// with an owner holding state while waiting for receiver.
-	feed, err := readFeedEvidence(ctx, tx, true)
+	owner, err := lockPaperTargetOwner(ctx, tx)
 	if err != nil {
 		return PaperDecisionReceipt{}, err
 	}
-	var owner string
-	if err = tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton FOR UPDATE").Scan(&owner); err != nil {
-		return PaperDecisionReceipt{}, err
-	}
-	if owner != c.ReceiverID || owner != feed.ReceiverID {
+	if owner != c.ReceiverID {
 		return PaperDecisionReceipt{}, ErrReceiverMismatch
 	}
 	metadata, retired, err := readPaperTargetMetadata(ctx, tx, "decision", c.ID)
@@ -559,6 +555,13 @@ func (p *Postgres) FinalizePaperDecision(ctx context.Context, c PaperDecisionCom
 			return PaperDecisionReceipt{}, err
 		}
 		return out, nil
+	}
+	feed, err := readFeedEvidence(ctx, tx, false)
+	if err != nil {
+		return PaperDecisionReceipt{}, err
+	}
+	if owner != feed.ReceiverID {
+		return PaperDecisionReceipt{}, ErrReceiverMismatch
 	}
 	s, err := readPaperStrategies(ctx, tx, owner)
 	if err != nil {

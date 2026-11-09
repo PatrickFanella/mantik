@@ -14,6 +14,7 @@ import (
 
 type paperTargetBackend interface {
 	paperArchiveBackend
+	FeedEvidenceStore
 	FeedRetentionStore
 	PaperDecisionSourceStore
 	PaperOutcomeSourceStore
@@ -190,6 +191,36 @@ DELETE FROM mantik_paper_outcomes WHERE id='target-outcome'; DELETE FROM mantik_
 		}
 	}
 	t.Run("original-sources-and-clock-free-retries", assertOriginals)
+	t.Run("later-working-feed-does-not-reinterpret-original", func(t *testing.T) {
+		if m, ok := s.(*Memory); ok {
+			m.mu.Lock()
+			old := m.collectors
+			m.collectors = feedcollector.State{}
+			m.mu.Unlock()
+			defer func() { m.mu.Lock(); m.collectors = old; m.mu.Unlock() }()
+		} else {
+			p := s.(*Postgres)
+			var raw []byte
+			if err := p.pool.QueryRow(ctx, "SELECT payload FROM mantik_feed_collectors WHERE singleton").Scan(&raw); err != nil {
+				t.Fatal(err)
+			}
+			// Deliberate corruption exists only in this disposable fixture.
+			if _, err := p.pool.Exec(ctx, `ALTER TABLE mantik_feed_collectors DISABLE TRIGGER mantik_collector_retention_root;
+UPDATE mantik_feed_collectors SET payload='{}' WHERE singleton;
+ALTER TABLE mantik_feed_collectors ENABLE TRIGGER mantik_collector_retention_root`); err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if _, err := p.pool.Exec(ctx, "UPDATE mantik_feed_collectors SET payload=$1 WHERE singleton", raw); err != nil {
+					t.Fatal(err)
+				}
+			}()
+		}
+		if _, err := s.FeedEvidence(ctx); err == nil {
+			t.Fatal("fixture did not damage the later working feed")
+		}
+		assertOriginals(t)
+	})
 	t.Run("changed-commands-remain-conflicts", func(t *testing.T) {
 		changedD, changedO := dc, oc
 		changedD.RegistrationID = "different-feed"

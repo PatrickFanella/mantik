@@ -30,6 +30,23 @@ func archivedPaperOutcomeRetry(c PaperOutcomeCommand, owners paperArchiveOwners)
 	return PaperOutcomeReceipt{Record: v.Outcome, Duplicate: true}, nil
 }
 
+// Keep collector -> state -> receiver lock order without loading the current
+// feed into a retry whose sources belong to an independently sealed original.
+func lockPaperTargetOwner(ctx context.Context, tx pgx.Tx) (string, error) {
+	var present bool
+	for _, query := range []string{
+		"SELECT true FROM mantik_feed_collectors WHERE singleton FOR UPDATE",
+		"SELECT true FROM mantik_state WHERE id='demo' FOR UPDATE",
+	} {
+		if err := tx.QueryRow(ctx, query).Scan(&present); err != nil {
+			return "", err
+		}
+	}
+	var owner string
+	err := tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton FOR UPDATE").Scan(&owner)
+	return owner, err
+}
+
 // Active source readers keep their complete-catalogue validation. Only an
 // independently reserved, approved retired identity takes the original-owner
 // path. Absence of an active row never authorizes archive fallback.
