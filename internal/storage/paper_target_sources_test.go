@@ -195,7 +195,7 @@ DELETE FROM mantik_paper_outcomes WHERE id='target-outcome'; DELETE FROM mantik_
 		if m, ok := s.(*Memory); ok {
 			m.mu.Lock()
 			old := m.collectors
-			m.collectors = feedcollector.State{}
+			m.collectors.ArchiveSHA256 = "changed-working-feed-root"
 			m.mu.Unlock()
 			defer func() { m.mu.Lock(); m.collectors = old; m.mu.Unlock() }()
 		} else {
@@ -206,7 +206,7 @@ DELETE FROM mantik_paper_outcomes WHERE id='target-outcome'; DELETE FROM mantik_
 			}
 			// Deliberate corruption exists only in this disposable fixture.
 			if _, err := p.pool.Exec(ctx, `ALTER TABLE mantik_feed_collectors DISABLE TRIGGER mantik_collector_retention_root;
-UPDATE mantik_feed_collectors SET payload='{}' WHERE singleton;
+UPDATE mantik_feed_collectors SET payload=jsonb_set(payload,'{archive_sha256}',to_jsonb('changed-working-feed-root'::text)) WHERE singleton;
 ALTER TABLE mantik_feed_collectors ENABLE TRIGGER mantik_collector_retention_root`); err != nil {
 				t.Fatal(err)
 			}
