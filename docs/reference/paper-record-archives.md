@@ -155,6 +155,20 @@ assessment consumer must resolve original payloads, verify custody and replay
 the native evaluations before using them. New assessment issuance still uses
 its existing active catalogue in this unit.
 
+Private payload pages resolve those selections in the same owner snapshot. Each
+page rechecks actual creation, retirement and scope metadata. An active row must
+match its original record hash, clock, receiver and basis hash; a damaged active
+row cannot fall back to an archive. Only an approved retirement permits a missing
+active row to resolve from its first archive at `created_epoch+1`. The archive's
+original body, header and independently closed membership must validate. A later
+copy never substitutes for a missing first original.
+
+Payload pages preserve a 64 MiB total selected-payload budget and retain at most
+one archive segment while resolving a page. Returned native envelopes are
+detached from retained state. Any row, scope, original or budget failure returns
+no partial owners. These are custody and envelope checks; native source replay
+and new-assessment evidence construction remain the next integration.
+
 After a paper archive exists, new feed/paper custody checkpoints use
 `mantik-paper-feed-checkpoint-v2` and bind the actual `paper_archive_sequence`.
 The cut covers at least that paper archive's original time, even when the feed

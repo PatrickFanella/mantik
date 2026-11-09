@@ -186,13 +186,10 @@ func readPaperSampleWindow(ctx context.Context, tx pgx.Tx, d PaperEvaluationDecl
 	defer rows.Close()
 	records := []paperSampleRecord{}
 	for rows.Next() {
-		var r paperSampleRecord
-		var seconds, decisionSeconds int64
-		var nanos, decisionNanos int
-		if err := rows.Scan(&r.Kind, &r.ID, &r.CreatedEpoch, &r.RecordSHA256, &seconds, &nanos, &r.Scope.StrategyID, &r.Scope.StrategySHA256, &r.Scope.DecisionID, &r.Scope.DecisionSHA256, &decisionSeconds, &decisionNanos, &r.RetiredEpoch); err != nil {
+		r, err := scanPaperSampleRecord(rows)
+		if err != nil {
 			return paperSamplePage{}, err
 		}
-		r.At, r.Scope.DecisionAt = time.Unix(seconds, int64(nanos)).UTC(), time.Unix(decisionSeconds, int64(decisionNanos)).UTC()
 		if !paperSampleMatches(r, p, at, head) || after != nil && paperSampleOrder(r, after.After) <= 0 || len(records) > 0 && paperSampleOrder(records[len(records)-1], r) >= 0 {
 			return paperSamplePage{}, ErrPaperRecordArchiveConflict
 		}
@@ -202,4 +199,16 @@ func readPaperSampleWindow(ctx context.Context, tx pgx.Tx, d PaperEvaluationDecl
 		return paperSamplePage{}, err
 	}
 	return finishPaperSamplePage(records, sha, limit), nil
+}
+
+func scanPaperSampleRecord(row pgx.Row, extra ...any) (paperSampleRecord, error) {
+	var r paperSampleRecord
+	var seconds, decisionSeconds int64
+	var nanos, decisionNanos int
+	fields := []any{&r.Kind, &r.ID, &r.CreatedEpoch, &r.RecordSHA256, &seconds, &nanos, &r.Scope.StrategyID, &r.Scope.StrategySHA256, &r.Scope.DecisionID, &r.Scope.DecisionSHA256, &decisionSeconds, &decisionNanos, &r.RetiredEpoch}
+	if err := row.Scan(append(fields, extra...)...); err != nil {
+		return paperSampleRecord{}, err
+	}
+	r.At, r.Scope.DecisionAt = time.Unix(seconds, int64(nanos)).UTC(), time.Unix(decisionSeconds, int64(decisionNanos)).UTC()
+	return r, nil
 }

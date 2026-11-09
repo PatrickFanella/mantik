@@ -68,9 +68,12 @@ archive-backed assessment samples remain the next consumer work; this metadata
 alone does not extend the active paper limit.
 Schema 108 adds native byte ordering and bounded private window pages over that
 metadata. The reader selects exact declared strategy versions, decision windows
-and record availability cuts across active and archived owners. Payload
-resolution and native new-assessment evaluation remain the next integration;
-metadata pages grant no evaluation or qualification authority.
+and record availability cuts across active and archived owners. Original payload
+pages recheck actual owner metadata and resolve approved retired rows from their
+first archives with header/basis integrity, scope and byte-budget checks.
+Missing or altered originals fail without partial results. Native source replay
+and new-assessment evidence construction remain the next consumer integration;
+active retirement remains disabled, and these pages grant no qualification.
 
 ## Archive contract
 

@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -47,6 +49,29 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 		return PaperOutcomeEvaluation{Status: "not_applicable", ReasonCode: "sample_window_fixture_only"}, nil
 	}
 	want := map[string]paperSampleRecord{}
+	originals := map[string][]byte{}
+	remember := func(kind, id string) {
+		t.Helper()
+		var raw []byte
+		var err error
+		if m, ok := s.(*Memory); ok {
+			if kind == "decision" {
+				raw, err = json.Marshal(m.paperDecisions[id])
+			} else {
+				raw, err = json.Marshal(m.paperOutcomes[id])
+			}
+		} else {
+			table := "mantik_paper_decisions"
+			if kind == "outcome" {
+				table = "mantik_paper_outcomes"
+			}
+			err = s.(*Postgres).pool.QueryRow(ctx, "SELECT payload FROM "+table+" WHERE id=$1", id).Scan(&raw)
+		}
+		if err != nil {
+			t.Fatal("original sample envelope", err)
+		}
+		originals[kind+":"+id] = raw
+	}
 	addDecision := func(id string, variant int, ns int64, epoch int64, selected bool) PaperDecisionRecord {
 		t.Helper()
 		at = command.Plan.WindowStart.Add(time.Duration(ns))
@@ -57,6 +82,7 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 		}
 		if selected {
 			want["decision:"+id] = paperSampleRecord{PaperRecordEpoch{"decision", id, epoch, r.Record.SHA256, r.Record.FinalizedAt}, paperScopeForDecision(r.Record), 0}
+			remember("decision", id)
 		}
 		return r.Record
 	}
@@ -67,6 +93,7 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 			t.Fatal("outcome window fixture", id, err)
 		}
 		want["outcome:"+id] = paperSampleRecord{PaperRecordEpoch{"outcome", id, epoch, r.Record.SHA256, r.Record.EvaluatedAt}, paperScopeForDecision(d), 0}
+		remember("outcome", id)
 	}
 	addDecision("before-window", 0, -1, 0, false)
 	for i := range 64 {
@@ -124,11 +151,15 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 	addOutcome("late-outcome", first, 1)
 
 	var page func(PaperEvaluationDeclaration, time.Time, *paperSampleCursor, int) (paperSamplePage, error)
+	var payloads func([]paperSampleRecord) (paperArchiveOwners, error)
 	if m, ok := s.(*Memory); ok {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		page = func(d PaperEvaluationDeclaration, at time.Time, c *paperSampleCursor, n int) (paperSamplePage, error) {
 			return m.paperSampleWindowLocked(ctx, d, at, c, n)
+		}
+		payloads = func(records []paperSampleRecord) (paperArchiveOwners, error) {
+			return m.paperSamplePayloadsLocked(ctx, command.ReceiverID, records)
 		}
 	} else {
 		pg := s.(*Postgres)
@@ -140,6 +171,9 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 		page = func(d PaperEvaluationDeclaration, at time.Time, c *paperSampleCursor, n int) (paperSamplePage, error) {
 			return readPaperSampleWindow(ctx, tx, d, at, c, n)
 		}
+		payloads = func(records []paperSampleRecord) (paperArchiveOwners, error) {
+			return readPaperSamplePayloads(ctx, tx, command.ReceiverID, records)
+		}
 	}
 	for _, asOf := range []time.Time{command.Plan.WindowStart, command.Plan.OutcomeDeadline, at} {
 		seen, previous := map[string]bool{}, ""
@@ -150,8 +184,21 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 			if err != nil || len(got.Records) > limit || got.Records == nil || batches > 1000 {
 				t.Fatal("window page", batches, err)
 			}
+			resolved, err := payloads(got.Records)
+			if err != nil || len(resolved.decisions)+len(resolved.outcomes) != len(got.Records) {
+				t.Fatal("original sample payload page", err)
+			}
 			for _, r := range got.Records {
 				key := r.Kind + ":" + r.ID
+				var raw []byte
+				if r.Kind == "decision" {
+					raw, err = json.Marshal(resolved.decisions[r.ID])
+				} else {
+					raw, err = json.Marshal(resolved.outcomes[r.ID])
+				}
+				if err != nil || !bytes.Equal(raw, originals[key]) {
+					t.Fatal("sample resolution rewrote an original envelope", key, err)
+				}
 				order := fmt.Sprintf("%020d.%09d\x00%s\x00%s\x00%020d.%09d\x00%s", r.Scope.DecisionAt.Unix(), r.Scope.DecisionAt.Nanosecond(), r.Scope.DecisionID, r.Kind, r.At.Unix(), r.At.Nanosecond(), r.ID)
 				if seen[key] || r != want[key] || r.At.After(asOf) || order <= previous {
 					t.Fatal("omission, duplication, clock or byte order changed", key)
