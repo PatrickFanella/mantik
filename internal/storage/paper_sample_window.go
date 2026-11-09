@@ -42,8 +42,8 @@ func paperSampleOrder(a, b paperSampleRecord) int {
 	return 0
 }
 
-func paperSampleQuery(d PaperEvaluationDeclaration, at time.Time, head int64, after *paperSampleCursor, limit int) (string, error) {
-	if d.Command.Validate() != nil || !decisionPin.MatchString(d.SHA256) || !declarationTime(at) || head < 0 || limit < 1 || limit > maxPaperSamplePage {
+func paperSampleQuery(d PaperEvaluationDeclaration, at time.Time, head, through int64, after *paperSampleCursor, limit int) (string, error) {
+	if through < 0 || through > head || d.Command.Validate() != nil || !decisionPin.MatchString(d.SHA256) || !declarationTime(at) || head < 0 || limit < 1 || limit > maxPaperSamplePage {
 		return "", ErrPaperRecordArchiveInvalid
 	}
 	sha := workerplan.Hash(struct {
@@ -51,8 +51,9 @@ func paperSampleQuery(d PaperEvaluationDeclaration, at time.Time, head int64, af
 		Command           PaperEvaluationDeclarationCommand
 		AsOf              time.Time
 		ArchiveHead       int64
-	}{d.SHA256, d.Command, at.UTC(), head})
-	if after != nil && (after.QuerySHA256 != sha || !paperSampleMatches(after.After, d.Command.Plan, at, head)) {
+		ThroughEpoch      int64
+	}{d.SHA256, d.Command, at.UTC(), head, through})
+	if after != nil && (after.QuerySHA256 != sha || after.After.CreatedEpoch > through || !paperSampleMatches(after.After, d.Command.Plan, at, head)) {
 		return "", ErrPaperRecordArchiveInvalid
 	}
 	return sha, nil
@@ -94,6 +95,10 @@ func finishPaperSamplePage(records []paperSampleRecord, sha string, limit int) p
 }
 
 func (m *Memory) paperSampleWindowLocked(ctx context.Context, d PaperEvaluationDeclaration, at time.Time, after *paperSampleCursor, limit int) (paperSamplePage, error) {
+	return m.paperSampleWindowAtEpochLocked(ctx, d, at, int64(len(m.paperRecordArchives)), after, limit)
+}
+
+func (m *Memory) paperSampleWindowAtEpochLocked(ctx context.Context, d PaperEvaluationDeclaration, at time.Time, through int64, after *paperSampleCursor, limit int) (paperSamplePage, error) {
 	if err := ctx.Err(); err != nil {
 		return paperSamplePage{}, err
 	}
@@ -101,7 +106,7 @@ func (m *Memory) paperSampleWindowLocked(ctx context.Context, d PaperEvaluationD
 		return paperSamplePage{}, ErrReceiverMismatch
 	}
 	head := int64(len(m.paperRecordArchives))
-	sha, err := paperSampleQuery(d, at, head, after, limit)
+	sha, err := paperSampleQuery(d, at, head, through, after, limit)
 	if err != nil {
 		return paperSamplePage{}, err
 	}
@@ -121,7 +126,7 @@ func (m *Memory) paperSampleWindowLocked(ctx context.Context, d PaperEvaluationD
 		if !validPaperSampleRecord(r, head) {
 			return paperSamplePage{}, ErrPaperRecordArchiveConflict
 		}
-		if !paperSampleMatches(r, d.Command.Plan, at, head) || after != nil && paperSampleOrder(r, after.After) <= 0 {
+		if e.CreatedEpoch > through || !paperSampleMatches(r, d.Command.Plan, at, head) || after != nil && paperSampleOrder(r, after.After) <= 0 {
 			continue
 		}
 		// Keep only the next bounded batch, even when history or this window
@@ -157,6 +162,10 @@ ORDER BY e.decision_at_seconds,e.decision_at_nanos,e.decision_id COLLATE "C",e.k
 LIMIT $18`
 
 func readPaperSampleWindow(ctx context.Context, tx pgx.Tx, d PaperEvaluationDeclaration, at time.Time, after *paperSampleCursor, limit int) (paperSamplePage, error) {
+	return readPaperSampleWindowAtEpoch(ctx, tx, d, at, -1, after, limit)
+}
+
+func readPaperSampleWindowAtEpoch(ctx context.Context, tx pgx.Tx, d PaperEvaluationDeclaration, at time.Time, through int64, after *paperSampleCursor, limit int) (paperSamplePage, error) {
 	var head int64
 	var owner string
 	if err := tx.QueryRow(ctx, "SELECT id,(SELECT coalesce(max(sequence),0) FROM mantik_paper_record_archives) FROM mantik_research_receiver WHERE singleton").Scan(&owner, &head); err != nil {
@@ -165,7 +174,10 @@ func readPaperSampleWindow(ctx context.Context, tx pgx.Tx, d PaperEvaluationDecl
 	if d.Command.ReceiverID != owner {
 		return paperSamplePage{}, ErrReceiverMismatch
 	}
-	sha, err := paperSampleQuery(d, at, head, after, limit)
+	if through == -1 {
+		through = head
+	}
+	sha, err := paperSampleQuery(d, at, head, through, after, limit)
 	if err != nil {
 		return paperSamplePage{}, err
 	}
@@ -178,7 +190,7 @@ func readPaperSampleWindow(ctx context.Context, tx pgx.Tx, d PaperEvaluationDecl
 		last = after.After
 	}
 	p := d.Command.Plan
-	rows, err := tx.Query(ctx, paperSampleWindowQuery, ids, hashes, head, p.WindowStart.Unix(), p.WindowStart.Nanosecond(), p.WindowEnd.Unix(), p.WindowEnd.Nanosecond(), at.Unix(), at.Nanosecond(), after == nil,
+	rows, err := tx.Query(ctx, paperSampleWindowQuery, ids, hashes, through, p.WindowStart.Unix(), p.WindowStart.Nanosecond(), p.WindowEnd.Unix(), p.WindowEnd.Nanosecond(), at.Unix(), at.Nanosecond(), after == nil,
 		last.Scope.DecisionAt.Unix(), last.Scope.DecisionAt.Nanosecond(), last.Scope.DecisionID, last.Kind, last.At.Unix(), last.At.Nanosecond(), last.ID, limit+1)
 	if err != nil {
 		return paperSamplePage{}, err
@@ -186,14 +198,11 @@ func readPaperSampleWindow(ctx context.Context, tx pgx.Tx, d PaperEvaluationDecl
 	defer rows.Close()
 	records := []paperSampleRecord{}
 	for rows.Next() {
-		var r paperSampleRecord
-		var seconds, decisionSeconds int64
-		var nanos, decisionNanos int
-		if err := rows.Scan(&r.Kind, &r.ID, &r.CreatedEpoch, &r.RecordSHA256, &seconds, &nanos, &r.Scope.StrategyID, &r.Scope.StrategySHA256, &r.Scope.DecisionID, &r.Scope.DecisionSHA256, &decisionSeconds, &decisionNanos, &r.RetiredEpoch); err != nil {
+		r, err := scanPaperSampleRecord(rows)
+		if err != nil {
 			return paperSamplePage{}, err
 		}
-		r.At, r.Scope.DecisionAt = time.Unix(seconds, int64(nanos)).UTC(), time.Unix(decisionSeconds, int64(decisionNanos)).UTC()
-		if !paperSampleMatches(r, p, at, head) || after != nil && paperSampleOrder(r, after.After) <= 0 || len(records) > 0 && paperSampleOrder(records[len(records)-1], r) >= 0 {
+		if r.CreatedEpoch > through || !paperSampleMatches(r, p, at, head) || after != nil && paperSampleOrder(r, after.After) <= 0 || len(records) > 0 && paperSampleOrder(records[len(records)-1], r) >= 0 {
 			return paperSamplePage{}, ErrPaperRecordArchiveConflict
 		}
 		records = append(records, r)
@@ -202,4 +211,16 @@ func readPaperSampleWindow(ctx context.Context, tx pgx.Tx, d PaperEvaluationDecl
 		return paperSamplePage{}, err
 	}
 	return finishPaperSamplePage(records, sha, limit), nil
+}
+
+func scanPaperSampleRecord(row pgx.Row, extra ...any) (paperSampleRecord, error) {
+	var r paperSampleRecord
+	var seconds, decisionSeconds int64
+	var nanos, decisionNanos int
+	fields := []any{&r.Kind, &r.ID, &r.CreatedEpoch, &r.RecordSHA256, &seconds, &nanos, &r.Scope.StrategyID, &r.Scope.StrategySHA256, &r.Scope.DecisionID, &r.Scope.DecisionSHA256, &decisionSeconds, &decisionNanos, &r.RetiredEpoch}
+	if err := row.Scan(append(fields, extra...)...); err != nil {
+		return paperSampleRecord{}, err
+	}
+	r.At, r.Scope.DecisionAt = time.Unix(seconds, int64(nanos)).UTC(), time.Unix(decisionSeconds, int64(decisionNanos)).UTC()
+	return r, nil
 }

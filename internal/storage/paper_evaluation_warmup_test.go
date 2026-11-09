@@ -16,7 +16,7 @@ import (
 // public legacy-write or caller-supplied applicability endpoint.
 func legacyAssessmentFixture(t *testing.T, s assessmentBackend, r PaperEvaluationAssessmentReceipt, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) PaperEvaluationAssessmentReceipt {
 	t.Helper()
-	old, err := newPaperEvaluationAssessment(r.Record.Command, r.Record.Evidence)
+	old, err := newPaperEvaluationAssessment(r.Record.Command, predecessorPaperEvidence(t, s, r.Record, de, oe))
 	if err != nil {
 		t.Fatal(err)
 	}

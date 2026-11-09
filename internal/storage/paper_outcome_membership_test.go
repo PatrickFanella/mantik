@@ -110,21 +110,31 @@ func paperOutcomeMembershipContract(t *testing.T, s outcomeMembershipBackend) {
 		t.Fatal("new outcome omitted versioned membership contract", saved.Record.Schema)
 	}
 	// Legacy envelopes preserve their original replay contract, bytes and hash.
+	legacyCommand := outcomeCommand
+	legacyCommand.ID = "membership-legacy-outcome"
 	legacy := clone(saved)
-	legacy.Record, err = paperOutcomeForSchema("mantik-owned-paper-outcome-v1", outcomeCommand, legacy.Basis, saved.Record.EvaluatedAt, outcomeEval)
+	legacy.Record, err = paperOutcomeForSchema("mantik-owned-paper-outcome-v1", legacyCommand, legacy.Basis, saved.Record.EvaluatedAt, outcomeEval)
 	if err != nil {
 		t.Fatal(err)
 	}
-	set(legacy)
 	legacyBytes, err := json.Marshal(legacy)
 	if err != nil {
 		t.Fatal(err)
 	}
-	retry, err := s.AssessPaperOutcome(ctx, outcomeCommand, func() time.Time { panic("legacy retry clock") }, eval, outcomeEval)
+	// Seed a distinct predecessor whose first insertion reserves its v1 hash.
+	if m, ok := s.(*Memory); ok {
+		m.mu.Lock()
+		m.paperOutcomes[legacyCommand.ID] = clone(legacy)
+		m.retainPaperRecordEpoch("outcome", legacyCommand.ID, legacy.Record.SHA256, legacy.Record.EvaluatedAt)
+		m.mu.Unlock()
+	} else if _, err := s.(*Postgres).pool.Exec(ctx, "INSERT INTO mantik_paper_outcomes(id,payload) VALUES($1,$2)", legacyCommand.ID, legacyBytes); err != nil {
+		t.Fatal(err)
+	}
+	retry, err := s.AssessPaperOutcome(ctx, legacyCommand, func() time.Time { panic("legacy retry clock") }, eval, outcomeEval)
 	if err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, legacy.Record) {
 		t.Fatal("legacy outcome changed", retry, err)
 	}
-	legacySources, err := s.PaperOutcomeSources(ctx, outcomeCommand.ID, eval, outcomeEval)
+	legacySources, err := s.PaperOutcomeSources(ctx, legacyCommand.ID, eval, outcomeEval)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +142,18 @@ func paperOutcomeMembershipContract(t *testing.T, s outcomeMembershipBackend) {
 	if err != nil || string(readBytes) != string(legacyBytes) {
 		t.Fatal("legacy outcome bytes changed", err)
 	}
-	set(saved)
+	nativeFeed, err := s.FeedEvidence(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeStrategies, err := s.PaperStrategies(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeDecisions := map[string]retainedPaperDecision{command.ID: {decision.Decision, decision.Basis}}
+	if _, err := replayPaperOutcomeRecords(owner, map[string]retainedPaperOutcome{outcomeCommand.ID: saved}, nativeDecisions, nativeStrategies, nativeFeed, outcomeEval); err != nil {
+		t.Fatal("native outcome membership positive control", err)
+	}
 	for _, kind := range []string{"admission", "publication"} {
 		t.Run(kind+"_omission", func(t *testing.T) {
 			forged := clone(saved)
@@ -147,6 +168,9 @@ func paperOutcomeMembershipContract(t *testing.T, s outcomeMembershipBackend) {
 			forged.Record.BasisSHA256 = workerplan.Hash(forged.Basis)
 			forged.Record.SHA256 = ""
 			forged.Record.SHA256 = workerplan.Hash(forged.Record)
+			if _, err := replayPaperOutcomeRecords(owner, map[string]retainedPaperOutcome{outcomeCommand.ID: forged}, nativeDecisions, nativeStrategies, nativeFeed, outcomeEval); err == nil {
+				t.Error("native outcome replay accepted omission independently of identity metadata")
+			}
 			set(forged)
 			defer set(saved)
 			if _, e := s.PaperOutcomeSources(ctx, outcomeCommand.ID, eval, outcomeEval); e == nil {

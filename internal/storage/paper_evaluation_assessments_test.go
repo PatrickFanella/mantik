@@ -355,8 +355,21 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 	// Assessment and source append at one clock serialize: include the new source
 	// or reject its timestamp. Both outcomes must retain a replayable catalogue.
 	raceAt := deadline.Add(time.Second)
+	// Keep the raced decision inside its declared sample. Version 4 excludes
+	// decisions outside that window rather than hashing the whole catalogue.
+	racePlan := plan
+	racePlan.ID = "race-plan"
+	racePlan.Plan.FamilyID = "race-family"
+	racePlan.Plan.WindowStart = deadline.Add(500 * time.Millisecond)
+	racePlan.Plan.WindowEnd = deadline.Add(time.Hour)
+	racePlan.Plan.OutcomeDeadline = deadline.Add(2 * time.Hour)
+	raceDeclaration, err := s.DeclarePaperEvaluation(ctx, racePlan, func() time.Time { return deadline.Add(4 * time.Nanosecond) })
+	if err != nil {
+		t.Fatal("race declaration", err)
+	}
 	raceCommand := c
 	raceCommand.ID = "raced"
+	raceCommand.DeclarationID, raceCommand.DeclarationSHA256 = racePlan.ID, raceDeclaration.Record.SHA256
 	source := dc
 	source.ID = "raced-source"
 	var wg sync.WaitGroup
@@ -440,6 +453,7 @@ func evaluationAssessmentSelectionContracts(t *testing.T, s assessmentBackend, s
 		r.SHA256 = workerplan.Hash(*r)
 	}, func(r *PaperEvaluationAssessment) {
 		r.Evidence.Rows = r.Evidence.Rows[:0]
+		r.Evidence.Selection.Records = 0
 		r.Evidence.SHA256 = ""
 		r.Evidence.SHA256 = workerplan.Hash(r.Evidence)
 		v, e := newPaperEvaluationAssessment(r.Command, r.Evidence)

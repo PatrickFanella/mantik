@@ -905,7 +905,7 @@ func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCo
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
-	assessments, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, declarations, decisions, strategies, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, m.corporateReferenceSources, eval, oe, policies, m.portfolioEvaluator)
+	assessments, err := m.allocationAssessmentOwnersLocked(ctx, eval, oe)
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
@@ -940,7 +940,7 @@ func (m *Memory) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluat
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
-	assessments, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, declarations, d, s, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, m.corporateReferenceSources, eval, oe, p, m.portfolioEvaluator)
+	assessments, err := m.allocationAssessmentOwnersLocked(ctx, eval, oe)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
@@ -1055,15 +1055,10 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, apply 
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}
-		corporate, e := readCorporateActionSources(ctx, tx, false)
-		if e != nil {
+		if _, e = paperOutcomeCatalog(owner, outcomes, retained, strategies, feed, eval, oe); e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}
-		references, e := readCorporateReferenceSources(ctx, tx, false)
-		if e != nil {
-			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
-		}
-		assessmentCatalog, e = resolveAllocationAssessmentOwner(ctx, owner, assessments, declarations, decisions, strategies, retained, outcomes, feed, corporate.Records, references.Records, eval, oe, policies, p.portfolioEvaluator)
+		assessmentCatalog, e = readPaperAssessmentOwners(ctx, tx, owner, assessments, eval, oe, p.portfolioEvaluator)
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}

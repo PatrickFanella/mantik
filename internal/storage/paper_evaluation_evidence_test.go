@@ -88,7 +88,7 @@ func evaluationEvidenceContracts(t *testing.T, s evaluationEvidenceBackend, clas
 	reads := 0
 	clock := func() time.Time { reads++; return c.Plan.OutcomeDeadline }
 	got, err := s.PaperEvaluationEvidence(ctx, c.ID, clock, eval, outcomeEval)
-	if err != nil || reads != 1 || len(got.Rows) != 5 || got.Phase != "outcome_deadline_elapsed" || got.IndependentSamplesAvailable || got.EvaluationAvailable || got.AdmissionAvailable || got.ExecutionAvailable || got.QualificationCredit {
+	if err != nil || reads != 1 || len(got.Rows) != 4 || got.Schema != paperWindowEvidenceSchema || got.Selection == nil || got.Selection.ThroughEpoch != 0 || got.Selection.Records != 6 || got.Phase != "outcome_deadline_elapsed" || got.IndependentSamplesAvailable || got.EvaluationAvailable || got.AdmissionAvailable || got.ExecutionAvailable || got.QualificationCredit {
 		t.Fatal(got, reads, err)
 	}
 	for _, v := range got.Variants {
@@ -107,7 +107,7 @@ func evaluationEvidenceContracts(t *testing.T, s evaluationEvidenceBackend, clas
 	for _, r := range got.Rows {
 		statuses[r.Decision.Command.ID] = r
 	}
-	if statuses["late"].Status != "decision_after_window" || statuses["abstain"].Status != "abstention" || len(statuses["first"].Outcomes) != 2 || got.Variants[0].ObservedOutcomeDecisions != 0 {
+	if _, outside := statuses["late"]; outside || statuses["abstain"].Status != "abstention" || len(statuses["first"].Outcomes) != 2 || got.Variants[0].ObservedOutcomeDecisions != 0 {
 		t.Fatal(statuses, got.Variants)
 	}
 	if class == "synthetic_unqualified" {
@@ -212,7 +212,7 @@ func evaluationEvidenceContracts(t *testing.T, s evaluationEvidenceBackend, clas
 			t.Fatal("late outcome expanded entry cut")
 		}
 	}
-	if !found || report.Schema != "mantik-owned-paper-evaluation-evidence-v3" || report.EvaluationAvailable || report.AdmissionAvailable || report.ExecutionAvailable || report.QualificationCredit {
+	if !found || report.Schema != paperWindowEvidenceSchema || report.Selection == nil || report.EvaluationAvailable || report.AdmissionAvailable || report.ExecutionAvailable || report.QualificationCredit {
 		t.Fatal(report)
 	}
 	if pg, ok := s.(*Postgres); ok {

@@ -1081,7 +1081,9 @@ assessment selection or enable physical paper retirement.
 Schema 108 gives the sample index native byte ordering for tied timestamps and
 IDs. Private readers page decision/outcome metadata for exact declared strategy
 versions and decision windows across active and archived owners, independently
-of the active catalogue limit. Payload resolution and native evaluation remain
-required before those selections can become new assessment evidence.
+of the active catalogue limit. Private payload readers recheck original metadata
+and resolve approved retired rows from their first archives. Missing unretired
+rows or damaged originals return no partial owners. Native source replay and
+new-assessment integration remain required before using those selections.
 
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

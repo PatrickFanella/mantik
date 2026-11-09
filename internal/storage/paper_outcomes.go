@@ -178,25 +178,10 @@ func memoPaperOutcomeEvaluator(eval PaperOutcomeEvaluator) PaperOutcomeEvaluator
 	}
 }
 
-func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, decisionEval PaperDecisionEvaluator, eval PaperOutcomeEvaluator) (PaperOutcomeCatalog, error) {
-	out := PaperOutcomeCatalog{ReceiverID: owner, Records: []PaperOutcomeRecord{}}
-	if eval == nil || len(all) > MaxPaperOutcomes {
-		return out, ErrPaperOutcomeInvalid
-	}
-	if _, err := paperDecisionCatalog(owner, decisions, strategies, feed, decisionEval); err != nil {
-		return out, err
-	}
-	if feed.Retention != nil {
-		closed := 0
-		for _, v := range all {
-			if !v.Record.EvaluatedAt.After(feed.Retention.Checkpoint.CutAt) {
-				closed++
-			}
-		}
-		if closed != feed.Retention.Checkpoint.Outcomes {
-			return out, ErrPaperOutcomeConflict
-		}
-	}
+// Replay one actual outcome owner without assuming the caller selected the
+// complete catalogue. The catalogue keeps its capacity and checkpoint counts;
+// paged consumers establish selection completeness from their metadata cursor.
+func newPaperOutcomeReplay(owner string, all map[string]retainedPaperOutcome, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, eval PaperOutcomeEvaluator) func(string, retainedPaperOutcome, retainedPaperDecision) (PaperOutcomeRecord, error) {
 	eval = memoPaperOutcomeEvaluator(eval)
 	// Repeated basis hashes are only a performance hint. The record cache still
 	// requires full input equality; unique inputs keep the ordinary constructor.
@@ -222,30 +207,29 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 		}
 		return nil
 	})
-	for id, v := range all {
+	return func(id string, v retainedPaperOutcome, d retainedPaperDecision) (PaperOutcomeRecord, error) {
 		r, b := v.Record, v.Basis
-		d, ok := decisions[r.Command.DecisionID]
-		if id != r.Command.ID || r.Command.ReceiverID != owner || !ok || !reflect.DeepEqual(d.Record, b.Decision) {
-			return out, ErrPaperOutcomeConflict
+		if id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(d.Record, b.Decision) {
+			return PaperOutcomeRecord{}, ErrPaperOutcomeConflict
 		}
 		// Outcome observation has its own availability cut. Legacy and current
 		// membership modes are distinct cache inputs, never inferred from a hit.
 		if feed.Retention != nil {
 			if err := verifyFeedSourcePin(feed, outcomeFeedSourcePin(v)); err != nil {
-				return out, err
+				return PaperOutcomeRecord{}, err
 			}
 			if err := verifyPaperDecisionHeaderBasis(d.Record.Command, b.Observation, r.EvaluatedAt, strategies, feed); err != nil {
-				return out, err
+				return PaperOutcomeRecord{}, err
 			}
 			if err := verifyRetiredPaperBasis(d.Record.Command, b.Observation, r.EvaluatedAt, feed); err != nil {
-				return out, err
+				return PaperOutcomeRecord{}, err
 			}
 		} else if err := verify(d.Record.Command, b.Observation, r.EvaluatedAt, r.Schema == "mantik-owned-paper-outcome-v2"); err != nil {
-			return out, err
+			return PaperOutcomeRecord{}, err
 		}
 		if (r.Schema == paperOutcomeSchemaV3 || r.Schema == paperOutcomeSchemaV4) && feed.Retention == nil {
 			if err := verifyFeedPrefix(d.Record.Command, b.Observation, r.EvaluatedAt, d.Record.FinalizedAt, index); err != nil {
-				return out, err
+				return PaperOutcomeRecord{}, err
 			}
 		}
 		var expected PaperOutcomeRecord
@@ -259,7 +243,50 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 			expected, err = paperOutcomeForSchema(r.Schema, r.Command, b, r.EvaluatedAt, eval)
 		}
 		if err != nil || !reflect.DeepEqual(expected, r) {
-			return out, ErrPaperOutcomeInvalid
+			return PaperOutcomeRecord{}, ErrPaperOutcomeInvalid
+		}
+		return r, nil
+	}
+}
+
+func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, decisionEval PaperDecisionEvaluator, eval PaperOutcomeEvaluator) (PaperOutcomeCatalog, error) {
+	out := PaperOutcomeCatalog{ReceiverID: owner, Records: []PaperOutcomeRecord{}}
+	if eval == nil || len(all) > MaxPaperOutcomes {
+		return out, ErrPaperOutcomeInvalid
+	}
+	if _, err := paperDecisionCatalog(owner, decisions, strategies, feed, decisionEval); err != nil {
+		return out, err
+	}
+	if feed.Retention != nil {
+		closed := 0
+		for _, v := range all {
+			if !v.Record.EvaluatedAt.After(feed.Retention.Checkpoint.CutAt) {
+				closed++
+			}
+		}
+		if closed != feed.Retention.Checkpoint.Outcomes {
+			return out, ErrPaperOutcomeConflict
+		}
+	}
+	return replayPaperOutcomeRecords(owner, all, decisions, strategies, feed, eval)
+}
+
+// Native outcome replay is shared by independently complete working and
+// historical owner scopes. Each scope validates its actual decision set first.
+func replayPaperOutcomeRecords(owner string, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, eval PaperOutcomeEvaluator) (PaperOutcomeCatalog, error) {
+	out := PaperOutcomeCatalog{ReceiverID: owner, Records: []PaperOutcomeRecord{}}
+	if !ValidReceiverID(owner) || eval == nil || len(all) > MaxPaperOutcomes {
+		return PaperOutcomeCatalog{}, ErrPaperOutcomeInvalid
+	}
+	replay := newPaperOutcomeReplay(owner, all, strategies, feed, eval)
+	for id, v := range all {
+		d, ok := decisions[v.Record.Command.DecisionID]
+		if !ok {
+			return out, ErrPaperOutcomeConflict
+		}
+		r, err := replay(id, v, d)
+		if err != nil {
+			return out, err
 		}
 		out.Records = append(out.Records, r)
 	}
@@ -273,6 +300,10 @@ func appendPaperOutcomeFromFeed(c PaperOutcomeCommand, all map[string]retainedPa
 	if _, err := paperOutcomeCatalog(feed.ReceiverID, all, decisions, strategies, feed, decisionEval, eval); err != nil {
 		return retainedPaperOutcome{}, false, err
 	}
+	return appendPaperOutcomeAfterReplay(c, all, decisions, strategies, feed, observation, now, eval)
+}
+
+func appendPaperOutcomeAfterReplay(c PaperOutcomeCommand, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed, observation FeedEvidenceSnapshot, now func() time.Time, eval PaperOutcomeEvaluator) (retainedPaperOutcome, bool, error) {
 	if c.Validate() != nil {
 		return retainedPaperOutcome{}, false, ErrPaperOutcomeInvalid
 	}
@@ -330,18 +361,41 @@ func (m *Memory) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand, 
 	if err := ctx.Err(); err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
+	if c.Validate() != nil {
+		return PaperOutcomeReceipt{}, ErrPaperOutcomeInvalid
+	}
+	if c.ReceiverID != m.receiverID {
+		return PaperOutcomeReceipt{}, ErrReceiverMismatch
+	}
+	metadata, retired, err := m.paperTargetMetadataLocked(ctx, "outcome", c.ID)
+	if err != nil {
+		return PaperOutcomeReceipt{}, err
+	}
+	if retired {
+		owners, err := m.archivedPaperTargetLocked(ctx, metadata, decisionEval, eval)
+		if err != nil {
+			return PaperOutcomeReceipt{}, err
+		}
+		return archivedPaperOutcomeRetry(c, owners)
+	}
+	if _, exists := m.paperOutcomes[c.ID]; metadata.ID != "" && !exists {
+		return PaperOutcomeReceipt{}, ErrPaperOutcomeConflict
+	}
 	s, err := m.paperStrategiesLocked()
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
 	feed := m.decisionFeedLocked()
+	if _, err := m.activePaperOutcomesLocked(ctx, s, feed, decisionEval, eval); err != nil {
+		return PaperOutcomeReceipt{}, err
+	}
 	observation, ownedNow, err := outcomeObservationFeed(c, m.paperOutcomes, m.paperDecisions, feed, now, func(reg string, since, at time.Time) (FeedEvidenceSnapshot, error) {
 		return m.archivedOutcomeFeedLocked(ctx, feed, reg, since, at)
 	})
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
-	v, dup, err := appendPaperOutcomeFromFeed(c, m.paperOutcomes, m.paperDecisions, s, feed, observation, ownedNow, decisionEval, eval)
+	v, dup, err := appendPaperOutcomeAfterReplay(c, m.paperOutcomes, m.paperDecisions, s, feed, observation, ownedNow, eval)
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
@@ -371,7 +425,7 @@ func (m *Memory) PaperOutcomes(ctx context.Context, decisionEval PaperDecisionEv
 	if err != nil {
 		return PaperOutcomeCatalog{}, err
 	}
-	return paperOutcomeCatalog(m.receiverID, m.paperOutcomes, m.paperDecisions, s, m.decisionFeedLocked(), decisionEval, eval)
+	return m.activePaperOutcomesLocked(ctx, s, m.decisionFeedLocked(), decisionEval, eval)
 }
 func readPaperOutcomes(ctx context.Context, tx pgx.Tx) (map[string]retainedPaperOutcome, error) {
 	rows, err := tx.Query(ctx, "SELECT id,payload FROM mantik_paper_outcomes ORDER BY id LIMIT $1", MaxPaperOutcomes+1)
@@ -410,15 +464,36 @@ func (p *Postgres) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand
 	// Feed publication/submission locks collector -> state, while capital policy
 	// and fixture binding lock state -> receiver. Receiver-first here can cycle
 	// with an owner holding state while waiting for receiver.
-	feed, err := readFeedEvidence(ctx, tx, true)
+	owner, err := lockPaperTargetOwner(ctx, tx)
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
-	var owner string
-	if err = tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton FOR UPDATE").Scan(&owner); err != nil {
+	if owner != c.ReceiverID {
+		return PaperOutcomeReceipt{}, ErrReceiverMismatch
+	}
+	metadata, retired, err := readPaperTargetMetadata(ctx, tx, "outcome", c.ID)
+	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
-	if owner != c.ReceiverID || owner != feed.ReceiverID {
+	if retired {
+		owners, err := readArchivedPaperTarget(ctx, tx, metadata, decisionEval, eval)
+		if err != nil {
+			return PaperOutcomeReceipt{}, err
+		}
+		out, err := archivedPaperOutcomeRetry(c, owners)
+		if err != nil {
+			return PaperOutcomeReceipt{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return PaperOutcomeReceipt{}, err
+		}
+		return out, nil
+	}
+	feed, err := readFeedEvidence(ctx, tx, false)
+	if err != nil {
+		return PaperOutcomeReceipt{}, err
+	}
+	if owner != feed.ReceiverID {
 		return PaperOutcomeReceipt{}, ErrReceiverMismatch
 	}
 	s, err := readPaperStrategies(ctx, tx, owner)
@@ -433,13 +508,19 @@ func (p *Postgres) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
+	if _, exists := all[c.ID]; metadata.ID != "" && !exists {
+		return PaperOutcomeReceipt{}, ErrPaperOutcomeConflict
+	}
+	if _, err := readActivePaperOutcomes(ctx, tx, owner, all, decisions, s, feed, decisionEval, eval); err != nil {
+		return PaperOutcomeReceipt{}, err
+	}
 	observation, ownedNow, err := outcomeObservationFeed(c, all, decisions, feed, now, func(reg string, since, at time.Time) (FeedEvidenceSnapshot, error) {
 		return readArchivedOutcomeFeed(ctx, tx, feed, reg, since, at)
 	})
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
-	v, dup, err := appendPaperOutcomeFromFeed(c, all, decisions, s, feed, observation, ownedNow, decisionEval, eval)
+	v, dup, err := appendPaperOutcomeAfterReplay(c, all, decisions, s, feed, observation, ownedNow, eval)
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
@@ -492,7 +573,7 @@ func (p *Postgres) PaperOutcomes(ctx context.Context, decisionEval PaperDecision
 	if err != nil {
 		return PaperOutcomeCatalog{}, err
 	}
-	out, err := paperOutcomeCatalog(feed.ReceiverID, all, decisions, s, feed, decisionEval, eval)
+	out, err := readActivePaperOutcomes(ctx, tx, feed.ReceiverID, all, decisions, s, feed, decisionEval, eval)
 	if err != nil {
 		return PaperOutcomeCatalog{}, err
 	}

@@ -85,6 +85,23 @@ review. Missing selected decisions/reviews/cases return 404, malformed requests
 validate the entire review prefix, so unrelated corruption cannot be hidden by a
 selected read. Self-rehashing findings, case IDs or authority flags fails replay.
 
+The current decision catalogue is checked against independently reserved active
+owner intervals. A review may reference an independently approved retired
+decision: the service resolves that decision's first archive, verifies its actual
+creation/scope/payload custody and replays its native strategy and feed evidence
+at the original time. Existing findings, source bindings, case IDs and exact
+clock-free review retries retain their original values. New typed claim reviews
+can select that same original decision by its unchanged ID and hash. Missing
+unretired decisions cannot fall back to an archive, and a later archived copy
+cannot replace an unavailable first original.
+
+Historical decision dependencies are private and bounded by the 64 retained
+reviews plus one requested target. They do not enlarge the public active
+decision catalogue. Review records themselves still occupy their bounded active
+registry, and actual social/copy journal validation remains required. This does
+not enable physical paper retirement or retire review records; allocation,
+attribution and complete archival consumers remain separate delivery work.
+
 ## Persistence and rollback
 
 Memory serializes the aggregate under its mutex. PostgreSQL schema 45 adds

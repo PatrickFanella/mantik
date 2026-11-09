@@ -180,7 +180,7 @@ func evaluationCorporateSourceCuts(t *testing.T, s corporateAssessmentBackend) {
 		}
 	}
 	// Actual old v4 receipts retain their bytes and acquire no retrospective cut.
-	legacy, err := paperEvaluationAssessmentRecipe(r.Record.Command, r.Record.Evidence, r.Record.WarmUp, "mantik-owned-paper-evaluation-assessment-v4")
+	legacy, err := paperEvaluationAssessmentRecipe(r.Record.Command, predecessorPaperEvidence(t, s, r.Record, de, oe), r.Record.WarmUp, "mantik-owned-paper-evaluation-assessment-v4")
 	if err != nil {
 		t.Fatal(err)
 	}

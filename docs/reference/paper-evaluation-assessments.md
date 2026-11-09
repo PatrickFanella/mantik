@@ -55,12 +55,18 @@ Assessment catalogue reads and exact POST retries resolve each actual assessment
 owner's immutable creation epoch. An assessment already sealed by a paper archive
 uses its first archive at `created_epoch+1`; an unarchived owner uses the current
 native source snapshot. The resolver checks the actual record hash and exact
-clock, original archive header/body/membership and the complete original native
-decision/outcome catalogues before recomputing the assessment. It grants no
+clock and original archive header/body/membership before recomputing the
+assessment. Version 3 evidence replays the complete original native
+decision/outcome catalogues. Version 4 evidence pages the complete declared
+window through its saved creation epoch, resolves original payloads and replays
+their native sources. Its epoch must equal the assessment owner's immutable
+creation epoch, and its ordered original-pin root must match. It grants no
 authority based only on a stored result or a self-rehashed summary.
 
-This preserves the original evidence source hash, including issuance-time rows
-outside the declared sample window. Later active records and removal of old
+For version 3, this preserves the original evidence source hash, including
+issuance-time rows outside the declared sample window. Version 4 binds only the
+declared window and keeps its original epoch cutoff after later archives close.
+Later active records and removal of old
 paper inputs do not reinterpret an archived assessment. Existing schemas,
 recipes, payloads and hashes remain unchanged. All retained assessment owners
 are verified before an exact retry returns its original receipt, without reading
@@ -73,11 +79,20 @@ the same assessment replay in the same owner snapshot. They additionally check
 the pinned corporate cut against its actual source owner. A legacy assessment
 without that cut retains its explicit unavailable status.
 
-Physical paper retirement is still disabled. New assessment issuance still
-uses current retained paper inputs; archive-aware selection of all applicable
-historical samples and the allocation/admission consumers remain required before
-retirement can be enabled. This replay unit does not extend active limits or
-qualify an unattended run.
+New assessment issuance uses version 4 window evidence, including approved
+retired decisions and their outcomes. Evidence and entry-source inspection use
+the same result at the same service clock. Existing recipe checks and authority
+flags remain unchanged. Allocation, admission-review, attribution and archive
+consumers use the assessment's actual evidence version and original owner cut;
+allocation reads also retain complete native verification of active outcomes.
+Physical paper retirement remains disabled until pending outcomes, open
+allocation/review references and the remaining retention transaction are ready.
+This unit does not extend active limits or qualify an unattended run.
+
+Version 4 receipts require a binary that supports their window selection.
+Earlier readers fail closed on this evidence version. Preserve matching binaries
+and backups when planning rollback; existing version 3 receipts remain readable
+without rewriting their payloads or hashes.
 
 ## Retained observed portfolio accounting
 

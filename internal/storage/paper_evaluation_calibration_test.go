@@ -15,7 +15,7 @@ import (
 // result does not acquire the later calibration applicability result.
 func legacyCalibrationFixture(t *testing.T, s assessmentBackend, receipt PaperEvaluationAssessmentReceipt, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) PaperEvaluationAssessmentReceipt {
 	t.Helper()
-	old, err := paperEvaluationAssessmentRecipe(receipt.Record.Command, receipt.Record.Evidence, receipt.Record.WarmUp, "mantik-owned-paper-evaluation-assessment-v2")
+	old, err := paperEvaluationAssessmentRecipe(receipt.Record.Command, predecessorPaperEvidence(t, s, receipt.Record, de, oe), receipt.Record.WarmUp, "mantik-owned-paper-evaluation-assessment-v2")
 	if err != nil {
 		t.Fatal(err)
 	}

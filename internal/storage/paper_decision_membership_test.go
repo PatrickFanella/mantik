@@ -85,21 +85,31 @@ func paperDecisionMembershipContract(t *testing.T, s decisionTimeBackend) {
 	}
 	// A retained v1 envelope keeps its original bytes and clock-free retry.
 	// Its legacy replay contract is not promoted to v2 completeness.
+	legacyCommand := command
+	legacyCommand.ID = "membership-legacy-decision"
 	legacy := clone(saved)
-	legacy.Record, err = paperDecisionForSchema("mantik-owned-paper-decision-v1", command, legacy.Basis, saved.Record.FinalizedAt, eval)
+	legacy.Record, err = paperDecisionForSchema("mantik-owned-paper-decision-v1", legacyCommand, legacy.Basis, saved.Record.FinalizedAt, eval)
 	if err != nil {
 		t.Fatal(err)
 	}
-	set(legacy)
 	legacyBytes, err := json.Marshal(legacy)
 	if err != nil {
 		t.Fatal(err)
 	}
-	retry, err := s.FinalizePaperDecision(ctx, command, func() time.Time { panic("legacy retry clock") }, eval)
+	// Seed a distinct predecessor whose first insertion reserves its v1 hash.
+	if m, ok := s.(*Memory); ok {
+		m.mu.Lock()
+		m.paperDecisions[legacyCommand.ID] = clone(legacy)
+		m.retainPaperRecordEpoch("decision", legacyCommand.ID, legacy.Record.SHA256, legacy.Record.FinalizedAt)
+		m.mu.Unlock()
+	} else if _, err := s.(*Postgres).pool.Exec(ctx, "INSERT INTO mantik_paper_decisions(id,payload) VALUES($1,$2)", legacyCommand.ID, legacyBytes); err != nil {
+		t.Fatal(err)
+	}
+	retry, err := s.FinalizePaperDecision(ctx, legacyCommand, func() time.Time { panic("legacy retry clock") }, eval)
 	if err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, legacy.Record) {
 		t.Fatal("legacy decision changed", retry, err)
 	}
-	legacySources, err := s.PaperDecisionSources(ctx, command.ID, eval)
+	legacySources, err := s.PaperDecisionSources(ctx, legacyCommand.ID, eval)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +117,17 @@ func paperDecisionMembershipContract(t *testing.T, s decisionTimeBackend) {
 	if err != nil || string(readBytes) != string(legacyBytes) {
 		t.Fatal("legacy source bytes changed", err)
 	}
-	set(saved)
+	nativeFeed, err := s.FeedEvidence(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeStrategies, err := s.PaperStrategies(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := replayPaperDecisionRecords(owner, map[string]retainedPaperDecision{command.ID: saved}, nativeStrategies, nativeFeed, eval); err != nil {
+		t.Fatal("native membership positive control", err)
+	}
 	for _, kind := range []string{"admission", "publication"} {
 		t.Run(kind+"_omission", func(t *testing.T) {
 			forged := clone(saved)
@@ -122,6 +142,9 @@ func paperDecisionMembershipContract(t *testing.T, s decisionTimeBackend) {
 			forged.Record.BasisSHA256 = workerplan.Hash(forged.Basis)
 			forged.Record.SHA256 = ""
 			forged.Record.SHA256 = workerplan.Hash(forged.Record)
+			if _, err := replayPaperDecisionRecords(owner, map[string]retainedPaperDecision{command.ID: forged}, nativeStrategies, nativeFeed, eval); err == nil {
+				t.Error("native replay accepted source omission independently of identity metadata")
+			}
 			set(forged)
 			defer set(saved)
 			if _, e := s.PaperDecisionSources(ctx, command.ID, eval); e == nil {

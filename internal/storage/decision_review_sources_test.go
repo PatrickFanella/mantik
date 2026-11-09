@@ -365,6 +365,62 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 		}
 		sourceReviewMigrationContract(t, pg, final.Records[0].Command.ID)
 	}
+	// A real archive supplies the decision after fixture-only approved
+	// retirement. Reviews keep their actual social/copy source cuts and cases.
+	at = at.Add(time.Second)
+	archive, err := s.(PaperRecordArchiveStore).ArchivePaperRecords(ctx, owner, clock, eval, oe)
+	if err != nil || archive.Header.Sequence != 1 {
+		t.Fatal("review dependency archive", err)
+	}
+	if m, ok := s.(*Memory); ok {
+		m.mu.Lock()
+		m.paperRecordRetiredEpochs = map[string]int64{"decision:" + command.ID: 1}
+		delete(m.paperDecisions, command.ID)
+		m.mu.Unlock()
+	} else if _, err := s.(*Postgres).pool.Exec(ctx, `ALTER TABLE mantik_paper_record_epochs DISABLE TRIGGER mantik_immutable_paper_epochs;
+UPDATE mantik_paper_record_epochs SET retired_epoch=1 WHERE kind='decision' AND record_id='membership-decision';
+ALTER TABLE mantik_paper_record_epochs ENABLE TRIGGER mantik_immutable_paper_epochs;
+DELETE FROM mantik_paper_decisions WHERE id='membership-decision'`); err != nil {
+		t.Fatal(err)
+	}
+	retained, err := s.DecisionReviews(ctx, eval)
+	if err != nil || !reflect.DeepEqual(retained, final) {
+		t.Fatal("retired decision changed source-backed findings or cases", err)
+	}
+	if retry, err := s.ReviewPaperDecision(ctx, legacyCommand, noClock, eval); err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, legacy.Record) {
+		t.Fatal("retired dependency changed clock-free review retry", err)
+	}
+	newCommand := clone(legacyCommand)
+	newCommand.ID = "archived-decision-review"
+	at = at.Add(time.Second)
+	newReview, err := s.ReviewPaperDecision(ctx, newCommand, clock, eval)
+	if err != nil || newReview.Duplicate || newReview.Record.AdmissionAvailable || newReview.Record.ExecutionAvailable || newReview.Record.QualificationCredit {
+		t.Fatal("review of actual archived decision", err)
+	}
+	current, err := s.DecisionReviews(ctx, eval)
+	if err != nil || len(current.Records) != len(final.Records)+1 {
+		t.Fatal("new review lost retained source-backed history", err)
+	}
+	changed := func(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time) (PaperDecisionEvaluation, error) {
+		v, err := eval(c, b, at)
+		if c.ID == command.ID {
+			v.ReasonCode = "changed_archived_native_evaluation"
+		}
+		return v, err
+	}
+	if got, err := s.DecisionReviews(ctx, changed); err == nil || !reflect.DeepEqual(got, DecisionReviewCatalog{}) {
+		t.Fatal("archive custody replaced native decision replay for reviews", err)
+	}
+	if pg, ok := s.(*Postgres); ok {
+		reopened, err := OpenPostgres(ctx, pg.pool.Config().ConnString())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer reopened.Close()
+		if got, err := reopened.DecisionReviews(ctx, eval); err != nil || !reflect.DeepEqual(got, current) {
+			t.Fatal("reopen lost archived review dependencies", err)
+		}
+	}
 }
 
 func sourceReviewMigrationContract(t *testing.T, p *Postgres, id string) {

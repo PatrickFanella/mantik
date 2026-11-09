@@ -1,10 +1,6 @@
 package storage
 
-import (
-	"context"
-	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
-	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
-)
+import "context"
 
 // Evaluators are compiled service callbacks, never public command fields. Old
 // internal callers may omit the outcome callback only while no assessment owner
@@ -19,20 +15,21 @@ func allocationOutcomeEvaluator(evals []PaperOutcomeEvaluator) (PaperOutcomeEval
 	return evals[0], nil
 }
 
-// Reuse the already replayed owner catalogues and the caller's aggregate lock or
-// database transaction. No assessment is accepted just because its digest or
-// self-declared check flags look valid. This validates the entire owner before a
-// comparison catalogue, new receipt or historical exact retry can escape.
-func resolveAllocationAssessmentOwner(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, declarations PaperEvaluationDeclarationCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, outcomes map[string]retainedPaperOutcome, feed FeedEvidenceSnapshot, corporate []CorporateActionSourceRecord, references []CorporateReferenceSourceRecord, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, policies allocation.PolicyCatalog, portfolioEval PaperPortfolioEvaluator) (PaperEvaluationAssessmentCatalog, error) {
-	if len(all) == 0 {
-		return PaperEvaluationAssessmentCatalog{ReceiverID: owner, Records: []PaperEvaluationAssessment{}}, nil
+// Allocation reads retain their complete active outcome-owner check, including
+// outcomes outside an individual assessment's selected window.
+func (m *Memory) allocationAssessmentOwnersLocked(ctx context.Context, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationAssessmentCatalog, error) {
+	if len(m.evaluationAssessments) == 0 {
+		return m.paperAssessmentOwnersLocked(ctx, de, oe)
 	}
 	if oe == nil {
 		return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentInvalid
 	}
-	actual, err := paperOutcomeCatalog(owner, outcomes, retained, strategies, feed, de, oe)
+	strategies, err := m.paperStrategiesLocked()
 	if err != nil {
 		return PaperEvaluationAssessmentCatalog{}, err
 	}
-	return paperEvaluationAssessmentCatalog(ctx, owner, all, paperEvaluationSources{corporateSources: corporate, referenceSources: references, declarations: declarations, decisions: decisions, outcomes: actual, retained: retained, sourceClock: feed.Collectors.LastClock, strategies: strategies, policies: policies, retainedOutcomes: outcomes, portfolioEvaluator: portfolioEval})
+	if _, err := paperOutcomeCatalog(m.receiverID, m.paperOutcomes, m.paperDecisions, strategies, m.decisionFeedLocked(), de, oe); err != nil {
+		return PaperEvaluationAssessmentCatalog{}, err
+	}
+	return m.paperAssessmentOwnersLocked(ctx, de, oe)
 }

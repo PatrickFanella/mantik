@@ -33,7 +33,9 @@ func paperArchiveFeedKeys(a PaperRecordArchive) []string {
 // outside the declared sample window. Replay from the original owner context,
 // not from whatever decision/outcome rows remain active today. This does not
 // select evidence for a newly issued assessment.
-func paperAssessmentOwnerCatalog(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, epochs map[string]PaperRecordEpoch, head int64, original func(int64) (PaperRecordArchive, error), current func() (paperEvaluationSources, error), de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator) (PaperEvaluationAssessmentCatalog, error) {
+type paperWindowAssessmentReader func(PaperEvaluationAssessment, *PaperArchiveContext) (paperEvaluationSources, error)
+
+func paperAssessmentOwnerCatalog(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, epochs map[string]PaperRecordEpoch, head int64, original func(int64) (PaperRecordArchive, error), current func() (paperEvaluationSources, error), de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator, window paperWindowAssessmentReader) (PaperEvaluationAssessmentCatalog, error) {
 	out := PaperEvaluationAssessmentCatalog{ReceiverID: owner, Records: []PaperEvaluationAssessment{}}
 	if !ValidReceiverID(owner) || len(all) > MaxPaperEvaluationAssessments || de == nil || oe == nil {
 		return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentInvalid
@@ -71,43 +73,74 @@ func paperAssessmentOwnerCatalog(ctx context.Context, owner string, all map[stri
 		}
 		r := all[id]
 		e := epochs["assessment:"+id]
-		// The next archive is absent for owners born at the current head.
-		next := e.CreatedEpoch + 1
-		if sequence != next {
-			var err error
-			if next > head {
-				sources, err = current()
-				archived = nil
-			} else {
-				a, loadErr := original(next)
-				if loadErr != nil {
-					if errors.Is(loadErr, ErrPaperRecordArchiveNotFound) || errors.Is(loadErr, ErrPaperRecordArchiveConflict) || errors.Is(loadErr, ErrFeedArchiveConflict) {
-						loadErr = ErrPaperEvaluationAssessmentConflict
-					}
-					return PaperEvaluationAssessmentCatalog{}, loadErr
+		var selected paperEvaluationSources
+		if r.Evidence.Schema == paperWindowEvidenceSchema {
+			if r.Evidence.Selection == nil || r.Evidence.Selection.ThroughEpoch != e.CreatedEpoch || window == nil {
+				return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentConflict
+			}
+			var originalContext *PaperArchiveContext
+			if next := e.CreatedEpoch + 1; next <= head {
+				a, err := original(next)
+				if err != nil {
+					return PaperEvaluationAssessmentCatalog{}, err
 				}
 				if a.Sequence != next || a.ReceiverID != owner {
 					return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentConflict
 				}
-				o, decodeErr := decodePaperArchiveOwners(a.Records)
-				if decodeErr != nil {
-					return PaperEvaluationAssessmentCatalog{}, decodeErr
+				o, err := decodePaperArchiveOwners(a.Records)
+				if err != nil {
+					return PaperEvaluationAssessmentCatalog{}, err
 				}
-				sources, err = paperArchiveEvaluationSources(ctx, a.Context, o, de, oe, portfolio)
-				archived = o.assessments
+				if saved, ok := o.assessments[id]; !ok || !reflect.DeepEqual(saved, r) {
+					return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentConflict
+				}
+				originalContext = &a.Context
 			}
+			var err error
+			selected, err = window(r, originalContext)
 			if err != nil {
 				return PaperEvaluationAssessmentCatalog{}, err
 			}
-			sequence = next
-		}
-		if archived != nil {
-			original, ok := archived[id]
-			if !ok || !reflect.DeepEqual(original, r) {
-				return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentConflict
+		} else {
+			// The next archive is absent for owners born at the current head.
+			next := e.CreatedEpoch + 1
+			if sequence != next {
+				var err error
+				if next > head {
+					sources, err = current()
+					archived = nil
+				} else {
+					a, loadErr := original(next)
+					if loadErr != nil {
+						if errors.Is(loadErr, ErrPaperRecordArchiveNotFound) || errors.Is(loadErr, ErrPaperRecordArchiveConflict) || errors.Is(loadErr, ErrFeedArchiveConflict) {
+							loadErr = ErrPaperEvaluationAssessmentConflict
+						}
+						return PaperEvaluationAssessmentCatalog{}, loadErr
+					}
+					if a.Sequence != next || a.ReceiverID != owner {
+						return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentConflict
+					}
+					o, decodeErr := decodePaperArchiveOwners(a.Records)
+					if decodeErr != nil {
+						return PaperEvaluationAssessmentCatalog{}, decodeErr
+					}
+					sources, err = paperArchiveEvaluationSources(ctx, a.Context, o, de, oe, portfolio)
+					archived = o.assessments
+				}
+				if err != nil {
+					return PaperEvaluationAssessmentCatalog{}, err
+				}
+				sequence = next
 			}
+			if archived != nil {
+				original, ok := archived[id]
+				if !ok || !reflect.DeepEqual(original, r) {
+					return PaperEvaluationAssessmentCatalog{}, ErrPaperEvaluationAssessmentConflict
+				}
+			}
+			selected = sources
 		}
-		verified, err := paperEvaluationAssessmentCatalog(ctx, owner, map[string]PaperEvaluationAssessment{id: r}, sources)
+		verified, err := paperEvaluationAssessmentCatalog(ctx, owner, map[string]PaperEvaluationAssessment{id: r}, selected)
 		if err != nil {
 			return PaperEvaluationAssessmentCatalog{}, err
 		}
@@ -129,14 +162,23 @@ func paperAssessmentOwnerCatalog(ctx context.Context, owner string, all map[stri
 }
 
 func (m *Memory) paperAssessmentOwnersLocked(ctx context.Context, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationAssessmentCatalog, error) {
-	return paperAssessmentOwnerCatalog(ctx, m.receiverID, m.evaluationAssessments, m.paperRecordEpochs, int64(len(m.paperRecordArchives)), func(sequence int64) (PaperRecordArchive, error) {
+	if len(m.evaluationAssessments) == 0 {
+		return PaperEvaluationAssessmentCatalog{ReceiverID: m.receiverID, Records: []PaperEvaluationAssessment{}}, ctx.Err()
+	}
+	return m.paperAssessmentOwnersFromLocked(ctx, m.evaluationAssessments, de, oe)
+}
+
+func (m *Memory) paperAssessmentOwnersFromLocked(ctx context.Context, all map[string]PaperEvaluationAssessment, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationAssessmentCatalog, error) {
+	return paperAssessmentOwnerCatalog(ctx, m.receiverID, all, m.paperRecordEpochs, int64(len(m.paperRecordArchives)), func(sequence int64) (PaperRecordArchive, error) {
 		a, err := m.paperRecordArchivePayloadLocked(sequence)
 		if err != nil {
 			return PaperRecordArchive{}, err
 		}
 		a.Context.Feed.custody, err = m.feedCustodyForOwnersLocked(a.Context.Feed.Retention, paperArchiveFeedKeys(a))
 		return a, err
-	}, func() (paperEvaluationSources, error) { return m.paperEvaluationSourcesLocked(de, oe) }, de, oe, m.portfolioEvaluator)
+	}, func() (paperEvaluationSources, error) { return m.paperEvaluationSourcesLocked(de, oe) }, de, oe, m.portfolioEvaluator, func(r PaperEvaluationAssessment, original *PaperArchiveContext) (paperEvaluationSources, error) {
+		return m.paperWindowAssessmentSourcesLocked(ctx, r, original, de, oe)
+	})
 }
 
 func readPaperAssessmentOwners(ctx context.Context, tx pgx.Tx, owner string, all map[string]PaperEvaluationAssessment, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator) (PaperEvaluationAssessmentCatalog, error) {
@@ -157,5 +199,7 @@ func readPaperAssessmentOwners(ctx context.Context, tx pgx.Tx, owner string, all
 		return a, err
 	}, func() (paperEvaluationSources, error) {
 		return readPaperEvaluationSources(ctx, tx, false, de, oe, portfolio)
-	}, de, oe, portfolio)
+	}, de, oe, portfolio, func(r PaperEvaluationAssessment, original *PaperArchiveContext) (paperEvaluationSources, error) {
+		return readPaperWindowAssessmentSources(ctx, tx, r, original, de, oe, portfolio)
+	})
 }

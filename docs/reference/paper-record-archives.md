@@ -103,6 +103,36 @@ the resolver retains at most one raw archive segment at a time. PostgreSQL uses
 the owner interval index and original-ID table indexes, without joining all
 historical payloads into the current catalogue.
 
+Targeted decision/outcome source reads and their existing record routes use
+the same independently reserved identity. For an approved retired identity,
+they resolve `created_epoch+1`, recheck actual scope and payload custody and run
+the native evaluator against that archive's original feed/strategy context.
+An outcome also resolves and replays its actual decision dependency. Decision
+explanations render those finalized original facts. Exact retired command
+retries return the original receipt with `duplicate: true` without sampling a
+clock; changed commands conflict and failed replay returns no receipt or sources.
+An archive alone never authorizes fallback for a missing unretired active row.
+Lists and active-owner writes keep their complete active-catalogue validation.
+This reader preparation does not authorize retirement, reuse an identity,
+issue new outcomes for retired decisions or remove working capacity limits.
+
+Current decision/outcome catalogue reads and writes now prove their working set
+against the actual active owner intervals, then replay every native record.
+PostgreSQL uses the existing GiST interval index and bounded metadata selection
+at the current archive head; it does not scan historical payloads to enumerate
+the working set. Memory scans its identity metadata while retaining only the
+bounded active rows. Original hashes, exact clocks and strategy/decision scope
+must match each active envelope. Historical checkpoint and archive replay keep
+their complete original owner sets and counters.
+
+Decision reviews use that active proof and resolve only their additional actual
+retired decision dependencies from the first original archives. The review
+catalogue/cases, source-bound findings and exact retries survive that dependency
+move; a new typed review can also select the original decision. Review retirement,
+allocation/attribution references, archive-writer transitions and automatic
+retention still require their remaining owner work before physical removal is
+enabled.
+
 Private source-custody views use the same owner scope. Working reads load seals
 only for actual active decision/outcome IDs; historical checkpoint inspection
 uses its independently selected owner interval, and archive inspection uses its
@@ -117,8 +147,8 @@ the original strategy ID/version, decision ID/hash and exact seconds/nanoseconds
 of decision finalization. An outcome derives its scope from its actual retained
 decision basis. Its own evaluation clock remains the separate availability time.
 These columns and the `mantik_paper_sample_window` index prepare bounded window
-selection across active and archived owners. New assessments still use their
-existing active catalogue in this unit.
+selection across active and archived owners. The window consumer below uses
+these original scope pins for new assessments.
 
 The migration backfills from retained native envelopes and checks original
 record hashes and clocks. Replaying populated schema 107 rejects missing or
@@ -150,10 +180,43 @@ history. PostgreSQL merges bounded indexed batches from the declared variants;
 memory retains only the next bounded batch while scanning its metadata. Cursors
 bind the declaration, exact as-of cut and actual archive head, and pages must
 share one owner transaction/snapshot or memory lock. There is no public cursor
-API. These records are selection metadata, not evidence or authority: the next
-assessment consumer must resolve original payloads, verify custody and replay
-the native evaluations before using them. New assessment issuance still uses
-its existing active catalogue in this unit.
+API. These records are selection metadata, not evidence or authority. The native
+assessment consumer resolves original payloads, verifies custody and replays
+the evaluations before using them.
+
+Private payload pages resolve those selections in the same owner snapshot. Each
+page rechecks actual creation, retirement and scope metadata. An active row must
+match its original record hash, clock, receiver and basis hash; a damaged active
+row cannot fall back to an archive. Only an approved retirement permits a missing
+active row to resolve from its first archive at `created_epoch+1`. The archive's
+original body, header and independently closed membership must validate. A later
+copy never substitutes for a missing first original.
+
+Payload pages preserve a 64 MiB total selected-payload budget and retain at most
+one archive segment while resolving a page. Returned native envelopes are
+detached from retained state. Any row, scope, original or budget failure returns
+no partial owners.
+
+The private native reader accepts up to 64 selected records and reserves the
+remaining payload-page slots for their actual decision dependencies. An outcome
+on a later page resolves its decision through the original creation metadata,
+including an approved retired decision. The reader replays each decision and
+outcome against the actual strategy, feed and source seals in the same owner
+snapshot. Its feed-custody view contains only those actual owners. Selected-page
+counts never replace the full catalogue's checkpoint counts; full-catalogue
+readers retain their existing completeness checks. A missing dependency,
+changed source or different native result returns no partial owners.
+
+New evidence reads, entry-source reads and assessment issuance use version 4
+window evidence over those native pages. The source cut binds the complete
+declared window to its original creation-epoch cutoff and ordered original pins.
+It includes approved retired decisions and their outcomes, including inspectable
+late attempts. A complete window can exceed active catalogue capacity, subject
+to a 64 MiB total native-source budget and the existing 8 MiB evidence wire bound.
+Issuance, exact retry, assessment inspection, archive replay, allocation and
+attribution consumers validate the same owner-derived cut. Earlier version 3
+evidence keeps its original complete-catalogue recipe and hashes. Physical
+paper retirement and scheduling still require the remaining consumer work.
 
 After a paper archive exists, new feed/paper custody checkpoints use
 `mantik-paper-feed-checkpoint-v2` and bind the actual `paper_archive_sequence`.

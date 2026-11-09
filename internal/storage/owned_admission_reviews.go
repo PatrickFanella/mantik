@@ -239,7 +239,7 @@ func (m *Memory) admissionReviewSourcesLocked(ctx context.Context, de PaperDecis
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
-	actual, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, plans, d, s, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, m.corporateReferenceSources, de, oe, p, m.portfolioEvaluator)
+	actual, err := m.allocationAssessmentOwnersLocked(ctx, de, oe)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
@@ -321,7 +321,7 @@ func (p *Postgres) admissionReviewAccess(ctx context.Context, write bool, c Owne
 	if err != nil {
 		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
 	}
-	actual, err := paperEvaluationAssessmentCatalog(ctx, s.declarations.ReceiverID, assessments, s)
+	actual, err := readPaperAssessmentOwners(ctx, tx, s.declarations.ReceiverID, assessments, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return OwnedAdmissionReviewCatalog{}, OwnedAdmissionReviewReceipt{}, err
 	}

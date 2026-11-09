@@ -192,21 +192,25 @@ to actual owner decisions and forward-quote outcomes. It uses the same bearer
 authentication and accepts no query string, request body, caller clock, result,
 decision list or replacement source history. Memory holds its aggregate mutex;
 PostgreSQL reads one repeatable-read, read-only transaction. All declarations,
-strategies, policies, decisions and outcomes are revalidated against their owner
-records before selection. Missing declarations return 404; unavailable or invalid
+strategies and policies are revalidated against their owner records. Selected
+decisions and outcomes are resolved from actual active or approved retired owners
+and replayed natively before use. Missing declarations return 404; unavailable or invalid
 owner evidence returns 503. Invalid paths, bodies and queries return 422.
 
 The service reads its clock once. It refuses a clock behind retained collector,
 declaration, decision or outcome history. The report binds that clock, the exact
-declaration and the complete current source catalogues. It is a current read,
-not an immutable evaluation receipt. A source-catalogue or clock change can
+declaration and its complete selected window. The owner-produced `selection`
+binds the creation-epoch cutoff, selected record count and ordered original
+creation/scope pins. Retirement metadata does not enter that pin root. It is a
+current read, not an immutable evaluation receipt. A source-cut or clock change can
 change its hash. The response is bounded to 8 MiB and detached from retained
 storage. Reading it writes no journal, account, admission or operational state.
 
-Rows include every decision matching an exact declared strategy-record pin,
-ordered by finalization time and then ID. Decisions outside the observation
-window, abstentions, unavailable-as-of sources and synthetic evidence remain
-visible with exclusion statuses. Both finalization and quote occurrence must
+Rows include every decision matching an exact declared strategy-record pin and
+finalized in `[window_start, window_end)`, ordered by finalization time and then
+ID. Decisions outside that window remain inspectable through their original
+record/archive endpoints. Within the window, abstentions, unavailable-as-of
+sources and synthetic evidence retain exclusion statuses. Both finalization and quote occurrence must
 fall within `[window_start, window_end)`. A selected source must have occurred,
 been received, become available and been published by decision finalization.
 The original evidence class remains visible; no class is promoted.
@@ -220,7 +224,14 @@ of independence across feeds/providers or overlapping holding horizons. The
 `independent_samples_available` flag stays false; these counts cannot satisfy
 `min_independent_decisions` or an admission rule on their own.
 
-The evidence response uses schema `mantik-owned-paper-evaluation-evidence-v3`.
+The evidence response uses schema `mantik-owned-paper-evaluation-evidence-v4`.
+Metadata and native payload pages share one owner snapshot. Native replay reads
+at most 64 selected records plus their decision dependencies per page, and the
+complete selected native source set is bounded to 64 MiB. A larger source set,
+missing original, replay error or cancellation returns no partial report.
+The response still has its separate 8 MiB wire bound. Existing assessments with
+version 3 evidence retain their complete original catalogue hashes and rows;
+they are not rewritten into this window format.
 All actual forward-outcome attempts remain attached to their decision, including
 waiting and unavailable statuses. Each row partitions attempts by the owner's
 `evaluated_at`: `outcomes` contains attempts finalized at or before the declared

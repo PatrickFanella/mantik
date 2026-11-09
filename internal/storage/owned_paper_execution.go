@@ -893,7 +893,7 @@ func (m *Memory) ExecuteOwnedAllocations(ctx context.Context, c OwnedExecutionCo
 	if err != nil {
 		return OwnedExecutionReceipt{}, err
 	}
-	assessments, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, declarations, decisions, strategies, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, m.corporateReferenceSources, eval, oe, policies, m.portfolioEvaluator)
+	assessments, err := m.allocationAssessmentOwnersLocked(ctx, eval, oe)
 	if err != nil {
 		return OwnedExecutionReceipt{}, err
 	}

@@ -4,7 +4,37 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 )
+
+func predecessorPaperEvidence(t *testing.T, backend assessmentBackend, r PaperEvaluationAssessment, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) PaperEvaluationEvidence {
+	t.Helper()
+	ctx := t.Context()
+	var s paperEvaluationSources
+	var err error
+	if m, ok := backend.(*Memory); ok {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		s, err = m.paperEvaluationSourcesLocked(de, oe)
+	} else {
+		tx, e := backend.(*Postgres).pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer tx.Rollback(ctx)
+		s, err = readPaperEvaluationSources(ctx, tx, false, de, oe, backend.(*Postgres).portfolioEvaluator)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.selection = nil
+	e, err := s.evidence(ctx, r.Command.DeclarationID, r.AssessedAt)
+	if err != nil || e.Schema != "mantik-owned-paper-evaluation-evidence-v3" || e.Selection != nil || e.AsOf.IsZero() {
+		t.Fatal("predecessor complete evidence fixture", err)
+	}
+	return e
+}
 
 // Build a genuine predecessor fixture before any archive closes its identity.
 // Damage fixtures must leave the immutable owner hash untouched instead.

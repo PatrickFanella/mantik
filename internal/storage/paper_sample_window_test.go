@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -47,6 +49,29 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 		return PaperOutcomeEvaluation{Status: "not_applicable", ReasonCode: "sample_window_fixture_only"}, nil
 	}
 	want := map[string]paperSampleRecord{}
+	originals := map[string][]byte{}
+	remember := func(kind, id string) {
+		t.Helper()
+		var raw []byte
+		var err error
+		if m, ok := s.(*Memory); ok {
+			if kind == "decision" {
+				raw, err = json.Marshal(m.paperDecisions[id])
+			} else {
+				raw, err = json.Marshal(m.paperOutcomes[id])
+			}
+		} else {
+			table := "mantik_paper_decisions"
+			if kind == "outcome" {
+				table = "mantik_paper_outcomes"
+			}
+			err = s.(*Postgres).pool.QueryRow(ctx, "SELECT payload FROM "+table+" WHERE id=$1", id).Scan(&raw)
+		}
+		if err != nil {
+			t.Fatal("original sample envelope", err)
+		}
+		originals[kind+":"+id] = raw
+	}
 	addDecision := func(id string, variant int, ns int64, epoch int64, selected bool) PaperDecisionRecord {
 		t.Helper()
 		at = command.Plan.WindowStart.Add(time.Duration(ns))
@@ -57,6 +82,7 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 		}
 		if selected {
 			want["decision:"+id] = paperSampleRecord{PaperRecordEpoch{"decision", id, epoch, r.Record.SHA256, r.Record.FinalizedAt}, paperScopeForDecision(r.Record), 0}
+			remember("decision", id)
 		}
 		return r.Record
 	}
@@ -67,6 +93,7 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 			t.Fatal("outcome window fixture", id, err)
 		}
 		want["outcome:"+id] = paperSampleRecord{PaperRecordEpoch{"outcome", id, epoch, r.Record.SHA256, r.Record.EvaluatedAt}, paperScopeForDecision(d), 0}
+		remember("outcome", id)
 	}
 	addDecision("before-window", 0, -1, 0, false)
 	for i := range 64 {
@@ -124,11 +151,31 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 	addOutcome("late-outcome", first, 1)
 
 	var page func(PaperEvaluationDeclaration, time.Time, *paperSampleCursor, int) (paperSamplePage, error)
+	var payloads func([]paperSampleRecord) (paperArchiveOwners, error)
+	var native func([]paperSampleRecord) (paperArchiveOwners, error)
+	var evaluationContext func() (paperEvaluationSources, error)
+	var epochPage func(int64, *paperSampleCursor) (paperSamplePage, error)
+	var release func()
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
 	if m, ok := s.(*Memory); ok {
 		m.mu.Lock()
-		defer m.mu.Unlock()
+		release = m.mu.Unlock
 		page = func(d PaperEvaluationDeclaration, at time.Time, c *paperSampleCursor, n int) (paperSamplePage, error) {
 			return m.paperSampleWindowLocked(ctx, d, at, c, n)
+		}
+		payloads = func(records []paperSampleRecord) (paperArchiveOwners, error) {
+			return m.paperSamplePayloadsLocked(ctx, command.ReceiverID, records)
+		}
+		native = func(records []paperSampleRecord) (paperArchiveOwners, error) {
+			return m.paperSampleNativeLocked(ctx, command.ReceiverID, records, de, oe)
+		}
+		evaluationContext = m.paperEvaluationContextLocked
+		epochPage = func(epoch int64, after *paperSampleCursor) (paperSamplePage, error) {
+			return m.paperSampleWindowAtEpochLocked(ctx, declaration.Record, at, epoch, after, maxPaperNativePage)
 		}
 	} else {
 		pg := s.(*Postgres)
@@ -136,9 +183,21 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer tx.Rollback(ctx)
+		release = func() { _ = tx.Rollback(ctx) }
 		page = func(d PaperEvaluationDeclaration, at time.Time, c *paperSampleCursor, n int) (paperSamplePage, error) {
 			return readPaperSampleWindow(ctx, tx, d, at, c, n)
+		}
+		payloads = func(records []paperSampleRecord) (paperArchiveOwners, error) {
+			return readPaperSamplePayloads(ctx, tx, command.ReceiverID, records)
+		}
+		native = func(records []paperSampleRecord) (paperArchiveOwners, error) {
+			return readPaperSampleNative(ctx, tx, command.ReceiverID, records, de, oe)
+		}
+		evaluationContext = func() (paperEvaluationSources, error) {
+			return readPaperEvaluationContext(ctx, tx, false, pg.portfolioEvaluator)
+		}
+		epochPage = func(epoch int64, after *paperSampleCursor) (paperSamplePage, error) {
+			return readPaperSampleWindowAtEpoch(ctx, tx, declaration.Record, at, epoch, after, maxPaperNativePage)
 		}
 	}
 	for _, asOf := range []time.Time{command.Plan.WindowStart, command.Plan.OutcomeDeadline, at} {
@@ -150,8 +209,21 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 			if err != nil || len(got.Records) > limit || got.Records == nil || batches > 1000 {
 				t.Fatal("window page", batches, err)
 			}
+			resolved, err := payloads(got.Records)
+			if err != nil || len(resolved.decisions)+len(resolved.outcomes) != len(got.Records) {
+				t.Fatal("original sample payload page", err)
+			}
 			for _, r := range got.Records {
 				key := r.Kind + ":" + r.ID
+				var raw []byte
+				if r.Kind == "decision" {
+					raw, err = json.Marshal(resolved.decisions[r.ID])
+				} else {
+					raw, err = json.Marshal(resolved.outcomes[r.ID])
+				}
+				if err != nil || !bytes.Equal(raw, originals[key]) {
+					t.Fatal("sample resolution rewrote an original envelope", key, err)
+				}
 				order := fmt.Sprintf("%020d.%09d\x00%s\x00%s\x00%020d.%09d\x00%s", r.Scope.DecisionAt.Unix(), r.Scope.DecisionAt.Nanosecond(), r.Scope.DecisionID, r.Kind, r.At.Unix(), r.At.Nanosecond(), r.ID)
 				if seen[key] || r != want[key] || r.At.After(asOf) || order <= previous {
 					t.Fatal("omission, duplication, clock or byte order changed", key)
@@ -176,6 +248,79 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 			t.Fatal("window count", len(seen), count)
 		}
 	}
+	// Native replay crosses the active catalogue's capacity and page boundaries
+	// without substituting selected-page counts for the original checkpoints.
+	seen := map[string]bool{}
+	var cursor *paperSampleCursor
+	for {
+		batch, err := page(declaration.Record, at, cursor, maxPaperNativePage)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owners, err := native(batch.Records)
+		if err != nil {
+			t.Fatal("large native sample page", err)
+		}
+		for _, r := range batch.Records {
+			key := r.Kind + ":" + r.ID
+			var raw []byte
+			if r.Kind == "decision" {
+				raw, err = json.Marshal(owners.decisions[r.ID])
+			} else {
+				raw, err = json.Marshal(owners.outcomes[r.ID])
+			}
+			if err != nil || seen[key] || !bytes.Equal(raw, originals[key]) {
+				t.Fatal("native sample changed or repeated an original", key, err)
+			}
+			seen[key] = true
+		}
+		if batch.Next == nil {
+			break
+		}
+		cursor = batch.Next
+	}
+	if len(seen) != len(want) {
+		t.Fatal("native pages omitted sample owners", len(seen), len(want))
+	}
+	oldCount := 0
+	cursor = nil
+	for {
+		batch, err := epochPage(0, cursor)
+		if err != nil {
+			t.Fatal("original epoch page", err)
+		}
+		oldCount += len(batch.Records)
+		for _, r := range batch.Records {
+			if r.CreatedEpoch != 0 {
+				t.Fatal("new epoch entered original cut", r.ID)
+			}
+		}
+		if batch.Next == nil {
+			break
+		}
+		if _, err := epochPage(1, batch.Next); !errors.Is(err, ErrPaperRecordArchiveInvalid) {
+			t.Fatal("cursor crossed creation epoch", err)
+		}
+		cursor = batch.Next
+	}
+	if oldCount != 128 {
+		t.Fatal("original epoch omitted closed sample", oldCount)
+	}
+	current, err := evaluationContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages := 0
+	partial, cut, err := paperWindowSources(ctx, command.ID, at, 1, current, false, func(d PaperEvaluationDeclaration, after *paperSampleCursor) (paperSamplePage, error) {
+		pages++
+		if pages == 2 {
+			return paperSamplePage{}, ErrPaperRecordArchiveConflict
+		}
+		return page(d, at, after, maxPaperNativePage)
+	}, native)
+	if !errors.Is(err, ErrPaperRecordArchiveConflict) || !reflect.DeepEqual(partial, paperEvaluationSources{}) || cut != (PaperEvaluationWindowSelection{}) || pages != 2 {
+		t.Fatal("later page failure returned partial sources or source cut", err, pages)
+	}
 	got, err := page(declaration.Record, at, nil, 1)
 	if err != nil || got.Next == nil || len(want) != 353 {
 		t.Fatal("large history fixture or initial cursor", len(want), err)
@@ -193,7 +338,7 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 	if _, err := page(other, at, got.Next, 17); !errors.Is(err, ErrPaperRecordArchiveInvalid) {
 		t.Fatal("cursor crossed a declaration scope", err)
 	}
-	if _, err := paperSampleQuery(declaration.Record, at, 2, got.Next, 17); !errors.Is(err, ErrPaperRecordArchiveInvalid) {
+	if _, err := paperSampleQuery(declaration.Record, at, 2, 2, got.Next, 17); !errors.Is(err, ErrPaperRecordArchiveInvalid) {
 		t.Fatal("cursor crossed archive heads", err)
 	}
 	for _, limit := range []int{0, 129} {
@@ -213,6 +358,34 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 		if err := pg.pool.QueryRow(ctx, "SELECT indexdef FROM pg_indexes WHERE indexname='mantik_paper_sample_window'").Scan(&definition); err != nil || !strings.Contains(definition, `COLLATE "C"`) {
 			t.Fatal("window index lost native byte order", definition, err)
 		}
+	}
+	release()
+	release = nil
+	// Exercise the actual evidence, issuance and retry APIs after original sample
+	// rows leave active state. The complete sample exceeds active decision capacity.
+	reader := s.(PaperEvaluationEvidenceStore)
+	evidence, err := reader.PaperEvaluationEvidence(ctx, command.ID, now, de, oe)
+	if err != nil || evidence.Schema != paperWindowEvidenceSchema || evidence.Selection == nil || evidence.Selection.ThroughEpoch != 1 || evidence.Selection.Records != 353 || len(evidence.Rows) != 288 {
+		t.Fatal("archive-backed evidence", evidence.Selection, len(evidence.Rows), err)
+	}
+	issuer := s.(PaperEvaluationAssessmentStore)
+	c := PaperEvaluationAssessmentCommand{ID: "sample-window-assessment", ReceiverID: command.ReceiverID, DeclarationID: command.ID, DeclarationSHA256: declaration.Record.SHA256}
+	assessment, err := issuer.AssessPaperEvaluation(ctx, c, now, de, oe)
+	if err != nil || assessment.Duplicate || !reflect.DeepEqual(assessment.Record.Evidence, evidence) || assessment.Record.AdmissionAvailable || assessment.Record.ExecutionAvailable || assessment.Record.QualificationCredit {
+		t.Fatal("archive-backed assessment issuance", err)
+	}
+	noClock := func() time.Time { t.Fatal("exact retry sampled a new clock"); return time.Time{} }
+	again, err := issuer.AssessPaperEvaluation(ctx, c, noClock, de, oe)
+	if err != nil || !again.Duplicate || !reflect.DeepEqual(again.Record, assessment.Record) {
+		t.Fatal("archive-backed exact assessment retry", err)
+	}
+	all, err := issuer.PaperEvaluationAssessments(ctx, de, oe)
+	if err != nil || len(all.Records) != 1 || !reflect.DeepEqual(all.Records[0], assessment.Record) {
+		t.Fatal("archive-backed assessment inspection", err)
+	}
+	entry, err := s.(PaperEvaluationEntrySourceStore).PaperEvaluationEntrySources(ctx, command.ID, now, de, oe)
+	if err != nil || !reflect.DeepEqual(entry.Evidence, evidence) || len(entry.Rows) != 0 {
+		t.Fatal("archive-backed entry-source selection", err)
 	}
 }
 
