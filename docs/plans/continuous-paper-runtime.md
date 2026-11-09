@@ -9,8 +9,8 @@ in #347. It permits bounded runs; it does not replace this archive work.
 | Unit | Result and boundary | Verification | State |
 | --- | --- | --- | --- |
 | Rehearsal prerequisites | Read all 2,048 supported publications in PostgreSQL, including exact retries beyond the former 128-record bound. | Reproduce the 129-of-140 truncation, then run Memory/PostgreSQL contracts, `make verify`, race and disposable integration. | PR #348 |
-| Rehearsal preparation | Start only new PostgreSQL and Mantik processes; register SPY/IEX declarations; forward advisory requests to Switchyard; interrupt only that connection; retain phases, failure attempts, restart readbacks and exact build/config identities. | Closed-market preflight, proxy outage/recovery tests, then a scheduled regular-session run. | In progress |
-| Feed and collector archive | Seal immutable raw publications, admissions, lease commands and their routed inputs together. Keep current leases, latest coverage inputs, pending publications and routing facts available. Preserve exact historical retries and original source bytes. | Cross the active bounds, verify old retries and conflicts, audit seals against original records, fail on missing/changed source, exercise concurrent writes and rollback/restart/restore. | Next |
+| Rehearsal preparation | Start only new PostgreSQL and Mantik processes; register SPY/IEX declarations; forward advisory requests to Switchyard; interrupt only that connection; retain phases, failure attempts, restart readbacks and exact build/config identities. | Closed-market preflight, proxy outage/recovery tests, then a scheduled regular-session run. | PR #349; preflight passed; market run pending |
+| Feed and collector archive | Seal immutable raw publications, admissions, lease commands and their routed inputs together. Keep current leases, latest coverage inputs, pending publications and routing facts available. Preserve exact historical retries and original source bytes. | Cross the active bounds, verify old retries and conflicts, audit seals against original records, fail on missing/changed source, exercise concurrent writes and rollback/restart/restore. | Source custody implemented; archive-aware reads/pruning pending |
 | Paper archive | Archive finalized decisions, completed outcomes and assessments with their full source dependencies. Retain open execution books, pending outcome windows and still-applicable evaluation inputs. Historical assessment replay must use the original cut. | Compare pre/post-archive replay and attribution, test pending and open references, inspect historical records, inject corruption and failed commits, verify isolated backup/restore. | Pending |
 | Continuous retention | Run owner-controlled archival automatically before active limits are reached. Retain advisory review and allocation cross-references too; inspection must page or target history without loading every archived record. | Run beyond collector/decision/review limits with restart and concurrent archival; measure active append/read cost against growing archive history. | Pending |
 | #24 attribution | Complete source/copy-delay analysis, applicable signal/forecast-quality readbacks and readable interactive attribution. | Known-result timing/outcome fixtures, no-action and missing-evidence cases, CLI validation, interactive navigation, race and disposable integration. | Pending |
@@ -19,6 +19,11 @@ Each unit should land as a reviewable feature branch and PR. Merge only after
 checks pass on its exact head. Keep local checks, hosted CI, a running-service
 receipt and natural qualification as separate evidence. Update this plan as each
 unit changes the remaining implementation.
+
+The feed archive unit first delivers immutable source cuts without removing
+active copies. Its owner writes and independently inspectable persisted records
+are the transaction boundary. Archive-aware readers, active pruning and automatic
+rotation remain required; the first custody PR is not completion of that unit.
 
 ## Archive contract
 
