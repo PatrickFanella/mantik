@@ -1009,4 +1009,12 @@ Social and copy source research requests can be explicitly dispatched into owner
 
 `mantik serve --automatic-paper-decisions` finalizes a decision for each declared strategy on each new quote from a matching feed registration, and compares every entry candidate no comparison pins yet. It is disabled by default, reports under its own `paper_decision` readiness scope, and stops at the existing decision and feed retention limits. See [automatic decisions](docs/reference/owned-paper-decisions.md#automatic-decisions).
 
+The [isolated runtime rehearsal](docs/reference/runtime-rehearsal.md) prepares a
+new PostgreSQL-backed service with SPY/IEX declarations and advisory Switchyard
+reviews. Its model-connection outage affects only a rehearsal-owned proxy;
+feed pauses and restart checks use only its recorded processes. Preflight,
+live-session observations and qualification remain separate evidence. The
+[continuous runtime plan](docs/plans/continuous-paper-runtime.md) tracks the full
+archive and remaining #24 attribution work.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

@@ -1,5 +1,8 @@
 # Reference
 
+- [Isolated runtime rehearsal](runtime-rehearsal.md) — SPY/IEX setup, real local
+  model forwarding, rehearsal-only outage injection, private evidence and cleanup.
+
 - [Isolated paper release preflight](paper-release.md) — exact source/image build
   receipts, deployment gates and rollback prerequisites; no service changes.
 
