@@ -918,6 +918,23 @@ load the archive and check it against the chain, so a changed archived record
 fails every read. An exact retry of a sealed comparison or step returns it
 from the archive, and its identity stays unusable.
 
+Allocation reads and writes check the complete active decision set against its
+actual creation and retirement intervals. Decisions referenced by the journal
+or a new comparison can also be resolved from their first original paper
+archive after approved retirement. Each private dependency replays its original
+native decision, strategy and source custody; its original basis still supplies
+quote expiry, funding, readiness and economic-source alias checks. These
+dependencies do not appear in the public active decision catalogue. An active
+row missing without approved retirement fails, even if an archive copy exists.
+Exact allocation retries retain their original receipts and do not read a new
+clock. The full-history audit also resolves decisions referenced by sealed
+segments before re-executing them.
+
+This reader support does not enable paper-record retirement. Attribution,
+admission reviews, archive writers, unfinished dependencies and automatic
+retention still need their remaining consumer and retirement contracts. Full
+history reads and audits retain their existing archive-loading costs.
+
 `GET /v1/allocation-comparisons/audit` re-executes the whole history against
 current owner records, one sealed segment at a time, rebuilding each
 checkpoint from its own replay. The last rebuilt checkpoint must equal the

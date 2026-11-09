@@ -251,8 +251,11 @@ evidence, verifies first-ID lookup and exact retries, and checks archive audit
 without starting workers or making provider requests.
 
 Historical paper/source checkpoints and existing assessment inspection now have
-bounded original owner views. Physical paper retirement still requires complete
-historical sample selection for new assessments, pending outcomes, allocation
-references and reviews. Admission-review and other
+bounded original owner views. Allocation replay, comparison and execution
+appends, exact retries and full-history audit can resolve their actual decision
+dependencies from first original archives after approved retirement. The
+complete active owner check remains separate; absence alone never permits
+archive fallback. Physical paper retirement still requires pending outcome,
+attribution, review and archive-writer dependency contracts. Admission-review and other
 workflow/source retention, automatic scheduling and growing-history operational
 cost checks also remain part of the complete archive work.

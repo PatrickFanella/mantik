@@ -28,7 +28,7 @@ func (m *Memory) allocationAssessmentOwnersLocked(ctx context.Context, de PaperD
 	if err != nil {
 		return PaperEvaluationAssessmentCatalog{}, err
 	}
-	if _, err := paperOutcomeCatalog(m.receiverID, m.paperOutcomes, m.paperDecisions, strategies, m.decisionFeedLocked(), de, oe); err != nil {
+	if _, err := m.activePaperOutcomesLocked(ctx, strategies, m.decisionFeedLocked(), de, oe); err != nil {
 		return PaperEvaluationAssessmentCatalog{}, err
 	}
 	return m.paperAssessmentOwnersLocked(ctx, de, oe)

@@ -23,10 +23,18 @@ func TestPostgresContractsOwnedAllocationCheckpoints(t *testing.T) {
 	ownedAllocationCheckpointContracts(t, timerPostgres(t, "ownedcheckpoints"))
 }
 
+func TestMemoryOwnedAllocationRetiredDecisions(t *testing.T) {
+	ownedAllocationCheckpointContracts(t, NewMemory(), true)
+}
+
+func TestPostgresContractsOwnedAllocationRetiredDecisions(t *testing.T) {
+	ownedAllocationCheckpointContracts(t, timerPostgres(t, "ownedretireddecisions"), true)
+}
+
 // Appends past the checkpoint threshold seal the journal into the archive.
 // Reads still list every record in order, sealed retries stay exact, and the
 // audit re-executes the whole history; a damaged archive fails both.
-func ownedAllocationCheckpointContracts(t *testing.T, s ownedAllocationBackend) {
+func ownedAllocationCheckpointContracts(t *testing.T, s ownedAllocationBackend, retireDecision ...bool) {
 	ownedCheckpointRecords = 3
 	defer func() { ownedCheckpointRecords = 64 }()
 	ctx := context.Background()
@@ -98,6 +106,140 @@ func ownedAllocationCheckpointContracts(t *testing.T, s ownedAllocationBackend) 
 	if err != nil || audit.Status != "verified" || audit.Records != len(receipts) || audit.Sealed < ownedCheckpointRecords || audit.CheckpointSHA256 == "" {
 		t.Fatal("audit", audit, err)
 	}
+	if len(retireDecision) > 0 && retireDecision[0] {
+		other := decision.Record.Command
+		other.ID = "still-active"
+		if _, err := s.FinalizePaperDecision(ctx, other, clock, eval); err != nil {
+			t.Fatal(err)
+		}
+		archives := s.(paperTargetBackend)
+		noOutcome := func(PaperOutcomeBasis, time.Time) (PaperOutcomeEvaluation, error) {
+			t.Fatal("no outcome should need evaluation")
+			return PaperOutcomeEvaluation{}, nil
+		}
+		if _, err := archives.RotateFeed(ctx, owner, func() time.Time { return at.Add(10 * time.Second) }, func(FeedEvidenceSnapshot, time.Time) error { return nil }, eval, noOutcome); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := archives.ArchivePaperRecords(ctx, owner, func() time.Time { return at.Add(11 * time.Second) }, eval, noOutcome); err != nil {
+			t.Fatal(err)
+		}
+		if m, ok := s.(*Memory); ok {
+			m.mu.Lock()
+			retained := m.paperDecisions["first"]
+			delete(m.paperDecisions, "first")
+			m.mu.Unlock()
+			if got, err := s.OwnedAllocations(ctx, eval); err == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
+				t.Fatal("missing unretired decision used archive fallback", err)
+			}
+			m.mu.Lock()
+			m.paperDecisions["first"] = retained
+			m.mu.Unlock()
+		} else {
+			pg := s.(*Postgres)
+			var raw []byte
+			if err := pg.pool.QueryRow(ctx, "DELETE FROM mantik_paper_decisions WHERE id='first' RETURNING payload").Scan(&raw); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := s.OwnedAllocations(ctx, eval); err == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
+				t.Fatal("missing unretired decision used archive fallback", err)
+			}
+			// A normal insert correctly rejects the already reserved identity.
+			tx, err := pg.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(ctx)
+			if _, err := tx.Exec(ctx, "ALTER TABLE mantik_paper_decisions DISABLE TRIGGER USER"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tx.Exec(ctx, "INSERT INTO mantik_paper_decisions(id,payload) VALUES('first',$1)", raw); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tx.Exec(ctx, "ALTER TABLE mantik_paper_decisions ENABLE TRIGGER USER"); err != nil {
+				t.Fatal(err)
+			}
+			if err := tx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Production retirement is still disabled. Only this disposable fixture
+		// supplies the future approved state, with an intact first archive.
+		if m, ok := s.(*Memory); ok {
+			m.mu.Lock()
+			m.paperRecordRetiredEpochs = map[string]int64{"decision:first": 1}
+			delete(m.paperDecisions, "first")
+			m.mu.Unlock()
+		} else if _, err := s.(*Postgres).pool.Exec(ctx, `ALTER TABLE mantik_paper_record_epochs DISABLE TRIGGER mantik_immutable_paper_epochs;
+UPDATE mantik_paper_record_epochs SET retired_epoch=1 WHERE kind='decision' AND record_id='first';
+ALTER TABLE mantik_paper_record_epochs ENABLE TRIGGER mantik_immutable_paper_epochs;
+DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := s.OwnedAllocations(ctx, eval); err != nil || !reflect.DeepEqual(got, catalog) {
+			t.Fatal("approved retirement changed allocation replay", err)
+		}
+		if got, err := auditor.AuditOwnedAllocations(ctx, eval); err != nil || !reflect.DeepEqual(got, audit) {
+			t.Fatal("approved retirement changed full-history audit", err)
+		}
+		changedNative := func(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time) (PaperDecisionEvaluation, error) {
+			e, err := eval(c, b, at)
+			if c.ID == "first" {
+				e.ReasonCode = "changed_original_native_result"
+			}
+			return e, err
+		}
+		if got, err := s.OwnedAllocations(ctx, changedNative); err == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
+			t.Fatal("allocation read trusted archived envelope without native replay", err)
+		}
+		if got, err := s.CompareOwnedAllocation(ctx, command(7), func() time.Time { t.Fatal("invalid archived dependency read clock"); return time.Time{} }, changedNative); err == nil || !reflect.DeepEqual(got, OwnedAllocationReceipt{}) {
+			t.Fatal("retry bypassed archived native dependency", err)
+		}
+		for _, index := range []int{0, 7} {
+			got, err := s.CompareOwnedAllocation(ctx, command(index), func() time.Time { t.Fatal("retired dependency retry read clock"); return time.Time{} }, eval)
+			if err != nil || !got.Duplicate || !reflect.DeepEqual(got.Record, receipts[index].Record) {
+				t.Fatal("retired dependency retry changed", index, err)
+			}
+		}
+		alias := command(8)
+		alias.Decisions[0].ID = other.ID
+		active, err := s.PaperDecisions(ctx, eval)
+		if err != nil || len(active.Records) != 1 || active.Records[0].Command.ID != other.ID {
+			t.Fatal("private dependencies escaped active catalogue", err)
+		}
+		alias.Decisions[0].SHA256 = active.Records[0].SHA256
+		if _, err := s.CompareOwnedAllocation(ctx, alias, clock, eval); !errors.Is(err, ErrOwnedAllocationConflict) {
+			t.Fatal("retirement bypassed original economic source alias", err)
+		}
+		r, err := s.CompareOwnedAllocation(ctx, command(8), func() time.Time { return at.Add(12 * time.Second) }, eval)
+		if err != nil || r.Duplicate {
+			t.Fatal("new comparison of approved retired decision", err)
+		}
+		receipts = append(receipts, r)
+		catalog, err = s.OwnedAllocations(ctx, eval)
+		if err != nil || len(catalog.Records) != len(receipts) {
+			t.Fatal("allocation append after decision retirement", err)
+		}
+		if got, err := auditor.AuditOwnedAllocations(ctx, eval); err != nil || got.Records != len(receipts) {
+			t.Fatal("audit after append with retired dependency", err)
+		}
+		execution := s.(interface {
+			EnablePaperExecution(PaperExecutionQuoteSource) error
+			OwnedExecutionStore
+		})
+		if err := execution.EnablePaperExecution(func(context.Context, FeedEvidenceSnapshot, PaperExecutionQuoteQuery) ([]paperfill.BookCommand, error) {
+			t.Fatal("deferral-only journal requested execution quotes")
+			return nil, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		step, err := execution.ExecuteOwnedAllocations(ctx, OwnedExecutionCommand{ID: "no-effects-after-retirement", ReceiverID: owner}, func() time.Time { return at.Add(13 * time.Second) }, eval)
+		if err != nil || step.Status != "no_effects" || step.Record != nil || step.Duplicate {
+			t.Fatal("execution could not replay retired allocation dependency", step, err)
+		}
+		if got, err := s.OwnedAllocations(ctx, eval); err != nil || !reflect.DeepEqual(got, catalog) {
+			t.Fatal("no-effect execution changed retired allocation history", err)
+		}
+	}
 	if pg, ok := s.(*Postgres); ok {
 		reopened, err := OpenPostgres(ctx, pg.pool.Config().ConnString())
 		if err != nil {
@@ -156,7 +298,7 @@ func ownedAllocationCheckpointContracts(t *testing.T, s ownedAllocationBackend) 
 
 func (f eligibilityFixture) audit(t *testing.T, journal ownedAllocationJournal, assessments ...PaperEvaluationAssessment) (OwnedAllocationAudit, error) {
 	t.Helper()
-	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(f.decide)
+	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(context.Background(), f.decide)
 	if err != nil {
 		t.Fatal(err)
 	}

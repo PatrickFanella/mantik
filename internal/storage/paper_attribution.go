@@ -329,7 +329,7 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 	if err := ctx.Err(); err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	policies, decisions, strategies, err := m.ownedAllocationSourcesLocked(decisionEval)
+	policies, decisions, strategies, err := m.ownedAllocationSourcesLocked(ctx, decisionEval)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
