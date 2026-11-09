@@ -9,9 +9,9 @@ in #347. It permits bounded runs; it does not replace this archive work.
 | Unit | Result and boundary | Verification | State |
 | --- | --- | --- | --- |
 | Rehearsal prerequisites | Read all 2,048 supported publications in PostgreSQL, including exact retries beyond the former 128-record bound. | Reproduce the 129-of-140 truncation, then run Memory/PostgreSQL contracts, `make verify`, race and disposable integration. | #348 merged |
-| Rehearsal preparation | Start only new PostgreSQL and Mantik processes; register SPY/IEX declarations; forward advisory requests to Switchyard; interrupt only that connection; retain phases, failure attempts, restart readbacks and exact build/config identities. | Closed-market preflight, proxy outage/recovery tests, then a scheduled regular-session run. | #349 merged; preflight passed; market run pending |
+| Rehearsal preparation | Start only new PostgreSQL and Mantik processes; register SPY/IEX declarations; forward advisory requests to Switchyard; interrupt only that connection; retain phases, failure attempts, restart readbacks and exact build/config identities. | Closed-market preflight, proxy outage/recovery tests, then a scheduled regular-session run. | #349 merged; live-feed rehearsal retained from #361 original head; successful model review/recovery still unproven |
 | Feed and collector archive | Seal immutable raw publications, admissions, lease commands and their routed inputs together. Keep current leases, latest coverage inputs, pending publications and routing facts available. Preserve exact historical retries and original source bytes. | Cross the active bounds, verify old retries and conflicts, audit seals against original records, fail on missing/changed source, exercise concurrent writes and rollback/restart/restore. | #350 custody, #351 source lookup, #353 prefix points and #354 paper-source checkpoints merged; #355 explicit rotation and archive-aware replay merged |
-| Paper archive | Archive finalized decisions, completed outcomes and assessments with their full source dependencies. Retain open execution books, pending outcome windows and still-applicable evaluation inputs. Historical assessment replay must use the original cut. | Compare pre/post-archive replay and attribution, test pending and open references, inspect historical records, inject corruption and failed commits, verify isolated backup/restore. | Paper source checkpoints merged in #354; schema-105 custody merged in #356; historical checkpoint views in #357 and scoped source custody in #358; existing assessment replay in progress; new assessment samples, allocation/review consumers and active retirement pending |
+| Paper archive | Archive finalized decisions, completed outcomes and assessments with their full source dependencies. Retain open execution books, pending outcome windows and still-applicable evaluation inputs. Historical assessment replay must use the original cut. | Compare pre/post-archive replay and attribution, test pending and open references, inspect historical records, inject corruption and failed commits, verify isolated backup/restore. | Paper source checkpoints #354, custody #356, historical owner/scoped custody/assessment replay #359, and scope/paging #360/#362 merged; original/native pages #363/#365 in review; versioned window assessment integration in progress; remaining allocation/review references and active retirement pending |
 | Continuous retention | Run owner-controlled archival automatically before active limits are reached. Retain advisory review and allocation cross-references too; inspection must page or target history without loading every archived record. | Run beyond collector/decision/review limits with restart and concurrent archival; measure active append/read cost against growing archive history. | Pending |
 | #24 attribution | Complete source/copy-delay analysis, applicable signal/forecast-quality readbacks and readable interactive attribution. | Known-result timing/outcome fixtures, no-action and missing-evidence cases, CLI validation, interactive navigation, race and disposable integration. | Readable terminal attribution merged in #352; source-delay analysis and quality assessment pending |
 
@@ -71,9 +71,12 @@ metadata. The reader selects exact declared strategy versions, decision windows
 and record availability cuts across active and archived owners. Original payload
 pages recheck actual owner metadata and resolve approved retired rows from their
 first archives with header/basis integrity, scope and byte-budget checks.
-Missing or altered originals fail without partial results. Native source replay
-and new-assessment evidence construction remain the next consumer integration;
-active retirement remains disabled, and these pages grant no qualification.
+Missing or altered originals fail without partial results. Native source pages replay each selected owner and its actual decision dependencies.
+Version 4 evidence and new assessments bind a complete declared window through its
+original creation epoch and preserve version 3 complete-catalogue receipts.
+Archive, allocation, admission-review and attribution inspection dispatch by the
+actual assessment evidence version. Physical retirement, pending/open references
+and automatic scheduling remain required; these reads grant no qualification.
 
 ## Archive contract
 
@@ -114,6 +117,19 @@ quote to force execution. Model transport availability and a schema-valid draft
 are separate from review quality. Synthetic positive lifecycle tests remain
 separate evidence from this live-feed run. Issue #285 is not closed merely by
 successful collection or a model outage demonstration.
+
+The first market run stopped because a pending seed capture shared the live
+collector journal. The corrected 20-minute run used #361 original head
+`3929c3b537acb26d3acbd50c76dd266565a9acaf`, whose CI was pending at launch,
+and schema 105. Its retained results include 32 decisions, 19 outcomes, one
+blocked assessment and 20 deferred comparisons. Three decisions were retained
+during the controlled model outage. Feed pause/resume and restart readbacks were
+retained, and owned runtime resources were removed. Other model attempts timed
+out; a successful model review and recovery were not observed. The retained dump
+was not restored by that run. These observations grant no qualification or
+funded-position/profitability claim. See the [actual rehearsal report](https://git.subcult.tv/subculture-collective/mantik/issues/285#issuecomment-49868)
+for results and exclusions; the scheduled run is fulfilled and is not repeated
+as a preparation step.
 
 ## #24 scope
 

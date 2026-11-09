@@ -118,7 +118,7 @@ func knownLeakageMigration(t *testing.T, p *Postgres) {
 // historical v3 assessment, including across a PostgreSQL reopen.
 func legacyLeakageReplay(t *testing.T, s assessmentBackend, current PaperEvaluationAssessmentReceipt, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) {
 	t.Helper()
-	old, err := paperEvaluationAssessmentRecipe(current.Record.Command, current.Record.Evidence, current.Record.WarmUp, "mantik-owned-paper-evaluation-assessment-v3")
+	old, err := paperEvaluationAssessmentRecipe(current.Record.Command, predecessorPaperEvidence(t, s, current.Record, de, oe), current.Record.WarmUp, "mantik-owned-paper-evaluation-assessment-v3")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -36,7 +36,9 @@ func (m *Memory) ArchivePaperRecords(ctx context.Context, owner string, now func
 		return PaperRecordArchiveReceipt{}, err
 	}
 	c := paperArchiveContext(sources, social)
-	if err := verifyPaperArchiveOwners(ctx, c, owners, de, oe, m.portfolioEvaluator, m.feedWindowReaderLocked(ctx, owner)); err != nil {
+	if err := verifyPaperArchiveOwners(ctx, c, owners, de, oe, m.portfolioEvaluator, m.feedWindowReaderLocked(ctx, owner), func(all map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error) {
+		return m.paperAssessmentOwnersFromLocked(ctx, all, de, oe)
+	}); err != nil {
 		return PaperRecordArchiveReceipt{}, err
 	}
 	records, err := owners.records(m.paperRecordEpochs)
@@ -136,7 +138,9 @@ func (m *Memory) paperRecordArchiveLocked(ctx context.Context, sequence int64, d
 		return PaperRecordArchive{}, err
 	}
 	a.Context.Feed.custody = view
-	if err := verifyPaperArchiveOwners(ctx, a.Context, owners, de, oe, m.portfolioEvaluator, m.feedWindowReaderLocked(ctx, m.receiverID)); err != nil {
+	if err := verifyPaperArchiveOwners(ctx, a.Context, owners, de, oe, m.portfolioEvaluator, m.feedWindowReaderLocked(ctx, m.receiverID), func(all map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error) {
+		return m.paperAssessmentOwnersFromLocked(ctx, all, de, oe)
+	}); err != nil {
 		return PaperRecordArchive{}, err
 	}
 	return a, nil

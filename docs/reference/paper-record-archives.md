@@ -117,8 +117,8 @@ the original strategy ID/version, decision ID/hash and exact seconds/nanoseconds
 of decision finalization. An outcome derives its scope from its actual retained
 decision basis. Its own evaluation clock remains the separate availability time.
 These columns and the `mantik_paper_sample_window` index prepare bounded window
-selection across active and archived owners. New assessments still use their
-existing active catalogue in this unit.
+selection across active and archived owners. The window consumer below uses
+these original scope pins for new assessments.
 
 The migration backfills from retained native envelopes and checks original
 record hashes and clocks. Replaying populated schema 107 rejects missing or
@@ -150,10 +150,9 @@ history. PostgreSQL merges bounded indexed batches from the declared variants;
 memory retains only the next bounded batch while scanning its metadata. Cursors
 bind the declaration, exact as-of cut and actual archive head, and pages must
 share one owner transaction/snapshot or memory lock. There is no public cursor
-API. These records are selection metadata, not evidence or authority: the next
-assessment consumer must resolve original payloads, verify custody and replay
-the native evaluations before using them. New assessment issuance still uses
-its existing active catalogue in this unit.
+API. These records are selection metadata, not evidence or authority. The native
+assessment consumer resolves original payloads, verifies custody and replays
+the evaluations before using them.
 
 Private payload pages resolve those selections in the same owner snapshot. Each
 page rechecks actual creation, retirement and scope metadata. An active row must
@@ -176,8 +175,18 @@ outcome against the actual strategy, feed and source seals in the same owner
 snapshot. Its feed-custody view contains only those actual owners. Selected-page
 counts never replace the full catalogue's checkpoint counts; full-catalogue
 readers retain their existing completeness checks. A missing dependency,
-changed source or different native result returns no partial owners. New
-assessment evidence construction remains the next integration.
+changed source or different native result returns no partial owners.
+
+New evidence reads, entry-source reads and assessment issuance use version 4
+window evidence over those native pages. The source cut binds the complete
+declared window to its original creation-epoch cutoff and ordered original pins.
+It includes approved retired decisions and their outcomes, including inspectable
+late attempts. A complete window can exceed active catalogue capacity, subject
+to a 64 MiB total native-source budget and the existing 8 MiB evidence wire bound.
+Issuance, exact retry, assessment inspection, archive replay, allocation and
+attribution consumers validate the same owner-derived cut. Earlier version 3
+evidence keeps its original complete-catalogue recipe and hashes. Physical
+paper retirement and scheduling still require the remaining consumer work.
 
 After a paper archive exists, new feed/paper custody checkpoints use
 `mantik-paper-feed-checkpoint-v2` and bind the actual `paper_archive_sequence`.

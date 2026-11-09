@@ -148,7 +148,9 @@ func readPaperRecordArchive(ctx context.Context, tx pgx.Tx, sequence int64, de P
 	if err != nil {
 		return PaperRecordArchive{}, err
 	}
-	if err := verifyPaperArchiveOwners(ctx, a.Context, owners, de, oe, portfolio, postgresFeedWindowReader(ctx, tx, owner)); err != nil {
+	if err := verifyPaperArchiveOwners(ctx, a.Context, owners, de, oe, portfolio, postgresFeedWindowReader(ctx, tx, owner), func(all map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error) {
+		return readPaperAssessmentOwners(ctx, tx, owner, all, de, oe, portfolio)
+	}); err != nil {
 		return PaperRecordArchive{}, err
 	}
 	return a, nil
@@ -190,7 +192,9 @@ func (p *Postgres) ArchivePaperRecords(ctx context.Context, owner string, now fu
 		social = []socialwatch.Journal{j}
 	}
 	c := paperArchiveContext(s, social)
-	if err := verifyPaperArchiveOwners(ctx, c, owners, de, oe, p.portfolioEvaluator, postgresFeedWindowReader(ctx, tx, owner)); err != nil {
+	if err := verifyPaperArchiveOwners(ctx, c, owners, de, oe, p.portfolioEvaluator, postgresFeedWindowReader(ctx, tx, owner), func(all map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error) {
+		return readPaperAssessmentOwners(ctx, tx, owner, all, de, oe, p.portfolioEvaluator)
+	}); err != nil {
 		return PaperRecordArchiveReceipt{}, err
 	}
 	epochs, err := readPaperRecordEpochs(ctx, tx, owners.keys())

@@ -417,7 +417,7 @@ func (m *Memory) AuditOwnedAllocations(ctx context.Context, eval PaperDecisionEv
 	if err != nil {
 		return OwnedAllocationAudit{}, err
 	}
-	assessments, err := resolveAllocationAssessmentOwner(ctx, m.receiverID, m.evaluationAssessments, declarations, d, s, m.paperDecisions, m.paperOutcomes, m.decisionFeedLocked(), m.corporateActionSources, m.corporateReferenceSources, eval, oe, p, m.portfolioEvaluator)
+	assessments, err := m.allocationAssessmentOwnersLocked(ctx, eval, oe)
 	if err != nil {
 		return OwnedAllocationAudit{}, err
 	}

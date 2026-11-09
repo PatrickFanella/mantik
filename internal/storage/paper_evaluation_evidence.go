@@ -60,22 +60,23 @@ type PaperEvaluationVariantCount struct {
 	ObservedOutcomeDecisions int                        `json:"observed_outcome_decisions"`
 }
 type PaperEvaluationEvidence struct {
-	Schema                      string                        `json:"schema"`
-	ReceiverID                  string                        `json:"receiver_id"`
-	Declaration                 PaperEvaluationDeclaration    `json:"declaration"`
-	AsOf                        time.Time                     `json:"as_of"`
-	Phase                       string                        `json:"phase"`
-	SourceSHA256                string                        `json:"source_sha256"`
-	Rows                        []PaperEvaluationEvidenceRow  `json:"rows"`
-	Variants                    []PaperEvaluationVariantCount `json:"variants"`
-	DistinctProviderOccurrences int                           `json:"distinct_provider_occurrences"`
-	Authority                   string                        `json:"authority"`
-	IndependentSamplesAvailable bool                          `json:"independent_samples_available"`
-	EvaluationAvailable         bool                          `json:"evaluation_available"`
-	AdmissionAvailable          bool                          `json:"admission_available"`
-	ExecutionAvailable          bool                          `json:"execution_available"`
-	QualificationCredit         bool                          `json:"qualification_credit"`
-	SHA256                      string                        `json:"sha256"`
+	Selection                   *PaperEvaluationWindowSelection `json:"selection,omitempty"`
+	Schema                      string                          `json:"schema"`
+	ReceiverID                  string                          `json:"receiver_id"`
+	Declaration                 PaperEvaluationDeclaration      `json:"declaration"`
+	AsOf                        time.Time                       `json:"as_of"`
+	Phase                       string                          `json:"phase"`
+	SourceSHA256                string                          `json:"source_sha256"`
+	Rows                        []PaperEvaluationEvidenceRow    `json:"rows"`
+	Variants                    []PaperEvaluationVariantCount   `json:"variants"`
+	DistinctProviderOccurrences int                             `json:"distinct_provider_occurrences"`
+	Authority                   string                          `json:"authority"`
+	IndependentSamplesAvailable bool                            `json:"independent_samples_available"`
+	EvaluationAvailable         bool                            `json:"evaluation_available"`
+	AdmissionAvailable          bool                            `json:"admission_available"`
+	ExecutionAvailable          bool                            `json:"execution_available"`
+	QualificationCredit         bool                            `json:"qualification_credit"`
+	SHA256                      string                          `json:"sha256"`
 }
 type PaperEvaluationEvidenceStore interface {
 	PaperEvaluationEvidence(context.Context, string, func() time.Time, PaperDecisionEvaluator, PaperOutcomeEvaluator) (PaperEvaluationEvidence, error)
@@ -263,18 +264,15 @@ func (m *Memory) PaperEvaluationEvidence(ctx context.Context, id string, now fun
 	if err := ctx.Err(); err != nil {
 		return PaperEvaluationEvidence{}, err
 	}
-	s, err := m.paperEvaluationSourcesLocked(de, oe)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
 	if now == nil {
 		return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
 	}
 	at := now()
-	if at.Before(s.sourceClock) {
-		return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
+	s, selection, err := m.paperWindowSourcesLocked(ctx, id, at, de, oe)
+	if err != nil {
+		return PaperEvaluationEvidence{}, err
 	}
-	return paperEvaluationEvidence(ctx, id, s.declarations, s.decisions, s.outcomes, s.retained, at)
+	return paperWindowEvidence(ctx, id, s, at, selection)
 }
 func (p *Postgres) PaperEvaluationEvidence(ctx context.Context, id string, now func() time.Time, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationEvidence, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -282,18 +280,15 @@ func (p *Postgres) PaperEvaluationEvidence(ctx context.Context, id string, now f
 		return PaperEvaluationEvidence{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe, p.portfolioEvaluator)
-	if err != nil {
-		return PaperEvaluationEvidence{}, err
-	}
 	if now == nil {
 		return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
 	}
 	at := now()
-	if at.Before(s.sourceClock) {
-		return PaperEvaluationEvidence{}, ErrPaperEvaluationEvidenceInvalid
+	s, selection, err := readPaperWindowSources(ctx, tx, id, at, de, oe, p.portfolioEvaluator)
+	if err != nil {
+		return PaperEvaluationEvidence{}, err
 	}
-	out, err := paperEvaluationEvidence(ctx, id, s.declarations, s.decisions, s.outcomes, s.retained, at)
+	out, err := paperWindowEvidence(ctx, id, s, at, selection)
 	if err != nil {
 		return PaperEvaluationEvidence{}, err
 	}

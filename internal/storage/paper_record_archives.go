@@ -256,18 +256,10 @@ func paperArchiveContext(s paperEvaluationSources, social []socialwatch.Journal)
 	return PaperArchiveContext{s.feed, s.strategies, s.policies, s.declarations, s.corporateSources, s.referenceSources, social}
 }
 
-func paperArchiveEvaluationSources(ctx context.Context, c PaperArchiveContext, o paperArchiveOwners, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator) (paperEvaluationSources, error) {
+func paperArchiveEvaluationContext(ctx context.Context, c PaperArchiveContext, portfolio PaperPortfolioEvaluator) (paperEvaluationSources, error) {
 	owner := c.Feed.ReceiverID
-	if de == nil || oe == nil || c.Strategies.Validate() != nil || c.Policies.Validate() != nil || c.Strategies.ReceiverID != owner || c.Policies.ReceiverID != owner {
+	if c.Strategies.Validate() != nil || c.Policies.Validate() != nil || c.Strategies.ReceiverID != owner || c.Policies.ReceiverID != owner {
 		return paperEvaluationSources{}, ErrPaperRecordArchiveConflict
-	}
-	decisions, err := paperDecisionCatalog(owner, o.decisions, c.Strategies, c.Feed, de)
-	if err != nil {
-		return paperEvaluationSources{}, err
-	}
-	outcomes, err := paperOutcomeCatalog(owner, o.outcomes, o.decisions, c.Strategies, c.Feed, de, oe)
-	if err != nil {
-		return paperEvaluationSources{}, err
 	}
 	plans := map[string]PaperEvaluationDeclaration{}
 	for _, r := range c.Declarations.Records {
@@ -280,16 +272,36 @@ func paperArchiveEvaluationSources(ctx context.Context, c PaperArchiveContext, o
 	if err != nil || !reflect.DeepEqual(actual, c.Declarations) {
 		return paperEvaluationSources{}, ErrPaperRecordArchiveConflict
 	}
-	return paperEvaluationSources{feed: c.Feed, policies: c.Policies, retainedOutcomes: o.outcomes, portfolioEvaluator: portfolio, corporateSources: c.CorporateSources, referenceSources: c.ReferenceSources, declarations: c.Declarations, decisions: decisions, outcomes: outcomes, retained: o.decisions, sourceClock: c.Feed.Collectors.LastClock, strategies: c.Strategies}, nil
+	return paperEvaluationSources{feed: c.Feed, policies: c.Policies, portfolioEvaluator: portfolio, corporateSources: c.CorporateSources, referenceSources: c.ReferenceSources, declarations: c.Declarations, sourceClock: c.Feed.Collectors.LastClock, strategies: c.Strategies}, nil
 }
 
-func verifyPaperArchiveOwners(ctx context.Context, c PaperArchiveContext, o paperArchiveOwners, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator, reader archivedFeedWindowReader) error {
+func paperArchiveEvaluationSources(ctx context.Context, c PaperArchiveContext, o paperArchiveOwners, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator) (paperEvaluationSources, error) {
+	if de == nil || oe == nil {
+		return paperEvaluationSources{}, ErrPaperRecordArchiveConflict
+	}
+	s, err := paperArchiveEvaluationContext(ctx, c, portfolio)
+	if err != nil {
+		return paperEvaluationSources{}, err
+	}
+	s.decisions, err = paperDecisionCatalog(c.Feed.ReceiverID, o.decisions, c.Strategies, c.Feed, de)
+	if err != nil {
+		return paperEvaluationSources{}, err
+	}
+	s.outcomes, err = paperOutcomeCatalog(c.Feed.ReceiverID, o.outcomes, o.decisions, c.Strategies, c.Feed, de, oe)
+	if err != nil {
+		return paperEvaluationSources{}, err
+	}
+	s.retained, s.retainedOutcomes = o.decisions, o.outcomes
+	return s, nil
+}
+
+func verifyPaperArchiveOwners(ctx context.Context, c PaperArchiveContext, o paperArchiveOwners, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator, reader archivedFeedWindowReader, assessments func(map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error)) error {
 	owner := c.Feed.ReceiverID
 	s, err := paperArchiveEvaluationSources(ctx, c, o, de, oe, portfolio)
 	if err != nil {
 		return err
 	}
-	if _, err := paperEvaluationAssessmentCatalog(ctx, owner, o.assessments, s); err != nil {
+	if _, err := assessments(o.assessments); err != nil {
 		return err
 	}
 	if _, err := decisionReviewCatalog(owner, o.reviews, s.decisions, c.SocialSources...); err != nil {

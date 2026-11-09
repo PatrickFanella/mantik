@@ -61,7 +61,7 @@ func assessmentArchiveReplayContract(t *testing.T, s interface {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy, err := paperEvaluationAssessmentRecipe(assessment, first.Record.Evidence, first.Record.WarmUp, "mantik-owned-paper-evaluation-assessment-v3")
+	legacy, err := paperEvaluationAssessmentRecipe(assessment, predecessorPaperEvidence(t, s, first.Record, de, oe), first.Record.WarmUp, "mantik-owned-paper-evaluation-assessment-v3")
 	if err != nil {
 		t.Fatal(err)
 	}

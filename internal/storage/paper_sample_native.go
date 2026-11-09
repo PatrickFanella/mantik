@@ -13,6 +13,8 @@ import (
 // retaining the resolver's single-page byte and record bounds.
 const maxPaperNativePage = maxPaperSamplePage / 2
 
+type paperNativeSourceReader func([]string) (FeedEvidenceSnapshot, paperstrategy.Catalog, error)
+
 func paperSampleNativeOwners(ctx context.Context, owner string, wanted []paperSampleRecord,
 	dependencies func([]string) ([]paperSampleRecord, error),
 	payloads func([]paperSampleRecord) (paperArchiveOwners, error),
@@ -108,6 +110,19 @@ func paperSampleNativeOwners(ctx context.Context, owner string, wanted []paperSa
 // transaction. Caller-supplied metadata cannot replace actual payload or source
 // custody. Selection completeness remains the pager's responsibility.
 func (m *Memory) paperSampleNativeLocked(ctx context.Context, owner string, wanted []paperSampleRecord, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (paperArchiveOwners, error) {
+	return m.paperSampleNativeWithSourcesLocked(ctx, owner, wanted, de, oe, func(keys []string) (FeedEvidenceSnapshot, paperstrategy.Catalog, error) {
+		feed := m.decisionFeedLocked()
+		var err error
+		feed.custody, err = m.feedCustodyForOwnersLocked(feed.Retention, keys)
+		if err != nil {
+			return FeedEvidenceSnapshot{}, paperstrategy.Catalog{}, err
+		}
+		strategies, err := m.paperStrategiesLocked()
+		return feed, strategies, err
+	})
+}
+
+func (m *Memory) paperSampleNativeWithSourcesLocked(ctx context.Context, owner string, wanted []paperSampleRecord, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, sources paperNativeSourceReader) (paperArchiveOwners, error) {
 	return paperSampleNativeOwners(ctx, owner, wanted, func(ids []string) ([]paperSampleRecord, error) {
 		more := make([]paperSampleRecord, 0, len(ids))
 		for _, id := range ids {
@@ -122,19 +137,25 @@ func (m *Memory) paperSampleNativeLocked(ctx context.Context, owner string, want
 		return more, nil
 	}, func(records []paperSampleRecord) (paperArchiveOwners, error) {
 		return m.paperSamplePayloadsLocked(ctx, owner, records)
-	}, func(keys []string) (FeedEvidenceSnapshot, paperstrategy.Catalog, error) {
-		feed := m.decisionFeedLocked()
-		var err error
-		feed.custody, err = m.feedCustodyForOwnersLocked(feed.Retention, keys)
-		if err != nil {
-			return FeedEvidenceSnapshot{}, paperstrategy.Catalog{}, err
-		}
-		strategies, err := m.paperStrategiesLocked()
-		return feed, strategies, err
-	}, de, oe)
+	}, sources, de, oe)
 }
 
 func readPaperSampleNative(ctx context.Context, tx pgx.Tx, owner string, wanted []paperSampleRecord, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (paperArchiveOwners, error) {
+	return readPaperSampleNativeWithSources(ctx, tx, owner, wanted, de, oe, func(keys []string) (FeedEvidenceSnapshot, paperstrategy.Catalog, error) {
+		feed, err := readFeedEvidence(ctx, tx, false)
+		if err != nil {
+			return FeedEvidenceSnapshot{}, paperstrategy.Catalog{}, err
+		}
+		feed.custody, err = readFeedCustodyForOwners(ctx, tx, feed.Retention, keys)
+		if err != nil {
+			return FeedEvidenceSnapshot{}, paperstrategy.Catalog{}, err
+		}
+		strategies, err := readPaperStrategies(ctx, tx, owner)
+		return feed, strategies, err
+	})
+}
+
+func readPaperSampleNativeWithSources(ctx context.Context, tx pgx.Tx, owner string, wanted []paperSampleRecord, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, sources paperNativeSourceReader) (paperArchiveOwners, error) {
 	return paperSampleNativeOwners(ctx, owner, wanted, func(ids []string) ([]paperSampleRecord, error) {
 		rows, err := tx.Query(ctx, `SELECT kind,record_id,created_epoch,record_sha256,at_seconds,at_nanos,
 strategy_id,strategy_sha256,decision_id,decision_sha256,decision_at_seconds,decision_at_nanos,coalesce(retired_epoch,0)
@@ -154,16 +175,5 @@ FROM mantik_paper_record_epochs WHERE kind='decision' AND record_id=ANY($1::text
 		return more, rows.Err()
 	}, func(records []paperSampleRecord) (paperArchiveOwners, error) {
 		return readPaperSamplePayloads(ctx, tx, owner, records)
-	}, func(keys []string) (FeedEvidenceSnapshot, paperstrategy.Catalog, error) {
-		feed, err := readFeedEvidence(ctx, tx, false)
-		if err != nil {
-			return FeedEvidenceSnapshot{}, paperstrategy.Catalog{}, err
-		}
-		feed.custody, err = readFeedCustodyForOwners(ctx, tx, feed.Retention, keys)
-		if err != nil {
-			return FeedEvidenceSnapshot{}, paperstrategy.Catalog{}, err
-		}
-		strategies, err := readPaperStrategies(ctx, tx, owner)
-		return feed, strategies, err
-	}, de, oe)
+	}, sources, de, oe)
 }
