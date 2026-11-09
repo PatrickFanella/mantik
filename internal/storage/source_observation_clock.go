@@ -49,6 +49,9 @@ func (m *Memory) sourceObservationClockLocked(at time.Time) error {
 			return err
 		}
 	}
+	if err := m.paperFeedCheckpointClockLocked(at); err != nil {
+		return err
+	}
 	return sourceObservationClock(m.receiverID, m.paperDecisions, m.paperOutcomes, m.evaluationAssessments, at)
 }
 
@@ -76,6 +79,9 @@ func readSourceObservationClock(ctx context.Context, tx pgx.Tx, owner string, at
 			return err
 		}
 	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if err := readPaperFeedCheckpointClock(ctx, tx, owner, at); err != nil {
 		return err
 	}
 	decisions, err := readPaperDecisions(ctx, tx)

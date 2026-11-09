@@ -319,3 +319,6 @@ var FeedArchiveSourceIndex string
 
 //go:embed 0102_feed_archive_prefixes.sql
 var FeedArchivePrefixes string
+
+//go:embed 0103_paper_feed_checkpoints.sql
+var PaperFeedCheckpoints string

@@ -102,7 +102,27 @@ func TestValidatedFeedCoveragePublicationAndClock(t *testing.T) {
 	if err := json.Unmarshal(created.Body.Bytes(), &archived); err != nil || archived.Header.Validate() != nil || archived.Header.Publications != 2 || archived.Header.Admissions < 2 || archived.Header.Sequence != 1 || archived.Duplicate {
 		t.Fatal("feed archive did not bind source owners", created.Body.String(), err)
 	}
-	request("POST", "/v1/feed-archives", map[string]any{"receiver_id": receiver}, 200)
+	var custody storage.PaperFeedCheckpoint
+	body := request("GET", "/v1/feed-archives/paper-custody/1", nil, 200)
+	if err := json.Unmarshal(body.Body.Bytes(), &custody); err != nil || custody.Validate() != nil || custody.Archive != archived.Header || custody.Decisions != 0 || custody.Outcomes != 0 || archived.PaperCustody == nil || archived.PaperCustody.Duplicate || custody.PaperFeedCheckpointHeader != archived.PaperCustody.Header {
+		t.Fatal("paper source custody omitted actual empty owner cut", body.Body.String(), err)
+	}
+	var repeated storage.FeedArchiveReceipt
+	body = request("POST", "/v1/feed-archives", map[string]any{"receiver_id": receiver}, 200)
+	if err := json.Unmarshal(body.Body.Bytes(), &repeated); err != nil || repeated.PaperCustody == nil || !repeated.PaperCustody.Duplicate || repeated.PaperCustody.Header != custody.PaperFeedCheckpointHeader {
+		t.Fatal("custody retry changed identity", err)
+	}
+	for _, path := range []string{"/v1/feed-archives/paper-custody/0", "/v1/feed-archives/paper-custody/1?", "/v1/feed-archives/paper-custody/1?at=caller"} {
+		request("GET", path, nil, 422)
+	}
+	request("GET", "/v1/feed-archives/paper-custody/2", nil, 404)
+	request("GET", "/v1/feed-archives/paper-custody/1", map[string]any{}, 422)
+	request("POST", "/v1/feed-archives", map[string]any{"receiver_id": receiver, "paper_custody": custody}, 422)
+	private := httptest.NewRecorder()
+	handler.ServeHTTP(private, httptest.NewRequest("GET", "/v1/feed-archives/paper-custody/1", nil))
+	if private.Code != 401 {
+		t.Fatal("paper custody bypassed authentication", private.Code)
+	}
 	for _, key := range []struct{ kind, id string }{{"publication", registration.ID + ":quote-r1"}, {"command", "register"}, {"input", report.Evidence.Quote.InputID}, {"admission", report.Evidence.Quote.InputID}} {
 		var original storage.FeedArchivedSource
 		response := request("GET", "/v1/feed-archives/source?kind="+key.kind+"&id="+key.id, nil, 200)

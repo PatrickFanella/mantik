@@ -1036,4 +1036,11 @@ archive, with nanosecond cut indexes, atomic manifests and source-backed audit.
 These internal prefix reads prepare archive-aware replay; active-source pruning
 and automatic continuous retention remain unfinished.
 
+Schema 103 adds paper source checkpoints to the same feed-archive transaction.
+The owner replays retained decisions and outcomes against original archived
+sources, seals their complete membership and fences subsequent backdated writes.
+Authenticated inspection at `/v1/feed-archives/paper-custody/{sequence}` replays
+that original cut. Active records remain retained; pruning and the full paper
+archive are still pending.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

@@ -384,6 +384,9 @@ func (m *Memory) FinalizePaperDecision(ctx context.Context, c PaperDecisionComma
 		return PaperDecisionReceipt{}, err
 	}
 	if !dup {
+		if err := m.paperFeedCheckpointClockLocked(v.Record.FinalizedAt); err != nil {
+			return PaperDecisionReceipt{}, err
+		}
 		if err := paperEvaluationSourceClock(m.receiverID, m.evaluationAssessments, v.Record.FinalizedAt); err != nil {
 			return PaperDecisionReceipt{}, err
 		}
@@ -464,6 +467,9 @@ func (p *Postgres) FinalizePaperDecision(ctx context.Context, c PaperDecisionCom
 		return PaperDecisionReceipt{}, err
 	}
 	if !dup {
+		if err := readPaperFeedCheckpointClock(ctx, tx, owner, v.Record.FinalizedAt); err != nil {
+			return PaperDecisionReceipt{}, err
+		}
 		assessments, e := readPaperEvaluationAssessments(ctx, tx)
 		if e != nil {
 			return PaperDecisionReceipt{}, e

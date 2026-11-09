@@ -282,6 +282,9 @@ func (m *Memory) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand, 
 		return PaperOutcomeReceipt{}, err
 	}
 	if !dup {
+		if err := m.paperFeedCheckpointClockLocked(v.Record.EvaluatedAt); err != nil {
+			return PaperOutcomeReceipt{}, err
+		}
 		if err := paperEvaluationSourceClock(m.receiverID, m.evaluationAssessments, v.Record.EvaluatedAt); err != nil {
 			return PaperOutcomeReceipt{}, err
 		}
@@ -366,6 +369,9 @@ func (p *Postgres) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand
 		return PaperOutcomeReceipt{}, err
 	}
 	if !dup {
+		if err := readPaperFeedCheckpointClock(ctx, tx, owner, v.Record.EvaluatedAt); err != nil {
+			return PaperOutcomeReceipt{}, err
+		}
 		assessments, e := readPaperEvaluationAssessments(ctx, tx)
 		if e != nil {
 			return PaperOutcomeReceipt{}, e

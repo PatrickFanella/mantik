@@ -164,6 +164,17 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 		}
 	}
 
+	// Include populated archive/index/checkpoint owners in the exported snapshot.
+	// This forward record remains a storage fixture with no measured return.
+	custodyAt := assessment.Record.AssessedAt.Add(time.Nanosecond)
+	if _, err := s.AssessPaperOutcome(ctx, PaperOutcomeCommand{ID: "recovery-outcome", ReceiverID: account.ReceiverID, DecisionID: decision.Record.Command.ID, DecisionSHA256: decision.Record.SHA256}, func() time.Time { return custodyAt }, eval, recoveryFixtureOutcomeEvaluator); err != nil {
+		t.Fatal("paper custody outcome recovery seed", err)
+	}
+	custodyAt = custodyAt.Add(time.Nanosecond)
+	archive, err := s.ArchivePaperFeed(ctx, account.ReceiverID, func() time.Time { return custodyAt }, func(FeedEvidenceSnapshot, time.Time) error { return nil }, eval, recoveryFixtureOutcomeEvaluator)
+	if err != nil || archive.PaperCustody == nil || archive.PaperCustody.Header.Decisions != 1 || archive.PaperCustody.Header.Outcomes != 1 {
+		t.Fatal("paper custody recovery seed", archive, err)
+	}
 }
 
 // Shared by source seeding and restore replay. This compiled storage fixture
@@ -176,8 +187,8 @@ func recoveryFixtureDecisionEvaluator(c PaperDecisionCommand, b PaperDecisionBas
 	return PaperDecisionEvaluation{Action: "entry_candidate", ReasonCode: "storage_recovery_fixture_only", PriceCents: input.Input.PriceCents, Signal: true, Coverage: domain.MarketCoverageReport{Quote: domain.MarketQuoteCoverage{InputID: input.Input.ID}}}, nil
 }
 
-// No outcome is created by recovery; the callback is required for complete
-// owner replay and remains a compiled storage fixture with no economic result.
+// Recovery retains a waiting outcome to exercise source custody and restore.
+// This compiled storage fixture supplies no observed economic result.
 func recoveryFixtureOutcomeEvaluator(b PaperOutcomeBasis, _ time.Time) (PaperOutcomeEvaluation, error) {
 	return PaperOutcomeEvaluation{Status: "waiting_price", ReasonCode: "storage_recovery_fixture_only", DueAt: b.Decision.FinalizedAt.Add(time.Hour), WindowEnd: b.Decision.FinalizedAt.Add(2 * time.Hour)}, nil
 }
@@ -217,6 +228,7 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 	}
 	assertRestoredEvaluationOwner(t, s, got.ReceiverID)
 	assertRestoredCorporateSource(t, s, got.ReceiverID)
+	assertRestoredPaperFeedCheckpoint(t, s, got.ReceiverID)
 	history, err := s.SocialHistory(ctx)
 	if err != nil || history.ReceiverID != got.ReceiverID || len(history.ResearchRequests) != 2 || history.ResearchRequests[0].DispatchAvailable || history.ResearchRequests[0].AdmissionAvailable || history.ResearchRequests[0].ExecutionAvailable || history.ResearchRequests[0].QualificationCredit {
 		t.Fatal("restored social owner", err)

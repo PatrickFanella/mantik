@@ -304,7 +304,7 @@ func TestPostgresContractsFeedArchivePrefixUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, "DROP TRIGGER mantik_feed_archive_prefix_batch_required ON mantik_feed_archives; DROP FUNCTION mantik_require_feed_archive_prefix_batch(); DROP TABLE mantik_feed_archive_prefix_batches; DROP TABLE mantik_feed_archive_prefixes; DELETE FROM mantik_schema WHERE version=102"); err != nil {
+	if _, err := p.pool.Exec(ctx, "DROP TRIGGER mantik_feed_archive_prefix_batch_required ON mantik_feed_archives; DROP FUNCTION mantik_require_feed_archive_prefix_batch(); DROP TABLE mantik_feed_archive_prefix_batches; DROP TABLE mantik_feed_archive_prefixes; DELETE FROM mantik_schema WHERE version>=102"); err != nil {
 		t.Fatal(err)
 	}
 	connection := p.pool.Config().ConnString()
@@ -314,7 +314,7 @@ func TestPostgresContractsFeedArchivePrefixUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(reopened.Close)
-	if _, err := reopened.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=102"); err != nil {
+	if _, err := reopened.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=102"); err != nil {
 		t.Fatal(err)
 	}
 	if err := reopened.migrate(ctx); err != nil {
