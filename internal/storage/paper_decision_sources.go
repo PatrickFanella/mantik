@@ -48,7 +48,7 @@ func (m *Memory) PaperDecisionSources(ctx context.Context, id string, eval Paper
 	if err != nil {
 		return PaperDecisionSources{}, err
 	}
-	if _, err = paperDecisionCatalog(m.receiverID, m.paperDecisions, s, m.decisionFeedLocked(), eval); err != nil {
+	if _, err = m.activePaperDecisionsLocked(ctx, s, m.decisionFeedLocked(), eval); err != nil {
 		return PaperDecisionSources{}, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -96,7 +96,7 @@ func (p *Postgres) PaperDecisionSources(ctx context.Context, id string, eval Pap
 	if err != nil {
 		return PaperDecisionSources{}, err
 	}
-	if _, err = paperDecisionCatalog(feed.ReceiverID, all, strategies, feed, eval); err != nil {
+	if _, err = readActivePaperDecisions(ctx, tx, feed.ReceiverID, all, strategies, feed, eval); err != nil {
 		return PaperDecisionSources{}, err
 	}
 	out, err := selectPaperDecisionSources(id, all)

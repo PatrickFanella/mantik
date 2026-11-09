@@ -255,7 +255,11 @@ func (m *Memory) ReviewPaperDecision(ctx context.Context, c DecisionReviewComman
 	if err != nil {
 		return DecisionReviewReceipt{}, err
 	}
-	decisions, err := paperDecisionCatalog(m.receiverID, m.paperDecisions, s, m.decisionFeedLocked(), eval)
+	decisions, err := m.activePaperDecisionsLocked(ctx, s, m.decisionFeedLocked(), eval)
+	if err != nil {
+		return DecisionReviewReceipt{}, err
+	}
+	decisions, err = m.reviewOwnerDecisionsLocked(ctx, decisions, c, m.decisionReviews, eval)
 	if err != nil {
 		return DecisionReviewReceipt{}, err
 	}
@@ -286,7 +290,11 @@ func (m *Memory) DecisionReviews(ctx context.Context, eval PaperDecisionEvaluato
 	if err != nil {
 		return DecisionReviewCatalog{}, err
 	}
-	d, err := paperDecisionCatalog(m.receiverID, m.paperDecisions, s, m.decisionFeedLocked(), eval)
+	d, err := m.activePaperDecisionsLocked(ctx, s, m.decisionFeedLocked(), eval)
+	if err != nil {
+		return DecisionReviewCatalog{}, err
+	}
+	d, err = m.reviewOwnerDecisionsLocked(ctx, d, DecisionReviewCommand{}, m.decisionReviews, eval)
 	if err != nil {
 		return DecisionReviewCatalog{}, err
 	}
@@ -358,11 +366,15 @@ func (p *Postgres) decisionReviewAccess(ctx context.Context, write bool, c Decis
 	if err != nil {
 		return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
 	}
-	decisions, err := paperDecisionCatalog(owner, retained, s, feed, eval)
+	decisions, err := readActivePaperDecisions(ctx, tx, owner, retained, s, feed, eval)
 	if err != nil {
 		return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
 	}
 	all, err := readDecisionReviews(ctx, tx)
+	if err != nil {
+		return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
+	}
+	decisions, err = readReviewOwnerDecisions(ctx, tx, decisions, c, all, eval)
 	if err != nil {
 		return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
 	}

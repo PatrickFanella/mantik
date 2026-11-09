@@ -52,6 +52,13 @@ every retained assessment at its original time. A self-hashed supplied envelope
 cannot establish service ownership. Corruption anywhere in the retained prefix
 prevents successful reads, new writes and retries.
 
+Current catalogue reads and writes establish the complete active decision and
+outcome sets from immutable owner intervals. Every active envelope must match its
+reserved original hash, exact event clock and decision/strategy scope before
+native replay. A missing active row remains an error even if older archived
+owners have already left the working set. Historical replay continues to use its
+original complete checkpoint/archive owner set.
+
 New `mantik-owned-paper-outcome-v3` assessments use the windowed basis described
 in [decisions](owned-paper-decisions.md#windowed-decision-bases), extended to keep
 everything published from the decision's clock onward, which is what the forward

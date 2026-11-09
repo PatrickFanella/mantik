@@ -191,6 +191,90 @@ DELETE FROM mantik_paper_outcomes WHERE id='target-outcome'; DELETE FROM mantik_
 		}
 	}
 	t.Run("original-sources-and-clock-free-retries", assertOriginals)
+	t.Run("active-readback-and-append-after-approved-retirement", func(t *testing.T) {
+		working, err := s.PaperDecisions(ctx, de)
+		if err != nil || len(working.Records) != 1 || working.Records[0].Command.ID != "later" {
+			t.Fatal("active decision set depended on the older checkpoint count", err)
+		}
+		outcomes, err := s.PaperOutcomes(ctx, de, oe)
+		if err != nil || len(outcomes.Records) != 0 {
+			t.Fatal("retired outcomes remained in the active catalogue", err)
+		}
+		if got, err := s.PaperDecisionSources(ctx, "later", de); err != nil || !reflect.DeepEqual(got.Decision, working.Records[0]) {
+			t.Fatal("active targeted read used a historical working-set count", err)
+		}
+		after := dc
+		after.ID = "after-retirement"
+		at = at.Add(time.Nanosecond)
+		newD, err := s.FinalizePaperDecision(ctx, after, now, de)
+		if err != nil || newD.Duplicate {
+			t.Fatal("new decision after approved retirement", err)
+		}
+		afterO := PaperOutcomeCommand{ID: "after-retirement-outcome", ReceiverID: plan.ReceiverID, DecisionID: after.ID, DecisionSHA256: newD.Record.SHA256}
+		at = at.Add(time.Nanosecond)
+		newO, err := s.AssessPaperOutcome(ctx, afterO, now, de, oe)
+		if err != nil || newO.Duplicate {
+			t.Fatal("new outcome after approved retirement", err)
+		}
+		if retry, err := s.FinalizePaperDecision(ctx, after, noClock, de); err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, newD.Record) {
+			t.Fatal("active decision retry after retirement", err)
+		}
+		if retry, err := s.AssessPaperOutcome(ctx, afterO, noClock, de, oe); err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, newO.Record) {
+			t.Fatal("active outcome retry after retirement", err)
+		}
+		working, err = s.PaperDecisions(ctx, de)
+		if err != nil || len(working.Records) != 2 {
+			t.Fatal("new active decision membership", err)
+		}
+		outcomes, err = s.PaperOutcomes(ctx, de, oe)
+		if err != nil || len(outcomes.Records) != 1 || !reflect.DeepEqual(outcomes.Records[0], newO.Record) {
+			t.Fatal("new active outcome membership", err)
+		}
+		t.Run("missing-other-active-owner-is-not-a-smaller-catalogue", func(t *testing.T) {
+			if m, ok := s.(*Memory); ok {
+				m.mu.Lock()
+				later := m.paperDecisions["later"]
+				delete(m.paperDecisions, "later")
+				m.mu.Unlock()
+				defer func() { m.mu.Lock(); m.paperDecisions["later"] = later; m.mu.Unlock() }()
+			} else {
+				p := s.(*Postgres)
+				var raw []byte
+				if err := p.pool.QueryRow(ctx, "DELETE FROM mantik_paper_decisions WHERE id='later' RETURNING payload").Scan(&raw); err != nil {
+					t.Fatal(err)
+				}
+				defer func() {
+					tx, err := p.pool.Begin(ctx)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer tx.Rollback(ctx)
+					if _, err := tx.Exec(ctx, "ALTER TABLE mantik_paper_decisions DISABLE TRIGGER USER"); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := tx.Exec(ctx, "INSERT INTO mantik_paper_decisions(id,payload) VALUES('later',$1)", raw); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := tx.Exec(ctx, "ALTER TABLE mantik_paper_decisions ENABLE TRIGGER USER"); err != nil {
+						t.Fatal(err)
+					}
+					if err := tx.Commit(ctx); err != nil {
+						t.Fatal(err)
+					}
+				}()
+			}
+			if got, err := s.PaperDecisions(ctx, de); err == nil || !reflect.DeepEqual(got, PaperDecisionCatalog{}) {
+				t.Fatal("missing active owner returned a partial catalogue", err)
+			}
+			if got, err := s.PaperDecisionSources(ctx, after.ID, de); err == nil || !reflect.DeepEqual(got, PaperDecisionSources{}) {
+				t.Fatal("targeted active read hid another missing active owner", err)
+			}
+			if got, err := s.FinalizePaperDecision(ctx, after, noClock, de); err == nil || !reflect.DeepEqual(got, PaperDecisionReceipt{}) {
+				t.Fatal("active retry hid another missing active owner", err)
+			}
+		})
+		assertOriginals(t)
+	})
 	t.Run("later-working-feed-does-not-reinterpret-original", func(t *testing.T) {
 		if m, ok := s.(*Memory); ok {
 			m.mu.Lock()

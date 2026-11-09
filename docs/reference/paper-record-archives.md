@@ -116,6 +116,23 @@ Lists and active-owner writes keep their complete active-catalogue validation.
 This reader preparation does not authorize retirement, reuse an identity,
 issue new outcomes for retired decisions or remove working capacity limits.
 
+Current decision/outcome catalogue reads and writes now prove their working set
+against the actual active owner intervals, then replay every native record.
+PostgreSQL uses the existing GiST interval index and bounded metadata selection
+at the current archive head; it does not scan historical payloads to enumerate
+the working set. Memory scans its identity metadata while retaining only the
+bounded active rows. Original hashes, exact clocks and strategy/decision scope
+must match each active envelope. Historical checkpoint and archive replay keep
+their complete original owner sets and counters.
+
+Decision reviews use that active proof and resolve only their additional actual
+retired decision dependencies from the first original archives. The review
+catalogue/cases, source-bound findings and exact retries survive that dependency
+move; a new typed review can also select the original decision. Review retirement,
+allocation/attribution references, archive-writer transitions and automatic
+retention still require their remaining owner work before physical removal is
+enabled.
+
 Private source-custody views use the same owner scope. Working reads load seals
 only for actual active decision/outcome IDs; historical checkpoint inspection
 uses its independently selected owner interval, and archive inspection uses its

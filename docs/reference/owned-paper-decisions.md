@@ -45,7 +45,11 @@ records or a changed result prevents a successful catalogue read or retry.
 
 Exact command retries return the original record without reading a new clock.
 Changed content under the same ID conflicts. Active records validate the full
-retained prefix before new writes or retries. A targeted read or exact retry of
+working set before reads, new writes or retries. Immutable creation/retirement
+intervals independently select the active IDs; their original hashes, exact
+clocks and strategy/decision scope must match every working envelope before
+native replay. An older feed checkpoint's original closed-record count does not
+define the current working set after retirement. A targeted read or exact retry of
 an independently approved retired identity resolves its first original archive,
 checks actual creation and scope metadata, and replays the native decision at
 its original time against that archive's original source context. Missing

@@ -351,6 +351,19 @@ func paperDecisionCatalog(owner string, all map[string]retainedPaperDecision, st
 			return out, ErrPaperDecisionConflict
 		}
 	}
+	return replayPaperDecisionRecords(owner, all, strategies, feed, eval)
+}
+
+// Completeness belongs to the caller's owner scope: either the original closed
+// checkpoint above or an independently selected active epoch set.
+func replayPaperDecisionRecords(owner string, all map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, eval PaperDecisionEvaluator) (PaperDecisionCatalog, error) {
+	out := PaperDecisionCatalog{ReceiverID: owner, Records: []PaperDecisionRecord{}}
+	if err := validateFeedCustody(feed); err != nil {
+		return PaperDecisionCatalog{}, err
+	}
+	if eval == nil || !ValidReceiverID(owner) || len(all) > MaxPaperDecisions || strategies.Validate() != nil {
+		return PaperDecisionCatalog{}, ErrPaperDecisionInvalid
+	}
 	index := newFeedPrefixIndex(feed)
 	for id, v := range all {
 		if id != v.Record.Command.ID || v.Record.Command.ReceiverID != owner {
@@ -371,6 +384,10 @@ func appendPaperDecisionFromFeed(c PaperDecisionCommand, all map[string]retained
 	if _, err := paperDecisionCatalog(feed.ReceiverID, all, strategies, feed, eval); err != nil {
 		return retainedPaperDecision{}, false, err
 	}
+	return appendPaperDecisionAfterReplay(c, all, strategies, feed, observation, now, eval)
+}
+
+func appendPaperDecisionAfterReplay(c PaperDecisionCommand, all map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed, observation FeedEvidenceSnapshot, now func() time.Time, eval PaperDecisionEvaluator) (retainedPaperDecision, bool, error) {
 	if c.Validate() != nil {
 		return retainedPaperDecision{}, false, ErrPaperDecisionInvalid
 	}
@@ -456,13 +473,16 @@ func (m *Memory) FinalizePaperDecision(ctx context.Context, c PaperDecisionComma
 		return PaperDecisionReceipt{}, err
 	}
 	feed := m.decisionFeedLocked()
+	if _, err := m.activePaperDecisionsLocked(ctx, s, feed, eval); err != nil {
+		return PaperDecisionReceipt{}, err
+	}
 	observation, ownedNow, err := decisionObservationFeed(c, m.paperDecisions, feed, now, func(reg string, since, at time.Time) (FeedEvidenceSnapshot, error) {
 		return m.archivedOutcomeFeedLocked(ctx, feed, reg, since, at)
 	})
 	if err != nil {
 		return PaperDecisionReceipt{}, err
 	}
-	v, dup, err := appendPaperDecisionFromFeed(c, m.paperDecisions, s, feed, observation, ownedNow, eval)
+	v, dup, err := appendPaperDecisionAfterReplay(c, m.paperDecisions, s, feed, observation, ownedNow, eval)
 	if err != nil {
 		return PaperDecisionReceipt{}, err
 	}
@@ -492,7 +512,7 @@ func (m *Memory) PaperDecisions(ctx context.Context, eval PaperDecisionEvaluator
 	if err != nil {
 		return PaperDecisionCatalog{}, err
 	}
-	return paperDecisionCatalog(m.receiverID, m.paperDecisions, s, m.decisionFeedLocked(), eval)
+	return m.activePaperDecisionsLocked(ctx, s, m.decisionFeedLocked(), eval)
 }
 func readPaperDecisions(ctx context.Context, tx pgx.Tx) (map[string]retainedPaperDecision, error) {
 	rows, err := tx.Query(ctx, "SELECT id,payload FROM mantik_paper_decisions ORDER BY id LIMIT $1", MaxPaperDecisions+1)
@@ -574,13 +594,16 @@ func (p *Postgres) FinalizePaperDecision(ctx context.Context, c PaperDecisionCom
 	if _, exists := all[c.ID]; metadata.ID != "" && !exists {
 		return PaperDecisionReceipt{}, ErrPaperDecisionConflict
 	}
+	if _, err := readActivePaperDecisions(ctx, tx, owner, all, s, feed, eval); err != nil {
+		return PaperDecisionReceipt{}, err
+	}
 	observation, ownedNow, err := decisionObservationFeed(c, all, feed, now, func(reg string, since, at time.Time) (FeedEvidenceSnapshot, error) {
 		return readArchivedOutcomeFeed(ctx, tx, feed, reg, since, at)
 	})
 	if err != nil {
 		return PaperDecisionReceipt{}, err
 	}
-	v, dup, err := appendPaperDecisionFromFeed(c, all, s, feed, observation, ownedNow, eval)
+	v, dup, err := appendPaperDecisionAfterReplay(c, all, s, feed, observation, ownedNow, eval)
 	if err != nil {
 		return PaperDecisionReceipt{}, err
 	}
@@ -629,7 +652,7 @@ func (p *Postgres) PaperDecisions(ctx context.Context, eval PaperDecisionEvaluat
 	if err != nil {
 		return PaperDecisionCatalog{}, err
 	}
-	out, err := paperDecisionCatalog(feed.ReceiverID, all, s, feed, eval)
+	out, err := readActivePaperDecisions(ctx, tx, feed.ReceiverID, all, s, feed, eval)
 	if err != nil {
 		return PaperDecisionCatalog{}, err
 	}

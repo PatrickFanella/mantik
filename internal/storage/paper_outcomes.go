@@ -268,6 +268,16 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 			return out, ErrPaperOutcomeConflict
 		}
 	}
+	return replayPaperOutcomeRecords(owner, all, decisions, strategies, feed, eval)
+}
+
+// Native outcome replay is shared by independently complete working and
+// historical owner scopes. Each scope validates its actual decision set first.
+func replayPaperOutcomeRecords(owner string, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, eval PaperOutcomeEvaluator) (PaperOutcomeCatalog, error) {
+	out := PaperOutcomeCatalog{ReceiverID: owner, Records: []PaperOutcomeRecord{}}
+	if !ValidReceiverID(owner) || eval == nil || len(all) > MaxPaperOutcomes {
+		return PaperOutcomeCatalog{}, ErrPaperOutcomeInvalid
+	}
 	replay := newPaperOutcomeReplay(owner, all, strategies, feed, eval)
 	for id, v := range all {
 		d, ok := decisions[v.Record.Command.DecisionID]
@@ -290,6 +300,10 @@ func appendPaperOutcomeFromFeed(c PaperOutcomeCommand, all map[string]retainedPa
 	if _, err := paperOutcomeCatalog(feed.ReceiverID, all, decisions, strategies, feed, decisionEval, eval); err != nil {
 		return retainedPaperOutcome{}, false, err
 	}
+	return appendPaperOutcomeAfterReplay(c, all, decisions, strategies, feed, observation, now, eval)
+}
+
+func appendPaperOutcomeAfterReplay(c PaperOutcomeCommand, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed, observation FeedEvidenceSnapshot, now func() time.Time, eval PaperOutcomeEvaluator) (retainedPaperOutcome, bool, error) {
 	if c.Validate() != nil {
 		return retainedPaperOutcome{}, false, ErrPaperOutcomeInvalid
 	}
@@ -372,13 +386,16 @@ func (m *Memory) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand, 
 		return PaperOutcomeReceipt{}, err
 	}
 	feed := m.decisionFeedLocked()
+	if _, err := m.activePaperOutcomesLocked(ctx, s, feed, decisionEval, eval); err != nil {
+		return PaperOutcomeReceipt{}, err
+	}
 	observation, ownedNow, err := outcomeObservationFeed(c, m.paperOutcomes, m.paperDecisions, feed, now, func(reg string, since, at time.Time) (FeedEvidenceSnapshot, error) {
 		return m.archivedOutcomeFeedLocked(ctx, feed, reg, since, at)
 	})
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
-	v, dup, err := appendPaperOutcomeFromFeed(c, m.paperOutcomes, m.paperDecisions, s, feed, observation, ownedNow, decisionEval, eval)
+	v, dup, err := appendPaperOutcomeAfterReplay(c, m.paperOutcomes, m.paperDecisions, s, feed, observation, ownedNow, eval)
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
@@ -408,7 +425,7 @@ func (m *Memory) PaperOutcomes(ctx context.Context, decisionEval PaperDecisionEv
 	if err != nil {
 		return PaperOutcomeCatalog{}, err
 	}
-	return paperOutcomeCatalog(m.receiverID, m.paperOutcomes, m.paperDecisions, s, m.decisionFeedLocked(), decisionEval, eval)
+	return m.activePaperOutcomesLocked(ctx, s, m.decisionFeedLocked(), decisionEval, eval)
 }
 func readPaperOutcomes(ctx context.Context, tx pgx.Tx) (map[string]retainedPaperOutcome, error) {
 	rows, err := tx.Query(ctx, "SELECT id,payload FROM mantik_paper_outcomes ORDER BY id LIMIT $1", MaxPaperOutcomes+1)
@@ -494,13 +511,16 @@ func (p *Postgres) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand
 	if _, exists := all[c.ID]; metadata.ID != "" && !exists {
 		return PaperOutcomeReceipt{}, ErrPaperOutcomeConflict
 	}
+	if _, err := readActivePaperOutcomes(ctx, tx, owner, all, decisions, s, feed, decisionEval, eval); err != nil {
+		return PaperOutcomeReceipt{}, err
+	}
 	observation, ownedNow, err := outcomeObservationFeed(c, all, decisions, feed, now, func(reg string, since, at time.Time) (FeedEvidenceSnapshot, error) {
 		return readArchivedOutcomeFeed(ctx, tx, feed, reg, since, at)
 	})
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
-	v, dup, err := appendPaperOutcomeFromFeed(c, all, decisions, s, feed, observation, ownedNow, decisionEval, eval)
+	v, dup, err := appendPaperOutcomeAfterReplay(c, all, decisions, s, feed, observation, ownedNow, eval)
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
@@ -553,7 +573,7 @@ func (p *Postgres) PaperOutcomes(ctx context.Context, decisionEval PaperDecision
 	if err != nil {
 		return PaperOutcomeCatalog{}, err
 	}
-	out, err := paperOutcomeCatalog(feed.ReceiverID, all, decisions, s, feed, decisionEval, eval)
+	out, err := readActivePaperOutcomes(ctx, tx, feed.ReceiverID, all, decisions, s, feed, decisionEval, eval)
 	if err != nil {
 		return PaperOutcomeCatalog{}, err
 	}
