@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -256,17 +257,20 @@ func planRetainedFeed(feed FeedEvidenceSnapshot, checkpoint PaperFeedCheckpointH
 		}
 	}
 	if feed.Routing != nil {
+		keepReference := func(ref string) {
+			// Routing facts also reference separately owned quote observations.
+			// Only routing:<id> names this aggregate's retained input map.
+			if id, retained := strings.CutPrefix(ref, "routing:"); retained {
+				keepInputs[id] = true
+			}
+		}
 		for _, rt := range feed.Routing.Runtime {
 			for _, f := range rt.Facts {
-				if f.InputRef != "" {
-					keepInputs[f.InputRef] = true
-				}
+				keepReference(f.InputRef)
 			}
 		}
 		for _, c := range feed.Routing.Cases {
-			if c.LastInputRef != "" {
-				keepInputs[c.LastInputRef] = true
-			}
+			keepReference(c.LastInputRef)
 		}
 		// Inputs owned outside the collector keep their existing routing owner.
 		for id := range feed.Routing.Inputs {
@@ -280,7 +284,7 @@ func planRetainedFeed(feed FeedEvidenceSnapshot, checkpoint PaperFeedCheckpointH
 			return FeedEvidenceSnapshot{}, nil, ErrFeedArchiveConflict
 		}
 		if _, exists := feed.Routing.Inputs[id]; !exists {
-			return FeedEvidenceSnapshot{}, nil, ErrFeedArchiveConflict
+			return FeedEvidenceSnapshot{}, nil, fmt.Errorf("%w: routing input %q is still referenced but not retained", ErrFeedArchiveConflict, id)
 		}
 	}
 	for id := range out.Records {

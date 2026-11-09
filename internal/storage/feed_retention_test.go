@@ -68,8 +68,8 @@ func TestFeedRetentionWorkingSetAndPrefixContinuation(t *testing.T) {
 	}
 	add(&feed, "calendar-new", "market_calendar", base.Add(5*time.Minute))
 	feed.Collectors.LastClock = base.Add(6*time.Minute + time.Second)
-	feed.Routing.Runtime = map[string]domain.TriggerRuntime{"live": {Facts: map[string]domain.ConditionFact{"price": {InputRef: "quote-00"}}}}
-	feed.Routing.Cases = []domain.RoutingCase{{ID: "case", LastInputRef: "quote-01"}}
+	feed.Routing.Runtime = map[string]domain.TriggerRuntime{"live": {Facts: map[string]domain.ConditionFact{"price": {InputRef: "routing:quote-00"}, "observed": {InputRef: "quote:separate-observation-owner"}}}}
+	feed.Routing.Cases = []domain.RoutingCase{{ID: "case", LastInputRef: "routing:quote-01"}}
 	feed.Routing.Inputs["other-owner"] = domain.RetainedRoutingInput{Input: domain.RoutingInput{ID: "other-owner", ReceivedAt: base}}
 	before := clone(feed)
 	cut := base.Add(10 * time.Minute)
