@@ -18,13 +18,23 @@ namespace, publish no ports, and copy test source rather than bind-mounting a
 host path. Cleanup removes only those containers. It does not read a supplied
 DATABASE_URL or touch existing database volumes. The storage and CLI integration
 packages and their test groups run sequentially against this disposable server.
+The harness verifies that each attached test container actually reached
+`exited` with exit code zero and no OOM kill before accepting tests or recovery
+proof. A detached attachment returning zero while its container still runs is
+an error, and cleanup removes that owned container.
 The race detector and concurrent transaction checks inside each test remain
-enabled. Each group has a thirty-minute test budget. Application request
-timeouts and assertions retain their existing values; the harness does not
-retry failed requests.
+enabled. Each group has a thirty-minute test budget. Normal-build request
+timeouts and all assertions retain their existing values. Race-build owner replay
+uses its existing tenfold instrumentation allowance, including source mutations
+that replay retained envelopes for their causal clock floor. The harness does
+not retry failed requests.
 
 `scripts/testshard` compiles one test binary per package and partitions its
-actual registry into two deterministic groups. Every selected top-level test,
+actual registry into two deterministic regular groups. Storage integration puts
+the complete `TestPostgresContractsFeedRotationCrossesActiveCapacity` case alone
+in an additional group, keeping its full workload within the same thirty-minute
+budget. The regular groups exclude that one case; a missing required dedicated
+case fails discovery. Every selected top-level test,
 example and fuzz seed runs once, including all its subtests, from the package's
 working directory. It reports the inventory and selected-name hashes and runs
 with `-count=1`. `make test-race` runs both storage groups and race-checks all
@@ -32,7 +42,7 @@ other packages with Go's ordinary runner. This avoids a single package alarm
 exhausting thirty minutes across unrelated tests on slower shared runners.
 
 Hosted CI runs unit checks, other-package race checks, both storage race groups,
-four integration groups and image builds in separate jobs. The required
+five integration groups and image builds in separate jobs. The required
 `CI / verify` gate runs even after a dependency fails and accepts only success
 from every job. Each verification job has a sixty-minute ceiling. The storage
 integration group zero also performs the complete snapshot-bound dump/restore,
@@ -43,6 +53,7 @@ group and the same recovery contract. To run one integration group:
 ```bash
 python3 scripts/test-integration.py --package storage --shard 0
 python3 scripts/test-integration.py --package storage --shard 1
+python3 scripts/test-integration.py --package storage --shard 2
 python3 scripts/test-integration.py --package cli --shard 0
 python3 scripts/test-integration.py --package cli --shard 1
 ```

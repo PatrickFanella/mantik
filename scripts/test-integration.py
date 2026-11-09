@@ -18,6 +18,15 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, text=True, **kwargs)
 
 
+def require_runner_exit(output):
+    """An attached client can exit zero while its test container still runs."""
+    state = json.loads(output)
+    if (not isinstance(state, dict) or state.get("Status") != "exited"
+            or state.get("Running") is not False or type(state.get("ExitCode")) is not int
+            or state["ExitCode"] != 0 or state.get("OOMKilled") is not False):
+        raise RuntimeError("Test container did not finish successfully")
+
+
 def require_replay_pass(output):
     """A successful package exit or skipped test does not prove owner replay."""
     events = [json.loads(line) for line in output.splitlines() if line.strip()]
@@ -76,9 +85,10 @@ def replay_restored_owner(container, source_runner, database, expect_rejection=F
             receipt_path.write_text(json.dumps(receipt, indent=2) + "\n")
         result = subprocess.run(["docker", "start", "-a", runner], text=True, capture_output=True, timeout=600)
         receipt.update(test_output=result.stdout, test_stderr=result.stderr, attach_exit=result.returncode)
-        code = run("docker", "inspect", "--format", "{{.State.ExitCode}}", runner, capture_output=True).stdout.strip()
-        if code != "0" or result.returncode != 0:
-            raise RuntimeError("Restored owner test container failed: " + code + "\n" + result.stdout + result.stderr)
+        state = run("docker", "inspect", "--format", "{{json .State}}", runner, capture_output=True).stdout
+        require_runner_exit(state)
+        if result.returncode != 0:
+            raise RuntimeError("Restored owner test attachment failed\n" + result.stdout + result.stderr)
         require_replay_pass(result.stdout)
         receipt["passed"] = True
         return receipt
@@ -103,10 +113,12 @@ def replay_restored_owner(container, source_runner, database, expect_rejection=F
 def test_scope(argv):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", choices=("storage", "cli"))
-    parser.add_argument("--shard", type=int, choices=(0, 1))
+    parser.add_argument("--shard", type=int, choices=(0, 1, 2))
     args = parser.parse_args(argv)
     if args.shard is not None and args.package is None:
         parser.error("--shard requires --package")
+    if args.shard == 2 and args.package != "storage":
+        parser.error("the dedicated capacity group requires --package storage")
     packages = ["./internal/" + args.package] if args.package else ["./internal/storage", "./internal/cli"]
     storage = "./internal/storage" in packages
     producer = storage and args.shard in (None, 0)
@@ -115,6 +127,7 @@ def test_scope(argv):
         command.append("-index=" + str(args.shard))
     if storage:
         command.append("-first-only=TestPostgresContractsRecoverySeed")
+        command.append("-dedicated=TestPostgresContractsFeedRotationCrossesActiveCapacity")
     return command + packages, producer
 
 
@@ -157,10 +170,9 @@ def main(argv=None):
             run("docker", "cp", path, runner + ":/src/" + path)
         run("docker", "cp", "scripts/testshard", runner + ":/src/testshard")
         run("docker", "start", "-a", runner)
-        exit_code = run("docker", "inspect", "--format", "{{.State.ExitCode}}", runner,
-                        capture_output=True).stdout.strip()
-        if exit_code != "0":
-            raise RuntimeError("PostgreSQL contract test container failed: " + exit_code)
+        state = run("docker", "inspect", "--format", "{{json .State}}", runner,
+                    capture_output=True).stdout
+        require_runner_exit(state)
         if producer:
             recovery_contract(name, database, lambda target, rejected: replay_restored_owner(name, runner, target, rejected))
         else:
