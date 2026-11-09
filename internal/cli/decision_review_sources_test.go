@@ -110,7 +110,7 @@ func sourceDecisionReviewHTTP(t *testing.T, request func(string, string, any, in
 			}
 		}
 		var display strings.Builder
-		if err := renderPaperAttribution(&display, d.Command.ReceiverID, []storage.PaperAttributionRow{row}); err != nil || !strings.Contains(display.String(), "decision_input_verified=false") || !strings.Contains(display.String(), c.ID) {
+		if err := renderPaperAttribution(&display, d.Command.ReceiverID, []storage.PaperAttributionRow{row}); err != nil || !strings.Contains(display.String(), "decision_input_verified=false") || !strings.Contains(display.String(), c.ID) || !strings.Contains(display.String(), "ingestion_delay_seconds=1") || !strings.Contains(display.String(), `kind="`+kind+`"`) || !strings.Contains(display.String(), retained.Entry.Capture.SHA256) {
 			t.Fatal("claim timing not presented", display.String(), err)
 		}
 	}

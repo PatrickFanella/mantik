@@ -157,9 +157,12 @@ The view lists finalized research decisions in bounded pages. Use `n` and `p` to
 navigate locally, `r` to refresh the catalogue, and `q` to quit. On the displayed
 page, `d ID` prints the retained finalized record, `e ID` reads its deterministic
 post-decision explanation, `m ID` reads the retained market dimensions and
-source fences, and `a ID` reads the decision's complete retained
-[phase attribution](paper-attribution.md), including allocation choices and
-non-grant admission-review history. These inspections use existing service endpoints;
+source fences, and `a ID` shows readable retained
+[phase attribution](paper-attribution.md): outcomes, allocation choices, paper
+execution effects and baselines, readiness gates, source delays and non-grant
+review history. `aj ID` prints the complete attribution row as JSON, including
+source and record hashes. Both forms fetch and validate the same owner row;
+only the display format changes. These inspections use existing service endpoints;
 original source bytes remain available through their existing inspection paths.
 
 Inspection responses must match the displayed receiver, decision hash, historical
@@ -170,8 +173,12 @@ and must contain the exact displayed finalized decision, including its evidence
 basis and stored evaluation. Later outcomes or reviews can change the attribution
 row while that immutable decision stays the same; this is a current read, not a
 claim that downstream history was present at finalization. Funding ceilings remain
-bounds, economics remain unavailable, and reviews never become grants. JSON output escapes source strings instead of printing
-source text as terminal commands. These checks bind the service readback; they
+bounds; execution economics appear only when retained paper effects support them.
+Reviews never become grants. The table distinguishes absent outcomes and source
+timings from zero-valued measurements, and explains the native boolean signal's
+probability-scoring limit. Social/copy delays describe review provenance, not
+verified decision inputs or copy execution returns. Tables quote source strings,
+and JSON output escapes them so source text cannot act as terminal commands. These checks bind the service readback; they
 do not independently attest imported records or replace the service's owner
 replay.
 

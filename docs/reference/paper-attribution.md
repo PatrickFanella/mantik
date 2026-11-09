@@ -209,7 +209,10 @@ ceilings as bounds, and shows unavailable execution quantities,
 fees, realized P&L and economic baselines explicitly. A quote delta appears only
 for an `observed` assessment; waiting or inapplicable assessments show an
 unavailable delta. Repeated assessments do not become independent sample counts
-or a performance rate. Forecast calibration remains unavailable.
+or a performance rate. `SIGNAL` shows the stored boolean predicate and marks
+probability scoring not applicable: the native threshold emits no probability
+forecast. `OUTCOME_EVIDENCE` explicitly reports insufficient evidence when no
+assessment is retained.
 
 Use `--format json` for the complete catalogue, source hash and row hashes.
 Select an exact row with `--id DECISION --record-sha256 ROW_SHA256`; this pin is
@@ -234,8 +237,26 @@ are quoted in tables so control characters cannot act as terminal instructions.
 The command preserves full JSON for inspection rather than summarizing absent
 measurements as zero.
 
-This delivers CLI readback for the implemented phase attribution. The interactive
-TUI, calibrated forecasts and social/copy delay analysis remain open under #24 and its dependencies.
+`mantik supervise --view decisions` uses this same table for `a ID` on the
+displayed page. Use `aj ID` for the full validated row as JSON. Both forms reject
+stale catalogues, changed receivers, malformed rows and substituted decisions;
+failed or canceled inspection does not retain a result as a fresh readback.
+
+`SOURCE_TIMING` identifies each review and capture, source kind (`social` or
+`copy`), capture hash, declared observation delay, total delay until owner
+retention, and ingestion delay from declared observation to owner retention.
+Durations are whole seconds truncated toward zero. The owner-retained timestamps
+are used directly; independently rounded components need not sum to the rounded
+total when timestamps contain fractions of a second. The existing clock relation
+states whether retention was before, after or at the decision clock; equal clocks
+do not prove ordering. Missing timings remain unavailable. These are retained
+post-decision review sources, with `decision_input_verified=false`; the view does
+not derive causal decision inputs or counterfactual copy returns from them.
+
+This delivers readable interactive attribution and source-delay presentation.
+Strategy-level source-delay analysis and applicable quality assessment remain
+open under #24; no calibrated forecast or independent performance sample is
+created by this display.
 
 
 The terminal readback displays `EVALUATION_PLANS` with the captured source hash,
