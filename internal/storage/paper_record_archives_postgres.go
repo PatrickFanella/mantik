@@ -55,19 +55,31 @@ func readPaperArchiveMembers(ctx context.Context, tx pgx.Tx, a PaperRecordArchiv
 	// Immutable creation epochs independently close the complete owner set.
 	// Rehashing or deleting both a manifest and its member rows cannot omit a
 	// record which actually existed when this archive committed.
-	rows, err := tx.Query(ctx, "SELECT e.kind,e.record_id,coalesce(m.created_epoch,-1),coalesce(m.record_sha256,''),coalesce(m.payload_sha256,''),e.created_epoch,e.record_sha256,e.at_seconds,e.at_nanos FROM mantik_paper_record_epochs e LEFT JOIN mantik_paper_archive_members m ON m.archive_sequence=$1 AND m.kind=e.kind AND m.record_id=e.record_id WHERE int8range(e.created_epoch,e.retired_epoch,'[)') @> ($1::bigint-1) ORDER BY e.kind,e.record_id LIMIT $2", a.Sequence, maxPaperArchiveRecords+1)
+	rows, err := tx.Query(ctx, "SELECT e.kind,e.record_id,coalesce(m.created_epoch,-1),coalesce(m.record_sha256,''),coalesce(m.payload_sha256,''),e.created_epoch,e.record_sha256,e.at_seconds,e.at_nanos,e.strategy_id,e.strategy_sha256,e.decision_id,e.decision_sha256,e.decision_at_seconds,e.decision_at_nanos FROM mantik_paper_record_epochs e LEFT JOIN mantik_paper_archive_members m ON m.archive_sequence=$1 AND m.kind=e.kind AND m.record_id=e.record_id WHERE int8range(e.created_epoch,e.retired_epoch,'[)') @> ($1::bigint-1) ORDER BY e.kind,e.record_id LIMIT $2", a.Sequence, maxPaperArchiveRecords+1)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	actual := []PaperArchiveRecordPin{}
+	scopes := map[string]paperRecordScope{}
 	for rows.Next() {
 		var p PaperArchiveRecordPin
 		var epoch, seconds int64
 		var sha string
 		var nanos int
-		if err := rows.Scan(&p.Kind, &p.ID, &p.CreatedEpoch, &p.RecordSHA256, &p.PayloadSHA256, &epoch, &sha, &seconds, &nanos); err != nil {
+		var strategyID, strategySHA, decisionID, decisionSHA *string
+		var decisionSeconds *int64
+		var decisionNanos *int
+		if err := rows.Scan(&p.Kind, &p.ID, &p.CreatedEpoch, &p.RecordSHA256, &p.PayloadSHA256, &epoch, &sha, &seconds, &nanos, &strategyID, &strategySHA, &decisionID, &decisionSHA, &decisionSeconds, &decisionNanos); err != nil {
 			return err
+		}
+		if p.Kind == "decision" || p.Kind == "outcome" {
+			if strategyID == nil || strategySHA == nil || decisionID == nil || decisionSHA == nil || decisionSeconds == nil || decisionNanos == nil {
+				return ErrPaperRecordArchiveConflict
+			}
+			scopes[p.Kind+":"+p.ID] = paperRecordScope{*strategyID, *strategySHA, *decisionID, *decisionSHA, time.Unix(*decisionSeconds, int64(*decisionNanos)).UTC()}
+		} else if strategyID != nil || strategySHA != nil || decisionID != nil || decisionSHA != nil || decisionSeconds != nil || decisionNanos != nil {
+			return ErrPaperRecordArchiveConflict
 		}
 		if epoch != p.CreatedEpoch || sha != p.RecordSHA256 {
 			return ErrPaperRecordArchiveConflict
@@ -81,7 +93,7 @@ func readPaperArchiveMembers(ctx context.Context, tx pgx.Tx, a PaperRecordArchiv
 	if !reflect.DeepEqual(actual, paperArchivePins(a.Records)) {
 		return ErrPaperRecordArchiveConflict
 	}
-	return nil
+	return checkPaperRecordScopes(a.Records, scopes)
 }
 
 func readPaperRecordArchivePayload(ctx context.Context, tx pgx.Tx, sequence int64) (PaperRecordArchive, error) {

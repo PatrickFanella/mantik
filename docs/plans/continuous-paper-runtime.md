@@ -61,6 +61,11 @@ the historical owner view rather than loading all historical seals into the
 first-archive native context, including legacy recipes, complete source hashes
 and corporate readbacks. New assessment sample selection, allocation/admission
 consumers and growing-history end-to-end retirement remain pending.
+Schema 107 adds immutable strategy/decision scope and exact decision-clock
+metadata to original creation rows, with native-envelope backfill, archive
+cross-checks and a window-selection index. Bounded window paging and new
+archive-backed assessment samples remain the next consumer work; this metadata
+alone does not extend the active paper limit.
 
 ## Archive contract
 

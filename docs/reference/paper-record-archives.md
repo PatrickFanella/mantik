@@ -112,6 +112,23 @@ A required missing or changed seal still fails native replay. Complete audits
 continue through every checkpoint and archive; this selection does not turn a
 partial history check into a complete audit.
 
+Schema 107 adds immutable selection metadata to decision/outcome creation rows:
+the original strategy ID/version, decision ID/hash and exact seconds/nanoseconds
+of decision finalization. An outcome derives its scope from its actual retained
+decision basis. Its own evaluation clock remains the separate availability time.
+These columns and the `mantik_paper_sample_window` index prepare bounded window
+selection across active and archived owners. New assessments still use their
+existing active catalogue in this unit.
+
+The migration backfills from retained native envelopes and checks original
+record hashes and clocks. Replaying populated schema 107 rejects missing or
+changed projections. Older running envelope writers obtain the same metadata
+through their existing insertion trigger, in the original transaction. Full
+archive reads independently compare these columns with archived owner payloads;
+the index is selection metadata and grants no evaluation or financial authority.
+Existing archive payloads, creation-pin hashes and original source hashes stay
+unchanged. The retirement guard continues to reject removal of paper owners.
+
 After a paper archive exists, new feed/paper custody checkpoints use
 `mantik-paper-feed-checkpoint-v2` and bind the actual `paper_archive_sequence`.
 The cut covers at least that paper archive's original time, even when the feed
@@ -135,7 +152,7 @@ Backups must include `mantik_paper_record_archives`,
 `mantik_paper_archive_batches`, together with all original source owners, feed
 archives/indexes, custody checkpoints, retention metadata and receiver/schema
 history. Archive payloads, batch roots, membership and original identity metadata
-are immutable. Predecessor startup binaries refuse schema 106; rollback requires
+are immutable. Predecessor startup binaries refuse schema 107; rollback requires
 matching binaries and an isolated restored backup. Removing migration records
 or custody rows in place is unsupported.
 

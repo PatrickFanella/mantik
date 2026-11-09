@@ -148,7 +148,7 @@ func paperOwnerViewContract(t *testing.T, s interface {
 		if _, err := pg.pool.Exec(ctx, "ALTER TABLE mantik_paper_record_epochs DISABLE TRIGGER mantik_immutable_paper_epochs; UPDATE mantik_paper_record_epochs SET retired_epoch=2 WHERE (kind,record_id) IN (('decision','original'),('outcome','outcome')); ALTER TABLE mantik_paper_record_epochs ENABLE TRIGGER mantik_immutable_paper_epochs; DELETE FROM mantik_paper_outcomes WHERE id='outcome'; DELETE FROM mantik_paper_decisions WHERE id='original'"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=106"); err != nil {
+		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=106"); err != nil {
 			t.Fatal(err)
 		}
 		if err := pg.migrate(ctx); err != nil {

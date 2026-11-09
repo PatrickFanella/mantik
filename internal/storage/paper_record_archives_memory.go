@@ -43,6 +43,9 @@ func (m *Memory) ArchivePaperRecords(ctx context.Context, owner string, now func
 	if err != nil {
 		return PaperRecordArchiveReceipt{}, err
 	}
+	if err := checkPaperRecordScopes(records, m.paperRecordScopes); err != nil {
+		return PaperRecordArchiveReceipt{}, err
+	}
 	var previous PaperRecordArchiveHeader
 	if len(m.paperRecordArchives) > 0 {
 		old, err := m.paperRecordArchiveLocked(ctx, int64(len(m.paperRecordArchives)), de, oe)
@@ -101,6 +104,9 @@ func (m *Memory) paperRecordArchivePayloadLocked(sequence int64) (PaperRecordArc
 		}
 	}
 	if err := checkPaperArchiveEpochs(sequence, a.Records, m.paperRecordEpochs, m.paperRecordRetiredEpochs); err != nil {
+		return PaperRecordArchive{}, err
+	}
+	if err := checkPaperRecordScopes(a.Records, m.paperRecordScopes); err != nil {
 		return PaperRecordArchive{}, err
 	}
 	for _, r := range a.Records {

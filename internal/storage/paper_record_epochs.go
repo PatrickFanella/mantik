@@ -24,6 +24,16 @@ func (m *Memory) retainPaperRecordEpoch(kind, id, sha string, at time.Time) {
 		m.paperRecordEpochs = map[string]PaperRecordEpoch{}
 	}
 	m.paperRecordEpochs[kind+":"+id] = PaperRecordEpoch{kind, id, int64(len(m.paperRecordArchives)), sha, at.UTC()}
+	if kind == "decision" || kind == "outcome" {
+		if m.paperRecordScopes == nil {
+			m.paperRecordScopes = map[string]paperRecordScope{}
+		}
+		d := m.paperDecisions[id].Record
+		if kind == "outcome" {
+			d = m.paperOutcomes[id].Basis.Decision
+		}
+		m.paperRecordScopes[kind+":"+id] = paperScopeForDecision(d)
+	}
 }
 
 func readPaperRecordEpochs(ctx context.Context, tx pgx.Tx, keys []string) (map[string]PaperRecordEpoch, error) {

@@ -1072,4 +1072,10 @@ source context, preserving complete original evidence and legacy hashes after
 input rows move. New assessment sample selection and the remaining consumers
 must gain archive access before physical paper retirement can be enabled.
 
+Schema 107 retains immutable strategy/version, decision identity and exact
+decision-clock metadata beside each decision/outcome creation epoch. Archive
+reads compare that metadata with the original owner envelope. The index prepares
+window selection across active and archived records; it does not yet change new
+assessment selection or enable physical paper retirement.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.
