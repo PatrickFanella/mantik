@@ -22,7 +22,7 @@ func feedCollectorRoutes(mux *http.ServeMux, store storage.Store, clock Clock, p
 			if !routingBody(w, r, &body) {
 				return
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 			defer cancel()
 			receipt, err := submissions.SubmitCollectorResearch(ctx, body.ReceiverID, body.Fence, body.Input, clock.Now)
 			if err == nil {
@@ -78,7 +78,7 @@ func feedCollectorRoutes(mux *http.ServeMux, store storage.Store, clock Clock, p
 		if !routingBody(w, r, &body) {
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		receipt, err := backend.FeedCollectorCommand(ctx, body.ReceiverID, body.Command, clock.Now)
 		switch {
