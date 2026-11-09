@@ -42,6 +42,9 @@ def recovery_contract(container, database, replay_owner):
                                 '-Fc', '--snapshot=' + source.snapshot_id], stdout=stream, check=True, timeout=600)
         names = {row['table'] for row in expected['tables'] if row['rows'] > 0}
         if not {'public.mantik_social_watch_journal', 'public.mantik_owned_allocations',
+                'public.mantik_owned_allocation_archive', 'public.mantik_owned_allocation_checkpoints',
+                'public.mantik_owned_allocation_batches', 'public.mantik_owned_allocation_members',
+                'public.mantik_owned_allocation_decision_refs',
                 'public.mantik_paper_evaluation_declarations', 'public.mantik_paper_evaluation_assessments',
                 'public.mantik_feed_archives', 'public.mantik_feed_archive_sources',
                 'public.mantik_feed_archive_source_batches', 'public.mantik_feed_archive_prefixes',

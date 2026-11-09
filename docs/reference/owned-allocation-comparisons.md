@@ -948,3 +948,28 @@ reservations at once. Proposal identity across checkpoints is kept by the
 proposal alias index, not by the sealed ledger. Schema 94 fences writers that
 seal settled reservations into the base.
 
+Schema 109 additionally retains each new seal's original checkpoint, complete
+segment membership and actual decision pins in
+`mantik_owned_allocation_checkpoints`, `mantik_owned_allocation_batches`,
+`mantik_owned_allocation_members` and `mantik_owned_allocation_decision_refs`.
+Checkpoint/index rows are immutable and commit in the same owner transaction
+as the original archived records and new active journal. A deferred guard
+rejects a checkpoint advance without its complete index, including from an
+already-running predecessor. Replacing or removing a retained checkpoint is
+also rejected. Failed inserts or COMMITs return no receipt or partial index.
+
+The private segment reader loads at most 256 original records in 64 MiB,
+their exact pins and the two boundary checkpoints. It checks complete ordered
+membership and the original sealed chain, then native replay rebuilds the end
+checkpoint from the actual owner inputs. An envelope or membership hash alone
+does not establish that replay. Selected reads do not reconstruct later
+segments. Existing unindexed segments explicitly report that absence; their
+original records and full-history audit remain available.
+
+The public history/attribution consumers still need targeted segment integration
+and paging. The v1 checkpoint's alias and consumed-identity state still grows;
+this storage foundation does not establish a growing-history operational bound
+or enable physical paper retirement. Backups must retain all four index tables
+with the original journal/archive and owner sources. A schema-108 predecessor
+refuses schema 109; rollback requires the matching pre-upgrade backup and binary.
+

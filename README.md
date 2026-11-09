@@ -1086,4 +1086,14 @@ and resolve approved retired rows from their first archives. Missing unretired
 rows or damaged originals return no partial owners. Native source replay and
 new-assessment integration remain required before using those selections.
 
+Schema 109 retains original allocation checkpoints and complete membership and
+decision-reference indexes for newly sealed allocation segments. The segment
+index commits with the journal and original archived records; a running older
+writer cannot advance a checkpoint without it. Private readers re-execute a
+selected segment from its original checkpoint and compare the resulting
+checkpoint with the retained original. Existing record bytes and hashes stay
+unchanged. Older unindexed segments retain their full-history audit path.
+Historical attribution paging, old-index backfill, compact identity indexes and
+automatic paper retirement remain required for the complete archive.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

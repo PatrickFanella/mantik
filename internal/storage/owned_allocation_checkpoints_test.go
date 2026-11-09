@@ -76,6 +76,28 @@ func ownedAllocationCheckpointContracts(t *testing.T, s ownedAllocationBackend, 
 	}
 	receipts := []OwnedAllocationReceipt{}
 	for i := range 8 {
+		if p, ok := s.(*Postgres); ok && i == 3 {
+			if _, err := p.pool.Exec(ctx, `CREATE FUNCTION reject_allocation_index_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'allocation index commit rollback fixture'; END $$;
+CREATE CONSTRAINT TRIGGER reject_allocation_index_commit AFTER INSERT ON mantik_owned_allocation_members DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_allocation_index_commit()`); err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.CompareOwnedAllocation(ctx, command(i), func() time.Time { return at.Add(time.Duration(i+1) * time.Second) }, eval)
+			if err == nil || !reflect.DeepEqual(got, OwnedAllocationReceipt{}) {
+				t.Fatal("failed index commit acknowledged allocation", err)
+			}
+			for _, table := range []string{"mantik_owned_allocation_archive", "mantik_owned_allocation_checkpoints", "mantik_owned_allocation_batches", "mantik_owned_allocation_members", "mantik_owned_allocation_decision_refs"} {
+				var count int
+				if err := p.pool.QueryRow(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil || count != 0 {
+					t.Fatal("failed index commit left partial archive custody", table, count, err)
+				}
+			}
+			if got, err := s.OwnedAllocations(ctx, eval); err != nil || len(got.Records) != i {
+				t.Fatal("failed index commit changed active journal", err)
+			}
+			if _, err := p.pool.Exec(ctx, "DROP TRIGGER reject_allocation_index_commit ON mantik_owned_allocation_members; DROP FUNCTION reject_allocation_index_commit()"); err != nil {
+				t.Fatal(err)
+			}
+		}
 		r, err := s.CompareOwnedAllocation(ctx, command(i), func() time.Time { return at.Add(time.Duration(i+1) * time.Second) }, eval)
 		if err != nil || r.Duplicate {
 			t.Fatal(i, r.Duplicate, err)
@@ -106,6 +128,7 @@ func ownedAllocationCheckpointContracts(t *testing.T, s ownedAllocationBackend, 
 	if err != nil || audit.Status != "verified" || audit.Records != len(receipts) || audit.Sealed < ownedCheckpointRecords || audit.CheckpointSHA256 == "" {
 		t.Fatal("audit", audit, err)
 	}
+	verifyAllocationIndexSegments(t, s, eval)
 	if len(retireDecision) > 0 && retireDecision[0] {
 		other := decision.Record.Command
 		other.ID = "still-active"
