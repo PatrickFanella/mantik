@@ -23,6 +23,7 @@ private original evidence and must be retained privately.
 | `GET /v1/paper-record-archives/{sequence}` | Inspect one bounded archive and re-execute its original paper evidence. |
 | `GET /v1/paper-record-archives/source?kind=decision&id=original` | Resolve an original ID to its first archive and retained payload. Kinds are `decision`, `outcome`, `assessment` and `review`. |
 | `GET /v1/paper-record-archives/audit` | Re-execute the entire archive chain and verify complete original membership and identity lookup. |
+| `GET /v1/paper-history` | Page native sealed decisions or outcomes. Requires `receiver_id` and `kind` (`decision` or `outcome`); optional `limit` is 1–64, default 16. Supply a previous page's opaque `next_after` as `after` to continue. |
 
 The POST body is a strict object containing only the actual `receiver_id` from
 the service, limited to 4 KiB. It accepts no records, source content, hashes,
@@ -64,6 +65,36 @@ history; a deadline, unavailable original or incomplete replay never returns a
 partial success. Established operational reads do not use these raw payloads.
 
 ## Creation epochs
+
+Schema 110 exposes sealed decision/outcome history through `paper-history`
+with `--receiver-id`, `--kind`, `--limit` and `--after`. The CLI validates the
+returned receiver, kind, record hashes, order, archive boundary and continuation
+before printing JSON. Its default kind is `decision`. The existing
+`paper-decisions` command continues to inspect the active working catalogue.
+
+The first page closes its view at the latest committed paper archive, returning
+that header in `through`. Only records with `created_epoch < through.sequence`
+are eligible. With no committed archive, `through` is null and the page is
+empty. The cursor binds the actual receiver, kind, closed header hash, creation
+epoch and last ID. Resume pages keep that boundary even after new archives,
+historical-clock insertions or later approved retirement. Cursors are selection
+data, not grants or proof of native evidence. They may be retained privately for
+restart; changing the page limit does not change the selected history boundary.
+
+Records sort by creation epoch and then original ID in native byte order.
+PostgreSQL seeks the schema 110 index and selects at most `limit+1` metadata
+rows. Each selected creation interval resolves its first original archive and
+replays only the selected decisions/outcomes and actual outcome dependencies
+against that interval's original feed/strategy context and indexed source
+custody. A missing unretired active row is a conflict even if a duplicate exists
+in an archive. Failed source replay, cancellation or COMMIT returns no partial
+page. A page is limited to 8 MiB and 64 native records; each original segment
+retains its existing 64 MiB bound. Memory scans identity metadata while keeping
+only the bounded page and lookahead.
+
+These pages provide native source history. They do not join allocation effects,
+admission reviews or financial attribution, and they do not replace a complete
+archive audit or enable physical paper retirement.
 
 Each actual record insertion reserves `(kind, original ID)` with its original
 record hash, exact UTC seconds/nanoseconds and the last committed paper archive

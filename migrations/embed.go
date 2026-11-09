@@ -340,3 +340,6 @@ var PaperSampleOrder string
 
 //go:embed 0109_indexed_allocation_archives.sql
 var IndexedAllocationArchives string
+
+//go:embed 0110_paper_history_pages.sql
+var PaperHistoryPages string
