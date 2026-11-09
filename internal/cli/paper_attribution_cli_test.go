@@ -45,10 +45,36 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 			t.Fatal("selected row differs", err)
 		}
 	}
+	// The interactive table and explicit JSON inspection use these same real
+	// owner rows for both Memory and disposable PostgreSQL lifecycle contracts.
+	for _, row := range []storage.PaperAttributionRow{candidate, abstain} {
+		var display bytes.Buffer
+		id := row.Decision.Command.ID
+		input := fmt.Sprintf("a %s\naj %s\nq\n", id, id)
+		if err := superviseDecisions(context.Background(), io.NopCloser(strings.NewReader(input)), &display, 1, func(context.Context) (storage.PaperDecisionCatalog, error) {
+			return storage.PaperDecisionCatalog{ReceiverID: all.ReceiverID, Records: []storage.PaperDecisionRecord{row.Decision}}, nil
+		}, func(ctx context.Context, d storage.PaperDecisionRecord, kind string) (any, error) {
+			return fetchDecisionInspection(ctx, base, d, kind)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		text := display.String()
+		if !strings.Contains(text, "DECISION "+fmt.Sprintf("%q", id)) || !strings.Contains(text, "ROW SHA256 "+row.SHA256) || !strings.Contains(text, "probability_scoring=not_applicable") {
+			t.Fatal("interactive attribution omitted retained facts", text)
+		}
+		start := strings.Index(text, "{\n")
+		if start < 0 {
+			t.Fatal("explicit attribution JSON missing", text)
+		}
+		var raw storage.PaperAttributionRow
+		if err := json.NewDecoder(strings.NewReader(text[start:])).Decode(&raw); err != nil || !reflect.DeepEqual(raw, row) {
+			t.Fatal("interactive JSON changed owner row", err)
+		}
+	}
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Finalized no-action decision; not a workflow failure.", "waiting_horizon", "not_applicable", "quote_delta_cents=unavailable", "not trading P&L", "fees=unavailable", "realized_pnl=unavailable", "funding bound, not incurred expense", "admission_unavailable", "not_calibrated_forecast", "no_capital_committed", "no independent sample count", "ADMISSION_READINESS", "EVALUATION_PLANS", "declaration_unavailable", "qualification=false", "relevant_evaluation_receipt_unavailable", "owned_execution_evidence_unavailable"} {
+	for _, want := range []string{"Finalized no-action decision; not a workflow failure.", "waiting_horizon", "not_applicable", "quote_delta_cents=unavailable", "not trading P&L", "fees=unavailable", "realized_pnl=unavailable", "funding bound, not incurred expense", "admission_unavailable", "not_calibrated_forecast", "no_capital_committed", "no independent sample count", "probability_scoring=not_applicable", "SOURCE_TIMING unavailable", "ADMISSION_READINESS", "EVALUATION_PLANS", "declaration_unavailable", "qualification=false", "relevant_evaluation_receipt_unavailable", "owned_execution_evidence_unavailable"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}

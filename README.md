@@ -107,6 +107,9 @@ phase attribution. On the displayed page, `a ID` reads allocation choices and
 non-grant admission-review history bound to that exact finalized decision.
 It pins each inspection to the displayed decision and receiver. See
 [decision inspection](docs/reference/supervision-tools.md#terminal-decision-inspection).
+Use `a ID` for readable attribution and `aj ID` for the complete attribution
+row as JSON. The view shows explicit missing evidence, native signal scoring
+limits, and retained social/copy observation and ingestion delays.
 
 `supervise --view cases` adds page navigation, current case details, and stale-state
 refresh. The [exception readback](docs/reference/exceptions.md) pages retained faults and
