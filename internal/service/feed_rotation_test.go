@@ -111,4 +111,39 @@ func TestFeedRotationPreservesNativeOutcomeHTTP(t *testing.T) {
 	if err := json.Unmarshal(request("GET", "/v1/feed-archives/paper-custody-audit", nil, 200), &audit); err != nil || audit.Status != "verified" || audit.Decisions != 1 || audit.Outcomes != 1 || audit.AdmissionAvailable || audit.ExecutionAvailable || audit.QualificationCredit {
 		t.Fatal("original-source audit missing or granted authority", audit, err)
 	}
+	var archived storage.PaperRecordArchiveReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-record-archives", map[string]string{"receiver_id": f.owner}, 201), &archived); err != nil || archived.Header.Validate() != nil || archived.Header.Decisions != 1 || archived.Header.Outcomes != 1 {
+		t.Fatal("native paper archive custody", archived, err)
+	}
+	request("POST", "/v1/paper-record-archives", map[string]string{"receiver_id": f.owner}, 200)
+	request("POST", "/v1/paper-record-archives?", map[string]string{"receiver_id": f.owner}, 422)
+	request("POST", "/v1/paper-record-archives", map[string]any{"receiver_id": f.owner, "records": []any{}}, 422)
+	request("GET", "/v1/paper-record-archives/2", nil, 404)
+	request("GET", "/v1/paper-record-archives?limit=0", nil, 422)
+	request("GET", "/v1/paper-record-archives?after=0&after=1", nil, 422)
+	request("GET", "/v1/paper-record-archives/source?kind=decision&kind=review&id="+command.ID, nil, 422)
+	request("GET", "/v1/paper-record-archives/audit?repair=true", nil, 422)
+	request("GET", "/v1/paper-record-archives/audit", map[string]string{}, 422)
+	var selectedArchive storage.PaperRecordArchive
+	if err := json.Unmarshal(request("GET", "/v1/paper-record-archives/1", nil, 200), &selectedArchive); err != nil || selectedArchive.Validate() != nil || selectedArchive.SHA256 != archived.Header.SHA256 {
+		t.Fatal("native archived observation replay", err)
+	}
+	var original storage.PaperArchivedRecord
+	if err := json.Unmarshal(request("GET", "/v1/paper-record-archives/source?kind=decision&id="+command.ID, nil, 200), &original); err != nil || original.Record.RecordSHA256 != decision.Record.SHA256 || original.Record.CreatedEpoch != 0 {
+		t.Fatal("native original paper ID readback", original, err)
+	}
+	var paperAudit storage.PaperRecordArchiveAudit
+	if err := json.Unmarshal(request("GET", "/v1/paper-record-archives/audit", nil, 200), &paperAudit); err != nil || paperAudit.Status != "verified" || paperAudit.Records != 2 || paperAudit.Archives != 1 || paperAudit.AdmissionAvailable || paperAudit.ExecutionAvailable || paperAudit.QualificationCredit {
+		t.Fatal("native paper original-source audit", paperAudit, err)
+	}
+	private = httptest.NewRecorder()
+	handler.ServeHTTP(private, httptest.NewRequest("GET", "/v1/paper-record-archives/1", nil))
+	if private.Code != 401 {
+		t.Fatal("paper archive bypassed authentication", private.Code)
+	}
+	var epochCustody storage.FeedArchiveReceipt
+	if err := json.Unmarshal(request("POST", "/v1/feed-archives", map[string]string{"receiver_id": f.owner}, 201), &epochCustody); err != nil || epochCustody.PaperCustody == nil || epochCustody.PaperCustody.Header.PaperArchiveSequence != 1 || epochCustody.PaperCustody.Header.Schema != "mantik-paper-feed-checkpoint-v2" {
+		t.Fatal("native epoch-bound source custody", epochCustody, err)
+	}
+	request("GET", "/v1/feed-archives/paper-custody/2", nil, 200)
 }

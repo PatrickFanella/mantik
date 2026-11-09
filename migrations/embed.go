@@ -325,3 +325,6 @@ var PaperFeedCheckpoints string
 
 //go:embed 0104_feed_retention.sql
 var FeedRetention string
+
+//go:embed 0105_paper_record_archives.sql
+var PaperRecordArchives string

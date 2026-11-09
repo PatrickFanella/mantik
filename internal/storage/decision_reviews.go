@@ -272,6 +272,7 @@ func (m *Memory) ReviewPaperDecision(ctx context.Context, c DecisionReviewComman
 	}
 	if !r.Duplicate {
 		m.decisionReviews[c.ID] = clone(r.Record)
+		m.retainPaperRecordEpoch("review", c.ID, r.Record.SHA256, r.Record.ReviewedAt)
 	}
 	return r, nil
 }

@@ -144,7 +144,7 @@ func feedRotationContract(t *testing.T, s rotationBackend) {
 	if pg, ok := s.(*Postgres); ok {
 		// Exercise a populated schema-103 predecessor before the first move.
 		dropFeedRetentionSchema(t, pg)
-		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=104"); err != nil {
+		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=104"); err != nil {
 			t.Fatal(err)
 		}
 		if err := pg.migrate(ctx); err != nil {
@@ -457,7 +457,7 @@ func feedRotationContract(t *testing.T, s rotationBackend) {
 	}
 	if pg, ok := s.(*Postgres); ok {
 		retained := clone(second.Retention)
-		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=104"); err != nil {
+		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=104"); err != nil {
 			t.Fatal(err)
 		}
 		if err := pg.migrate(ctx); err != nil {

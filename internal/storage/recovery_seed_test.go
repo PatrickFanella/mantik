@@ -191,6 +191,10 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	if audit, err := s.AuditPaperFeed(ctx, eval, recoveryFixtureOutcomeEvaluator); err != nil || audit.Decisions != 2 || audit.Outcomes != 2 {
 		t.Fatal("retired feed recovery source replay", audit, err)
 	}
+	custodyAt = custodyAt.Add(time.Nanosecond)
+	if paperArchive, err := s.ArchivePaperRecords(ctx, account.ReceiverID, func() time.Time { return custodyAt }, eval, recoveryFixtureOutcomeEvaluator); err != nil || paperArchive.Header.Decisions != 2 || paperArchive.Header.Outcomes != 2 || paperArchive.Header.Assessments != 1 {
+		t.Fatal("paper record archive recovery seed", paperArchive, err)
+	}
 }
 
 // Shared by source seeding and restore replay. This compiled storage fixture
@@ -245,6 +249,7 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 	assertRestoredEvaluationOwner(t, s, got.ReceiverID)
 	assertRestoredCorporateSource(t, s, got.ReceiverID)
 	assertRestoredPaperFeedCheckpoint(t, s, got.ReceiverID)
+	assertRestoredPaperRecordArchive(t, s, got.ReceiverID)
 	history, err := s.SocialHistory(ctx)
 	if err != nil || history.ReceiverID != got.ReceiverID || len(history.ResearchRequests) != 2 || history.ResearchRequests[0].DispatchAvailable || history.ResearchRequests[0].AdmissionAvailable || history.ResearchRequests[0].ExecutionAvailable || history.ResearchRequests[0].QualificationCredit {
 		t.Fatal("restored social owner", err)

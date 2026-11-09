@@ -90,10 +90,11 @@ func paperFeedSourceIdentity(archiveSHA, recordsSHA string, at time.Time, paperA
 func (h PaperFeedCheckpointHeader) Validate() error {
 	sha := h.SHA256
 	h.SHA256 = ""
-	if h.Schema != "mantik-paper-feed-checkpoint-v1" || !ValidReceiverID(h.ReceiverID) || h.Sequence < 1 ||
+	validSchema := h.Schema == "mantik-paper-feed-checkpoint-v1" && h.PaperArchiveSequence == 0 || h.Schema == "mantik-paper-feed-checkpoint-v2" && h.PaperArchiveSequence > 0
+	if !validSchema || !ValidReceiverID(h.ReceiverID) || h.Sequence < 1 ||
 		h.Sequence == 1 && h.PreviousSHA256 != "" || h.Sequence > 1 && !decisionPin.MatchString(h.PreviousSHA256) || h.Archive.Validate() != nil || h.Archive.ReceiverID != h.ReceiverID ||
 		!decisionPin.MatchString(h.RecordsSHA256) || !decisionPin.MatchString(h.PrefixesSHA256) || h.SourceSHA256 != paperFeedSourceIdentity(h.Archive.SHA256, h.RecordsSHA256, h.CutAt, h.PaperArchiveSequence) ||
-		!declarationTime(h.CutAt) || h.CutAt.Before(h.Archive.ArchivedAt) || h.PaperArchiveSequence != 0 || h.Decisions < 0 || h.Outcomes < 0 || h.Decisions > MaxPaperDecisions || h.Outcomes > MaxPaperOutcomes ||
+		!declarationTime(h.CutAt) || h.CutAt.Before(h.Archive.ArchivedAt) || h.Decisions < 0 || h.Outcomes < 0 || h.Decisions > MaxPaperDecisions || h.Outcomes > MaxPaperOutcomes ||
 		h.Authority != "service_owned_paper_source_custody_only" || h.AdmissionAvailable || h.ExecutionAvailable || h.QualificationCredit || !decisionPin.MatchString(sha) || workerplan.Hash(h) != sha {
 		return ErrFeedArchiveConflict
 	}
@@ -143,11 +144,18 @@ func (c PaperFeedCheckpoint) Validate() error {
 
 // Replays actual retained paper sources against the immutable archived feed.
 // All callbacks are trusted pure service functions, never request-supplied.
-func paperFeedCheckpointData(a FeedArchive, decisions map[string]retainedPaperDecision, outcomes map[string]retainedPaperOutcome, strategies paperstrategy.Catalog, e *paperFeedArchiveEvaluators) (PaperFeedCheckpoint, error) {
-	if e == nil || e.decision == nil || e.outcome == nil || a.Validate() != nil || len(decisions) > MaxPaperDecisions || len(outcomes) > MaxPaperOutcomes {
+func paperFeedCheckpointData(a FeedArchive, decisions map[string]retainedPaperDecision, outcomes map[string]retainedPaperOutcome, strategies paperstrategy.Catalog, e *paperFeedArchiveEvaluators, epoch PaperRecordArchiveHeader) (PaperFeedCheckpoint, error) {
+	if e == nil || e.decision == nil || e.outcome == nil || a.Validate() != nil || epoch.Sequence < 0 || epoch.Sequence > 0 && (epoch.Validate() != nil || epoch.ReceiverID != a.ReceiverID) || len(decisions) > MaxPaperDecisions || len(outcomes) > MaxPaperOutcomes {
 		return PaperFeedCheckpoint{}, ErrFeedArchiveInvalid
 	}
 	c := PaperFeedCheckpoint{PaperFeedCheckpointHeader: PaperFeedCheckpointHeader{Schema: "mantik-paper-feed-checkpoint-v1", ReceiverID: a.ReceiverID, Archive: a.FeedArchiveHeader, CutAt: a.ArchivedAt, Authority: "service_owned_paper_source_custody_only"}, Records: []PaperFeedSourcePin{}, Prefixes: []PaperFeedPrefix{}}
+	if epoch.Sequence > 0 {
+		c.Schema = "mantik-paper-feed-checkpoint-v2"
+		c.PaperArchiveSequence = epoch.Sequence
+		if epoch.ArchivedAt.After(c.CutAt) {
+			c.CutAt = epoch.ArchivedAt
+		}
+	}
 	for id, v := range decisions {
 		r := v.Record
 		if id != r.Command.ID || r.Command.ReceiverID != a.ReceiverID || r.Validate() != nil || workerplan.Hash(v.Basis) != r.BasisSHA256 {
@@ -224,7 +232,11 @@ func (m *Memory) preparePaperFeedCheckpoint(ctx context.Context, a FeedArchive, 
 			return nil, false, err
 		}
 	}
-	data, err := paperFeedCheckpointData(a, m.paperDecisions, m.paperOutcomes, strategies, e)
+	epoch, err := m.paperArchiveEpochLocked(int64(len(m.paperRecordArchives)))
+	if err != nil {
+		return nil, false, err
+	}
+	data, err := paperFeedCheckpointData(a, m.paperDecisions, m.paperOutcomes, strategies, e, epoch)
 	if err != nil {
 		return nil, false, err
 	}
@@ -280,6 +292,9 @@ func readPaperFeedCheckpoint(ctx context.Context, tx pgx.Tx, sequence int64) (Pa
 	if workerplan.ReadBoundedShape(raw, &c, MaxPaperFeedCheckpointBytes) != nil || workerplan.ReadBoundedShape(header, &h, 4096) != nil || h != c.PaperFeedCheckpointHeader || c.Validate() != nil || c.Sequence != sequence || c.Archive.Sequence != archiveSequence || c.CutAt.Unix() != seconds || c.CutAt.Nanosecond() != nanos || c.SourceSHA256 != sourceSHA || c.SHA256 != sha {
 		return PaperFeedCheckpoint{}, ErrFeedArchiveConflict
 	}
+	if _, err := readPaperArchiveEpoch(ctx, tx, c.ReceiverID, c.PaperArchiveSequence); err != nil {
+		return PaperFeedCheckpoint{}, err
+	}
 	return c, nil
 }
 
@@ -308,7 +323,15 @@ func writePaperFeedCheckpoint(ctx context.Context, tx pgx.Tx, a FeedArchive, e *
 			return nil, err
 		}
 	}
-	data, err := paperFeedCheckpointData(a, decisions, outcomes, strategies, e)
+	var epoch int64
+	if err := tx.QueryRow(ctx, "SELECT coalesce(max(sequence),0) FROM mantik_paper_record_archives").Scan(&epoch); err != nil {
+		return nil, err
+	}
+	epochHeader, err := readPaperArchiveEpoch(ctx, tx, a.ReceiverID, epoch)
+	if err != nil {
+		return nil, err
+	}
+	data, err := paperFeedCheckpointData(a, decisions, outcomes, strategies, e, epochHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +382,7 @@ func writePaperFeedCheckpoint(ctx context.Context, tx pgx.Tx, a FeedArchive, e *
 	return &PaperFeedCheckpointReceipt{c.PaperFeedCheckpointHeader, false}, nil
 }
 
-func verifyPaperFeedCheckpoint(c PaperFeedCheckpoint, a FeedArchive, decisions map[string]retainedPaperDecision, outcomes map[string]retainedPaperOutcome, strategies paperstrategy.Catalog, e *paperFeedArchiveEvaluators) error {
+func verifyPaperFeedCheckpoint(c PaperFeedCheckpoint, a FeedArchive, decisions map[string]retainedPaperDecision, outcomes map[string]retainedPaperOutcome, strategies paperstrategy.Catalog, e *paperFeedArchiveEvaluators, epoch PaperRecordArchiveHeader) error {
 	if c.Validate() != nil || a.Validate() != nil || c.Archive != a.FeedArchiveHeader {
 		return ErrFeedArchiveConflict
 	}
@@ -375,7 +398,10 @@ func verifyPaperFeedCheckpoint(c PaperFeedCheckpoint, a FeedArchive, decisions m
 			selectedOutcomes[id] = v
 		}
 	}
-	expected, err := paperFeedCheckpointData(a, selectedDecisions, selectedOutcomes, strategies, e)
+	if epoch.Sequence != c.PaperArchiveSequence {
+		return ErrFeedArchiveConflict
+	}
+	expected, err := paperFeedCheckpointData(a, selectedDecisions, selectedOutcomes, strategies, e, epoch)
 	if err != nil {
 		return err
 	}
@@ -398,6 +424,10 @@ func (m *Memory) PaperFeedCheckpoint(ctx context.Context, sequence int64, de Pap
 		return PaperFeedCheckpoint{}, ErrFeedArchiveNotFound
 	}
 	c := m.paperFeedCheckpoints[sequence-1]
+	epoch, err := m.paperArchiveEpochLocked(c.PaperArchiveSequence)
+	if err != nil {
+		return PaperFeedCheckpoint{}, err
+	}
 	if c.Sequence != sequence || c.ReceiverID != m.receiverID || c.Archive.Sequence < 1 || c.Archive.Sequence > int64(len(m.feedArchives)) {
 		return PaperFeedCheckpoint{}, ErrFeedArchiveConflict
 	}
@@ -413,7 +443,7 @@ func (m *Memory) PaperFeedCheckpoint(ctx context.Context, sequence int64, de Pap
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	if err := verifyPaperFeedCheckpoint(c, a, m.paperDecisions, m.paperOutcomes, strategies, &paperFeedArchiveEvaluators{de, oe}); err != nil {
+	if err := verifyPaperFeedCheckpoint(c, a, m.paperDecisions, m.paperOutcomes, strategies, &paperFeedArchiveEvaluators{de, oe}, epoch); err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -468,7 +498,11 @@ func (p *Postgres) PaperFeedCheckpoint(ctx context.Context, sequence int64, de P
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	if err := verifyPaperFeedCheckpoint(c, a, decisions, outcomes, strategies, &paperFeedArchiveEvaluators{de, oe}); err != nil {
+	epoch, err := readPaperArchiveEpoch(ctx, tx, owner, c.PaperArchiveSequence)
+	if err != nil {
+		return PaperFeedCheckpoint{}, err
+	}
+	if err := verifyPaperFeedCheckpoint(c, a, decisions, outcomes, strategies, &paperFeedArchiveEvaluators{de, oe}, epoch); err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

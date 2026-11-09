@@ -46,7 +46,9 @@ def recovery_contract(container, database, replay_owner):
                 'public.mantik_feed_archives', 'public.mantik_feed_archive_sources',
                 'public.mantik_feed_archive_source_batches', 'public.mantik_feed_archive_prefixes',
                 'public.mantik_feed_archive_prefix_batches', 'public.mantik_paper_feed_checkpoints',
-                'public.mantik_feed_retention', 'public.mantik_paper_feed_source_seals'}.issubset(names):
+                'public.mantik_feed_retention', 'public.mantik_paper_feed_source_seals',
+                'public.mantik_paper_record_archives', 'public.mantik_paper_record_epochs',
+                'public.mantik_paper_archive_members', 'public.mantik_paper_archive_batches'}.issubset(names):
             raise ValueError('Recovery seed did not retain source, allocation, evaluation and archive owners')
         target = database + '_restore'
         sql('CREATE DATABASE "' + target + '" TEMPLATE template0')

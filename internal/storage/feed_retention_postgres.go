@@ -87,6 +87,9 @@ func (m *Memory) feedCustodyLocked(r *FeedRetention) (*feedCustodyView, error) {
 		return nil, ErrFeedArchiveConflict
 	}
 	cp := m.paperFeedCheckpoints[r.Checkpoint.Sequence-1]
+	if _, err := m.paperArchiveEpochLocked(cp.PaperArchiveSequence); err != nil {
+		return nil, err
+	}
 	if cp.Validate() != nil || cp.PaperFeedCheckpointHeader != r.Checkpoint || !reflect.DeepEqual(cp.Prefixes, r.Prefixes) {
 		return nil, ErrFeedArchiveConflict
 	}
