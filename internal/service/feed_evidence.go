@@ -230,7 +230,7 @@ func feedEvidenceRoutes(mux *http.ServeMux, store storage.Store, clock Clock, po
 			feedEvidenceError(w, storage.ErrEvidenceInvalid)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
 		receipt, err := backend.PublishFeedEvidence(ctx, body.ReceiverID, body.Fence.RegistrationID, recordingKey(body.Recording), body.Fence, raw, clock.Now, publicationCheck(body.Fence.RegistrationID, body.Fence, body.Recording))
 		if err != nil {

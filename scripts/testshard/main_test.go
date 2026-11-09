@@ -49,6 +49,11 @@ func TestActualBinaryRunsEveryCaseOnceAndPropagatesFailure(t *testing.T) {
 		"marker":        "package directory",
 		"race_test.go":  "//go:build race\n\npackage fixture\nconst instrumented = true\n",
 		"plain_test.go": "//go:build !race\n\npackage fixture\nconst instrumented = false\n",
+		"other/marker":  "other package directory",
+		"other/fixture_test.go": `package other
+import("fmt";"os";"testing")
+func TestOther(t *testing.T) {if _,e:=os.ReadFile("marker");e!=nil{t.Fatal("wrong package directory",e)};f,e:=os.OpenFile(os.Getenv("TEST_SHARD_RECORD"),os.O_CREATE|os.O_APPEND|os.O_WRONLY,0600);if e!=nil{t.Fatal(e)};defer f.Close();fmt.Fprintln(f,"TestOther")}
+`,
 		"fixture_test.go": `package fixture
 import("fmt";"os";"testing")
 func record(name string) { f,e:=os.OpenFile(os.Getenv("TEST_SHARD_RECORD"),os.O_CREATE|os.O_APPEND|os.O_WRONLY,0600);if e!=nil{panic(e)};defer f.Close();fmt.Fprintln(f,name) }
@@ -64,6 +69,9 @@ func BenchmarkNotRun(b *testing.B) {record("BenchmarkNotRun")}
 `,
 	}
 	for name, content := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0700); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -87,15 +95,44 @@ func BenchmarkNotRun(b *testing.B) {record("BenchmarkNotRun")}
 	if !reflect.DeepEqual(seen, want) {
 		t.Fatal("actual test binary skipped or repeated runnable cases", seen, output.String())
 	}
+	for _, dedicated := range []string{"", "TestAlpha"} {
+		if err := os.Remove(recording); err != nil {
+			t.Fatal(err)
+		}
+		o.dedicated = dedicated
+		parts := 2
+		if dedicated != "" {
+			parts++
+		}
+		for index := range parts {
+			o.index = index
+			output.Reset()
+			if err := run(t.Context(), o, &output, &output); err != nil {
+				t.Fatal(err, output.String())
+			}
+			if dedicated != "" && index == 2 && !strings.Contains(output.String(), `"group":2,"groups":3,"selected":1`) {
+				t.Fatal("dedicated group did not select exactly one complete case", output.String())
+			}
+		}
+		raw, err = os.ReadFile(recording)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seen = map[string]int{}
+		for _, name := range strings.Fields(string(raw)) {
+			seen[name]++
+		}
+		if !reflect.DeepEqual(seen, want) {
+			t.Fatal("individual CI groups skipped or repeated runnable cases", dedicated, seen)
+		}
+	}
 	if err := os.Remove(recording); err != nil {
 		t.Fatal(err)
 	}
-	for index := range 2 {
-		o.index = index
-		output.Reset()
-		if err := run(t.Context(), o, &output, &output); err != nil {
-			t.Fatal(err, output.String())
-		}
+	o.index, o.packages = -1, []string{".", "./other"}
+	output.Reset()
+	if err := run(t.Context(), o, &output, &output); err != nil {
+		t.Fatal("mixed package scope", err, output.String())
 	}
 	raw, err = os.ReadFile(recording)
 	if err != nil {
@@ -105,18 +142,31 @@ func BenchmarkNotRun(b *testing.B) {record("BenchmarkNotRun")}
 	for _, name := range strings.Fields(string(raw)) {
 		seen[name]++
 	}
-	if !reflect.DeepEqual(seen, want) {
-		t.Fatal("individual CI groups skipped or repeated runnable cases", seen)
+	want["TestOther"] = 1
+	if !reflect.DeepEqual(seen, want) || !strings.Contains(output.String(), `"package":"fixture.test/testshard/other","group":0,"groups":2`) {
+		t.Fatal("dedicated group changed the other package's complete regular scope", seen, output.String())
 	}
+	o.dedicated, o.packages = "", []string{"."}
 	o.index, o.firstOnly = -1, "TestMissingRecoveryProducer"
 	output.Reset()
 	if err := run(t.Context(), o, &output, &output); err == nil || !strings.Contains(err.Error(), "is absent") {
 		t.Fatal("missing required recovery producer accepted", err, output.String())
 	}
 	o.firstOnly = "TestSeed"
+	o.dedicated = "TestMissingDedicatedCase"
+	output.Reset()
+	if err := run(t.Context(), o, &output, &output); err == nil || !strings.Contains(err.Error(), "is absent") {
+		t.Fatal("missing required dedicated test accepted", err, output.String())
+	}
+	o.dedicated = ""
 	t.Setenv("TEST_SHARD_FAIL", "1")
 	output.Reset()
 	if err := run(t.Context(), o, &output, &output); err == nil || !strings.Contains(output.String(), "manufactured failure") {
 		t.Fatal("test failure returned success", err, output.String())
+	}
+	o.dedicated, o.index = "TestFailure", 2
+	output.Reset()
+	if err := run(t.Context(), o, &output, &output); err == nil || !strings.Contains(output.String(), "manufactured failure") {
+		t.Fatal("dedicated test failure returned success", err, output.String())
 	}
 }

@@ -8,28 +8,43 @@ MODULE = runpy.run_path(str(Path(__file__).with_name('test-integration.py')))
 
 
 class OwnerReplayProofTests(unittest.TestCase):
+    def test_owned_runner_must_have_finished_successfully(self):
+        check = MODULE['require_runner_exit']
+        complete = {'Status': 'exited', 'Running': False, 'ExitCode': 0, 'OOMKilled': False}
+        check(json.dumps(complete))
+        for state in [[], {}, complete | {'Status': 'running', 'Running': True},
+                      complete | {'Status': 'created'}, complete | {'ExitCode': 1},
+                      complete | {'ExitCode': False}, complete | {'OOMKilled': True},
+                      complete | {'Running': True}]:
+            with self.subTest(state=state), self.assertRaises(RuntimeError):
+                check(json.dumps(state))
+
     def test_complete_integration_scope_has_one_recovery_producer(self):
         scope = MODULE['test_scope']
         command, producer = scope([])
         self.assertTrue(producer)
         self.assertEqual(command[-2:], ['./internal/storage', './internal/cli'])
         self.assertIn('-first-only=TestPostgresContractsRecoverySeed', command)
+        dedicated = '-dedicated=TestPostgresContractsFeedRotationCrossesActiveCapacity'
+        self.assertIn(dedicated, command)
         producers = []
         for package in ('storage', 'cli'):
-            for shard in range(2):
+            for shard in range(3 if package == 'storage' else 2):
                 command, producer = scope(['--package', package, '--shard', str(shard)])
                 self.assertEqual(command[-1], './internal/' + package)
                 self.assertIn('-index=' + str(shard), command)
                 self.assertIn('-race', command)
                 self.assertIn('-parts=2', command)
                 self.assertIn('-run=^TestPostgresContracts', command)
+                self.assertEqual(dedicated in command, package == 'storage')
                 if producer:
                     producers.append((package, shard))
         self.assertEqual(producers, [('storage', 0)])
 
     def test_invalid_scopes_fail_before_creating_containers(self):
         for argv in (['--shard', '0'], ['--package', 'other'],
-                     ['--package', 'storage', '--shard', '2']):
+                     ['--package', 'storage', '--shard', '3'],
+                     ['--package', 'cli', '--shard', '2']):
             with self.subTest(argv=argv), self.assertRaises(SystemExit):
                 MODULE['test_scope'](argv)
 
