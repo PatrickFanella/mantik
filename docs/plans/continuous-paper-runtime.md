@@ -66,6 +66,11 @@ metadata to original creation rows, with native-envelope backfill, archive
 cross-checks and a window-selection index. Bounded window paging and new
 archive-backed assessment samples remain the next consumer work; this metadata
 alone does not extend the active paper limit.
+Schema 108 adds native byte ordering and bounded private window pages over that
+metadata. The reader selects exact declared strategy versions, decision windows
+and record availability cuts across active and archived owners. Payload
+resolution and native new-assessment evaluation remain the next integration;
+metadata pages grant no evaluation or qualification authority.
 
 ## Archive contract
 

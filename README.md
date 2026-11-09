@@ -1078,4 +1078,10 @@ reads compare that metadata with the original owner envelope. The index prepares
 window selection across active and archived records; it does not yet change new
 assessment selection or enable physical paper retirement.
 
+Schema 108 gives the sample index native byte ordering for tied timestamps and
+IDs. Private readers page decision/outcome metadata for exact declared strategy
+versions and decision windows across active and archived owners, independently
+of the active catalogue limit. Payload resolution and native evaluation remain
+required before those selections can become new assessment evidence.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

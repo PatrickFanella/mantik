@@ -87,7 +87,7 @@ func paperRecordScopeContract(t *testing.T, s paperArchiveBackend) {
 	if pg, ok := s.(*Postgres); ok {
 		// Recreate the actual schema-106 predecessor with original owners and
 		// archives still present. Only disposable fixture DDL is removed.
-		if _, err := pg.pool.Exec(ctx, "ALTER TABLE mantik_paper_record_epochs DROP CONSTRAINT mantik_paper_scope_shape, DROP COLUMN strategy_id, DROP COLUMN strategy_sha256, DROP COLUMN decision_id, DROP COLUMN decision_sha256, DROP COLUMN decision_at_seconds, DROP COLUMN decision_at_nanos; DELETE FROM mantik_schema WHERE version=107"); err != nil {
+		if _, err := pg.pool.Exec(ctx, "ALTER TABLE mantik_paper_record_epochs DROP CONSTRAINT mantik_paper_scope_shape, DROP COLUMN strategy_id, DROP COLUMN strategy_sha256, DROP COLUMN decision_id, DROP COLUMN decision_sha256, DROP COLUMN decision_at_seconds, DROP COLUMN decision_at_nanos; DELETE FROM mantik_schema WHERE version>=107"); err != nil {
 			t.Fatal(err)
 		}
 		start := strings.Index(migrations.PaperRecordArchives, "CREATE OR REPLACE FUNCTION mantik_record_paper_epoch()")
@@ -150,7 +150,7 @@ func paperRecordScopeContract(t *testing.T, s paperArchiveBackend) {
 		if err := pg.pool.QueryRow(ctx, "SELECT count(*) FROM mantik_paper_record_epochs WHERE record_id=$1", command.ID).Scan(&count); err != nil || count != 0 {
 			t.Fatal("rollback retained scope reservation", count, err)
 		}
-		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=107"); err != nil {
+		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=107"); err != nil {
 			t.Fatal(err)
 		}
 		if err := pg.migrate(ctx); err != nil {
@@ -190,7 +190,7 @@ func paperRecordScopeContract(t *testing.T, s paperArchiveBackend) {
 		m.paperRecordScopes["decision:scope-decision"] = v
 	} else {
 		pg := s.(*Postgres)
-		if _, err := pg.pool.Exec(ctx, "ALTER TABLE mantik_paper_record_epochs DISABLE TRIGGER mantik_immutable_paper_epochs; UPDATE mantik_paper_record_epochs SET strategy_id='changed' WHERE kind='decision'; ALTER TABLE mantik_paper_record_epochs ENABLE TRIGGER mantik_immutable_paper_epochs; DELETE FROM mantik_schema WHERE version=107"); err != nil {
+		if _, err := pg.pool.Exec(ctx, "ALTER TABLE mantik_paper_record_epochs DISABLE TRIGGER mantik_immutable_paper_epochs; UPDATE mantik_paper_record_epochs SET strategy_id='changed' WHERE kind='decision'; ALTER TABLE mantik_paper_record_epochs ENABLE TRIGGER mantik_immutable_paper_epochs; DELETE FROM mantik_schema WHERE version>=107"); err != nil {
 			t.Fatal(err)
 		}
 		if err := pg.migrate(ctx); err == nil {

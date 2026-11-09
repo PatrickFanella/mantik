@@ -334,3 +334,6 @@ var PaperOwnerIntervals string
 
 //go:embed 0107_paper_record_scopes.sql
 var PaperRecordScopes string
+
+//go:embed 0108_paper_sample_order.sql
+var PaperSampleOrder string
