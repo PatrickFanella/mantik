@@ -431,6 +431,26 @@ func (m *Memory) FinalizePaperDecision(ctx context.Context, c PaperDecisionComma
 	if err := ctx.Err(); err != nil {
 		return PaperDecisionReceipt{}, err
 	}
+	if c.Validate() != nil {
+		return PaperDecisionReceipt{}, ErrPaperDecisionInvalid
+	}
+	if c.ReceiverID != m.receiverID {
+		return PaperDecisionReceipt{}, ErrReceiverMismatch
+	}
+	metadata, retired, err := m.paperTargetMetadataLocked(ctx, "decision", c.ID)
+	if err != nil {
+		return PaperDecisionReceipt{}, err
+	}
+	if retired {
+		owners, err := m.archivedPaperTargetLocked(ctx, metadata, eval, nil)
+		if err != nil {
+			return PaperDecisionReceipt{}, err
+		}
+		return archivedPaperDecisionRetry(c, owners)
+	}
+	if _, exists := m.paperDecisions[c.ID]; metadata.ID != "" && !exists {
+		return PaperDecisionReceipt{}, ErrPaperDecisionConflict
+	}
 	s, err := m.paperStrategiesLocked()
 	if err != nil {
 		return PaperDecisionReceipt{}, err
@@ -522,6 +542,24 @@ func (p *Postgres) FinalizePaperDecision(ctx context.Context, c PaperDecisionCom
 	if owner != c.ReceiverID || owner != feed.ReceiverID {
 		return PaperDecisionReceipt{}, ErrReceiverMismatch
 	}
+	metadata, retired, err := readPaperTargetMetadata(ctx, tx, "decision", c.ID)
+	if err != nil {
+		return PaperDecisionReceipt{}, err
+	}
+	if retired {
+		owners, err := readArchivedPaperTarget(ctx, tx, metadata, eval, nil)
+		if err != nil {
+			return PaperDecisionReceipt{}, err
+		}
+		out, err := archivedPaperDecisionRetry(c, owners)
+		if err != nil {
+			return PaperDecisionReceipt{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return PaperDecisionReceipt{}, err
+		}
+		return out, nil
+	}
 	s, err := readPaperStrategies(ctx, tx, owner)
 	if err != nil {
 		return PaperDecisionReceipt{}, err
@@ -529,6 +567,9 @@ func (p *Postgres) FinalizePaperDecision(ctx context.Context, c PaperDecisionCom
 	all, err := readPaperDecisions(ctx, tx)
 	if err != nil {
 		return PaperDecisionReceipt{}, err
+	}
+	if _, exists := all[c.ID]; metadata.ID != "" && !exists {
+		return PaperDecisionReceipt{}, ErrPaperDecisionConflict
 	}
 	observation, ownedNow, err := decisionObservationFeed(c, all, feed, now, func(reg string, since, at time.Time) (FeedEvidenceSnapshot, error) {
 		return readArchivedOutcomeFeed(ctx, tx, feed, reg, since, at)

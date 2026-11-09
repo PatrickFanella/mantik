@@ -193,6 +193,9 @@ func paperWindowSources(ctx context.Context, id string, at time.Time, epoch int6
 }
 
 func (m *Memory) paperWindowSourcesLocked(ctx context.Context, id string, at time.Time, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (paperEvaluationSources, PaperEvaluationWindowSelection, error) {
+	if de == nil || oe == nil {
+		return paperEvaluationSources{}, PaperEvaluationWindowSelection{}, ErrPaperEvaluationEvidenceInvalid
+	}
 	s, err := m.paperEvaluationContextLocked()
 	if err != nil {
 		return paperEvaluationSources{}, PaperEvaluationWindowSelection{}, err
@@ -214,6 +217,9 @@ func (m *Memory) paperWindowSourcesWithContextLocked(ctx context.Context, id str
 }
 
 func readPaperWindowSources(ctx context.Context, tx pgx.Tx, id string, at time.Time, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator) (paperEvaluationSources, PaperEvaluationWindowSelection, error) {
+	if de == nil || oe == nil {
+		return paperEvaluationSources{}, PaperEvaluationWindowSelection{}, ErrPaperEvaluationEvidenceInvalid
+	}
 	s, err := readPaperEvaluationContext(ctx, tx, false, portfolio)
 	if err != nil {
 		return paperEvaluationSources{}, PaperEvaluationWindowSelection{}, err

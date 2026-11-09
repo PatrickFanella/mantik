@@ -103,6 +103,19 @@ the resolver retains at most one raw archive segment at a time. PostgreSQL uses
 the owner interval index and original-ID table indexes, without joining all
 historical payloads into the current catalogue.
 
+Targeted decision/outcome source reads and their existing record routes use
+the same independently reserved identity. For an approved retired identity,
+they resolve `created_epoch+1`, recheck actual scope and payload custody and run
+the native evaluator against that archive's original feed/strategy context.
+An outcome also resolves and replays its actual decision dependency. Decision
+explanations render those finalized original facts. Exact retired command
+retries return the original receipt with `duplicate: true` without sampling a
+clock; changed commands conflict and failed replay returns no receipt or sources.
+An archive alone never authorizes fallback for a missing unretired active row.
+Lists and active-owner writes keep their complete active-catalogue validation.
+This reader preparation does not authorize retirement, reuse an identity,
+issue new outcomes for retired decisions or remove working capacity limits.
+
 Private source-custody views use the same owner scope. Working reads load seals
 only for actual active decision/outcome IDs; historical checkpoint inspection
 uses its independently selected owner interval, and archive inspection uses its

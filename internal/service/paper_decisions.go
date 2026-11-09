@@ -109,12 +109,30 @@ func paperDecisionRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
+		id := r.PathValue("id")
+		if sources, ok := store.(storage.PaperDecisionSourceStore); ok && id != "" {
+			v, err := sources.PaperDecisionSources(ctx, id, evaluateOwnedPaperDecision)
+			if err != nil {
+				paperDecisionError(w, err)
+				return
+			}
+			if r.Pattern == "GET /v1/paper-decisions/{id}/explanation" {
+				explanation, err := explainPaperDecision(v.Decision)
+				if err != nil {
+					paperDecisionError(w, err)
+					return
+				}
+				write(w, http.StatusOK, explanation)
+				return
+			}
+			write(w, http.StatusOK, v.Decision)
+			return
+		}
 		all, err := backend.PaperDecisions(ctx, evaluateOwnedPaperDecision)
 		if err != nil {
 			paperDecisionError(w, err)
 			return
 		}
-		id := r.PathValue("id")
 		if id == "" {
 			write(w, 200, all)
 			return

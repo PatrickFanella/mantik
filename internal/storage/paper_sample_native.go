@@ -24,8 +24,13 @@ func paperSampleNativeOwners(ctx context.Context, owner string, wanted []paperSa
 	if err := ctx.Err(); err != nil {
 		return paperArchiveOwners{}, err
 	}
-	if !ValidReceiverID(owner) || len(wanted) > maxPaperNativePage || de == nil || oe == nil {
+	if !ValidReceiverID(owner) || len(wanted) > maxPaperNativePage || de == nil {
 		return paperArchiveOwners{}, ErrPaperRecordArchiveInvalid
+	}
+	for _, r := range wanted {
+		if r.Kind == "outcome" && oe == nil {
+			return paperArchiveOwners{}, ErrPaperRecordArchiveInvalid
+		}
 	}
 	selected, needed := map[string]bool{}, map[string]bool{}
 	for _, w := range wanted {
@@ -64,6 +69,9 @@ func paperSampleNativeOwners(ctx context.Context, owner string, wanted []paperSa
 	owners, err := payloads(page)
 	if err != nil {
 		return paperArchiveOwners{}, err
+	}
+	if len(owners.outcomes) > 0 && oe == nil {
+		return paperArchiveOwners{}, ErrPaperRecordArchiveInvalid
 	}
 	feed, strategies, err := sources(paperFeedCustodyKeys(owners.decisions, owners.outcomes))
 	if err != nil {

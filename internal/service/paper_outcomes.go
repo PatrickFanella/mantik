@@ -171,12 +171,21 @@ func paperOutcomeRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
+		id := r.PathValue("id")
+		if sources, ok := store.(storage.PaperOutcomeSourceStore); ok && id != "" {
+			v, err := sources.PaperOutcomeSources(ctx, id, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+			if err != nil {
+				paperOutcomeError(w, err)
+				return
+			}
+			write(w, http.StatusOK, v.Outcome)
+			return
+		}
 		all, err := backend.PaperOutcomes(ctx, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err != nil {
 			paperOutcomeError(w, err)
 			return
 		}
-		id := r.PathValue("id")
 		if id == "" {
 			write(w, 200, all)
 			return

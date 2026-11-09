@@ -71,15 +71,24 @@ their membership completeness remains unproven.
 Exact command retries return the original assessment without reading a new
 clock. To assess again after a waiting/missing result, submit a new ID; the
 previous result remains visible. Changed content under an existing ID conflicts.
-There are at most 256 assessments with a maximum 4 MiB private envelope each.
+Targeted reads and exact retries of independently approved retired identities
+resolve the first original archive, validate actual creation/scope metadata and
+replay both the outcome and its actual decision dependency against the original
+source context. An unavailable first archive remains an error even if a later
+copy exists. Missing unretired rows cannot fall back to an archive or reuse their
+identity. This does not enable retirement or new outcomes for retired decisions;
+see [paper custody](paper-record-archives.md).
+There are at most 256 active assessments with a maximum 4 MiB private envelope each.
 Capacity errors preserve history; this registry offers no eviction, deletion,
 background scheduling or operational availability guarantee.
 
 New assessments return 201, exact retries 200, malformed commands 422,
 identity/capacity conflicts 409, missing selected outcomes or decisions 404 and
 storage failures 503. `GET /v1/paper-outcomes` lists replayed assessments;
-`GET /v1/paper-outcomes/{id}` selects one. These are authenticated service APIs;
-there is no offline result-import or balance-writing path.
+`GET /v1/paper-outcomes/{id}` selects one. These are authenticated service APIs.
+The list validates the active catalogue; targeted reads use the source owner
+contract, including approved retired originals.
+There is no offline result-import or balance-writing path.
 
 ## Storage and rollback
 

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
 	"github.com/jackc/pgx/v5"
 )
@@ -32,6 +33,17 @@ func (m *Memory) PaperOutcomeSources(ctx context.Context, id string, de PaperDec
 	if err := ctx.Err(); err != nil {
 		return PaperOutcomeSources{}, err
 	}
+	r, retired, err := m.paperTargetMetadataLocked(ctx, "outcome", id)
+	if err != nil {
+		return PaperOutcomeSources{}, err
+	}
+	if retired {
+		owners, err := m.archivedPaperTargetLocked(ctx, r, de, oe)
+		if err != nil {
+			return PaperOutcomeSources{}, err
+		}
+		return selectPaperOutcomeSources(id, owners.outcomes)
+	}
 	s, err := m.paperStrategiesLocked()
 	if err != nil {
 		return PaperOutcomeSources{}, err
@@ -42,7 +54,11 @@ func (m *Memory) PaperOutcomeSources(ctx context.Context, id string, de PaperDec
 	if err := ctx.Err(); err != nil {
 		return PaperOutcomeSources{}, err
 	}
-	return selectPaperOutcomeSources(id, m.paperOutcomes)
+	out, err := selectPaperOutcomeSources(id, m.paperOutcomes)
+	if errors.Is(err, ErrPaperOutcomeNotFound) && r.ID != "" {
+		return PaperOutcomeSources{}, ErrPaperOutcomeConflict
+	}
+	return out, err
 }
 func (p *Postgres) PaperOutcomeSources(ctx context.Context, id string, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperOutcomeSources, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -50,6 +66,24 @@ func (p *Postgres) PaperOutcomeSources(ctx context.Context, id string, de PaperD
 		return PaperOutcomeSources{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
+	r, retired, err := readPaperTargetMetadata(ctx, tx, "outcome", id)
+	if err != nil {
+		return PaperOutcomeSources{}, err
+	}
+	if retired {
+		owners, err := readArchivedPaperTarget(ctx, tx, r, de, oe)
+		if err != nil {
+			return PaperOutcomeSources{}, err
+		}
+		out, err := selectPaperOutcomeSources(id, owners.outcomes)
+		if err != nil {
+			return PaperOutcomeSources{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return PaperOutcomeSources{}, err
+		}
+		return out, nil
+	}
 	feed, err := readFeedEvidence(ctx, tx, false)
 	if err != nil {
 		return PaperOutcomeSources{}, err
@@ -70,6 +104,9 @@ func (p *Postgres) PaperOutcomeSources(ctx context.Context, id string, de PaperD
 		return PaperOutcomeSources{}, err
 	}
 	out, err := selectPaperOutcomeSources(id, all)
+	if errors.Is(err, ErrPaperOutcomeNotFound) && r.ID != "" {
+		return PaperOutcomeSources{}, ErrPaperOutcomeConflict
+	}
 	if err != nil {
 		return PaperOutcomeSources{}, err
 	}

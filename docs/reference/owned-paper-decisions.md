@@ -44,8 +44,14 @@ basis; a new request ID evaluates the new state. Source corruption, missing owne
 records or a changed result prevents a successful catalogue read or retry.
 
 Exact command retries return the original record without reading a new clock.
-Changed content under the same ID conflicts. The full retained prefix is checked
-before new writes or retries. There are at most 256 records, each with a maximum
+Changed content under the same ID conflicts. Active records validate the full
+retained prefix before new writes or retries. A targeted read or exact retry of
+an independently approved retired identity resolves its first original archive,
+checks actual creation and scope metadata, and replays the native decision at
+its original time against that archive's original source context. Missing
+unretired rows cannot use an archived copy or reuse their reserved identity.
+Retirement remains disabled; see [paper custody](paper-record-archives.md).
+There are at most 256 active records, each with a maximum
 2 MiB retained envelope; capacity errors preserve existing history. No eviction,
 replacement or deletion route exists. This bounded research registry must not be
 used as an operational ledger or protective-exit queue.
@@ -102,6 +108,8 @@ limit is reached, every cycle fails visibly with the capacity error. See
 New finalizations return 201, exact retries 200, invalid commands 422, identity or
 capacity conflicts 409, missing selected records 404 and storage failures 503.
 `GET /v1/paper-decisions` and `GET /v1/paper-decisions/{id}` replay retained results.
+The list reads the active catalogue; targeted record and explanation reads use
+the source owner contract, which also resolves approved retired originals.
 The client verifies strict response envelopes, command/receiver identity and
 selected record pins before emitting output. Public envelope validation alone
 cannot establish ownership of the private basis.
