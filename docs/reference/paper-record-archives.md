@@ -129,6 +129,26 @@ the index is selection metadata and grants no evaluation or financial authority.
 Existing archive payloads, creation-pin hashes and original source hashes stay
 unchanged. The retirement guard continues to reject removal of paper owners.
 
+Schema 108 makes the sample index use native byte ordering for decision IDs,
+record kinds and record IDs. This keeps PostgreSQL and memory pagination aligned
+when event clocks tie and IDs contain case or punctuation. The private sample
+reader returns at most 128 metadata records per page for exact declared strategy
+versions and decision finalization times in `[window_start, window_end)`. A row's
+own event clock must be at or before the requested as-of cut. Late outcomes stay
+inspectable rather than disappearing at the declaration's outcome deadline;
+native evaluation decides their applicability.
+
+Selection includes approved retired owners as well as active owners. It does not
+load historical payload bodies or impose the active catalogue limit on complete
+history. PostgreSQL merges bounded indexed batches from the declared variants;
+memory retains only the next bounded batch while scanning its metadata. Cursors
+bind the declaration, exact as-of cut and actual archive head, and pages must
+share one owner transaction/snapshot or memory lock. There is no public cursor
+API. These records are selection metadata, not evidence or authority: the next
+assessment consumer must resolve original payloads, verify custody and replay
+the native evaluations before using them. New assessment issuance still uses
+its existing active catalogue in this unit.
+
 After a paper archive exists, new feed/paper custody checkpoints use
 `mantik-paper-feed-checkpoint-v2` and bind the actual `paper_archive_sequence`.
 The cut covers at least that paper archive's original time, even when the feed
@@ -152,7 +172,7 @@ Backups must include `mantik_paper_record_archives`,
 `mantik_paper_archive_batches`, together with all original source owners, feed
 archives/indexes, custody checkpoints, retention metadata and receiver/schema
 history. Archive payloads, batch roots, membership and original identity metadata
-are immutable. Predecessor startup binaries refuse schema 107; rollback requires
+are immutable. Predecessor startup binaries refuse schema 108; rollback requires
 matching binaries and an isolated restored backup. Removing migration records
 or custody rows in place is unsupported.
 
