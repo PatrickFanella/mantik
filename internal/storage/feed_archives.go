@@ -189,6 +189,10 @@ func (m *Memory) ArchiveFeed(ctx context.Context, receiver string, now func() ti
 		if err := check(clone(old.Source), old.ArchivedAt); err != nil {
 			return FeedArchiveReceipt{}, err
 		}
+		additions, err := addArchivePrefixPoints(m.feedArchivePrefixPoints, old)
+		if err != nil || len(additions) != 0 {
+			return FeedArchiveReceipt{}, ErrFeedArchiveConflict
+		}
 		return FeedArchiveReceipt{old.FeedArchiveHeader, true}, nil
 	}
 	if len(m.feedArchives) > 0 {
@@ -212,6 +216,10 @@ func (m *Memory) ArchiveFeed(ctx context.Context, receiver string, now func() ti
 	if err != nil {
 		return FeedArchiveReceipt{}, err
 	}
+	prefixAdditions, err := m.prepareArchivePrefixes(a)
+	if err != nil {
+		return FeedArchiveReceipt{}, err
+	}
 	if err := ctx.Err(); err != nil {
 		return FeedArchiveReceipt{}, err
 	}
@@ -221,6 +229,17 @@ func (m *Memory) ArchiveFeed(ctx context.Context, receiver string, now func() ti
 	}
 	for key, ref := range additions {
 		m.feedArchiveRecords[key] = ref
+	}
+	if m.feedArchivePrefixPoints == nil {
+		m.feedArchivePrefixPoints = map[string]feedArchivePrefixRef{}
+	}
+	if m.feedArchivePrefixOrder == nil {
+		m.feedArchivePrefixOrder = map[string][]feedArchivePrefixRef{}
+	}
+	for _, ref := range prefixAdditions {
+		m.feedArchivePrefixPoints[prefixPointKey(ref.Point)] = ref
+		group := prefixGroup(ref.Point)
+		m.feedArchivePrefixOrder[group] = append(m.feedArchivePrefixOrder[group], ref)
 	}
 	if m.feedArchiveSources == nil {
 		m.feedArchiveSources = map[string]int64{}
@@ -338,6 +357,20 @@ func (p *Postgres) ArchiveFeed(ctx context.Context, receiver string, now func() 
 			return FeedArchiveReceipt{}, err
 		}
 		if err := readFeedArchiveSourceBatch(ctx, tx, a, sortedSourceRefs(records)); err != nil {
+			return FeedArchiveReceipt{}, err
+		}
+		points, err := archivePrefixPoints(a)
+		if err != nil {
+			return FeedArchiveReceipt{}, err
+		}
+		if err := readFeedArchivePrefixBatch(ctx, tx, a, points); err != nil {
+			return FeedArchiveReceipt{}, err
+		}
+		rawPoints, err := json.Marshal(points)
+		if err != nil {
+			return FeedArchiveReceipt{}, err
+		}
+		if err := checkArchivePrefixRows(ctx, tx, rawPoints, a.Sequence); err != nil {
 			return FeedArchiveReceipt{}, err
 		}
 		if err := tx.Commit(ctx); err != nil {

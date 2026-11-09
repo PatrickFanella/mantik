@@ -10,10 +10,10 @@ in #347. It permits bounded runs; it does not replace this archive work.
 | --- | --- | --- | --- |
 | Rehearsal prerequisites | Read all 2,048 supported publications in PostgreSQL, including exact retries beyond the former 128-record bound. | Reproduce the 129-of-140 truncation, then run Memory/PostgreSQL contracts, `make verify`, race and disposable integration. | #348 merged |
 | Rehearsal preparation | Start only new PostgreSQL and Mantik processes; register SPY/IEX declarations; forward advisory requests to Switchyard; interrupt only that connection; retain phases, failure attempts, restart readbacks and exact build/config identities. | Closed-market preflight, proxy outage/recovery tests, then a scheduled regular-session run. | #349 merged; preflight passed; market run pending |
-| Feed and collector archive | Seal immutable raw publications, admissions, lease commands and their routed inputs together. Keep current leases, latest coverage inputs, pending publications and routing facts available. Preserve exact historical retries and original source bytes. | Cross the active bounds, verify old retries and conflicts, audit seals against original records, fail on missing/changed source, exercise concurrent writes and rollback/restart/restore. | #350 custody merged; #351 source index in CI; archive-aware replay/pruning pending |
+| Feed and collector archive | Seal immutable raw publications, admissions, lease commands and their routed inputs together. Keep current leases, latest coverage inputs, pending publications and routing facts available. Preserve exact historical retries and original source bytes. | Cross the active bounds, verify old retries and conflicts, audit seals against original records, fail on missing/changed source, exercise concurrent writes and rollback/restart/restore. | #350 custody and #351 source lookup merged; archived prefix points in progress; archive-aware replay/pruning pending |
 | Paper archive | Archive finalized decisions, completed outcomes and assessments with their full source dependencies. Retain open execution books, pending outcome windows and still-applicable evaluation inputs. Historical assessment replay must use the original cut. | Compare pre/post-archive replay and attribution, test pending and open references, inspect historical records, inject corruption and failed commits, verify isolated backup/restore. | Pending |
 | Continuous retention | Run owner-controlled archival automatically before active limits are reached. Retain advisory review and allocation cross-references too; inspection must page or target history without loading every archived record. | Run beyond collector/decision/review limits with restart and concurrent archival; measure active append/read cost against growing archive history. | Pending |
-| #24 attribution | Complete source/copy-delay analysis, applicable signal/forecast-quality readbacks and readable interactive attribution. | Known-result timing/outcome fixtures, no-action and missing-evidence cases, CLI validation, interactive navigation, race and disposable integration. | Readable terminal attribution in progress; source-delay analysis and quality assessment pending |
+| #24 attribution | Complete source/copy-delay analysis, applicable signal/forecast-quality readbacks and readable interactive attribution. | Known-result timing/outcome fixtures, no-action and missing-evidence cases, CLI validation, interactive navigation, race and disposable integration. | Readable terminal attribution merged in #352; source-delay analysis and quality assessment pending |
 
 Each unit should land as a reviewable feature branch and PR. Merge only after
 checks pass on its exact head. Keep local checks, hosted CI, a running-service
@@ -28,8 +28,11 @@ rotation remain required; the first custody PR is not completion of that unit.
 PR #350 contains schema-100 source custody. The source-index unit adds schema-101 lookup
 by original command/input/admission/publication identity, atomic source manifests,
 upgrade backfill and a full source/index audit. These reads precede pruning;
-source-prefix and pending-decision/outcome replay still need retained checkpoint
-bindings before any active source may be removed.
+source-prefix and pending-decision/outcome replay still need archive access
+before any active source may be removed. Schema-102 work persists matching v3
+prefix points and nanosecond source cuts in the archive transaction, with bounded
+historical-cut reads and complete source-backed audit. The subsequent replay
+reader can use those points instead of loading unbounded historical feeds.
 
 ## Archive contract
 

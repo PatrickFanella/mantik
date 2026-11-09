@@ -207,7 +207,10 @@ func writeFeedArchiveSourceIndex(ctx context.Context, tx pgx.Tx, a FeedArchive) 
 		return ErrFeedArchiveConflict
 	}
 	_, err = tx.Exec(ctx, "INSERT INTO mantik_feed_archive_source_batches(archive_sequence,archive_sha256,source_count,source_sha256) VALUES($1,$2,$3,$4)", a.Sequence, a.SHA256, len(refs), workerplan.Hash(refs))
-	return err
+	if err != nil {
+		return err
+	}
+	return writeFeedArchivePrefixes(ctx, tx, a)
 }
 
 func readFeedArchiveSourceBatch(ctx context.Context, tx pgx.Tx, a FeedArchive, refs []feedArchiveSourceRef) error {
@@ -323,6 +326,9 @@ func (m *Memory) AuditFeedArchiveSources(ctx context.Context) (FeedArchiveSource
 	if err := ctx.Err(); err != nil {
 		return FeedArchiveSourceAudit{}, err
 	}
+	if err := auditArchivePrefixes(ctx, m.feedArchives, m.feedArchivePrefixPoints, m.feedArchivePrefixOrder); err != nil {
+		return FeedArchiveSourceAudit{}, err
+	}
 	out.Sources, out.HeadSHA256, out.SourceSHA256 = int64(len(expected)), previous, workerplan.Hash(expected)
 	return out, nil
 }
@@ -393,6 +399,9 @@ func (p *Postgres) AuditFeedArchiveSources(ctx context.Context) (FeedArchiveSour
 	}
 	if total != out.Archives || workerplan.Hash(actual) != workerplan.Hash(expected) {
 		return FeedArchiveSourceAudit{}, fmt.Errorf("%w: source index differs from archived owner records", ErrFeedArchiveConflict)
+	}
+	if err := auditPostgresArchivePrefixes(ctx, tx); err != nil {
+		return FeedArchiveSourceAudit{}, err
 	}
 	out.Sources, out.HeadSHA256, out.SourceSHA256 = int64(len(expected)), previous, workerplan.Hash(expected)
 	if err := tx.Commit(ctx); err != nil {

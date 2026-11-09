@@ -316,3 +316,6 @@ var FeedArchiveCustody string
 
 //go:embed 0101_feed_archive_source_index.sql
 var FeedArchiveSourceIndex string
+
+//go:embed 0102_feed_archive_prefixes.sql
+var FeedArchivePrefixes string

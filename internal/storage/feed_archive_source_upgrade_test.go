@@ -34,11 +34,15 @@ func TestPostgresContractsFeedArchiveSourceIndexUpgrade(t *testing.T) {
 	// Construct the exact schema-100 predecessor on this disposable database.
 	// The original source snapshot and its header remain untouched.
 	for _, sql := range []string{
+		"DROP TRIGGER mantik_feed_archive_prefix_batch_required ON mantik_feed_archives",
+		"DROP FUNCTION mantik_require_feed_archive_prefix_batch()",
+		"DROP TABLE mantik_feed_archive_prefix_batches",
+		"DROP TABLE mantik_feed_archive_prefixes",
 		"DROP TRIGGER mantik_feed_archive_source_batch_required ON mantik_feed_archives",
 		"DROP FUNCTION mantik_require_feed_archive_source_batch()",
 		"DROP TABLE mantik_feed_archive_source_batches",
 		"DROP TABLE mantik_feed_archive_sources",
-		"DELETE FROM mantik_schema WHERE version=101",
+		"DELETE FROM mantik_schema WHERE version>=101",
 	} {
 		if _, err := p.pool.Exec(ctx, sql); err != nil {
 			t.Fatal(err)
@@ -53,7 +57,7 @@ func TestPostgresContractsFeedArchiveSourceIndexUpgrade(t *testing.T) {
 	t.Cleanup(reopened.Close)
 	// Historical upgrade fixtures replay later DDL while retaining its tables.
 	// Replay must preserve populated archives, index rows and manifests too.
-	if _, err := reopened.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=101"); err != nil {
+	if _, err := reopened.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=101"); err != nil {
 		t.Fatal(err)
 	}
 	if err := reopened.migrate(ctx); err != nil {
