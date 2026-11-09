@@ -117,6 +117,16 @@ func ownedAllocationCheckpointContracts(t *testing.T, s ownedAllocationBackend, 
 			t.Fatal("no outcome should need evaluation")
 			return PaperOutcomeEvaluation{}, nil
 		}
+		reviewBackend := s.(OwnedAdmissionReviewStore)
+		reviewCommand := OwnedAdmissionReviewCommand{ID: "before-retirement", ReceiverID: owner, ComparisonID: command(7).ID, ComparisonSHA256: receipts[7].Record.SHA256, DecisionID: decision.Record.Command.ID, DecisionSHA256: decision.Record.SHA256}
+		review, err := reviewBackend.ReviewOwnedAdmission(ctx, reviewCommand, func() time.Time { return at.Add(9 * time.Second) }, eval, noOutcome)
+		if err != nil || review.Duplicate || review.Record.Status != "deferred" {
+			t.Fatal("admission review before retirement", err)
+		}
+		reviews, err := reviewBackend.OwnedAdmissionReviews(ctx, eval, noOutcome)
+		if err != nil || len(reviews.Records) != 1 {
+			t.Fatal("admission catalogue before retirement", err)
+		}
 		if _, err := archives.RotateFeed(ctx, owner, func() time.Time { return at.Add(10 * time.Second) }, func(FeedEvidenceSnapshot, time.Time) error { return nil }, eval, noOutcome); err != nil {
 			t.Fatal(err)
 		}
@@ -181,6 +191,12 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 		if got, err := auditor.AuditOwnedAllocations(ctx, eval); err != nil || !reflect.DeepEqual(got, audit) {
 			t.Fatal("approved retirement changed full-history audit", err)
 		}
+		if got, err := reviewBackend.OwnedAdmissionReviews(ctx, eval, noOutcome); err != nil || !reflect.DeepEqual(got, reviews) {
+			t.Fatal("approved retirement changed admission review", err)
+		}
+		if got, err := reviewBackend.ReviewOwnedAdmission(ctx, reviewCommand, func() time.Time { t.Fatal("admission retry read clock"); return time.Time{} }, eval, noOutcome); err != nil || !got.Duplicate || !reflect.DeepEqual(got.Record, review.Record) {
+			t.Fatal("admission retry changed after retirement", err)
+		}
 		changedNative := func(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time) (PaperDecisionEvaluation, error) {
 			e, err := eval(c, b, at)
 			if c.ID == "first" {
@@ -190,6 +206,9 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 		}
 		if got, err := s.OwnedAllocations(ctx, changedNative); err == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
 			t.Fatal("allocation read trusted archived envelope without native replay", err)
+		}
+		if got, err := reviewBackend.OwnedAdmissionReviews(ctx, changedNative, noOutcome); err == nil || !reflect.DeepEqual(got, OwnedAdmissionReviewCatalog{}) {
+			t.Fatal("admission review trusted archived decision envelope", err)
 		}
 		if got, err := s.CompareOwnedAllocation(ctx, command(7), func() time.Time { t.Fatal("invalid archived dependency read clock"); return time.Time{} }, changedNative); err == nil || !reflect.DeepEqual(got, OwnedAllocationReceipt{}) {
 			t.Fatal("retry bypassed archived native dependency", err)
@@ -238,6 +257,42 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 		}
 		if got, err := s.OwnedAllocations(ctx, eval); err != nil || !reflect.DeepEqual(got, catalog) {
 			t.Fatal("no-effect execution changed retired allocation history", err)
+		}
+		nextReview := reviewCommand
+		nextReview.ID, nextReview.PreviousID, nextReview.PreviousSHA256 = "after-retirement", reviewCommand.ID, review.Record.SHA256
+		if got, err := reviewBackend.ReviewOwnedAdmission(ctx, nextReview, func() time.Time { return at.Add(14 * time.Second) }, eval, noOutcome); err != nil || got.Duplicate || got.Record.Sequence != 2 || got.Record.Status != "deferred" || !reflect.DeepEqual(got.Record.Readiness, review.Record.Readiness) {
+			t.Fatal("admission reassessment after retirement", err)
+		}
+		waiting := func(b PaperOutcomeBasis, _ time.Time) (PaperOutcomeEvaluation, error) {
+			return PaperOutcomeEvaluation{Status: "waiting_horizon", ReasonCode: "unrelated_active_outcome_fixture", DueAt: b.Decision.FinalizedAt.Add(time.Hour)}, nil
+		}
+		if _, err := archives.AssessPaperOutcome(ctx, PaperOutcomeCommand{ID: "unrelated-active-outcome", ReceiverID: owner, DecisionID: other.ID, DecisionSHA256: active.Records[0].SHA256}, func() time.Time { return at.Add(15 * time.Second) }, eval, waiting); err != nil {
+			t.Fatal(err)
+		}
+		reviews, err = reviewBackend.OwnedAdmissionReviews(ctx, eval, waiting)
+		if err != nil || len(reviews.Records) != 2 {
+			t.Fatal("admission read with unrelated active outcome", err)
+		}
+		changedOutcome := func(b PaperOutcomeBasis, at time.Time) (PaperOutcomeEvaluation, error) {
+			e, err := waiting(b, at)
+			e.ReasonCode = "changed_unrelated_native_outcome"
+			return e, err
+		}
+		if got, err := reviewBackend.OwnedAdmissionReviews(ctx, eval, changedOutcome); err == nil || !reflect.DeepEqual(got, OwnedAdmissionReviewCatalog{}) {
+			t.Fatal("admission omitted unrelated active outcome validation", err)
+		}
+		if got, err := reviewBackend.ReviewOwnedAdmission(ctx, reviewCommand, func() time.Time { t.Fatal("invalid active outcome retry read clock"); return time.Time{} }, eval, changedOutcome); err == nil || !reflect.DeepEqual(got, OwnedAdmissionReviewReceipt{}) {
+			t.Fatal("admission retry skipped complete active outcome check", err)
+		}
+		if pg, ok := s.(*Postgres); ok {
+			reopened, err := OpenPostgres(ctx, pg.pool.Config().ConnString())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.Close()
+			if got, err := reopened.OwnedAdmissionReviews(ctx, eval, waiting); err != nil || !reflect.DeepEqual(got, reviews) {
+				t.Fatal("restart changed archived-dependency admission reviews", err)
+			}
 		}
 	}
 	if pg, ok := s.(*Postgres); ok {

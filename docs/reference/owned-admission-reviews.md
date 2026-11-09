@@ -67,6 +67,21 @@ owners in the same transaction as review issuance. Writes use the existing
 collector → state → receiver lock order; reads use a repeatable-read snapshot.
 A matching envelope hash alone cannot establish source custody.
 
+The active decision and outcome sets are checked against their actual creation
+and retirement intervals. Outcome validation covers every active outcome,
+including one outside the selected assessment windows or when no assessment
+records exist. A review's allocation journal can reference a decision that has
+left active storage after approved retirement. Such a dependency resolves from
+its first original paper archive and replays its native result, strategy, basis
+and source custody. A missing unretired row fails even when an archive copy
+exists. These private dependencies do not enlarge the active decision catalogue.
+
+Existing reviews, exact retries and reassessments preserve their original
+readiness and predecessor chain after decision retirement. This consumer
+support does not enable physical paper retirement or remove the admission
+review catalogue's 128-record bound. Attribution, archive-writer transitions,
+automatic retention and historical paging remain separate work.
+
 Issuance clocks cannot precede the selected comparison, collector clock or
 previous review issuance. The same command identity returns the original
 receipt with `duplicate: true` without reading a clock, including after later
