@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -22,6 +23,60 @@ type evidenceBackend interface {
 func TestMemoryFeedEvidence(t *testing.T) { feedEvidenceContracts(t, NewMemory()) }
 func TestPostgresContractsFeedEvidence(t *testing.T) {
 	feedEvidenceContracts(t, timerPostgres(t, "feedevidence"))
+}
+
+func TestMemoryFeedEvidenceExpandedRead(t *testing.T) {
+	feedEvidenceExpandedRead(t, NewMemory())
+}
+
+func TestPostgresContractsFeedEvidenceExpandedRead(t *testing.T) {
+	feedEvidenceExpandedRead(t, timerPostgres(t, "feedexpanded"))
+}
+
+// The reader must not silently truncate history at the old 128-record bound.
+// In particular, immutable retries beyond that prefix must find their original
+// publication rather than attempt a second insert or return a new receipt.
+func feedEvidenceExpandedRead(t *testing.T, s evidenceBackend) {
+	t.Helper()
+	ctx := t.Context()
+	snapshot, err := s.FeedCollectors(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := snapshot.ReceiverID
+	at := time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
+	now := func() time.Time { return at }
+	reg := feedcollector.Registration{ID: "expanded", Provider: "alpaca", Feed: "iex", Symbol: "SPY", EvidenceClass: "prospective_market_unqualified", JournalID: "expanded-journal", AccessRef: "manufactured", LeaseSeconds: 300}
+	if _, err := s.FeedCollectorCommand(ctx, owner, feedcollector.Command{RequestID: "register", Operation: "register", RegistrationID: reg.ID, Registration: &reg}, now); err != nil {
+		t.Fatal(err)
+	}
+	fence := feedcollector.Fence{RegistrationID: reg.ID, OwnerID: "worker", Generation: 1}
+	check := func(FeedEvidenceSnapshot, time.Time, *FeedEvidenceRecord) error { return nil }
+	raw := json.RawMessage(`{"manufactured":true}`)
+	var last FeedEvidenceReceipt
+	const count = 140
+	for n := range count {
+		at = at.Add(time.Second)
+		last, err = s.PublishFeedEvidence(ctx, owner, reg.ID, fmt.Sprintf("capture-%03d", n), fence, raw, now, check)
+		if err != nil {
+			t.Fatal(n, err)
+		}
+	}
+	got, err := s.FeedEvidence(ctx)
+	if err != nil || len(got.Records) != count {
+		t.Fatalf("expanded history: got %d records, want %d: %v", len(got.Records), count, err)
+	}
+	retry, err := s.PublishFeedEvidence(ctx, owner, reg.ID, "capture-139", fence, raw, now, check)
+	if err != nil || !retry.Duplicate {
+		t.Fatal("publication past old bound was not an immutable retry", retry, err)
+	}
+	retry.Duplicate = false
+	if retry != last {
+		t.Fatal("retry rewrote original publication", retry, last)
+	}
+	if _, err := s.PublishFeedEvidence(ctx, owner, reg.ID, "capture-139", fence, json.RawMessage(`{"changed":true}`), now, check); !errors.Is(err, ErrEvidenceConflict) {
+		t.Fatal("publication past old bound was overwritten", err)
+	}
 }
 
 func feedEvidenceContracts(t *testing.T, s evidenceBackend) {
