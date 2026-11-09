@@ -154,7 +154,7 @@ func readFeedEvidence(ctx context.Context, tx pgx.Tx, lock bool) (FeedEvidenceSn
 	}
 	out.Routing = state.Routing
 	out.Records = map[string]FeedEvidenceRecord{}
-	rows, err := tx.Query(ctx, "SELECT registration_id,capture_key,payload FROM mantik_feed_evidence ORDER BY registration_id,capture_key LIMIT 129")
+	rows, err := tx.Query(ctx, "SELECT registration_id,capture_key,payload FROM mantik_feed_evidence ORDER BY registration_id,capture_key LIMIT $1", MaxFeedEvidence+1)
 	if err != nil {
 		return out, err
 	}
