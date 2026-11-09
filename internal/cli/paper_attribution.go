@@ -387,6 +387,10 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 	for _, r := range rows {
 		d := r.Decision
 		fmt.Fprintf(&b, "DECISION %s  STRATEGY %s  SYMBOL %s\n  action=%s reason=%s evidence=%s\n  forecast=%s observations=%s\n", strconv.Quote(d.Command.ID), strconv.Quote(d.Command.StrategyID), strconv.Quote(r.Symbol), strconv.Quote(d.Evaluation.Action), strconv.Quote(d.Evaluation.ReasonCode), strconv.Quote(r.EvidenceClass), strconv.Quote(r.ForecastStatus), strconv.Quote(r.ObservationStatus))
+		fmt.Fprintf(&b, "  SIGNAL stored_predicate=%t probability_scoring=not_applicable (native threshold has no probability forecast)\n", d.Evaluation.Signal)
+		if len(r.Observations) == 0 {
+			fmt.Fprintln(&b, "  OUTCOME_EVIDENCE insufficient: no assessment retained.")
+		}
 		if d.Evaluation.Action == "abstain" {
 			fmt.Fprintln(&b, "  Finalized no-action decision; not a workflow failure.")
 		}
@@ -424,12 +428,19 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 				fmt.Fprintf(&b, "    debit_ceiling_cents=%d (funding bound, not incurred expense)\n", a.CostCeiling.MaxDebitCents)
 			}
 		}
+		if r.ClaimReviewHistory == nil || len(r.ClaimReviewHistory.SourceTimings) == 0 {
+			fmt.Fprintln(&b, "  SOURCE_TIMING unavailable: no retained social/copy timing evidence.")
+		}
 		if h := r.ClaimReviewHistory; h != nil {
+			kinds := map[string]string{}
 			for _, review := range h.Records {
+				if review.Source != nil {
+					kinds[review.Command.ID] = review.Source.Kind
+				}
 				fmt.Fprintf(&b, "  CLAIM_REVIEW %s status=%s case=%s (post-decision review; no admission)\n", strconv.Quote(review.Command.ID), strconv.Quote(review.Status), strconv.Quote(review.CaseID))
 			}
 			for _, timing := range h.SourceTimings {
-				fmt.Fprintf(&b, "    SOURCE_TIMING review=%s capture=%s observed_delay_seconds=%d retained_delay_seconds=%d relation=%s decision_input_verified=false\n", strconv.Quote(timing.ReviewID), strconv.Quote(timing.CaptureID), timing.ObservationDelaySeconds, timing.AvailabilityDelaySeconds, strconv.Quote(timing.ClockRelation))
+				fmt.Fprintf(&b, "    SOURCE_TIMING review=%s capture=%s kind=%s observed_delay_seconds=%d retained_delay_seconds=%d ingestion_delay_seconds=%d relation=%s capture_sha256=%s decision_input_verified=false\n", strconv.Quote(timing.ReviewID), strconv.Quote(timing.CaptureID), strconv.Quote(kinds[timing.ReviewID]), timing.ObservationDelaySeconds, timing.AvailabilityDelaySeconds, int64(timing.RetainedAt.Sub(timing.DeclaredObservedAt)/time.Second), strconv.Quote(timing.ClockRelation), strconv.Quote(timing.CaptureSHA256))
 			}
 		}
 		if e := r.Economics; e.FilledCostCents != nil {
@@ -446,7 +457,7 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 			fmt.Fprintf(&b, "  ECONOMICS %s executed_quantity=unavailable fees=unavailable realized_pnl=unavailable\n  BASELINES %s\n  ROW SHA256 %s\n", strconv.Quote(r.Economics.Status), renderBaseline(r.Economics), r.SHA256)
 		}
 	}
-	fmt.Fprintln(&b, "Assessments may repeat one decision; no independent sample count or performance rate is inferred. Use --format json for complete evidence and pins.")
+	fmt.Fprintln(&b, "Assessments may repeat one decision; no independent sample count or performance rate is inferred. Source timings describe post-decision review evidence; causal inputs and copy execution returns remain unverified. Raw JSON retains complete evidence and pins.")
 	_, err := io.WriteString(out, b.String())
 	return err
 }

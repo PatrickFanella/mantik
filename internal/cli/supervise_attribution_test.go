@@ -53,13 +53,13 @@ func TestDecisionAttributionInspectionNavigation(t *testing.T) {
 		return page, nil
 	}
 	var out bytes.Buffer
-	input := "a two\na ../operations\na two extra\nn\na two\nr\na two\nr\na two\nq\n"
+	input := "a two\naj two\na ../operations\naj ../operations\na two extra\naj two extra\nn\na two\naj two\nr\na two\naj two\nr\na two\nq\n"
 	if err := superviseDecisions(context.Background(), io.NopCloser(strings.NewReader(input)), &out, 1, fetch, func(ctx context.Context, d storage.PaperDecisionRecord, kind string) (any, error) {
 		return fetchDecisionInspection(ctx, server.URL, d, kind)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if requests != 1 || fetches != 3 || strings.Count(out.String(), `"admission_review_history"`) != 1 || !strings.Contains(out.String(), "a ID attribution") || !strings.Contains(out.String(), "STALE") || !strings.Contains(out.String(), "Choose an ID from the displayed page") {
+	if requests != 2 || fetches != 3 || strings.Count(out.String(), `"admission_review_history"`) != 1 || strings.Count(out.String(), `DECISION "two"`) != 1 || !strings.Contains(out.String(), "aj ID attribution JSON") || !strings.Contains(out.String(), "OUTCOME_EVIDENCE insufficient") || !strings.Contains(out.String(), "a ID attribution") || !strings.Contains(out.String(), "STALE") || !strings.Contains(out.String(), "Choose an ID from the displayed page") {
 		t.Fatal(requests, fetches, out.String())
 	}
 }
@@ -157,7 +157,7 @@ func TestDecisionAttributionInspectionCancellation(t *testing.T) {
 	cancel()
 	select {
 	case err := <-done:
-		if !errors.Is(err, context.Canceled) || strings.Contains(out.String(), `"admission_review_history"`) {
+		if !errors.Is(err, context.Canceled) || (strings.Contains(out.String(), `"admission_review_history"`) || strings.Contains(out.String(), "ROW SHA256")) {
 			t.Fatal("canceled attribution retained a result", err, out.String())
 		}
 	case <-time.After(time.Second):
