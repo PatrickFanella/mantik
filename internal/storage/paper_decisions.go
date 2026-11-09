@@ -457,8 +457,8 @@ func (m *Memory) FinalizePaperDecision(ctx context.Context, c PaperDecisionComma
 			return PaperDecisionReceipt{}, err
 		}
 		m.retainPaperFeedSourceSeal(decisionFeedSourcePin(v))
-		m.retainPaperRecordEpoch("decision", c.ID, v.Record.SHA256, v.Record.FinalizedAt)
 		m.paperDecisions[c.ID] = clone(v)
+		m.retainPaperRecordEpoch("decision", c.ID, v.Record.SHA256, v.Record.FinalizedAt)
 	}
 	return PaperDecisionReceipt{clone(v.Record), dup}, nil
 }

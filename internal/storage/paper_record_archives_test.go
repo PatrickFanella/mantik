@@ -280,7 +280,7 @@ func paperRecordArchiveContract(t *testing.T, s paperArchiveBackend) {
 		if err := pg.migrate(ctx); err == nil {
 			t.Fatal("DDL replay guessed an old epoch for a lost identity")
 		}
-		if _, err := pg.pool.Exec(ctx, "INSERT INTO mantik_paper_record_epochs(kind,record_id,created_epoch,record_sha256,at_seconds,at_nanos) VALUES('decision','unarchived',2,$1,$2,$3)", unarchived.Record.SHA256, unarchived.Record.FinalizedAt.Unix(), unarchived.Record.FinalizedAt.Nanosecond()); err != nil {
+		if _, err := pg.pool.Exec(ctx, "INSERT INTO mantik_paper_record_epochs(kind,record_id,created_epoch,record_sha256,at_seconds,at_nanos,strategy_id,strategy_sha256,decision_id,decision_sha256,decision_at_seconds,decision_at_nanos) SELECT 'decision','unarchived',2,$1,$2,$3,s->>'strategy_id',s->>'strategy_sha256',s->>'decision_id',s->>'decision_sha256',(s->>'decision_at_seconds')::bigint,(s->>'decision_at_nanos')::integer FROM (SELECT mantik_paper_record_scope('decision',id,payload) s FROM mantik_paper_decisions WHERE id='unarchived') owner", unarchived.Record.SHA256, unarchived.Record.FinalizedAt.Unix(), unarchived.Record.FinalizedAt.Nanosecond()); err != nil {
 			t.Fatal(err)
 		}
 		if err := pg.migrate(ctx); err != nil {
