@@ -121,15 +121,15 @@ func (m *Memory) paperRecordArchiveLocked(ctx context.Context, sequence int64, d
 	if err != nil {
 		return PaperRecordArchive{}, err
 	}
-	view, err := m.feedCustodyLocked(a.Context.Feed.Retention)
-	if err != nil {
-		return PaperRecordArchive{}, err
-	}
-	a.Context.Feed.custody = view
 	owners, err := decodePaperArchiveOwners(a.Records)
 	if err != nil {
 		return PaperRecordArchive{}, err
 	}
+	view, err := m.feedCustodyForOwnersLocked(a.Context.Feed.Retention, paperFeedCustodyKeys(owners.decisions, owners.outcomes))
+	if err != nil {
+		return PaperRecordArchive{}, err
+	}
+	a.Context.Feed.custody = view
 	if err := verifyPaperArchiveOwners(ctx, a.Context, owners, de, oe, m.portfolioEvaluator, m.feedWindowReaderLocked(ctx, m.receiverID)); err != nil {
 		return PaperRecordArchive{}, err
 	}

@@ -103,6 +103,15 @@ the resolver retains at most one raw archive segment at a time. PostgreSQL uses
 the owner interval index and original-ID table indexes, without joining all
 historical payloads into the current catalogue.
 
+Private source-custody views use the same owner scope. Working reads load seals
+only for actual active decision/outcome IDs; historical checkpoint inspection
+uses its independently selected owner interval, and archive inspection uses its
+sealed original membership. Each scope reads at most 512 source seals by their
+original-ID index. Unrelated historical seals do not fill that working budget.
+A required missing or changed seal still fails native replay. Complete audits
+continue through every checkpoint and archive; this selection does not turn a
+partial history check into a complete audit.
+
 After a paper archive exists, new feed/paper custody checkpoints use
 `mantik-paper-feed-checkpoint-v2` and bind the actual `paper_archive_sequence`.
 The cut covers at least that paper archive's original time, even when the feed

@@ -128,11 +128,11 @@ func readPaperRecordArchive(ctx context.Context, tx pgx.Tx, sequence int64, de P
 		return PaperRecordArchive{}, err
 	}
 	owner := a.ReceiverID
-	a.Context.Feed.custody, err = readFeedCustody(ctx, tx, a.Context.Feed.Retention)
+	owners, err := decodePaperArchiveOwners(a.Records)
 	if err != nil {
 		return PaperRecordArchive{}, err
 	}
-	owners, err := decodePaperArchiveOwners(a.Records)
+	a.Context.Feed.custody, err = readFeedCustodyForOwners(ctx, tx, a.Context.Feed.Retention, paperFeedCustodyKeys(owners.decisions, owners.outcomes))
 	if err != nil {
 		return PaperRecordArchive{}, err
 	}

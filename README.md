@@ -1064,5 +1064,8 @@ owner set from indexed creation/retirement intervals and its exact original
 clock cut. It prepares original-archive lookup after approved retirement while
 continuing to reject missing unretired records. Existing payloads and hashes
 stay unchanged; no production writer can retire paper owners in this version.
+Private source-custody reads select seals for the actual working owners or the
+specific historical cut, so unrelated historical seals do not consume the
+512-record read budget. Missing required seals continue to fail replay.
 
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

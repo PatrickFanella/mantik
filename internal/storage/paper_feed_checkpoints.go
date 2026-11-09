@@ -439,11 +439,11 @@ func (m *Memory) PaperFeedCheckpoint(ctx context.Context, sequence int64, de Pap
 		return PaperFeedCheckpoint{}, err
 	}
 	a := m.feedArchives[c.Archive.Sequence-1]
-	a.Source.custody, err = m.feedCustodyLocked(a.Source.Retention)
+	owners, err := m.paperCheckpointOwnersLocked(ctx, c.PaperArchiveSequence, c.CutAt)
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	owners, err := m.paperCheckpointOwnersLocked(ctx, c.PaperArchiveSequence, c.CutAt)
+	a.Source.custody, err = m.feedCustodyForOwnersLocked(a.Source.Retention, paperFeedCustodyKeys(owners.decisions, owners.outcomes))
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
@@ -486,15 +486,15 @@ func (p *Postgres) PaperFeedCheckpoint(ctx context.Context, sequence int64, de P
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	a.Source.custody, err = readFeedCustody(ctx, tx, a.Source.Retention)
-	if err != nil {
-		return PaperFeedCheckpoint{}, err
-	}
 	strategies, err := readPaperStrategies(ctx, tx, owner)
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
 	owners, err := readPaperCheckpointOwners(ctx, tx, c.PaperArchiveSequence, c.CutAt)
+	if err != nil {
+		return PaperFeedCheckpoint{}, err
+	}
+	a.Source.custody, err = readFeedCustodyForOwners(ctx, tx, a.Source.Retention, paperFeedCustodyKeys(owners.decisions, owners.outcomes))
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
