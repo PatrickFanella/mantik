@@ -72,6 +72,13 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 scripts/test-integration.py --package storage --shard 1
 
+  integration_storage_capacity:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/test-integration.py --package storage --shard 2
+
   integration_cli_a:
     timeout-minutes: 60
     runs-on: ubuntu-latest
@@ -96,7 +103,7 @@ jobs:
 
   verify:
     if: ${{ always() }}
-    needs: [unit, race_other, race_storage_a, race_storage_b, integration_storage_a, integration_storage_b, integration_cli_a, integration_cli_b, images]
+    needs: [unit, race_other, race_storage_a, race_storage_b, integration_storage_a, integration_storage_b, integration_storage_capacity, integration_cli_a, integration_cli_b, images]
     timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
@@ -108,7 +115,7 @@ jobs:
           import json, os
           results = json.loads(os.environ["RESULTS"])
           expected = {"unit", "race_other", "race_storage_a", "race_storage_b",
-                      "integration_storage_a", "integration_storage_b",
+                      "integration_storage_a", "integration_storage_b", "integration_storage_capacity",
                       "integration_cli_a", "integration_cli_b", "images"}
           assert set(results) == expected, results
           for name, job in results.items():

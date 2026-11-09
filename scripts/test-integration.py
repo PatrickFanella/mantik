@@ -103,10 +103,12 @@ def replay_restored_owner(container, source_runner, database, expect_rejection=F
 def test_scope(argv):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", choices=("storage", "cli"))
-    parser.add_argument("--shard", type=int, choices=(0, 1))
+    parser.add_argument("--shard", type=int, choices=(0, 1, 2))
     args = parser.parse_args(argv)
     if args.shard is not None and args.package is None:
         parser.error("--shard requires --package")
+    if args.shard == 2 and args.package != "storage":
+        parser.error("the dedicated capacity group requires --package storage")
     packages = ["./internal/" + args.package] if args.package else ["./internal/storage", "./internal/cli"]
     storage = "./internal/storage" in packages
     producer = storage and args.shard in (None, 0)
@@ -115,6 +117,7 @@ def test_scope(argv):
         command.append("-index=" + str(args.shard))
     if storage:
         command.append("-first-only=TestPostgresContractsRecoverySeed")
+        command.append("-dedicated=TestPostgresContractsFeedRotationCrossesActiveCapacity")
     return command + packages, producer
 
 

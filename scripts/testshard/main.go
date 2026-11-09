@@ -28,7 +28,30 @@ type options struct {
 	race         bool
 	filter       string
 	firstOnly    string
+	dedicated    string
 	packages     []string
+}
+
+func dedicatedGroup(groups [][]string, name string) ([][]string, bool) {
+	if name == "" {
+		return groups, false
+	}
+	separate := []string{}
+	for index, group := range groups {
+		kept := []string{}
+		for _, test := range group {
+			if test == name {
+				separate = append(separate, test)
+			} else {
+				kept = append(kept, test)
+			}
+		}
+		groups[index] = kept
+	}
+	if len(separate) == 0 {
+		return groups, false
+	}
+	return append(groups, separate), true
 }
 
 type testPlan struct {
@@ -82,7 +105,14 @@ func execute(ctx context.Context, dir string, stdout, stderr io.Writer, command 
 }
 
 func run(ctx context.Context, o options, stdout, stderr io.Writer) error {
-	if o.parts < 1 || o.parts > 16 || o.index < -1 || o.index >= o.parts || len(o.packages) == 0 {
+	maximum := o.parts
+	if o.dedicated != "" {
+		maximum++
+		if o.dedicated == o.firstOnly {
+			return errors.New("the recovery producer cannot also occupy a dedicated group")
+		}
+	}
+	if o.parts < 1 || maximum > 16 || o.index < -1 || o.index >= maximum || len(o.packages) == 0 {
 		return errors.New("supply packages, 1–16 groups, and index -1 (all) or an actual group")
 	}
 	root, err := os.MkdirTemp("", "mantik-testshard-")
@@ -90,7 +120,7 @@ func run(ctx context.Context, o options, stdout, stderr io.Writer) error {
 		return err
 	}
 	defer os.RemoveAll(root)
-	plans, pinned := []testPlan{}, false
+	plans, pinned, separated := []testPlan{}, false, false
 	for i, pkg := range o.packages {
 		var listed bytes.Buffer
 		if err := execute(ctx, "", &listed, stderr, "go", "list", "-json", pkg); err != nil {
@@ -122,10 +152,18 @@ func run(ctx context.Context, o options, stdout, stderr io.Writer) error {
 			return err
 		}
 		pinned = pinned || found
+		groups, found = dedicatedGroup(groups, o.dedicated)
+		separated = separated || found
+		if o.index >= len(groups) {
+			return fmt.Errorf("selected group %d is absent from package %s", o.index, pkg)
+		}
 		plans = append(plans, testPlan{info.Dir, binary, info.ImportPath, groups})
 	}
 	if o.firstOnly != "" && !pinned {
 		return fmt.Errorf("required first-group test %s is absent from this scope", o.firstOnly)
+	}
+	if o.dedicated != "" && !separated {
+		return fmt.Errorf("required dedicated test %s is absent from this scope", o.dedicated)
 	}
 	for _, plan := range plans {
 		all := []string{}
@@ -148,7 +186,7 @@ func run(ctx context.Context, o options, stdout, stderr io.Writer) error {
 				InventorySHA256 string `json:"inventory_sha256"`
 				SelectedSHA256  string `json:"selected_sha256"`
 				Race            bool   `json:"race"`
-			}{plan.pkg, index, o.parts, len(group), len(all), hex.EncodeToString(inventorySHA[:]), hex.EncodeToString(selectedSHA[:]), o.race}); err != nil {
+			}{plan.pkg, index, len(plan.groups), len(group), len(all), hex.EncodeToString(inventorySHA[:]), hex.EncodeToString(selectedSHA[:]), o.race}); err != nil {
 				return err
 			}
 			if len(group) == 0 {
@@ -174,6 +212,7 @@ func main() {
 	flag.BoolVar(&o.race, "race", false, "compile with the Go race detector")
 	flag.StringVar(&o.filter, "run", ".", "regexp selecting complete top-level tests/examples/fuzz seeds")
 	flag.StringVar(&o.firstOnly, "first-only", "", "required test to place in group zero, such as the recovery seed")
+	flag.StringVar(&o.dedicated, "dedicated", "", "required top-level test to run alone in an additional group")
 	flag.Parse()
 	o.packages = flag.Args()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
