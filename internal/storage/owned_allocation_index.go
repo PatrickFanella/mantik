@@ -31,6 +31,7 @@ type ownedAllocationArchiveIndex struct {
 	Batches     map[int]ownedAllocationBatch
 	Members     map[int]ownedAllocationMember
 	Decisions   map[int][]OwnedDecisionPin
+	Financial   map[int][]string
 }
 
 var errOwnedAllocationIndexUnavailable = errors.New("allocation segment has no original index")
@@ -88,7 +89,7 @@ func (m *Memory) retainOwnedAllocationIndexLocked(next ownedAllocationJournal) e
 		return err
 	}
 	index := &m.ownedAllocationIndex
-	if (index.Checkpoints == nil) != (index.Batches == nil) || (index.Checkpoints == nil) != (index.Members == nil) || (index.Checkpoints == nil) != (index.Decisions == nil) {
+	if (index.Checkpoints == nil) != (index.Batches == nil) || (index.Checkpoints == nil) != (index.Members == nil) || (index.Checkpoints == nil) != (index.Decisions == nil) || (index.Checkpoints == nil) != (index.Financial == nil) {
 		return ErrOwnedAllocationInvalid
 	}
 	if _, exists := index.Batches[next.Checkpoint.Sequence]; exists {
@@ -101,13 +102,19 @@ func (m *Memory) retainOwnedAllocationIndexLocked(next ownedAllocationJournal) e
 			}
 		}
 	}
-	for _, member := range members {
+	financial := map[int][]string{}
+	for i, member := range members {
 		if _, exists := index.Members[member.Sequence]; exists {
 			return ErrOwnedAllocationConflict
 		}
+		ids, err := allocationFinancialDecisions(next.sealing[i])
+		if err != nil {
+			return err
+		}
+		financial[member.Sequence] = ids
 	}
 	if index.Checkpoints == nil {
-		*index = ownedAllocationArchiveIndex{map[int]OwnedAllocationCheckpoint{}, map[int]ownedAllocationBatch{}, map[int]ownedAllocationMember{}, map[int][]OwnedDecisionPin{}}
+		*index = ownedAllocationArchiveIndex{Checkpoints: map[int]OwnedAllocationCheckpoint{}, Batches: map[int]ownedAllocationBatch{}, Members: map[int]ownedAllocationMember{}, Decisions: map[int][]OwnedDecisionPin{}, Financial: map[int][]string{}}
 	}
 	for _, c := range []*OwnedAllocationCheckpoint{m.ownedAllocations.Checkpoint, next.Checkpoint} {
 		if c != nil {
@@ -118,14 +125,15 @@ func (m *Memory) retainOwnedAllocationIndexLocked(next ownedAllocationJournal) e
 	for i, member := range members {
 		index.Members[member.Sequence] = member
 		index.Decisions[member.Sequence] = clone(next.sealing[i].Record.Command.Decisions)
+		index.Financial[member.Sequence] = financial[member.Sequence]
 	}
 	return nil
 }
 
 // A segment is only an original custody view. Its consumer must re-execute it
 // with native owner inputs and compare the rebuilt checkpoint with After.
-func finishOwnedAllocationSegment(sequence int, batch ownedAllocationBatch, segment ownedAllocationSegment, members []ownedAllocationMember, pins map[int][]OwnedDecisionPin) (ownedAllocationSegment, error) {
-	if sequence < batch.First || sequence > segment.After.Sequence || len(segment.Records) == 0 || len(segment.Records) > MaxOwnedAllocations || len(members) != len(segment.Records) || len(pins) != len(members) {
+func finishOwnedAllocationSegment(sequence int, batch ownedAllocationBatch, segment ownedAllocationSegment, members []ownedAllocationMember, pins map[int][]OwnedDecisionPin, financial map[int][]string) (ownedAllocationSegment, error) {
+	if sequence < batch.First || sequence > segment.After.Sequence || len(segment.Records) == 0 || len(segment.Records) > MaxOwnedAllocations || len(members) != len(segment.Records) || len(pins) != len(members) || len(financial) != len(members) {
 		return ownedAllocationSegment{}, ErrOwnedAllocationInvalid
 	}
 	expected, err := allocationArchiveMembers(ownedAllocationJournal{Checkpoint: &segment.After, sealing: segment.Records}, segment.Before)
@@ -134,6 +142,10 @@ func finishOwnedAllocationSegment(sequence int, batch ownedAllocationBatch, segm
 	}
 	for i, item := range segment.Records {
 		if !reflect.DeepEqual(item.Record.Command.Decisions, pins[members[i].Sequence]) {
+			return ownedAllocationSegment{}, ErrOwnedAllocationInvalid
+		}
+		ids, err := allocationFinancialDecisions(item)
+		if err != nil || !reflect.DeepEqual(ids, financial[members[i].Sequence]) {
 			return ownedAllocationSegment{}, ErrOwnedAllocationInvalid
 		}
 	}
@@ -192,7 +204,7 @@ func (m *Memory) ownedAllocationSegmentLocked(ctx context.Context, sequence int)
 		}
 		segment.Before = &before
 	}
-	members, pins := []ownedAllocationMember{}, map[int][]OwnedDecisionPin{}
+	members, pins, financial := []ownedAllocationMember{}, map[int][]OwnedDecisionPin{}, map[int][]string{}
 	for n := batch.First; n <= end.Sequence; n++ {
 		if err := ctx.Err(); err != nil {
 			return ownedAllocationSegment{}, err
@@ -203,8 +215,9 @@ func (m *Memory) ownedAllocationSegmentLocked(ctx context.Context, sequence int)
 		}
 		members = append(members, member)
 		pins[n] = index.Decisions[n]
+		financial[n] = index.Financial[n]
 	}
-	return finishOwnedAllocationSegment(sequence, batch, segment, members, pins)
+	return finishOwnedAllocationSegment(sequence, batch, segment, members, pins, financial)
 }
 
 func readOwnedAllocationSegment(ctx context.Context, tx pgx.Tx, sequence int) (ownedAllocationSegment, error) {
@@ -302,10 +315,15 @@ func readOwnedAllocationSegment(ctx context.Context, tx pgx.Tx, sequence int) (o
 	if err := rows.Err(); err != nil {
 		return ownedAllocationSegment{}, err
 	}
+	rows.Close()
+	financial, err := readAllocationFinancialRefs(ctx, tx, end, members)
+	if err != nil {
+		return ownedAllocationSegment{}, err
+	}
 	if err := ctx.Err(); err != nil {
 		return ownedAllocationSegment{}, err
 	}
-	return finishOwnedAllocationSegment(sequence, batch, segment, members, pins)
+	return finishOwnedAllocationSegment(sequence, batch, segment, members, pins, financial)
 }
 
 func writeOwnedAllocationIndex(ctx context.Context, tx pgx.Tx, next ownedAllocationJournal, previous *OwnedAllocationCheckpoint) error {
@@ -342,6 +360,15 @@ func writeOwnedAllocationIndex(ctx context.Context, tx pgx.Tx, next ownedAllocat
 		}
 		for _, pin := range next.sealing[i].Record.Command.Decisions {
 			if _, err := tx.Exec(ctx, "INSERT INTO mantik_owned_allocation_decision_refs(sequence,decision_id,decision_sha256) VALUES($1,$2,$3)", member.Sequence, pin.ID, pin.SHA256); err != nil {
+				return err
+			}
+		}
+		ids, err := allocationFinancialDecisions(next.sealing[i])
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if _, err := tx.Exec(ctx, "INSERT INTO mantik_owned_allocation_financial_refs(sequence,decision_id) VALUES($1,$2)", member.Sequence, id); err != nil {
 				return err
 			}
 		}

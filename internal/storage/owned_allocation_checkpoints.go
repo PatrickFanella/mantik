@@ -360,6 +360,10 @@ var ErrOwnedAllocationAudit = errors.New("owned allocation checkpoint does not m
 // rebuilt checkpoint must equal the retained one, and the whole history must
 // list the same records and steps as the checkpointed replay.
 func auditOwnedAllocations(ctx context.Context, owner string, history ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, declarations PaperEvaluationDeclarationCatalog, assessments ...PaperEvaluationAssessmentCatalog) (OwnedAllocationAudit, error) {
+	return auditOwnedAllocationsWithIndex(ctx, owner, history, nil, policies, decisions, strategies, retained, x, declarations, assessments...)
+}
+
+func auditOwnedAllocationsWithIndex(ctx context.Context, owner string, history ownedAllocationJournal, visit func(ownedAllocationSegment) error, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, declarations PaperEvaluationDeclarationCatalog, assessments ...PaperEvaluationAssessmentCatalog) (OwnedAllocationAudit, error) {
 	out := OwnedAllocationAudit{Status: "verified", Records: len(history.Records)}
 	checkpointed, err := replayOwnedAllocations(ctx, owner, history, policies, decisions, strategies, retained, x, declarations, assessments...)
 	if err != nil || history.Checkpoint == nil {
@@ -382,6 +386,11 @@ func auditOwnedAllocations(ctx context.Context, owner string, history ownedAlloc
 		c, err := buildOwnedCheckpoint(ctx, previous, sealed[start:end], catalog, state)
 		if err != nil {
 			return out, err
+		}
+		if visit != nil {
+			if err := visit(ownedAllocationSegment{Before: previous, After: c, Records: sealed[start:end]}); err != nil {
+				return out, err
+			}
 		}
 		previous, start = &c, end
 	}
@@ -430,15 +439,51 @@ func (m *Memory) AuditOwnedAllocations(ctx context.Context, eval PaperDecisionEv
 	if err != nil {
 		return OwnedAllocationAudit{}, err
 	}
-	return auditOwnedAllocations(ctx, m.receiverID, journal, p, d, s, retained, m.ownedExecutionLocked(), declarations, assessments)
+	out, err := auditOwnedAllocationsWithIndex(ctx, m.receiverID, journal, func(original ownedAllocationSegment) error {
+		return auditAllocationOriginalSegment(ctx, original, func(n int) (ownedAllocationSegment, error) { return m.ownedAllocationSegmentLocked(ctx, n) })
+	}, p, d, s, retained, m.ownedExecutionLocked(), declarations, assessments)
+	if err != nil {
+		return OwnedAllocationAudit{}, err
+	}
+	return out, nil
 }
 
 func (p *Postgres) AuditOwnedAllocations(ctx context.Context, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationAudit, error) {
 	var out OwnedAllocationAudit
-	_, _, err := p.ownedAllocationAccess(ctx, false, nil, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, _ time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
+	var snapshot pgx.Tx
+	_, _, err := p.ownedAllocationAccessFromJournal(ctx, false, nil, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, _ time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
 		var err error
-		out, err = auditOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained, x, declarations, assessments)
+		out, err = auditOwnedAllocationsWithIndex(ctx, owner, journal, func(original ownedAllocationSegment) error {
+			return auditAllocationOriginalSegment(ctx, original, func(n int) (ownedAllocationSegment, error) { return readOwnedAllocationSegment(ctx, snapshot, n) })
+		}, policies, decisions, strategies, retained, x, declarations, assessments)
 		return journal, false, err
+	}, func(ctx context.Context, tx pgx.Tx, journal ownedAllocationJournal) (ownedAllocationJournal, error) {
+		snapshot = tx
+		var err error
+		if journal.Checkpoint != nil {
+			journal.archived, err = readOwnedAllocationArchive(ctx, tx)
+		}
+		return journal, err
 	}, eval, outcomeEvals...)
-	return out, err
+	if err != nil {
+		return OwnedAllocationAudit{}, err
+	}
+	return out, nil
+}
+
+func auditAllocationOriginalSegment(ctx context.Context, expected ownedAllocationSegment, read func(int) (ownedAllocationSegment, error)) error {
+	original, err := read(expected.After.Sequence - len(expected.Records) + 1)
+	if errors.Is(err, errOwnedAllocationIndexUnavailable) {
+		return ctx.Err()
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err != nil || !reflect.DeepEqual(original, expected) {
+		return ErrOwnedAllocationAudit
+	}
+	return nil
 }

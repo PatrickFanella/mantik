@@ -16,6 +16,7 @@ func runAllocationHistory(ctx context.Context, args []string, out, errOut io.Wri
 	fs.SetOutput(errOut)
 	base := fs.String("api-url", defaultURL, "service HTTP origin")
 	receiver := fs.String("receiver-id", "", "expected service receiver")
+	decision := fs.String("decision-id", "", "optional decision ID for comparisons and financial effects")
 	after := fs.String("after", "", "next_after from a previous page; keeps its original sealed boundary")
 	limit := fs.Int("limit", 16, "records per page, 1-64")
 	if err := fs.Parse(args); err != nil {
@@ -25,11 +26,14 @@ func runAllocationHistory(ctx context.Context, args []string, out, errOut io.Wri
 		return err
 	}
 	u, err := url.Parse(*base)
-	q := storage.OwnedAllocationHistoryQuery{ReceiverID: *receiver, After: *after, Limit: *limit}
+	q := storage.OwnedAllocationHistoryQuery{ReceiverID: *receiver, After: *after, Limit: *limit, DecisionID: *decision}
 	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Path != "" && u.Path != "/" || fs.NArg() != 0 || q.Validate() != nil {
 		return storage.ErrOwnedAllocationInvalid
 	}
 	query := url.Values{"receiver_id": {*receiver}, "limit": {strconv.Itoa(*limit)}}
+	if *decision != "" {
+		query.Set("decision_id", *decision)
+	}
 	if *after != "" {
 		query.Set("after", *after)
 	}

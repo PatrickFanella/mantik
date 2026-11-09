@@ -30,7 +30,8 @@ func TestPostgresContractsPaperHistoryUpgrade(t *testing.T) {
 	p := timerPostgres(t, "paperhistoryupgrade")
 	ctx := t.Context()
 	if _, err := p.pool.Exec(ctx, `DROP INDEX mantik_paper_history_page;
-DELETE FROM mantik_schema WHERE version=110;
+DROP TABLE mantik_owned_allocation_financial_refs;
+DELETE FROM mantik_schema WHERE version>=110;
 CREATE FUNCTION reject_paper_history_migration() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.version=110 THEN RAISE EXCEPTION 'history index migration rollback fixture'; END IF; RETURN NEW; END $$;
 CREATE TRIGGER reject_paper_history_migration BEFORE INSERT ON mantik_schema FOR EACH ROW EXECUTE FUNCTION reject_paper_history_migration()`); err != nil {
 		t.Fatal(err)

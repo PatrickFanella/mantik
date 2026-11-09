@@ -41,6 +41,16 @@ func allocationHistoryHTTP(t *testing.T, request func(string, string, any, int) 
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil || !reflect.DeepEqual(got, native) {
 		t.Fatal("CLI changed the native allocation history", err)
 	}
+	out.Reset()
+	diag.Reset()
+	if err := Run(context.Background(), []string{"allocation-history", "--api-url", base, "--receiver-id", owner, "--decision-id", "selected-decision", "--limit", "2"}, &out, &diag); err != nil {
+		t.Fatal("scoped allocation history CLI", err, diag.String())
+	}
+	var scoped storage.OwnedAllocationHistoryPage
+	scopedQuery := storage.OwnedAllocationHistoryQuery{ReceiverID: owner, DecisionID: "selected-decision", Limit: 2}
+	if err := json.Unmarshal(out.Bytes(), &scoped); err != nil || scoped.Validate(scopedQuery) != nil || scoped.DecisionID != scopedQuery.DecisionID || scoped.Schema != "mantik-allocation-history-page-v2" {
+		t.Fatal("CLI lost decision history scope", err)
+	}
 	for _, path := range []string{
 		"/v1/allocation-history",
 		"/v1/allocation-history?",
@@ -49,6 +59,8 @@ func allocationHistoryHTTP(t *testing.T, request func(string, string, any, int) 
 		"/v1/allocation-history?receiver_id=" + owner + "&limit=1&limit=2",
 		"/v1/allocation-history?receiver_id=" + owner + "&after=bad",
 		"/v1/allocation-history?receiver_id=" + owner + "&unknown=1",
+		"/v1/allocation-history?receiver_id=" + owner + "&decision_id=one&decision_id=two",
+		"/v1/allocation-history?receiver_id=" + owner + "&decision_id=../another",
 	} {
 		request("GET", path, nil, 422)
 	}
@@ -56,6 +68,7 @@ func allocationHistoryHTTP(t *testing.T, request func(string, string, any, int) 
 	for _, flags := range [][]string{
 		{"--limit", "65"},
 		{"--after", "bad"},
+		{"--decision-id", "../another"},
 		{"--api-url", "http://user:password@127.0.0.1"},
 		{"unexpected"},
 	} {

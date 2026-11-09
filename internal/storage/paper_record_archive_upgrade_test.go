@@ -8,6 +8,11 @@ func dropPaperRecordArchiveSchema(t *testing.T, p *Postgres) {
 	t.Helper()
 	for _, sql := range []string{
 		"DROP INDEX IF EXISTS mantik_paper_history_page",
+		"DROP TRIGGER IF EXISTS mantik_allocation_financial_refs_complete ON mantik_owned_allocation_members",
+		"DROP TABLE IF EXISTS mantik_owned_allocation_financial_refs",
+		"DROP FUNCTION IF EXISTS mantik_require_allocation_financial_refs()",
+		"DROP FUNCTION IF EXISTS mantik_check_allocation_financial_ref()",
+		"DROP FUNCTION IF EXISTS mantik_allocation_financial_decisions(jsonb)",
 		"DROP TRIGGER IF EXISTS mantik_owned_allocation_index_required ON mantik_owned_allocations",
 		"DROP FUNCTION IF EXISTS mantik_require_owned_allocation_index()",
 		"DROP TABLE IF EXISTS mantik_owned_allocation_decision_refs",

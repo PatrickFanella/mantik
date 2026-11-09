@@ -45,6 +45,7 @@ def recovery_contract(container, database, replay_owner):
                 'public.mantik_owned_allocation_archive', 'public.mantik_owned_allocation_checkpoints',
                 'public.mantik_owned_allocation_batches', 'public.mantik_owned_allocation_members',
                 'public.mantik_owned_allocation_decision_refs',
+                'public.mantik_owned_allocation_financial_refs',
                 'public.mantik_paper_evaluation_declarations', 'public.mantik_paper_evaluation_assessments',
                 'public.mantik_feed_archives', 'public.mantik_feed_archive_sources',
                 'public.mantik_feed_archive_source_batches', 'public.mantik_feed_archive_prefixes',

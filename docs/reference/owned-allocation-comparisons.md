@@ -983,7 +983,8 @@ COMMIT.
 Historical attribution and catalogue paging still need segment integration.
 The v1 checkpoint's alias and consumed-identity state still grows; this reader
 does not establish a growing-history operational bound or enable physical paper
-retirement. Backups must retain all four index tables
+retirement. Backups must retain the four schema-109 index tables and the
+schema-111 financial-reference table
 with the original journal/archive and owner sources. A schema-108 predecessor
 refuses schema 109; rollback requires the matching pre-upgrade backup and binary.
 
@@ -999,7 +1000,17 @@ Pass the service receiver as `receiver_id` or `--receiver-id`. The page size is
 `limit` or `--limit`, defaults to 16, and accepts 1 through 64. Supply the returned
 `next_after` as `after` or `--after` to continue. The HTTP route requires operator
 authentication and accepts no GET body, duplicate parameters or unknown query
-keys. The CLI emits the validated JSON page.
+keys. The CLI emits the validated JSON page. Optional `decision_id` or
+`--decision-id` selects comparisons and original financial effects mentioning
+one decision. A comparison for another decision can still be selected when it
+releases or advances the requested decision's reservation. Standalone execution
+steps are included. Each result retains the complete original record, including
+any other decisions in that record.
+
+Unfiltered pages and cursors retain v1. Decision-filtered pages and cursors use
+v2 and bind `decision_id` alongside receiver and checkpoint. A cursor cannot be
+reused for another decision or between filtered and unfiltered reads. A valid
+decision ID with no sealed matches returns an empty page at the same archive cut.
 
 The first page closes at the active journal's original sealed checkpoint.
 `through_sequence` and `checkpoint_sha256` bind that cut. Later pages keep it
@@ -1010,17 +1021,34 @@ and changed native results fail without returning a partial page. Older
 unindexed history needs its original-index backfill before this endpoint can
 page it; existing targeted comparison inspection retains its legacy fallback.
 
-The service seeks at most the requested number of sequence-index members,
+The service seeks the requested number of sequence-index members, with one
+lookahead member for a decision filter,
 checks their complete original segments, resolves their native decision
 dependencies and rebuilds each segment's end checkpoint. Original segment data
 for one page is capped at 64 MiB, and the returned JSON page at 8 MiB. Memory uses
 one lock; PostgreSQL uses one repeatable-read snapshot and returns the page only
 after COMMIT. Cancellation returns no page. A selected intact segment can be
 read independently of damage in a later unrelated segment; the full audit still
-checks the complete history.
+checks the complete history and its indexed originals.
 
-These pages provide original financial records for inspection. Decision-specific
-financial attribution still needs complete execution-effect references and a
-bounded native contribution reader. The v1 checkpoint identity collections,
-legacy-index backfill and automatic retention remain required archive work.
+Schema 111 derives `mantik_owned_allocation_financial_refs` from the original
+comparison decision pins, comparison execution and expiration effects, and
+standalone execution effects. The reference set is immutable and commits with
+the seal. A deferred guard rejects an incomplete set, including a seal written
+by an already-running predecessor. Upgrade backfill checks original payload
+hashes and preserves journal, archive and checkpoint bytes. Selection metadata
+alone does not establish native evaluation or qualification.
+
+Selected segment reads compare those references with the actual original
+records. The full audit independently rebuilds each seal, compares every indexed
+original before/after checkpoint and complete segment with that native result,
+and checks the financial-reference sets. Missing references or a self-rehashed
+intermediate checkpoint fail the audit. The public audit methods return no
+acknowledgment on any error, including cancellation or failed COMMIT.
+
+These pages provide original financial records for inspection. Complete
+decision-specific financial attribution still needs its bounded native
+contribution consumer; a filtered page is not a complete financial total.
+The v1 checkpoint identity collections, legacy-index backfill and automatic
+retention remain required archive work.
 

@@ -78,6 +78,22 @@ func verifyAllocationTargetReads(t *testing.T, s ownedAllocationBackend, de Pape
 			if got, err := lookup.OwnedAllocationComparison(t.Context(), all.Records[0].Command.ID, de); !errors.Is(err, ErrOwnedAllocationAudit) || !reflect.DeepEqual(got, OwnedAllocationRecord{}) {
 				t.Fatal("self-rehashed original checkpoint replaced native replay", err)
 			}
+			if got, err := m.AuditOwnedAllocations(t.Context(), de); !errors.Is(err, ErrOwnedAllocationAudit) || !reflect.DeepEqual(got, OwnedAllocationAudit{}) {
+				t.Fatal("full audit acknowledged a forged intermediate checkpoint", err)
+			}
+		})
+		t.Run("missing-financial-reference", func(t *testing.T) {
+			m.mu.Lock()
+			original := m.ownedAllocationIndex.Financial[1]
+			m.ownedAllocationIndex.Financial[1] = []string{}
+			m.mu.Unlock()
+			defer func() { m.mu.Lock(); m.ownedAllocationIndex.Financial[1] = original; m.mu.Unlock() }()
+			if got, err := m.AuditOwnedAllocations(t.Context(), de); !errors.Is(err, ErrOwnedAllocationAudit) || !reflect.DeepEqual(got, OwnedAllocationAudit{}) {
+				t.Fatal("full audit acknowledged omitted financial selection metadata", err)
+			}
+			if got, err := lookup.OwnedAllocationComparison(t.Context(), all.Records[0].Command.ID, de); err == nil || !reflect.DeepEqual(got, OwnedAllocationRecord{}) {
+				t.Fatal("target read accepted incomplete financial references")
+			}
 		})
 	}
 
