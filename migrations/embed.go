@@ -313,3 +313,6 @@ var PaperBasisWindows string
 
 //go:embed 0100_feed_archive_custody.sql
 var FeedArchiveCustody string
+
+//go:embed 0101_feed_archive_source_index.sql
+var FeedArchiveSourceIndex string

@@ -25,6 +25,12 @@ active copies. Its owner writes and independently inspectable persisted records
 are the transaction boundary. Archive-aware readers, active pruning and automatic
 rotation remain required; the first custody PR is not completion of that unit.
 
+PR #350 contains schema-100 source custody. The source-index unit adds schema-101 lookup
+by original command/input/admission/publication identity, atomic source manifests,
+upgrade backfill and a full source/index audit. These reads precede pruning;
+source-prefix and pending-decision/outcome replay still need retained checkpoint
+bindings before any active source may be removed.
+
 ## Archive contract
 
 Increasing limits or keeping unbounded JSON in the active aggregate is not an

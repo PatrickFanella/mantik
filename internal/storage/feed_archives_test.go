@@ -16,6 +16,7 @@ import (
 type feedArchiveBackend interface {
 	evidenceBackend
 	FeedArchiveStore
+	FeedArchiveSourceStore
 }
 
 func TestMemoryFeedArchives(t *testing.T) { feedArchiveContracts(t, NewMemory()) }
@@ -102,6 +103,22 @@ func feedArchiveContracts(t *testing.T, s feedArchiveBackend) {
 	if err != nil || !reflect.DeepEqual(a.Source, canonical) {
 		t.Fatal("archive did not capture the exact owner snapshot", err)
 	}
+	indexed, err := s.FeedArchiveSource(ctx, "publication", registration.ID+":capture-000")
+	if err != nil || indexed.Validate() != nil || indexed.Archive != receipt.Header {
+		t.Fatal("source identity did not resolve its archive", indexed, err)
+	}
+	wantIndexed := clone(indexed)
+	indexed.Payload[0] = '!'
+	indexed, err = s.FeedArchiveSource(ctx, "publication", registration.ID+":capture-000")
+	if err != nil || !reflect.DeepEqual(indexed, wantIndexed) {
+		t.Fatal("source read escaped archive ownership", err)
+	}
+	if _, err := s.FeedArchiveSource(ctx, "publication", "missing"); !errors.Is(err, ErrFeedArchiveNotFound) {
+		t.Fatal("missing source identity accepted", err)
+	}
+	if _, err := s.FeedArchiveSource(ctx, "unsupported", "missing"); !errors.Is(err, ErrFeedArchiveInvalid) {
+		t.Fatal("unknown source kind accepted", err)
+	}
 	a.Source.Records = nil
 	again, err := s.FeedArchive(ctx, 1)
 	if err != nil || len(again.Source.Records) != 1 {
@@ -119,6 +136,14 @@ func feedArchiveContracts(t *testing.T, s feedArchiveBackend) {
 	second, err := s.ArchiveFeed(ctx, owner, now, check)
 	if err != nil || second.Header.Sequence != 2 || second.Header.PreviousSHA256 != receipt.Header.SHA256 {
 		t.Fatal("archive chain did not extend", second, err)
+	}
+	indexed, err = s.FeedArchiveSource(ctx, "publication", registration.ID+":capture-000")
+	if err != nil || !reflect.DeepEqual(indexed, wantIndexed) {
+		t.Fatal("later archive rewrote the original source index", err)
+	}
+	audit, err := s.AuditFeedArchiveSources(ctx)
+	if err != nil || audit.Status != "verified" || audit.Archives != 2 || audit.Sources != 3 || audit.HeadSHA256 != second.Header.SHA256 {
+		t.Fatal("complete source/index audit", audit, err)
 	}
 	page, err := s.FeedArchives(ctx, 0, 1)
 	if err != nil || len(page.Records) != 1 || page.NextAfter != 1 {
@@ -162,8 +187,33 @@ func feedArchiveContracts(t *testing.T, s feedArchiveBackend) {
 		if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_feed_archives DROP CONSTRAINT fail_archive"); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_feed_archive_sources ADD CONSTRAINT fail_source_index CHECK(source_id <> 'archive-feed:capture-002')"); err != nil {
+			t.Fatal(err)
+		}
+		failed, err = s.ArchiveFeed(ctx, owner, now, check)
+		if err == nil || failed != (FeedArchiveReceipt{}) {
+			t.Fatal("failed source index returned archive receipt", failed, err)
+		}
+		if _, err := s.FeedArchive(ctx, 3); !errors.Is(err, ErrFeedArchiveNotFound) {
+			t.Fatal("index failure left a partial archive", err)
+		}
+		if _, err := s.FeedArchiveSource(ctx, "publication", registration.ID+":capture-002"); !errors.Is(err, ErrFeedArchiveNotFound) {
+			t.Fatal("index failure retained a partial identity", err)
+		}
+		if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_feed_archive_sources DROP CONSTRAINT fail_source_index"); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := s.ArchiveFeed(ctx, owner, now, check); err != nil {
 			t.Fatal("rolled-back archive could not be retried", err)
+		}
+		if _, err := reopened.pool.Exec(ctx, "DELETE FROM mantik_feed_archive_sources WHERE kind='publication' AND source_id='archive-feed:capture-000'"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.AuditFeedArchiveSources(ctx); !errors.Is(err, ErrFeedArchiveConflict) {
+			t.Fatal("source audit missed a deleted index identity", err)
+		}
+		if _, err := reopened.pool.Exec(ctx, "INSERT INTO mantik_feed_archive_sources VALUES('publication','archive-feed:capture-000',1,$1)", wantIndexed.RecordSHA256); err != nil {
+			t.Fatal(err)
 		}
 		if _, err := reopened.pool.Exec(ctx, "UPDATE mantik_feed_archives SET payload=convert_to('{}','UTF8') WHERE sequence=1"); err != nil {
 			t.Fatal(err)
@@ -172,6 +222,16 @@ func feedArchiveContracts(t *testing.T, s feedArchiveBackend) {
 			t.Fatal("corrupt archived source accepted", err)
 		}
 	} else if m, ok := s.(*Memory); ok {
+		m.mu.Lock()
+		originalRef := m.feedArchiveRecords[archivedSourceKey("publication", registration.ID+":capture-000")]
+		delete(m.feedArchiveRecords, archivedSourceKey("publication", registration.ID+":capture-000"))
+		m.mu.Unlock()
+		if _, err := s.AuditFeedArchiveSources(ctx); !errors.Is(err, ErrFeedArchiveConflict) {
+			t.Fatal("source audit missed a deleted index identity", err)
+		}
+		m.mu.Lock()
+		m.feedArchiveRecords[archivedSourceKey("publication", registration.ID+":capture-000")] = originalRef
+		m.mu.Unlock()
 		m.mu.Lock()
 		delete(m.evidence, registration.ID+":capture-000")
 		m.mu.Unlock()

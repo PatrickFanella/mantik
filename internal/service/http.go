@@ -90,6 +90,7 @@ func handlerWithAcquisitions(store storage.Store, token string, clock Clock, pol
 	feedCollectorRoutes(mux, store, clock, policy)
 	feedEvidenceRoutes(mux, store, clock, policy)
 	feedArchiveRoutes(mux, store, clock)
+	feedArchiveSourceRoutes(mux, store)
 	corporateActionSourceRoutes(mux, store, clock)
 	corporateAcquisitionRoutes(mux, acquisitions, store, clock)
 	corporateReferenceRoutes(mux, references, store, clock)
