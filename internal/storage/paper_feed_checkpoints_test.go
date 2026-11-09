@@ -35,9 +35,33 @@ func assertRestoredPaperFeedCheckpoint(t *testing.T, s *Postgres, owner string) 
 		t.Fatal("restored paper source custody", c, err)
 	}
 	noClock := func() time.Time { t.Fatal("restored custody retry sampled time"); return time.Time{} }
-	retry, err := s.ArchivePaperFeed(ctx, owner, noClock, func(FeedEvidenceSnapshot, time.Time) error { return nil }, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
-	if err != nil || !retry.Duplicate || retry.Header != c.Archive || retry.PaperCustody == nil || !retry.PaperCustody.Duplicate || retry.PaperCustody.Header != c.PaperFeedCheckpointHeader {
+	retry, err := s.RotateFeed(ctx, owner, noClock, func(FeedEvidenceSnapshot, time.Time) error { return nil }, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
+	if err != nil || !retry.Duplicate || retry.Header != c.Archive || retry.PaperCustody == nil || !retry.PaperCustody.Duplicate || retry.PaperCustody.Header != c.PaperFeedCheckpointHeader || retry.Retention == nil || !retry.Retention.Duplicate {
 		t.Fatal("restored custody retry changed original identity", retry, err)
+	}
+	feed, err := s.FeedEvidence(ctx)
+	if err != nil || feed.Retention == nil || feed.Retention.SHA256 != retry.Retention.SHA256 || feed.Collectors.ArchiveSHA256 != feed.Retention.SHA256 || len(feed.Collectors.Commands) != 1 {
+		t.Fatal("restored retirement lost approved owner root", err)
+	}
+	decisions, err := s.PaperDecisions(ctx, recoveryFixtureDecisionEvaluator)
+	if err != nil || len(decisions.Records) != 2 {
+		t.Fatal("restored retired-feed decision owners", err)
+	}
+	var later PaperDecisionRecord
+	for _, d := range decisions.Records {
+		if d.Command.ID == "recovery-retired-feed-decision" {
+			later = d
+		}
+	}
+	if later.Schema != paperDecisionSchemaV4 {
+		t.Fatal("restored archive-aware paper schema changed")
+	}
+	duplicate, err := s.FinalizePaperDecision(ctx, later.Command, noClock, recoveryFixtureDecisionEvaluator)
+	if err != nil || !duplicate.Duplicate || !reflect.DeepEqual(duplicate.Record, later) {
+		t.Fatal("restored archive-aware paper retry changed identity", err)
+	}
+	if audit, err := s.AuditPaperFeed(ctx, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator); err != nil || audit.Decisions != 2 || audit.Outcomes != 2 || audit.Checkpoints != 1 {
+		t.Fatal("restored retirement original-source audit", audit, err)
 	}
 	audit, err := s.AuditFeedArchiveSources(ctx)
 	if err != nil || audit.Archives != 1 || audit.Status != "verified" || audit.Sources != 6 {

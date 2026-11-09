@@ -14,6 +14,8 @@ import (
 const (
 	paperDecisionSchemaV3 = "mantik-owned-paper-decision-v3"
 	paperOutcomeSchemaV3  = "mantik-owned-paper-outcome-v3"
+	paperDecisionSchemaV4 = "mantik-owned-paper-decision-v4"
+	paperOutcomeSchemaV4  = "mantik-owned-paper-outcome-v4"
 )
 
 // PaperDecisionFeedPrefix binds everything a registration had retained at a
@@ -92,6 +94,9 @@ type registrationPrefixes struct {
 	records, admissions []feedPrefixPoint
 	clocks              []feedRecordClock
 	admissionClocks     []feedAdmissionClock
+	seed                PaperDecisionFeedPrefix
+	seedAt              time.Time
+	seedSourceAt        time.Time
 }
 
 type feedRecordClock struct {
@@ -115,6 +120,9 @@ func (x *feedPrefixIndex) chains(registration string) *registrationPrefixes {
 		return out
 	}
 	out := &registrationPrefixes{}
+	if r := x.feed.Retention; r != nil {
+		out.seed, out.seedAt, out.seedSourceAt = r.prefix(registration), r.Checkpoint.CutAt, r.Checkpoint.Archive.ArchivedAt
+	}
 	keys := []string{}
 	for key, r := range x.feed.Records {
 		if r.RegistrationID == registration {
@@ -127,7 +135,7 @@ func (x *feedPrefixIndex) chains(registration string) *registrationPrefixes {
 		}
 		return strings.Compare(a, b)
 	})
-	previous := ""
+	previous := out.seed.RecordsSHA256
 	for _, key := range keys {
 		r := x.feed.Records[key]
 		clock := feedRecordClock{key: key, publishedAt: r.PublishedAt}
@@ -139,12 +147,10 @@ func (x *feedPrefixIndex) chains(registration string) *registrationPrefixes {
 			clock.capability, clock.receivedAt, clock.readable = parsed.Capability, parsed.ReceivedAt, true
 		}
 		out.clocks = append(out.clocks, clock)
-		recording, _ := canonicalRecording(r.Recording)
-		r.Recording = nil
-		previous = workerplan.Hash(struct {
-			Previous, Key, Recording string
-			Record                   FeedEvidenceRecord
-		}{previous, key, recording, r})
+		if !out.seedAt.IsZero() && !r.PublishedAt.After(out.seedAt) {
+			continue
+		}
+		previous = publicationPrefixDigest(previous, key, r)
 		out.records = append(out.records, feedPrefixPoint{r.PublishedAt, previous})
 	}
 	ids := []string{}
@@ -159,7 +165,7 @@ func (x *feedPrefixIndex) chains(registration string) *registrationPrefixes {
 		}
 		return strings.Compare(a, b)
 	})
-	previous = ""
+	previous = out.seed.AdmissionsSHA256
 	for _, id := range ids {
 		var input domain.RetainedRoutingInput
 		if x.feed.Routing != nil {
@@ -167,11 +173,10 @@ func (x *feedPrefixIndex) chains(registration string) *registrationPrefixes {
 		}
 		a := x.feed.Collectors.Admissions[id]
 		out.admissionClocks = append(out.admissionClocks, feedAdmissionClock{id, a.At, input.Input.ReceivedAt})
-		previous = workerplan.Hash(struct {
-			Previous, ID string
-			Admission    feedcollector.Admission
-			Input        domain.RetainedRoutingInput
-		}{previous, id, a, input})
+		if !out.seedAt.IsZero() && !a.At.After(out.seedAt) {
+			continue
+		}
+		previous = admissionPrefixDigest(previous, id, a, input)
 		out.admissions = append(out.admissions, feedPrefixPoint{a.At, previous})
 	}
 	x.built[registration] = out
@@ -195,6 +200,21 @@ func (x *feedPrefixIndex) at(registration string, cut time.Time) PaperDecisionFe
 	c := x.chains(registration)
 	records, recordsDigest := prefixAt(c.records, cut)
 	admissions, admissionsDigest := prefixAt(c.admissions, cut)
+	if !c.seedAt.IsZero() {
+		// The checkpoint also closes the source-free interval between its named
+		// archive time and its possibly later paper cut.
+		if cut.Before(c.seedSourceAt) {
+			return PaperDecisionFeedPrefix{}
+		}
+		if records == 0 {
+			recordsDigest = c.seed.RecordsSHA256
+		}
+		if admissions == 0 {
+			admissionsDigest = c.seed.AdmissionsSHA256
+		}
+		records += c.seed.Records
+		admissions += c.seed.Admissions
+	}
 	return PaperDecisionFeedPrefix{records, recordsDigest, admissions, admissionsDigest}
 }
 
@@ -241,4 +261,48 @@ func withFeedPrefix(c PaperDecisionCommand, full PaperDecisionBasis, feed FeedEv
 	prefix := index.at(c.RegistrationID, at)
 	out.Prefix = &prefix
 	return out
+}
+
+func publicationPrefixDigest(previous, key string, r FeedEvidenceRecord) string {
+	recording, _ := canonicalRecording(r.Recording)
+	r.Recording = nil
+	return workerplan.Hash(struct {
+		Previous, Key, Recording string
+		Record                   FeedEvidenceRecord
+	}{previous, key, recording, r})
+}
+func admissionPrefixDigest(previous, id string, a feedcollector.Admission, input domain.RetainedRoutingInput) string {
+	return workerplan.Hash(struct {
+		Previous, ID string
+		Admission    feedcollector.Admission
+		Input        domain.RetainedRoutingInput
+	}{previous, id, a, input})
+}
+
+// V4 archive-aware windows use the same prefix and selection rules as v3,
+// with canonical recording metadata independent of live/archive JSON ordering.
+// Provider original strings remain byte-for-byte source material.
+func canonicalPaperBasis(b PaperDecisionBasis) (PaperDecisionBasis, error) {
+	b = clone(b)
+	for key, record := range b.Feed.Records {
+		raw, err := canonicalRecording(record.Recording)
+		if err != nil {
+			return PaperDecisionBasis{}, ErrPaperDecisionInvalid
+		}
+		record.Recording = json.RawMessage(raw)
+		b.Feed.Records[key] = record
+	}
+	return b, nil
+}
+func canonicalPaperBasisValid(b PaperDecisionBasis) bool {
+	if b.Prefix == nil {
+		return false
+	}
+	for _, record := range b.Feed.Records {
+		raw, err := canonicalRecording(record.Recording)
+		if err != nil || raw != string(record.Recording) {
+			return false
+		}
+	}
+	return true
 }

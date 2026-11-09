@@ -194,7 +194,16 @@ func archivePrefixContracts(t *testing.T, s archivePrefixBackend) {
 			t.Fatal(err)
 		}
 		seal()
+		if _, err := reopened.pool.Exec(ctx, "UPDATE mantik_feed_archive_prefixes SET digest=$1 WHERE kind='publication' AND source_id='prefix-feed:p-b'", strings.Repeat("f", 64)); err == nil {
+			t.Fatal("original prefix index allowed replacement")
+		}
+		if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_feed_archive_prefixes DISABLE TRIGGER mantik_immutable_feed_prefixes"); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := reopened.pool.Exec(ctx, "UPDATE mantik_feed_archive_prefixes SET digest=$1 WHERE kind='publication' AND source_id='prefix-feed:p-b'", strings.Repeat("f", 64)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_feed_archive_prefixes ENABLE TRIGGER mantik_immutable_feed_prefixes"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.FeedArchivePrefix(ctx, "prefix-feed", original.At); !errors.Is(err, ErrFeedArchiveConflict) {
@@ -229,7 +238,16 @@ func archivePrefixContracts(t *testing.T, s archivePrefixBackend) {
 		if _, err := reopened.pool.Exec(ctx, "UPDATE mantik_feed_archive_prefix_batches SET prefix_sha256=$1 WHERE archive_sequence=1", originalManifest); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := reopened.pool.Exec(ctx, "DELETE FROM mantik_feed_archive_prefixes WHERE kind='publication' AND source_id='prefix-feed:p-b'"); err == nil {
+			t.Fatal("prefix index allowed deletion")
+		}
+		if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_feed_archive_prefixes DISABLE TRIGGER mantik_immutable_feed_prefixes"); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := reopened.pool.Exec(ctx, "DELETE FROM mantik_feed_archive_prefixes WHERE kind='publication' AND source_id='prefix-feed:p-b'"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_feed_archive_prefixes ENABLE TRIGGER mantik_immutable_feed_prefixes"); err != nil {
 			t.Fatal(err)
 		}
 	} else {

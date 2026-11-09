@@ -75,10 +75,11 @@ type RetainedCommand struct {
 }
 
 type State struct {
-	LastClock  time.Time                  `json:"last_clock"`
-	Entries    map[string]Entry           `json:"entries"`
-	Commands   map[string]RetainedCommand `json:"commands"`
-	Admissions map[string]Admission       `json:"admissions"`
+	ArchiveSHA256 string                     `json:"archive_sha256,omitempty"`
+	LastClock     time.Time                  `json:"last_clock"`
+	Entries       map[string]Entry           `json:"entries"`
+	Commands      map[string]RetainedCommand `json:"commands"`
+	Admissions    map[string]Admission       `json:"admissions"`
 }
 
 func InitialState() State {

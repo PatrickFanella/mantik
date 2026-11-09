@@ -114,12 +114,12 @@ func (c PaperFeedCheckpoint) Validate() error {
 		previous = key
 		switch pin.Kind {
 		case "decision":
-			if pin.ID != pin.DecisionID || pin.RecordSHA256 != pin.DecisionSHA256 || pin.BasisSHA256 != pin.ObservationSHA256 || pin.Schema != "mantik-owned-paper-decision-v1" && pin.Schema != "mantik-owned-paper-decision-v2" && pin.Schema != paperDecisionSchemaV3 {
+			if pin.ID != pin.DecisionID || pin.RecordSHA256 != pin.DecisionSHA256 || pin.BasisSHA256 != pin.ObservationSHA256 || pin.Schema != "mantik-owned-paper-decision-v1" && pin.Schema != "mantik-owned-paper-decision-v2" && pin.Schema != paperDecisionSchemaV3 && pin.Schema != paperDecisionSchemaV4 {
 				return ErrFeedArchiveConflict
 			}
 			decisions++
 		case "outcome":
-			if pin.Schema != "mantik-owned-paper-outcome-v1" && pin.Schema != "mantik-owned-paper-outcome-v2" && pin.Schema != paperOutcomeSchemaV3 {
+			if pin.Schema != "mantik-owned-paper-outcome-v1" && pin.Schema != "mantik-owned-paper-outcome-v2" && pin.Schema != paperOutcomeSchemaV3 && pin.Schema != paperOutcomeSchemaV4 {
 				return ErrFeedArchiveConflict
 			}
 			outcomes++
@@ -207,13 +207,22 @@ func finishPaperFeedCheckpoint(c PaperFeedCheckpoint, previous PaperFeedCheckpoi
 	return c, nil
 }
 
-func (m *Memory) preparePaperFeedCheckpoint(a FeedArchive, e *paperFeedArchiveEvaluators) (*PaperFeedCheckpoint, bool, error) {
+func (m *Memory) preparePaperFeedCheckpoint(ctx context.Context, a FeedArchive, e *paperFeedArchiveEvaluators) (*PaperFeedCheckpoint, bool, error) {
 	if e == nil {
 		return nil, false, nil
 	}
 	strategies, err := m.paperStrategiesLocked()
 	if err != nil {
 		return nil, false, err
+	}
+	a.Source.custody, err = m.feedCustodyLocked(a.Source.Retention)
+	if err != nil {
+		return nil, false, err
+	}
+	if a.Source.Retention != nil {
+		if err := auditOriginalPaperFeed(ctx, a.Source, m.paperDecisions, m.paperOutcomes, strategies, e, a.Source.Retention.Checkpoint.CutAt, m.feedWindowReaderLocked(ctx, m.receiverID)); err != nil {
+			return nil, false, err
+		}
 	}
 	data, err := paperFeedCheckpointData(a, m.paperDecisions, m.paperOutcomes, strategies, e)
 	if err != nil {
@@ -289,6 +298,15 @@ func writePaperFeedCheckpoint(ctx context.Context, tx pgx.Tx, a FeedArchive, e *
 	outcomes, err := readPaperOutcomes(ctx, tx)
 	if err != nil {
 		return nil, err
+	}
+	a.Source.custody, err = readFeedCustody(ctx, tx, a.Source.Retention)
+	if err != nil {
+		return nil, err
+	}
+	if a.Source.Retention != nil {
+		if err := auditOriginalPaperFeed(ctx, a.Source, decisions, outcomes, strategies, e, a.Source.Retention.Checkpoint.CutAt, postgresFeedWindowReader(ctx, tx, a.ReceiverID)); err != nil {
+			return nil, err
+		}
 	}
 	data, err := paperFeedCheckpointData(a, decisions, outcomes, strategies, e)
 	if err != nil {
@@ -390,7 +408,12 @@ func (m *Memory) PaperFeedCheckpoint(ctx context.Context, sequence int64, de Pap
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
-	if err := verifyPaperFeedCheckpoint(c, m.feedArchives[c.Archive.Sequence-1], m.paperDecisions, m.paperOutcomes, strategies, &paperFeedArchiveEvaluators{de, oe}); err != nil {
+	a := m.feedArchives[c.Archive.Sequence-1]
+	a.Source.custody, err = m.feedCustodyLocked(a.Source.Retention)
+	if err != nil {
+		return PaperFeedCheckpoint{}, err
+	}
+	if err := verifyPaperFeedCheckpoint(c, a, m.paperDecisions, m.paperOutcomes, strategies, &paperFeedArchiveEvaluators{de, oe}); err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -426,6 +449,10 @@ func (p *Postgres) PaperFeedCheckpoint(ctx context.Context, sequence int64, de P
 		}
 	}
 	a, err := readFeedArchive(ctx, tx, c.Archive.Sequence)
+	if err != nil {
+		return PaperFeedCheckpoint{}, err
+	}
+	a.Source.custody, err = readFeedCustody(ctx, tx, a.Source.Retention)
 	if err != nil {
 		return PaperFeedCheckpoint{}, err
 	}

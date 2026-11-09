@@ -34,6 +34,8 @@ type FeedEvidenceSnapshot struct {
 	Collectors feedcollector.State
 	Routing    *domain.RoutingState
 	Records    map[string]FeedEvidenceRecord
+	Retention  *FeedRetention `json:"retention,omitempty"`
+	custody    *feedCustodyView
 }
 
 // EvidenceCheck is a pure validation callback under the storage locks. It must
@@ -78,7 +80,11 @@ func (m *Memory) FeedEvidence(ctx context.Context) (FeedEvidenceSnapshot, error)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return FeedEvidenceSnapshot{m.receiverID, clone(m.collectors), clone(m.state.Routing), clone(m.evidence)}, nil
+	feed := m.decisionFeedLocked()
+	if err := validateFeedCustody(feed); err != nil {
+		return FeedEvidenceSnapshot{}, err
+	}
+	return feed, nil
 }
 func (m *Memory) PublishFeedEvidence(ctx context.Context, receiver, registration, key string, f feedcollector.Fence, raw json.RawMessage, now func() time.Time, check EvidenceCheck) (FeedEvidenceReceipt, error) {
 	if err := evidenceRequest(receiver, registration, key, f, raw); err != nil {
@@ -96,8 +102,21 @@ func (m *Memory) PublishFeedEvidence(ctx context.Context, receiver, registration
 	if err != nil {
 		return FeedEvidenceReceipt{}, err
 	}
+	snapshot := m.decisionFeedLocked()
+	if err := validateFeedCustody(snapshot); err != nil {
+		return FeedEvidenceReceipt{}, err
+	}
+	if previous == nil {
+		old, original, err := m.feedArchivedSourceLocked(ctx, "publication", registration+":"+key)
+		if err == nil {
+			return retiredPublication(m.feedRetention, old, original, snapshot, registration, key, f, raw, now, check)
+		}
+		if !errors.Is(err, ErrFeedArchiveNotFound) {
+			return FeedEvidenceReceipt{}, err
+		}
+	}
+
 	at := now().UTC()
-	snapshot := FeedEvidenceSnapshot{m.receiverID, clone(m.collectors), clone(m.state.Routing), clone(m.evidence)}
 	if check == nil {
 		return FeedEvidenceReceipt{}, ErrEvidenceInvalid
 	}
@@ -176,7 +195,19 @@ func readFeedEvidence(ctx context.Context, tx pgx.Tx, lock bool) (FeedEvidenceSn
 	if len(out.Records) > MaxFeedEvidence {
 		return out, ErrEvidenceCapacity
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	rows.Close()
+	out.Retention, err = readFeedRetention(ctx, tx)
+	if err != nil {
+		return out, err
+	}
+	out.custody, err = readFeedCustody(ctx, tx, out.Retention)
+	if err != nil {
+		return out, err
+	}
+	return out, validateFeedCustody(out)
 }
 func (p *Postgres) FeedEvidence(ctx context.Context) (FeedEvidenceSnapshot, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -212,6 +243,22 @@ func (p *Postgres) PublishFeedEvidence(ctx context.Context, receiver, registrati
 	previous, err := evidencePrevious(snapshot.Records, registration, key, raw)
 	if err != nil {
 		return FeedEvidenceReceipt{}, err
+	}
+	if previous == nil {
+		old, original, err := readFeedArchivedSource(ctx, tx, "publication", registration+":"+key)
+		if err == nil {
+			receipt, err := retiredPublication(snapshot.Retention, old, original, snapshot, registration, key, f, raw, now, check)
+			if err != nil {
+				return FeedEvidenceReceipt{}, err
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return FeedEvidenceReceipt{}, err
+			}
+			return receipt, nil
+		}
+		if !errors.Is(err, ErrFeedArchiveNotFound) {
+			return FeedEvidenceReceipt{}, err
+		}
 	}
 	at := now().UTC()
 	if check == nil {

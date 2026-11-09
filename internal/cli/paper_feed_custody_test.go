@@ -56,4 +56,16 @@ func paperFeedCustodyHTTP(t *testing.T, request func(string, string, any, int) [
 	if !bytes.Equal(raw, request("GET", "/v1/feed-archives/paper-custody/1", nil, 200)) || !bytes.Equal(decisionsRaw, request("GET", "/v1/paper-decisions", nil, 200)) || !bytes.Equal(outcomesRaw, request("GET", "/v1/paper-outcomes", nil, 200)) {
 		t.Fatal("archive changed paper owners or historical custody")
 	}
+	var rotation storage.FeedArchiveReceipt
+	if err := json.Unmarshal(request("POST", "/v1/feed-archives/rotate", map[string]string{"receiver_id": owner}, 200), &rotation); err != nil || rotation.Retention == nil || rotation.Retention.Duplicate || rotation.Header != receipt.Header {
+		t.Fatal("service rotation lost archived lifecycle custody", rotation, err)
+	}
+	request("POST", "/v1/feed-archives/rotate", map[string]string{"receiver_id": owner}, 200)
+	if !bytes.Equal(decisionsRaw, request("GET", "/v1/paper-decisions", nil, 200)) || !bytes.Equal(outcomesRaw, request("GET", "/v1/paper-outcomes", nil, 200)) {
+		t.Fatal("rotation changed native lifecycle owners")
+	}
+	var audit storage.PaperFeedAudit
+	if err := json.Unmarshal(request("GET", "/v1/feed-archives/paper-custody-audit", nil, 200), &audit); err != nil || audit.Status != "verified" || audit.Decisions != len(decisions.Records) || audit.Outcomes != len(outcomes.Records) {
+		t.Fatal("lifecycle original-source audit", audit, err)
+	}
 }

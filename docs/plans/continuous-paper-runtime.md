@@ -10,8 +10,8 @@ in #347. It permits bounded runs; it does not replace this archive work.
 | --- | --- | --- | --- |
 | Rehearsal prerequisites | Read all 2,048 supported publications in PostgreSQL, including exact retries beyond the former 128-record bound. | Reproduce the 129-of-140 truncation, then run Memory/PostgreSQL contracts, `make verify`, race and disposable integration. | #348 merged |
 | Rehearsal preparation | Start only new PostgreSQL and Mantik processes; register SPY/IEX declarations; forward advisory requests to Switchyard; interrupt only that connection; retain phases, failure attempts, restart readbacks and exact build/config identities. | Closed-market preflight, proxy outage/recovery tests, then a scheduled regular-session run. | #349 merged; preflight passed; market run pending |
-| Feed and collector archive | Seal immutable raw publications, admissions, lease commands and their routed inputs together. Keep current leases, latest coverage inputs, pending publications and routing facts available. Preserve exact historical retries and original source bytes. | Cross the active bounds, verify old retries and conflicts, audit seals against original records, fail on missing/changed source, exercise concurrent writes and rollback/restart/restore. | #350 custody and #351 source lookup merged; archived prefix points in progress; archive-aware replay/pruning pending |
-| Paper archive | Archive finalized decisions, completed outcomes and assessments with their full source dependencies. Retain open execution books, pending outcome windows and still-applicable evaluation inputs. Historical assessment replay must use the original cut. | Compare pre/post-archive replay and attribution, test pending and open references, inspect historical records, inject corruption and failed commits, verify isolated backup/restore. | Paper source checkpoints in progress; physical paper archive pending |
+| Feed and collector archive | Seal immutable raw publications, admissions, lease commands and their routed inputs together. Keep current leases, latest coverage inputs, pending publications and routing facts available. Preserve exact historical retries and original source bytes. | Cross the active bounds, verify old retries and conflicts, audit seals against original records, fail on missing/changed source, exercise concurrent writes and rollback/restart/restore. | #350 custody, #351 source lookup, #353 prefix points and #354 paper-source checkpoints merged; schema-104 explicit rotation and archive-aware replay in progress |
+| Paper archive | Archive finalized decisions, completed outcomes and assessments with their full source dependencies. Retain open execution books, pending outcome windows and still-applicable evaluation inputs. Historical assessment replay must use the original cut. | Compare pre/post-archive replay and attribution, test pending and open references, inspect historical records, inject corruption and failed commits, verify isolated backup/restore. | Paper source checkpoints merged in #354; physical paper archive pending |
 | Continuous retention | Run owner-controlled archival automatically before active limits are reached. Retain advisory review and allocation cross-references too; inspection must page or target history without loading every archived record. | Run beyond collector/decision/review limits with restart and concurrent archival; measure active append/read cost against growing archive history. | Pending |
 | #24 attribution | Complete source/copy-delay analysis, applicable signal/forecast-quality readbacks and readable interactive attribution. | Known-result timing/outcome fixtures, no-action and missing-evidence cases, CLI validation, interactive navigation, race and disposable integration. | Readable terminal attribution merged in #352; source-delay analysis and quality assessment pending |
 
@@ -20,10 +20,10 @@ checks pass on its exact head. Keep local checks, hosted CI, a running-service
 receipt and natural qualification as separate evidence. Update this plan as each
 unit changes the remaining implementation.
 
-The feed archive unit first delivers immutable source cuts without removing
-active copies. Its owner writes and independently inspectable persisted records
-are the transaction boundary. Archive-aware readers, active pruning and automatic
-rotation remain required; the first custody PR is not completion of that unit.
+The feed archive unit first delivered immutable source cuts without removing
+active copies. Schema 104 adds the complete explicit rotation transaction and
+archive-aware window readers. Automatic rotation and archival for other routing
+owners remain required; source custody alone does not complete the full archive.
 
 PR #350 contains schema-100 source custody. The source-index unit adds schema-101 lookup
 by original command/input/admission/publication identity, atomic source manifests,
@@ -37,8 +37,12 @@ reader can use those points instead of loading unbounded historical feeds.
 Schema 103 prepares paper source custody: the feed archive transaction replays
 retained decisions and outcomes against original sources and seals their
 membership. Inspection rederives the complete closed cut from actual owners;
-new source/paper writes cannot backdate into it. Active pruning and physical
-paper archival still need archive-aware replay and explicit retained ownership.
+new source/paper writes cannot backdate into it. Schema 104 uses that custody to
+retire feed sources while preserving current coverage, lease proof, unpublished
+admissions and routing references. New v4 paper records retain original source
+windows across bounded archive segments; existing records remain unchanged.
+An explicit full audit replays actual original bytes, including records with
+post-retirement source seals. Physical paper archival remains a separate unit.
 
 ## Archive contract
 

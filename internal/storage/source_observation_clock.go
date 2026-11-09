@@ -43,6 +43,13 @@ func sourceObservationClock(owner string, decisions map[string]retainedPaperDeci
 	return nil
 }
 func (m *Memory) sourceObservationClockLocked(at time.Time) error {
+	if m.feedRetention == nil {
+		if m.collectors.ArchiveSHA256 != "" {
+			return ErrFeedArchiveConflict
+		}
+	} else if m.feedRetention.Validate() != nil || m.feedRetention.ReceiverID != m.receiverID || m.collectors.ArchiveSHA256 != m.feedRetention.SHA256 {
+		return ErrFeedArchiveConflict
+	}
 	if len(m.feedArchives) > 0 {
 		h := m.feedArchives[len(m.feedArchives)-1].FeedArchiveHeader
 		if err := feedArchiveSourceClock(m.receiverID, h, at); err != nil {
@@ -68,6 +75,9 @@ func feedArchiveSourceClock(owner string, h FeedArchiveHeader, at time.Time) err
 // Every caller already holds the collector ownership lock. Decision, outcome
 // and assessment issuance take that same lock before retaining their cuts.
 func readSourceObservationClock(ctx context.Context, tx pgx.Tx, owner string, at time.Time) error {
+	if _, err := readFeedRetention(ctx, tx); err != nil {
+		return err
+	}
 	var raw []byte
 	err := tx.QueryRow(ctx, "SELECT header FROM mantik_feed_archives ORDER BY sequence DESC LIMIT 1").Scan(&raw)
 	if err == nil {

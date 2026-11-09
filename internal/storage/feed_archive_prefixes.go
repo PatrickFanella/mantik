@@ -81,23 +81,33 @@ func archivePrefixPoints(a FeedArchive) ([]feedArchivePrefixPoint, error) {
 	index := newFeedPrefixIndex(a.Source)
 	for _, id := range registrations {
 		chain := index.chains(id)
-		previous := ""
-		for i, c := range chain.clocks {
+		previous := chain.seed.RecordsSHA256
+		i := 0
+		for _, c := range chain.clocks {
+			if !chain.seedAt.IsZero() && !c.publishedAt.After(chain.seedAt) {
+				continue
+			}
 			at := c.publishedAt
 			if !declarationTime(at) || at.After(a.ArchivedAt) {
 				return nil, ErrFeedArchiveConflict
 			}
-			points = append(points, feedArchivePrefixPoint{"publication", id, c.key, at.Unix(), at.Nanosecond(), i + 1, previous, chain.records[i].digest, workerplan.Hash(a.Source.Records[c.key])})
+			points = append(points, feedArchivePrefixPoint{"publication", id, c.key, at.Unix(), at.Nanosecond(), chain.seed.Records + i + 1, previous, chain.records[i].digest, workerplan.Hash(a.Source.Records[c.key])})
 			previous = chain.records[i].digest
+			i++
 		}
-		previous = ""
-		for i, c := range chain.admissionClocks {
+		previous = chain.seed.AdmissionsSHA256
+		i = 0
+		for _, c := range chain.admissionClocks {
+			if !chain.seedAt.IsZero() && !c.at.After(chain.seedAt) {
+				continue
+			}
 			at := c.at
 			if !declarationTime(at) || at.After(a.ArchivedAt) {
 				return nil, ErrFeedArchiveConflict
 			}
-			points = append(points, feedArchivePrefixPoint{"admission", id, c.id, at.Unix(), at.Nanosecond(), i + 1, previous, chain.admissions[i].digest, workerplan.Hash(a.Source.Collectors.Admissions[c.id])})
+			points = append(points, feedArchivePrefixPoint{"admission", id, c.id, at.Unix(), at.Nanosecond(), chain.seed.Admissions + i + 1, previous, chain.admissions[i].digest, workerplan.Hash(a.Source.Collectors.Admissions[c.id])})
 			previous = chain.admissions[i].digest
+			i++
 		}
 	}
 	return points, nil
@@ -235,6 +245,7 @@ func archivedPrefixSelection(a FeedArchive, points []feedArchivePrefixPoint, reg
 		at = a.ArchivedAt
 	}
 	out := FeedArchivePrefix{Archive: a.FeedArchiveHeader, RegistrationID: registration, At: at.UTC()}
+	out.Prefix = newFeedPrefixIndex(a.Source).at(registration, at)
 	ends := map[string]feedArchivePrefixPoint{}
 	for _, p := range points {
 		if p.RegistrationID != registration || p.at().After(at) {
@@ -292,15 +303,19 @@ func (m *Memory) feedArchivePrefixLocked(ctx context.Context, registration strin
 			return -1
 		})
 		want, exists := ends[kind]
+		count, digest := out.Prefix.Records, out.Prefix.RecordsSHA256
+		if kind == "admission" {
+			count, digest = out.Prefix.Admissions, out.Prefix.AdmissionsSHA256
+		}
 		if end == 0 {
-			if exists {
+			if count != 0 {
 				return FeedArchivePrefix{}, ErrFeedArchiveConflict
 			}
 			continue
 		}
 		ref := order[end-1]
 		actual, ok := m.feedArchivePrefixPoints[prefixPointKey(ref.Point)]
-		if !exists || !ok || actual != ref || ref.Point != want || ref.Sequence < 1 || ref.Sequence > a.Sequence {
+		if !ok || actual != ref || ref.Point.Count != count || ref.Point.Digest != digest || exists && ref.Point != want || ref.Sequence < 1 || ref.Sequence > a.Sequence {
 			return FeedArchivePrefix{}, ErrFeedArchiveConflict
 		}
 	}
@@ -376,7 +391,11 @@ func readFeedArchivePrefix(ctx context.Context, tx pgx.Tx, registration string, 
 	for _, kind := range []string{"publication", "admission"} {
 		ref, err := scanArchivePrefix(tx.QueryRow(ctx, "SELECT "+prefixColumns+" FROM mantik_feed_archive_prefixes WHERE kind=$1 AND registration_id=$2 AND (at_seconds,at_nanos)<=($3,$4) ORDER BY at_seconds DESC,at_nanos DESC,source_id DESC LIMIT 1", kind, registration, out.At.Unix(), out.At.Nanosecond()))
 		want, exists := ends[kind]
-		if errors.Is(err, pgx.ErrNoRows) && !exists {
+		count, digest := out.Prefix.Records, out.Prefix.RecordsSHA256
+		if kind == "admission" {
+			count, digest = out.Prefix.Admissions, out.Prefix.AdmissionsSHA256
+		}
+		if errors.Is(err, pgx.ErrNoRows) && count == 0 {
 			continue
 		}
 		if err != nil {
@@ -385,7 +404,7 @@ func readFeedArchivePrefix(ctx context.Context, tx pgx.Tx, registration string, 
 			}
 			return FeedArchivePrefix{}, err
 		}
-		if !exists || ref.Point != want || ref.Sequence < 1 || ref.Sequence > a.Sequence {
+		if ref.Point.Count != count || ref.Point.Digest != digest || exists && ref.Point != want || ref.Sequence < 1 || ref.Sequence > a.Sequence {
 			return FeedArchivePrefix{}, ErrFeedArchiveConflict
 		}
 	}

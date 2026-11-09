@@ -58,13 +58,14 @@ func TestPostgresContractsPaperFeedCheckpointUpgrade(t *testing.T) {
 	if err := json.Unmarshal(raw, &original); err != nil {
 		t.Fatal(err)
 	}
+	dropFeedRetentionSchema(t, p)
 	// Construct the exact predecessor, retaining original source and paper bytes.
 	for _, sql := range []string{
 		"DROP TRIGGER mantik_paper_decision_feed_cut ON mantik_paper_decisions",
 		"DROP TRIGGER mantik_paper_outcome_feed_cut ON mantik_paper_outcomes",
 		"DROP FUNCTION mantik_fence_paper_feed_cut()",
 		"DROP TABLE mantik_paper_feed_checkpoints",
-		"DELETE FROM mantik_schema WHERE version=103",
+		"DELETE FROM mantik_schema WHERE version>=103",
 	} {
 		if _, err := p.pool.Exec(ctx, sql); err != nil {
 			t.Fatal(err)
@@ -129,7 +130,7 @@ func TestPostgresContractsPaperFeedCheckpointUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=103"); err != nil {
+	if _, err := p.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=103"); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.migrate(ctx); err != nil {

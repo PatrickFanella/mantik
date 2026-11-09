@@ -1,11 +1,13 @@
 # Feed archive custody
 
-Schema 100 adds an authenticated source-archive owner. It seals the current
+The authenticated source-archive owner seals the current
 receiver's raw publications, collector registrations/leases/commands/admissions,
-and routed input/projection state in one transaction. Existing active sources
-remain in place. Archive-aware replay and active pruning are subsequent units
-in the [continuous runtime plan](../plans/continuous-paper-runtime.md); this
-contract alone does not remove the current multi-day limits.
+and routed input/projection state in one transaction. Schema 104 adds explicit
+feed rotation: sources leave the active working set only after the owner seals
+their original bytes, verifies retained paper dependencies and records exactly
+which sources ongoing coverage and routing still own. Automatic retention and
+physical paper archival remain unfinished in the
+[continuous runtime plan](../plans/continuous-paper-runtime.md).
 
 ## Create a source cut
 
@@ -29,10 +31,13 @@ workflow owners or attest the semantics of every routing transition.
 Each archive has a source digest, monotonically increasing sequence, original
 archive time and previous archive hash. The archive hash binds that header,
 including the source digest. The source digest binds every captured source field.
-New cuts must extend all earlier immutable publications, admissions, command
+Before the first rotation, new cuts must extend all earlier immutable publications, admissions, command
 receipts, registration definitions and routed input records in the preceding
 snapshot. A missing or changed original prevents the new archive. Mutable leases
 and routing projections can advance without rewriting an earlier cut.
+After rotation, the next cut must extend the working set derived from the
+previous archive's approved retirement. Sources can disappear only through that
+owner operation; missing keepers or changed historical records remain conflicts.
 
 New collector commands, input admissions and publications must have a service
 clock strictly after the latest archive time. Equal or earlier clocks fail
@@ -50,8 +55,9 @@ writes occur before the retry, the owner can legitimately seal a new later cut;
 this endpoint has content identity rather than caller request-ID identity.
 
 One archive is limited to 64 MiB. Oversized cuts fail visibly without storing a
-partial segment or deleting sources. There is no automatic schedule, retention
-move, deletion route or capacity increase in this version.
+partial segment or deleting sources. Creating a source cut alone keeps active
+copies. Use the separate rotation operation below to retire them. There is no
+automatic schedule or capacity increase.
 
 ## Inspect archives
 
@@ -70,7 +76,9 @@ that historical view. The route accepts no caller clock, query overrides or body
 The response contains private source material and requires the normal service
 bearer authentication; retain it privately.
 
-The header schema is `mantik-feed-archive-v1`. It includes receiver, sequence,
+The header schema is `mantik-feed-archive-v1` before retirement, then
+`mantik-feed-archive-v2` for bounded working segments carrying the preceding
+approved retirement and cumulative registration prefixes. Both include receiver, sequence,
 archive time, previous/source/archive digests and registration/publication/
 admission/command counts. Authority is `service_owned_feed_archive_only`, with
 false qualification credit. A digest validates bound bytes; it does not attest
@@ -105,7 +113,7 @@ creation writes the snapshot, source index and complete segment manifest in one
 transaction. A repeated source keeps its first archive reference and original
 payload hash. Different bytes under that identity fail the complete transaction.
 An index failure leaves neither a partial archive nor a partially indexed source.
-The active source maps remain unchanged.
+Adding the index alone does not prune active source maps.
 
 `GET /v1/feed-archives/source` accepts exactly one `kind` and one `id` query
 parameter. Supported kinds are `publication`, `admission`, `input` and `command`.
@@ -242,12 +250,11 @@ paper records leave the original readback unchanged. The header schema is
 `service_owned_paper_source_custody_only`, with false admission, execution and
 qualification flags.
 
-This checkpoint prepares archive-aware paper replay. Active records remain
-retained, and current operational reads continue to use active owners. They do
-not acquire an archive-body dependency. `paper_archive_sequence` is zero in this
-version because physical paper archival has not begun. Pruning, paper archive
-membership and automatic retention remain required before these checkpoints
-can extend the active limits.
+Current operational reads replay retained paper bases and verify the owner
+checkpoint and any still-active source overlap. They do not acquire an
+archive-body dependency. `paper_archive_sequence` is zero because physical paper
+archival has not begun. Feed rotation uses these checkpoints; paper archive
+membership and automatic retention remain unfinished.
 
 Backups now include `mantik_paper_feed_checkpoints` together with every feed
 archive/index, active paper/source owner and receiver/schema history. Schema-102
@@ -259,3 +266,83 @@ source corruption, self-rehashed omissions and rollback at both statement and
 COMMIT boundaries. The disposable backup/restore contract also retains populated
 archive indexes and a paper checkpoint with a waiting forward outcome, then
 replays that checkpoint and its exact retry against the restored original owners.
+
+## Rotate the feed working set
+
+`POST /v1/feed-archives/rotate` accepts the same strict receiver-only body and
+authentication as source-cut creation. The owner performs source archival,
+original-ID indexing, prefix indexing, paper-source replay/checkpoint issuance,
+retirement approval and active-source removal in one transaction. Any failed
+validation, statement, cancellation or COMMIT leaves all those owners unchanged
+and returns no receipt. No caller can select a cut, retention rule, source body
+or hash.
+
+Rotation keeps the current coverage window, including receipt-time ties, the
+current lease's original command proof, unpublished admissions and their routed
+inputs, and every current routing fact/case reference. Unreadable publication
+metadata conservatively keeps the affected registration's admissions. Routing
+inputs owned by other workflows remain active until those owners support their
+own archival. Registrations, current leases, projections and finalized paper
+envelopes keep their original identities. Rotation supplies no admission,
+execution or qualification authority.
+
+The nested `retention` receipt names the retirement sequence/hash, paper
+checkpoint hash and counts removed from each active map. A new source archive
+returns 201. An existing source cut returns 200 and can still create its first
+retirement (`retention.duplicate: false`). Repeating rotation against the same
+working source returns the original archive, checkpoint and retirement
+identities with duplicate flags, without sampling a clock. Paper records created
+after that cut have their own source seals; paper creation alone does not require
+another copy of unchanged source data.
+
+Retired command, admission, publication and standalone routed-input IDs remain
+reserved. Exact retries return the original receipts without resubmission or a
+new observation time. Different bytes under an old identity conflict. Negative
+identity lookup uses immutable source indexes, and a historical hit is verified
+against its original bounded archive. A missing source that was designated a
+keeper is corruption, not an authorized historical retry.
+
+New decisions/outcomes after retirement use schema v4. They retain v3 selection
+and prefix rules while canonicalizing the recording metadata JSON; provider
+`original` strings and their digests remain exact. Existing v1–v3 envelopes and
+hashes are unchanged. Cumulative prefixes continue from the approved cut without
+counting keepers twice. An outcome whose forward observation reaches retired
+history retrieves the actual selected publications/admissions from original
+segments, including pre-decision coverage and delayed publications that lower
+the receipt-time window. Point counts and chained digests verify range
+completeness and order. The range and resulting paper-envelope byte limits
+remain finite; a window exceeding them fails visibly.
+
+Established paper reads verify their retained bases against the actual closed
+checkpoint or post-cut source seal, check complete closed membership, and
+compare any still-active source overlap. Original archive-body corruption
+therefore does not make established paper/protection reads depend on archive
+availability. Historical source inspection and new research that needs retired
+observations can fail when those originals are unavailable.
+
+`GET /v1/feed-archives/paper-custody-audit` accepts no query or body. It performs
+the complete source/index/retirement audit, then independently reconstructs every
+retained paper record's original observation window and replays its evaluator.
+It also rederives every checkpoint's closed membership. A self-rehashed paper
+row and matching source seal cannot replace original archived source bytes.
+The response binds the actual paper record root and source archive/index head,
+with false admission, execution and qualification flags. Full audit work grows
+with history; a deadline, missing original or incomplete replay never returns a
+partial success. Checkpoint issuance independently performs the same original
+source replay for new paper records before trusting their next closed cut.
+
+Schema 104 persists `mantik_feed_retention` and
+`mantik_paper_feed_source_seals`. Restore both with all source indexes,
+checkpoints, paper owners and schema history. Collector/archive writers must
+preserve the approved retirement root, and paper inserts must atomically retain
+their matching source seals. Database guards reject older running writers that
+discard these fields; schema-103 startup binaries reject schema 104. Rollback
+requires matching binaries and an isolated restored backup. The disposable
+recovery fixture includes a real retirement and post-retirement v4 paper records
+and verifies their original-source replay and exact retries after restore.
+
+Rotation extends collector storage beyond the publication, admission and command
+limits without increasing those limits. It currently requires explicit calls.
+The separate 256-decision/outcome limits, evaluation assessment and advisory
+review limits, other routing owners and automatic retention still require the
+remaining archive units. This endpoint alone does not permit indefinite runs.

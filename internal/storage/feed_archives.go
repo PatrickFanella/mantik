@@ -40,7 +40,7 @@ type FeedArchiveHeader struct {
 func (h FeedArchiveHeader) Validate() error {
 	sha := h.SHA256
 	h.SHA256 = ""
-	if h.Schema != "mantik-feed-archive-v1" || !ValidReceiverID(h.ReceiverID) || h.Sequence < 1 || !declarationTime(h.ArchivedAt) ||
+	if (h.Schema != "mantik-feed-archive-v1" && h.Schema != "mantik-feed-archive-v2") || !ValidReceiverID(h.ReceiverID) || h.Sequence < 1 || !declarationTime(h.ArchivedAt) ||
 		(h.Sequence == 1 && h.PreviousSHA256 != "") || (h.Sequence > 1 && !decisionPin.MatchString(h.PreviousSHA256)) ||
 		!decisionPin.MatchString(h.SourceSHA256) || h.Registrations < 0 || h.Publications < 0 || h.Admissions < 0 || h.Commands < 0 ||
 		h.Authority != "service_owned_feed_archive_only" || h.QualificationCredit || !decisionPin.MatchString(sha) || workerplan.Hash(h) != sha {
@@ -58,7 +58,7 @@ type FeedArchive struct {
 
 func (a FeedArchive) Validate() error {
 	h, s := a.FeedArchiveHeader, a.Source
-	if h.Validate() != nil || h.ReceiverID != s.ReceiverID || workerplan.Hash(s) != h.SourceSHA256 ||
+	if h.Validate() != nil || (h.Schema == "mantik-feed-archive-v1") != (s.Retention == nil) || validateRetainedFeed(s) != nil || h.ReceiverID != s.ReceiverID || workerplan.Hash(s) != h.SourceSHA256 ||
 		h.Registrations != len(s.Collectors.Entries) || h.Publications != len(s.Records) ||
 		h.Admissions != len(s.Collectors.Admissions) || h.Commands != len(s.Collectors.Commands) || s.Collectors.LastClock.After(h.ArchivedAt) {
 		return ErrFeedArchiveInvalid
@@ -70,6 +70,7 @@ type FeedArchiveReceipt struct {
 	Header       FeedArchiveHeader           `json:"header"`
 	Duplicate    bool                        `json:"duplicate"`
 	PaperCustody *PaperFeedCheckpointReceipt `json:"paper_custody,omitempty"`
+	Retention    *FeedRetentionReceipt       `json:"retention,omitempty"`
 }
 
 type FeedArchivePage struct {
@@ -101,9 +102,25 @@ func canonicalArchiveSource(source FeedEvidenceSnapshot) (FeedEvidenceSnapshot, 
 	return source, nil
 }
 
-// Before active pruning is supported, every previous immutable source must
-// remain byte-equivalent. Mutable lease/routing projections may advance.
-func extendsFeedArchive(previous, current FeedEvidenceSnapshot) error {
+// Sources can leave active state only through the exact keeper plan rederived
+// from the previous archive. Ordinary append still preserves every immutable
+// working-set record. Mutable lease/routing projections may advance.
+func extendsFeedArchive(previous FeedArchive, current FeedEvidenceSnapshot) error {
+	old := previous.Source
+	if !reflect.DeepEqual(old.Retention, current.Retention) {
+		if current.Retention == nil || current.Retention.Checkpoint.Archive != previous.FeedArchiveHeader {
+			return ErrFeedArchiveConflict
+		}
+		pruned, retirement, err := planRetainedFeed(old, current.Retention.Checkpoint, current.Retention.Prefixes, old.Retention)
+		if err != nil || !reflect.DeepEqual(retirement, current.Retention) {
+			return ErrFeedArchiveConflict
+		}
+		old = pruned
+	}
+	return extendsActiveFeed(old, current)
+}
+
+func extendsActiveFeed(previous, current FeedEvidenceSnapshot) error {
 	if previous.ReceiverID != current.ReceiverID || current.Collectors.LastClock.Before(previous.Collectors.LastClock) {
 		return ErrFeedArchiveConflict
 	}
@@ -150,6 +167,9 @@ func newFeedArchive(source FeedEvidenceSnapshot, previous FeedArchiveHeader, at 
 		ReceiverID: source.ReceiverID, Sequence: previous.Sequence + 1, ArchivedAt: at.UTC(), PreviousSHA256: previous.SHA256,
 		SourceSHA256: workerplan.Hash(source), Registrations: len(source.Collectors.Entries), Publications: len(source.Records),
 		Admissions: len(source.Collectors.Admissions), Commands: len(source.Collectors.Commands), Authority: "service_owned_feed_archive_only"}}
+	if source.Retention != nil {
+		a.Schema = "mantik-feed-archive-v2"
+	}
 	a.SHA256 = workerplan.Hash(a.FeedArchiveHeader)
 	if err := a.Validate(); err != nil {
 		return FeedArchive{}, err
@@ -162,17 +182,17 @@ func newFeedArchive(source FeedEvidenceSnapshot, previous FeedArchiveHeader, at 
 }
 
 func (m *Memory) ArchiveFeed(ctx context.Context, receiver string, now func() time.Time, check FeedArchiveCheck) (FeedArchiveReceipt, error) {
-	return m.archiveFeed(ctx, receiver, now, check, nil)
+	return m.archiveFeed(ctx, receiver, now, check, nil, false)
 }
 
 func (m *Memory) ArchivePaperFeed(ctx context.Context, receiver string, now func() time.Time, check FeedArchiveCheck, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (FeedArchiveReceipt, error) {
 	if de == nil || oe == nil {
 		return FeedArchiveReceipt{}, ErrFeedArchiveInvalid
 	}
-	return m.archiveFeed(ctx, receiver, now, check, &paperFeedArchiveEvaluators{de, oe})
+	return m.archiveFeed(ctx, receiver, now, check, &paperFeedArchiveEvaluators{de, oe}, false)
 }
 
-func (m *Memory) archiveFeed(ctx context.Context, receiver string, now func() time.Time, check FeedArchiveCheck, paper *paperFeedArchiveEvaluators) (FeedArchiveReceipt, error) {
+func (m *Memory) archiveFeed(ctx context.Context, receiver string, now func() time.Time, check FeedArchiveCheck, paper *paperFeedArchiveEvaluators, rotate bool) (FeedArchiveReceipt, error) {
 	if !ValidReceiverID(receiver) || now == nil || check == nil {
 		return FeedArchiveReceipt{}, ErrFeedArchiveInvalid
 	}
@@ -184,7 +204,22 @@ func (m *Memory) archiveFeed(ctx context.Context, receiver string, now func() ti
 	if receiver != m.receiverID {
 		return FeedArchiveReceipt{}, ErrReceiverMismatch
 	}
-	source, err := canonicalArchiveSource(m.decisionFeedLocked())
+	owned := m.decisionFeedLocked()
+	if rotate {
+		if r, duplicate, err := unchangedFeedRotation(owned, int64(len(m.feedArchives))); err != nil {
+			return FeedArchiveReceipt{}, err
+		} else if duplicate {
+			strategies, err := m.paperStrategiesLocked()
+			if err != nil {
+				return FeedArchiveReceipt{}, err
+			}
+			if _, err := paperOutcomeCatalog(m.receiverID, m.paperOutcomes, m.paperDecisions, strategies, owned, paper.decision, paper.outcome); err != nil {
+				return FeedArchiveReceipt{}, err
+			}
+			return r, nil
+		}
+	}
+	source, err := canonicalArchiveSource(owned)
 	if err != nil {
 		return FeedArchiveReceipt{}, err
 	}
@@ -205,14 +240,20 @@ func (m *Memory) archiveFeed(ctx context.Context, receiver string, now func() ti
 		if err != nil || len(additions) != 0 {
 			return FeedArchiveReceipt{}, ErrFeedArchiveConflict
 		}
-		checkpoint, duplicate, err := m.preparePaperFeedCheckpoint(old, paper)
+		checkpoint, duplicate, err := m.preparePaperFeedCheckpoint(ctx, old, paper)
+		if err != nil {
+			return FeedArchiveReceipt{}, err
+		}
+		next, err := m.prepareFeedRotation(source, checkpoint, rotate)
 		if err != nil {
 			return FeedArchiveReceipt{}, err
 		}
 		if err := ctx.Err(); err != nil {
 			return FeedArchiveReceipt{}, err
 		}
-		return FeedArchiveReceipt{Header: old.FeedArchiveHeader, Duplicate: true, PaperCustody: m.retainPaperFeedCheckpoint(checkpoint, duplicate)}, nil
+		custody := m.retainPaperFeedCheckpoint(checkpoint, duplicate)
+		retired := m.retainFeedRotation(source, next)
+		return FeedArchiveReceipt{Header: old.FeedArchiveHeader, Duplicate: true, PaperCustody: custody, Retention: retired}, nil
 	}
 	if len(m.feedArchives) > 0 {
 		last := m.feedArchives[len(m.feedArchives)-1]
@@ -220,7 +261,7 @@ func (m *Memory) archiveFeed(ctx context.Context, receiver string, now func() ti
 			return FeedArchiveReceipt{}, ErrFeedArchiveConflict
 		}
 		previous = last.FeedArchiveHeader
-		if err := extendsFeedArchive(last.Source, source); err != nil {
+		if err := extendsFeedArchive(last, source); err != nil {
 			return FeedArchiveReceipt{}, err
 		}
 	}
@@ -242,7 +283,14 @@ func (m *Memory) archiveFeed(ctx context.Context, receiver string, now func() ti
 	if err := ctx.Err(); err != nil {
 		return FeedArchiveReceipt{}, err
 	}
-	checkpoint, duplicate, err := m.preparePaperFeedCheckpoint(a, paper)
+	checkpoint, duplicate, err := m.preparePaperFeedCheckpoint(ctx, a, paper)
+	if err != nil {
+		return FeedArchiveReceipt{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return FeedArchiveReceipt{}, err
+	}
+	next, err := m.prepareFeedRotation(source, checkpoint, rotate)
 	if err != nil {
 		return FeedArchiveReceipt{}, err
 	}
@@ -271,7 +319,9 @@ func (m *Memory) archiveFeed(ctx context.Context, receiver string, now func() ti
 		m.feedArchiveSources = map[string]int64{}
 	}
 	m.feedArchiveSources[a.SourceSHA256] = a.Sequence
-	return FeedArchiveReceipt{Header: a.FeedArchiveHeader, PaperCustody: m.retainPaperFeedCheckpoint(checkpoint, duplicate)}, nil
+	custody := m.retainPaperFeedCheckpoint(checkpoint, duplicate)
+	retired := m.retainFeedRotation(source, next)
+	return FeedArchiveReceipt{Header: a.FeedArchiveHeader, PaperCustody: custody, Retention: retired}, nil
 }
 
 func (m *Memory) FeedArchive(ctx context.Context, sequence int64) (FeedArchive, error) {
@@ -341,17 +391,17 @@ func readFeedArchive(ctx context.Context, tx pgx.Tx, sequence int64) (FeedArchiv
 }
 
 func (p *Postgres) ArchiveFeed(ctx context.Context, receiver string, now func() time.Time, check FeedArchiveCheck) (FeedArchiveReceipt, error) {
-	return p.archiveFeed(ctx, receiver, now, check, nil)
+	return p.archiveFeed(ctx, receiver, now, check, nil, false)
 }
 
 func (p *Postgres) ArchivePaperFeed(ctx context.Context, receiver string, now func() time.Time, check FeedArchiveCheck, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (FeedArchiveReceipt, error) {
 	if de == nil || oe == nil {
 		return FeedArchiveReceipt{}, ErrFeedArchiveInvalid
 	}
-	return p.archiveFeed(ctx, receiver, now, check, &paperFeedArchiveEvaluators{de, oe})
+	return p.archiveFeed(ctx, receiver, now, check, &paperFeedArchiveEvaluators{de, oe}, false)
 }
 
-func (p *Postgres) archiveFeed(ctx context.Context, receiver string, now func() time.Time, check FeedArchiveCheck, paper *paperFeedArchiveEvaluators) (FeedArchiveReceipt, error) {
+func (p *Postgres) archiveFeed(ctx context.Context, receiver string, now func() time.Time, check FeedArchiveCheck, paper *paperFeedArchiveEvaluators, rotate bool) (FeedArchiveReceipt, error) {
 	if !ValidReceiverID(receiver) || now == nil || check == nil {
 		return FeedArchiveReceipt{}, ErrFeedArchiveInvalid
 	}
@@ -367,6 +417,35 @@ func (p *Postgres) archiveFeed(ctx context.Context, receiver string, now func() 
 	}
 	if receiver != source.ReceiverID {
 		return FeedArchiveReceipt{}, ErrReceiverMismatch
+	}
+	if rotate && source.Retention != nil {
+		var latest int64
+		if err := tx.QueryRow(ctx, "SELECT coalesce(max(sequence),0) FROM mantik_feed_archives").Scan(&latest); err != nil {
+			return FeedArchiveReceipt{}, err
+		}
+		if r, duplicate, err := unchangedFeedRotation(source, latest); err != nil {
+			return FeedArchiveReceipt{}, err
+		} else if duplicate {
+			strategies, err := readPaperStrategies(ctx, tx, receiver)
+			if err != nil {
+				return FeedArchiveReceipt{}, err
+			}
+			decisions, err := readPaperDecisions(ctx, tx)
+			if err != nil {
+				return FeedArchiveReceipt{}, err
+			}
+			outcomes, err := readPaperOutcomes(ctx, tx)
+			if err != nil {
+				return FeedArchiveReceipt{}, err
+			}
+			if _, err := paperOutcomeCatalog(receiver, outcomes, decisions, strategies, source, paper.decision, paper.outcome); err != nil {
+				return FeedArchiveReceipt{}, err
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return FeedArchiveReceipt{}, err
+			}
+			return r, nil
+		}
 	}
 	source, err = canonicalArchiveSource(source)
 	if err != nil {
@@ -414,10 +493,14 @@ func (p *Postgres) archiveFeed(ctx context.Context, receiver string, now func() 
 		if err != nil {
 			return FeedArchiveReceipt{}, err
 		}
+		retired, err := writeFeedRotation(ctx, tx, source, checkpoint, rotate)
+		if err != nil {
+			return FeedArchiveReceipt{}, err
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return FeedArchiveReceipt{}, err
 		}
-		return FeedArchiveReceipt{Header: a.FeedArchiveHeader, Duplicate: true, PaperCustody: checkpoint}, nil
+		return FeedArchiveReceipt{Header: a.FeedArchiveHeader, Duplicate: true, PaperCustody: checkpoint, Retention: retired}, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return FeedArchiveReceipt{}, err
@@ -437,7 +520,7 @@ func (p *Postgres) archiveFeed(ctx context.Context, receiver string, now func() 
 		if err != nil {
 			return FeedArchiveReceipt{}, err
 		}
-		if err := extendsFeedArchive(last.Source, source); err != nil {
+		if err := extendsFeedArchive(last, source); err != nil {
 			return FeedArchiveReceipt{}, err
 		}
 	}
@@ -463,10 +546,14 @@ func (p *Postgres) archiveFeed(ctx context.Context, receiver string, now func() 
 	if err != nil {
 		return FeedArchiveReceipt{}, err
 	}
+	retired, err := writeFeedRotation(ctx, tx, source, checkpoint, rotate)
+	if err != nil {
+		return FeedArchiveReceipt{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return FeedArchiveReceipt{}, err
 	}
-	return FeedArchiveReceipt{Header: a.FeedArchiveHeader, PaperCustody: checkpoint}, nil
+	return FeedArchiveReceipt{Header: a.FeedArchiveHeader, PaperCustody: checkpoint, Retention: retired}, nil
 }
 
 func (p *Postgres) FeedArchive(ctx context.Context, sequence int64) (FeedArchive, error) {

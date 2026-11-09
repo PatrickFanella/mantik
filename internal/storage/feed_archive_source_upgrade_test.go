@@ -31,6 +31,7 @@ func TestPostgresContractsFeedArchiveSourceIndexUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	dropFeedRetentionSchema(t, p)
 	// Construct the exact schema-100 predecessor on this disposable database.
 	// The original source snapshot and its header remain untouched.
 	for _, sql := range []string{
