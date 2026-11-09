@@ -1,6 +1,6 @@
 -- Retain complete source snapshots before archive-aware readers remove any
 -- active copies. The source hash makes a repeat of the same cut idempotent.
-CREATE TABLE mantik_feed_archives (
+CREATE TABLE IF NOT EXISTS mantik_feed_archives (
     sequence bigint PRIMARY KEY CHECK (sequence > 0),
     source_sha256 text NOT NULL UNIQUE CHECK (source_sha256 ~ '^[a-f0-9]{64}$'),
     sha256 text NOT NULL UNIQUE CHECK (sha256 ~ '^[a-f0-9]{64}$'),
