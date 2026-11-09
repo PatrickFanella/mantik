@@ -77,8 +77,12 @@ func (j *Journal) Coverage(s CoverageSpec, at time.Time) (CoverageReport, error)
 
 // CoverageFromRecordings revalidates raw digests and normalization before using
 // supplied recordings. Server callers must separately verify receiver history.
+// MaxCoverageRecordings bounds one coverage inspection, which a server runs
+// over everything a registration has published.
+const MaxCoverageRecordings = 4096
+
 func CoverageFromRecordings(s CoverageSpec, at time.Time, records []Recording) (CoverageReport, error) {
-	if len(records) > MaxCaptures {
+	if len(records) > MaxCoverageRecordings {
 		return CoverageReport{}, errors.New("coverage recording limit exceeded")
 	}
 	captures := make([]capture, 0, len(records))

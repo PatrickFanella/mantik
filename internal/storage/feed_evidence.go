@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const MaxFeedEvidence = 128
+const MaxFeedEvidence = 2048
 
 var evidenceKey = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 var ErrEvidenceConflict = errors.New("feed evidence identity or history conflict")
