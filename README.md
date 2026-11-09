@@ -1092,7 +1092,9 @@ index commits with the journal and original archived records; a running older
 writer cannot advance a checkpoint without it. Private readers re-execute a
 selected segment from its original checkpoint and compare the resulting
 checkpoint with the retained original. Existing record bytes and hashes stay
-unchanged. Older unindexed segments retain their full-history audit path.
+unchanged. Targeted allocation-comparison inspection, including supervision,
+uses the original segment reader; active comparisons replay their working
+journal. Older unindexed segments retain their full-history read and audit path.
 Historical attribution paging, old-index backfill, compact identity indexes and
 automatic paper retirement remain required for the complete archive.
 

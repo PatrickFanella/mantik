@@ -96,6 +96,11 @@ need archive-aware reads before any source can leave their active catalogues.
 Open protection must remain independent of models and of archival availability.
 The existing allocation checkpoints are a useful precedent, but their identity
 indexes and complete-history reads also require a growing-history audit.
+Targeted comparison inspection now replays its original indexed allocation
+segment, including approved retired decision dependencies. Active targets use
+their working journal and original checkpoint; unindexed legacy targets retain
+the complete-history path. Historical attribution and catalogue paging, compact
+checkpoint identities and automatic retention remain separate required work.
 
 Schema changes must preserve existing envelopes and hashes and fence older
 writers. Backup includes source owners, archive rows, manifests/checkpoints,
