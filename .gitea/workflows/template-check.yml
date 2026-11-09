@@ -13,8 +13,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
-    # Verification and race checks precede bounded disposable integration.
+  unit:
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
@@ -25,9 +24,94 @@ jobs:
           cache: false
       - name: Verify Mantik
         run: make verify
-      - name: Race checks
-        run: make test-race
-      - name: PostgreSQL lifecycle contracts
-        run: make test-integration
+
+  race_other:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: make test-race-other
+
+  race_storage_a:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go run ./scripts/testshard -race -parts=2 -index=0 ./internal/storage
+
+  race_storage_b:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go run ./scripts/testshard -race -parts=2 -index=1 ./internal/storage
+
+  integration_storage_a:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/test-integration.py --package storage --shard 0
+
+  integration_storage_b:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/test-integration.py --package storage --shard 1
+
+  integration_cli_a:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/test-integration.py --package cli --shard 0
+
+  integration_cli_b:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/test-integration.py --package cli --shard 1
+
+  images:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Build container images
         run: make compose-build
+
+  verify:
+    if: ${{ always() }}
+    needs: [unit, race_other, race_storage_a, race_storage_b, integration_storage_a, integration_storage_b, integration_cli_a, integration_cli_b, images]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every verification job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          results = json.loads(os.environ["RESULTS"])
+          expected = {"unit", "race_other", "race_storage_a", "race_storage_b",
+                      "integration_storage_a", "integration_storage_b",
+                      "integration_cli_a", "integration_cli_b", "images"}
+          assert set(results) == expected, results
+          for name, job in results.items():
+              print(name + ": " + job["result"])
+              assert job["result"] == "success", name + " did not pass"
+          PY

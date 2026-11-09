@@ -8,6 +8,31 @@ MODULE = runpy.run_path(str(Path(__file__).with_name('test-integration.py')))
 
 
 class OwnerReplayProofTests(unittest.TestCase):
+    def test_complete_integration_scope_has_one_recovery_producer(self):
+        scope = MODULE['test_scope']
+        command, producer = scope([])
+        self.assertTrue(producer)
+        self.assertEqual(command[-2:], ['./internal/storage', './internal/cli'])
+        self.assertIn('-first-only=TestPostgresContractsRecoverySeed', command)
+        producers = []
+        for package in ('storage', 'cli'):
+            for shard in range(2):
+                command, producer = scope(['--package', package, '--shard', str(shard)])
+                self.assertEqual(command[-1], './internal/' + package)
+                self.assertIn('-index=' + str(shard), command)
+                self.assertIn('-race', command)
+                self.assertIn('-parts=2', command)
+                self.assertIn('-run=^TestPostgresContracts', command)
+                if producer:
+                    producers.append((package, shard))
+        self.assertEqual(producers, [('storage', 0)])
+
+    def test_invalid_scopes_fail_before_creating_containers(self):
+        for argv in (['--shard', '0'], ['--package', 'other'],
+                     ['--package', 'storage', '--shard', '2']):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit):
+                MODULE['test_scope'](argv)
+
     def test_actual_test_execution_required(self):
         name = 'TestPostgresContractsRecoveryReplay'
         check = MODULE['require_replay_pass']
