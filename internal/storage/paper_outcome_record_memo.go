@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"reflect"
 	"time"
@@ -24,15 +23,18 @@ func memoPaperOutcomeRecords(eval PaperOutcomeEvaluator) func(string, PaperOutco
 		input  input
 		record PaperOutcomeRecord
 	}
-	cache := map[[32]byte][]result{}
+	type bucket struct {
+		schema, decision string
+		at               time.Time
+	}
+	cache := map[bucket][]result{}
 	bytes := 0
 	return func(schema string, c PaperOutcomeCommand, b PaperOutcomeBasis, at time.Time) (PaperOutcomeRecord, error) {
 		if missingEvaluator {
 			return PaperOutcomeRecord{}, ErrPaperOutcomeInvalid
 		}
 		keyInput := input{schema, b, at.UTC()}
-		raw, marshalErr := json.Marshal(keyInput)
-		key := sha256.Sum256(raw)
+		key := bucket{schema, b.Decision.SHA256, at.UTC()}
 		for _, old := range cache[key] {
 			scope := old.record.Command
 			scope.ID = c.ID
@@ -51,6 +53,7 @@ func memoPaperOutcomeRecords(eval PaperOutcomeEvaluator) func(string, PaperOutco
 			}
 			return r, nil
 		}
+		raw, marshalErr := json.Marshal(keyInput)
 		canRetain := marshalErr == nil && len(raw) <= MaxPaperOutcomeBytes-bytes
 		var original input
 		if canRetain {

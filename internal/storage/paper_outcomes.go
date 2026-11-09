@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
@@ -142,27 +141,31 @@ func paperOutcomeForSchema(schema string, c PaperOutcomeCommand, b PaperOutcomeB
 
 // Reuse only pure evaluations of an exactly equal basis and clock inside one
 // catalogue replay. Each record still receives owner-snapshot custody, command,
-// envelope and hash validation. Hash buckets are guarded by full equality;
-// neither a digest collision nor an omitted JSON field can alias inputs.
+// envelope and hash validation. Decision/clock buckets require full equality;
+// an untrusted digest or omitted JSON field cannot alias inputs.
 func memoPaperOutcomeEvaluator(eval PaperOutcomeEvaluator) PaperOutcomeEvaluator {
 	type evaluated struct {
 		basis PaperOutcomeBasis
 		at    time.Time
 		value PaperOutcomeEvaluation
 	}
-	cache := map[[32]byte][]evaluated{}
+	type bucket struct {
+		decision string
+		at       time.Time
+	}
+	cache := map[bucket][]evaluated{}
 	bytes := 0
 	return func(b PaperOutcomeBasis, at time.Time) (PaperOutcomeEvaluation, error) {
-		raw, marshalErr := json.Marshal(struct {
-			Basis PaperOutcomeBasis
-			At    time.Time
-		}{b, at})
-		key := sha256.Sum256(raw)
+		key := bucket{b.Decision.SHA256, at}
 		for _, old := range cache[key] {
 			if reflect.DeepEqual(old.basis, b) && reflect.DeepEqual(old.at, at) {
 				return old.value, nil
 			}
 		}
+		raw, marshalErr := json.Marshal(struct {
+			Basis PaperOutcomeBasis
+			At    time.Time
+		}{b, at})
 		// Own a detached copy before calling the evaluator, which receives another
 		// copy so even a faulty callback cannot mutate a future cache comparison.
 		original := clone(b)

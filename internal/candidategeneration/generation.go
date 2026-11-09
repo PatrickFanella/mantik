@@ -89,7 +89,7 @@ func (p Plan) Validate() error {
 	sha := p.SHA256
 	p.SHA256 = ""
 	raw, err := json.Marshal(p)
-	if err != nil || len(raw) > MaxPlanBytes || sha != workerplan.Hash(p) {
+	if err != nil || len(raw) > MaxPlanBytes || sha != workerplan.Digest(raw) {
 		return ErrInvalid
 	}
 	return nil
@@ -187,7 +187,7 @@ func (r Recording) Validate() error {
 	sha := r.SHA256
 	r.SHA256 = ""
 	raw, err := json.Marshal(r)
-	if err != nil || len(raw) > MaxRecordingBytes || sha != workerplan.Hash(r) {
+	if err != nil || len(raw) > MaxRecordingBytes || sha != workerplan.Digest(raw) {
 		return ErrInvalid
 	}
 	return nil
