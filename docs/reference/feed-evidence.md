@@ -146,8 +146,9 @@ does not extend a lease or grant strategy admission, execution or qualification.
 ## Retained observation clock fence
 
 New collector commands, input admissions and raw publications must use a service
-time strictly after every retained finalized decision, outcome observation and
-evaluation assessment. Earlier and equal clocks return a clock conflict before
+time strictly after every retained finalized decision, outcome observation,
+evaluation assessment and latest [feed archive](feed-archives.md) cut. Earlier
+and equal clocks return a clock conflict before
 any owner state or new identity is retained. A legitimate later retry can reuse
 the same immutable identity. Callers cannot supply the service clock.
 
@@ -163,3 +164,7 @@ historical payload or receipt. A schema-55 binary must refuse the newer database
 rollback requires a matching verified backup and binary. The rule constrains
 new writes. It does not retroactively establish completeness or ordering of
 legacy history, pass an evaluation or grant admission, execution or qualification.
+
+Schema 100 extends the source clock floor to the latest feed archive cut under
+the same collector lock. Exact historical source retries remain readbacks.
+Archive creation does not grant collection or financial authority.

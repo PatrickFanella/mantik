@@ -1017,4 +1017,10 @@ live-session observations and qualification remain separate evidence. The
 [continuous runtime plan](docs/plans/continuous-paper-runtime.md) tracks the full
 archive and remaining #24 attribution work.
 
+[Feed archive custody](docs/reference/feed-archives.md) seals publications,
+collector history and routed inputs in one receiver-owned snapshot, with exact
+source-cut retries and paged archive headers. Schema 100 preserves the existing
+active copies; archive-aware replay and pruning are still required before this
+removes the runtime's retention limits.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

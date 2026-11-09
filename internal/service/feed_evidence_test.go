@@ -20,7 +20,10 @@ func TestValidatedFeedCoveragePublicationAndClock(t *testing.T) {
 	handler := HandlerWithClock(store, "evidence-api-token", clock)
 	request := func(method, path string, body any, expected int) *httptest.ResponseRecorder {
 		t.Helper()
-		raw, _ := json.Marshal(body)
+		var raw []byte
+		if body != nil {
+			raw, _ = json.Marshal(body)
+		}
 		r := httptest.NewRequest(method, path, bytes.NewReader(raw))
 		r.Header.Set("Authorization", "Bearer evidence-api-token")
 		w := httptest.NewRecorder()
@@ -94,6 +97,26 @@ func TestValidatedFeedCoveragePublicationAndClock(t *testing.T) {
 	if report.Evidence.Session.Status != "open" || !report.Evidence.Quote.RegularSessionEligible || !report.OperationalEvidenceSatisfied || report.GlobalReadinessConfigured || report.CollectorLivenessVerified || report.QualificationCredit {
 		t.Fatal(w.Body.String())
 	}
+	var archived storage.FeedArchiveReceipt
+	created := request("POST", "/v1/feed-archives", map[string]any{"receiver_id": receiver}, 201)
+	if err := json.Unmarshal(created.Body.Bytes(), &archived); err != nil || archived.Header.Validate() != nil || archived.Header.Publications != 2 || archived.Header.Admissions < 2 || archived.Header.Sequence != 1 || archived.Duplicate {
+		t.Fatal("feed archive did not bind source owners", created.Body.String(), err)
+	}
+	request("POST", "/v1/feed-archives", map[string]any{"receiver_id": receiver}, 200)
+	request("POST", "/v1/feed-archives?prune=true", map[string]any{"receiver_id": receiver}, 422)
+	request("POST", "/v1/feed-archives", map[string]any{"receiver_id": receiver, "source": "caller"}, 422)
+	unauthenticated := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticated, httptest.NewRequest("GET", "/v1/feed-archives/1", nil))
+	if unauthenticated.Code != 401 {
+		t.Fatal("private archive bypassed authentication", unauthenticated.Code)
+	}
+	request("GET", "/v1/feed-archives/0", nil, 422)
+	request("GET", "/v1/feed-archives/2", nil, 404)
+	request("GET", "/v1/feed-archives/1?at=caller", nil, 422)
+	request("GET", "/v1/feed-archives?limit=0", nil, 422)
+	request("GET", "/v1/feed-archives?limit=1&limit=2", nil, 422)
+	request("GET", "/v1/feed-archives?after=-1", nil, 422)
+	request("GET", "/v1/feed-archives?after=%zz", nil, 422)
 	request("GET", "/readyz?scope=feed_coverage", nil, 503)
 	request("GET", "/v1/feed-collectors/spy-iex/coverage?at=2026-01-01", nil, 400)
 	changed := quote
@@ -102,10 +125,20 @@ func TestValidatedFeedCoveragePublicationAndClock(t *testing.T) {
 	bad := quote
 	bad.SHA256 = "wrong"
 	publish(bad, 422)
+	clock.mu.Lock()
+	clock.at = clock.at.Add(time.Nanosecond)
+	clock.mu.Unlock()
 	if _, err := store.FeedCollectorCommand(ctx, receiver, feedcollector.Command{RequestID: "stop", Operation: "stop", RegistrationID: registration.ID, OwnerID: fence.OwnerID, Generation: 1}, clock.Now); err != nil {
 		t.Fatal(err)
 	}
 	publish(quote, 200) // exact original publication retry is readback only.
+	// An old archive is replayed at its own cut, after the live lease stops.
+	// No current clock or live source overwrite can rewrite this readback.
+	var historical storage.FeedArchive
+	archivedRead := request("GET", "/v1/feed-archives/1", nil, 200)
+	if err := json.Unmarshal(archivedRead.Body.Bytes(), &historical); err != nil || historical.Validate() != nil || historical.FeedArchiveHeader != archived.Header || historical.Source.Collectors.Entries[registration.ID].Lease.Stopped || len(historical.Source.Records) != 2 {
+		t.Fatal("archived source cut changed with current lease", err)
+	}
 	w = request("GET", "/v1/feed-collectors/spy-iex/coverage", nil, 200)
 	_ = json.Unmarshal(w.Body.Bytes(), &report)
 	if report.OperationalEvidenceSatisfied || report.LeaseStatus != "stopped" || !report.Evidence.RequiredEvidenceSatisfied {

@@ -1,5 +1,8 @@
 # Reference
 
+- [Feed archive custody](feed-archives.md) — atomic source snapshots with chained
+  identities and paged headers; active pruning remains separate work.
+
 - [Isolated runtime rehearsal](runtime-rehearsal.md) — SPY/IEX setup, real local
   model forwarding, rehearsal-only outage injection, private evidence and cleanup.
 
