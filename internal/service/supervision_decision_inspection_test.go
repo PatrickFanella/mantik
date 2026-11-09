@@ -21,6 +21,9 @@ func (*unavailableDecisionInspectionStore) PaperDecisionSources(context.Context,
 func (*unavailableDecisionInspectionStore) OwnedAllocations(context.Context, storage.PaperDecisionEvaluator, ...storage.PaperOutcomeEvaluator) (storage.OwnedAllocationCatalog, error) {
 	return storage.OwnedAllocationCatalog{}, errors.New("fixture allocation owner unavailable")
 }
+func (*unavailableDecisionInspectionStore) OwnedAllocationComparison(context.Context, string, storage.PaperDecisionEvaluator, ...storage.PaperOutcomeEvaluator) (storage.OwnedAllocationRecord, error) {
+	return storage.OwnedAllocationRecord{}, errors.New("fixture allocation owner unavailable")
+}
 func (*unavailableDecisionInspectionStore) OwnedAdmissionReviews(context.Context, storage.PaperDecisionEvaluator, storage.PaperOutcomeEvaluator) (storage.OwnedAdmissionReviewCatalog, error) {
 	return storage.OwnedAdmissionReviewCatalog{}, errors.New("fixture admission owner unavailable")
 }
