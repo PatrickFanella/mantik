@@ -81,7 +81,7 @@ func paperSamplePayloadContract(t *testing.T, s paperArchiveBackend) {
 	seal := func() {
 		t.Helper()
 		at = at.Add(time.Nanosecond)
-		if _, err := s.ArchivePaperFeed(ctx, plan.ReceiverID, now, func(FeedEvidenceSnapshot, time.Time) error { return nil }, de, oe); err != nil {
+		if _, err := s.(FeedRetentionStore).RotateFeed(ctx, plan.ReceiverID, now, func(FeedEvidenceSnapshot, time.Time) error { return nil }, de, oe); err != nil {
 			t.Fatal(err)
 		}
 		at = at.Add(time.Nanosecond)
@@ -92,6 +92,14 @@ func paperSamplePayloadContract(t *testing.T, s paperArchiveBackend) {
 	seal()
 	_, later := decision("later", 1)
 	seal() // A valid second archive also contains the original first payloads.
+	latestDecision, _ := decision("latest", 2)
+	at = at.Add(time.Nanosecond)
+	latestReceipt, err := s.AssessPaperOutcome(ctx, PaperOutcomeCommand{ID: "latest-outcome", ReceiverID: plan.ReceiverID, DecisionID: latestDecision.Command.ID, DecisionSHA256: latestDecision.SHA256}, now, de, oe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latestOutcome := paperSampleRecord{PaperRecordEpoch{"outcome", "latest-outcome", 2, latestReceipt.Record.SHA256, latestReceipt.Record.EvaluatedAt}, paperScopeForDecision(latestDecision), 0}
+	remember("outcome", "latest-outcome")
 	var corrupted retainedPaperDecision
 	if err := json.Unmarshal(originals["decision:original"], &corrupted); err != nil {
 		t.Fatal(err)
@@ -106,6 +114,7 @@ func paperSamplePayloadContract(t *testing.T, s paperArchiveBackend) {
 			var got paperArchiveOwners
 			var err error
 			var read func() (paperArchiveOwners, error)
+			var native func(PaperDecisionEvaluator, PaperOutcomeEvaluator) (paperArchiveOwners, error)
 			if m, ok := s.(*Memory); ok {
 				m.mu.Lock()
 				defer m.mu.Unlock()
@@ -122,6 +131,9 @@ func paperSamplePayloadContract(t *testing.T, s paperArchiveBackend) {
 					damageMemory(m)
 				}
 				read = func() (paperArchiveOwners, error) { return m.paperSamplePayloadsLocked(ctx, plan.ReceiverID, wanted) }
+				native = func(de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (paperArchiveOwners, error) {
+					return m.paperSampleNativeLocked(ctx, plan.ReceiverID, wanted, de, oe)
+				}
 			} else {
 				tx, e := s.(*Postgres).pool.Begin(ctx)
 				if e != nil {
@@ -136,16 +148,56 @@ func paperSamplePayloadContract(t *testing.T, s paperArchiveBackend) {
 					})
 				}
 				read = func() (paperArchiveOwners, error) { return readPaperSamplePayloads(ctx, tx, plan.ReceiverID, wanted) }
+				native = func(de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (paperArchiveOwners, error) {
+					return readPaperSampleNative(ctx, tx, plan.ReceiverID, wanted, de, oe)
+				}
 			}
 			got, err = read()
 			if fails {
 				if err == nil || !reflect.DeepEqual(got, paperArchiveOwners{}) {
 					t.Fatal("damaged sample returned partial or complete owners", err)
 				}
+				if got, err := native(de, oe); err == nil || !reflect.DeepEqual(got, paperArchiveOwners{}) {
+					t.Fatal("native replay accepted damaged custody or returned partial owners", err)
+				}
 				return
 			}
 			if err != nil || len(got.decisions)+len(got.outcomes) != len(wanted) {
 				t.Fatal("sample custody", err)
+			}
+			replayed, err := native(de, oe)
+			if err != nil {
+				t.Fatal("native page replay", err)
+			}
+			for id, r := range replayed.decisions {
+				raw, _ := json.Marshal(r)
+				if !bytes.Equal(raw, originals["decision:"+id]) {
+					t.Fatal("native decision dependency changed")
+				}
+			}
+			for id, r := range replayed.outcomes {
+				raw, _ := json.Marshal(r)
+				if !bytes.Equal(raw, originals["outcome:"+id]) {
+					t.Fatal("native outcome changed")
+				}
+			}
+			changedDecision := func(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time) (PaperDecisionEvaluation, error) {
+				r, err := de(c, b, at)
+				r.ReasonCode = "changed_native_evaluation"
+				return r, err
+			}
+			if got, err := native(changedDecision, oe); err == nil || !reflect.DeepEqual(got, paperArchiveOwners{}) {
+				t.Fatal("valid custody substituted for native decision replay", err)
+			}
+			if len(replayed.outcomes) > 0 {
+				changedOutcome := func(b PaperOutcomeBasis, at time.Time) (PaperOutcomeEvaluation, error) {
+					r, err := oe(b, at)
+					r.ReasonCode = "changed_native_evaluation"
+					return r, err
+				}
+				if got, err := native(de, changedOutcome); err == nil || !reflect.DeepEqual(got, paperArchiveOwners{}) {
+					t.Fatal("outcome failure returned verified decision dependencies", err)
+				}
 			}
 			for _, w := range wanted {
 				var raw []byte
@@ -173,6 +225,7 @@ func paperSamplePayloadContract(t *testing.T, s paperArchiveBackend) {
 		})
 	}
 	check("active", []paperSampleRecord{original, outcome, later}, nil, nil, false)
+	check("outcome-only-page-resolves-decision", []paperSampleRecord{outcome}, nil, nil, false)
 	check("missing-unretired-even-with-archives", []paperSampleRecord{original}, func(m *Memory) { delete(m.paperDecisions, "original") }, func(exec sqlExec) { exec("DELETE FROM mantik_paper_decisions WHERE id='original'") }, true)
 	check("changed-active-never-falls-back", []paperSampleRecord{original}, func(m *Memory) { m.paperDecisions["original"] = corrupted }, func(exec sqlExec) {
 		exec("UPDATE mantik_paper_decisions SET payload=$1 WHERE id='original'", corruptRaw)
@@ -195,6 +248,7 @@ func paperSamplePayloadContract(t *testing.T, s paperArchiveBackend) {
 		exec("ALTER TABLE mantik_paper_record_epochs DISABLE TRIGGER mantik_immutable_paper_epochs; UPDATE mantik_paper_record_epochs SET retired_epoch=2 WHERE record_id IN ('original','outcome'); ALTER TABLE mantik_paper_record_epochs ENABLE TRIGGER mantik_immutable_paper_epochs; DELETE FROM mantik_paper_outcomes WHERE id='outcome'; DELETE FROM mantik_paper_decisions WHERE id='original'")
 	}
 	check("approved-originals", []paperSampleRecord{retiredOriginal, retiredOutcome, later}, retireMemory, retireSQL, false)
+	check("outcome-only-page-resolves-retired-decision", []paperSampleRecord{retiredOutcome}, retireMemory, retireSQL, false)
 	check("missing-first-original-never-uses-later-copy", []paperSampleRecord{retiredOriginal}, func(m *Memory) { retireMemory(m); m.paperRecordArchives[0] = PaperRecordArchive{} }, func(exec sqlExec) {
 		retireSQL(exec)
 		exec("ALTER TABLE mantik_paper_record_archives DISABLE TRIGGER mantik_immutable_paper_archives")
@@ -210,4 +264,54 @@ func paperSamplePayloadContract(t *testing.T, s paperArchiveBackend) {
 		exec("ALTER TABLE mantik_paper_record_epochs DISABLE TRIGGER mantik_immutable_paper_epochs; UPDATE mantik_paper_record_epochs SET retired_epoch=2 WHERE record_id='later'; ALTER TABLE mantik_paper_record_epochs ENABLE TRIGGER mantik_immutable_paper_epochs; DELETE FROM mantik_paper_decisions WHERE id='later'; ALTER TABLE mantik_paper_record_archives DISABLE TRIGGER mantik_immutable_paper_archives")
 		exec("UPDATE mantik_paper_record_archives SET payload=$1 WHERE sequence=2", []byte(`{}`))
 	}, true)
+	for _, damage := range []string{"missing-decision", "missing-decision-seal", "missing-outcome-seal"} {
+		t.Run(damage, func(t *testing.T) {
+			// These owners were born after the latest closed feed checkpoint.
+			// They require their own actual seals rather than checkpoint pins.
+			wanted := []paperSampleRecord{latestOutcome}
+			var custody, native func() (paperArchiveOwners, error)
+			if m, ok := s.(*Memory); ok {
+				m.mu.Lock()
+				defer m.mu.Unlock()
+				epochs, seals := maps.Clone(m.paperRecordEpochs), maps.Clone(m.paperFeedSourceSeals)
+				defer func() { m.paperRecordEpochs, m.paperFeedSourceSeals = epochs, seals }()
+				if damage == "missing-decision" {
+					delete(m.paperRecordEpochs, "decision:latest")
+				} else if damage == "missing-decision-seal" {
+					delete(m.paperFeedSourceSeals, "decision:latest")
+				} else {
+					delete(m.paperFeedSourceSeals, "outcome:latest-outcome")
+				}
+				custody = func() (paperArchiveOwners, error) { return m.paperSamplePayloadsLocked(ctx, plan.ReceiverID, wanted) }
+				native = func() (paperArchiveOwners, error) {
+					return m.paperSampleNativeLocked(ctx, plan.ReceiverID, wanted, de, oe)
+				}
+			} else {
+				tx, err := s.(*Postgres).pool.Begin(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer tx.Rollback(ctx)
+				sql := "DELETE FROM mantik_paper_feed_source_seals WHERE kind='outcome' AND record_id='latest-outcome'"
+				if damage == "missing-decision" {
+					sql = "ALTER TABLE mantik_paper_record_epochs DISABLE TRIGGER mantik_immutable_paper_epochs; DELETE FROM mantik_paper_record_epochs WHERE kind='decision' AND record_id='latest'"
+				} else if damage == "missing-decision-seal" {
+					sql = "DELETE FROM mantik_paper_feed_source_seals WHERE kind='decision' AND record_id='latest'"
+				}
+				if _, err := tx.Exec(ctx, sql); err != nil {
+					t.Fatal("native source damage did not reach reader", err)
+				}
+				custody = func() (paperArchiveOwners, error) { return readPaperSamplePayloads(ctx, tx, plan.ReceiverID, wanted) }
+				native = func() (paperArchiveOwners, error) {
+					return readPaperSampleNative(ctx, tx, plan.ReceiverID, wanted, de, oe)
+				}
+			}
+			if got, err := custody(); err != nil || len(got.outcomes) != 1 {
+				t.Fatal("fixture did not retain valid outcome custody", err)
+			}
+			if got, err := native(); err == nil || !reflect.DeepEqual(got, paperArchiveOwners{}) {
+				t.Fatal("valid outcome custody replaced missing native source or dependency", err)
+			}
+		})
+	}
 }

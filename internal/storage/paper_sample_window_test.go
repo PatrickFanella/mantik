@@ -152,6 +152,7 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 
 	var page func(PaperEvaluationDeclaration, time.Time, *paperSampleCursor, int) (paperSamplePage, error)
 	var payloads func([]paperSampleRecord) (paperArchiveOwners, error)
+	var native func([]paperSampleRecord) (paperArchiveOwners, error)
 	if m, ok := s.(*Memory); ok {
 		m.mu.Lock()
 		defer m.mu.Unlock()
@@ -160,6 +161,9 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 		}
 		payloads = func(records []paperSampleRecord) (paperArchiveOwners, error) {
 			return m.paperSamplePayloadsLocked(ctx, command.ReceiverID, records)
+		}
+		native = func(records []paperSampleRecord) (paperArchiveOwners, error) {
+			return m.paperSampleNativeLocked(ctx, command.ReceiverID, records, de, oe)
 		}
 	} else {
 		pg := s.(*Postgres)
@@ -173,6 +177,9 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 		}
 		payloads = func(records []paperSampleRecord) (paperArchiveOwners, error) {
 			return readPaperSamplePayloads(ctx, tx, command.ReceiverID, records)
+		}
+		native = func(records []paperSampleRecord) (paperArchiveOwners, error) {
+			return readPaperSampleNative(ctx, tx, command.ReceiverID, records, de, oe)
 		}
 	}
 	for _, asOf := range []time.Time{command.Plan.WindowStart, command.Plan.OutcomeDeadline, at} {
@@ -222,6 +229,40 @@ func paperSampleWindowContract(t *testing.T, s paperArchiveBackend) {
 		if len(seen) != count {
 			t.Fatal("window count", len(seen), count)
 		}
+	}
+	// Native replay crosses the active catalogue's capacity and page boundaries
+	// without substituting selected-page counts for the original checkpoints.
+	seen := map[string]bool{}
+	var cursor *paperSampleCursor
+	for {
+		batch, err := page(declaration.Record, at, cursor, maxPaperNativePage)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owners, err := native(batch.Records)
+		if err != nil {
+			t.Fatal("large native sample page", err)
+		}
+		for _, r := range batch.Records {
+			key := r.Kind + ":" + r.ID
+			var raw []byte
+			if r.Kind == "decision" {
+				raw, err = json.Marshal(owners.decisions[r.ID])
+			} else {
+				raw, err = json.Marshal(owners.outcomes[r.ID])
+			}
+			if err != nil || seen[key] || !bytes.Equal(raw, originals[key]) {
+				t.Fatal("native sample changed or repeated an original", key, err)
+			}
+			seen[key] = true
+		}
+		if batch.Next == nil {
+			break
+		}
+		cursor = batch.Next
+	}
+	if len(seen) != len(want) {
+		t.Fatal("native pages omitted sample owners", len(seen), len(want))
 	}
 	got, err := page(declaration.Record, at, nil, 1)
 	if err != nil || got.Next == nil || len(want) != 353 {

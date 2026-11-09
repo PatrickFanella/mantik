@@ -166,8 +166,18 @@ copy never substitutes for a missing first original.
 Payload pages preserve a 64 MiB total selected-payload budget and retain at most
 one archive segment while resolving a page. Returned native envelopes are
 detached from retained state. Any row, scope, original or budget failure returns
-no partial owners. These are custody and envelope checks; native source replay
-and new-assessment evidence construction remain the next integration.
+no partial owners.
+
+The private native reader accepts up to 64 selected records and reserves the
+remaining payload-page slots for their actual decision dependencies. An outcome
+on a later page resolves its decision through the original creation metadata,
+including an approved retired decision. The reader replays each decision and
+outcome against the actual strategy, feed and source seals in the same owner
+snapshot. Its feed-custody view contains only those actual owners. Selected-page
+counts never replace the full catalogue's checkpoint counts; full-catalogue
+readers retain their existing completeness checks. A missing dependency,
+changed source or different native result returns no partial owners. New
+assessment evidence construction remains the next integration.
 
 After a paper archive exists, new feed/paper custody checkpoints use
 `mantik-paper-feed-checkpoint-v2` and bind the actual `paper_archive_sequence`.

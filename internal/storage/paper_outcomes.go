@@ -178,25 +178,10 @@ func memoPaperOutcomeEvaluator(eval PaperOutcomeEvaluator) PaperOutcomeEvaluator
 	}
 }
 
-func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, decisionEval PaperDecisionEvaluator, eval PaperOutcomeEvaluator) (PaperOutcomeCatalog, error) {
-	out := PaperOutcomeCatalog{ReceiverID: owner, Records: []PaperOutcomeRecord{}}
-	if eval == nil || len(all) > MaxPaperOutcomes {
-		return out, ErrPaperOutcomeInvalid
-	}
-	if _, err := paperDecisionCatalog(owner, decisions, strategies, feed, decisionEval); err != nil {
-		return out, err
-	}
-	if feed.Retention != nil {
-		closed := 0
-		for _, v := range all {
-			if !v.Record.EvaluatedAt.After(feed.Retention.Checkpoint.CutAt) {
-				closed++
-			}
-		}
-		if closed != feed.Retention.Checkpoint.Outcomes {
-			return out, ErrPaperOutcomeConflict
-		}
-	}
+// Replay one actual outcome owner without assuming the caller selected the
+// complete catalogue. The catalogue keeps its capacity and checkpoint counts;
+// paged consumers establish selection completeness from their metadata cursor.
+func newPaperOutcomeReplay(owner string, all map[string]retainedPaperOutcome, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, eval PaperOutcomeEvaluator) func(string, retainedPaperOutcome, retainedPaperDecision) (PaperOutcomeRecord, error) {
 	eval = memoPaperOutcomeEvaluator(eval)
 	// Repeated basis hashes are only a performance hint. The record cache still
 	// requires full input equality; unique inputs keep the ordinary constructor.
@@ -222,30 +207,29 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 		}
 		return nil
 	})
-	for id, v := range all {
+	return func(id string, v retainedPaperOutcome, d retainedPaperDecision) (PaperOutcomeRecord, error) {
 		r, b := v.Record, v.Basis
-		d, ok := decisions[r.Command.DecisionID]
-		if id != r.Command.ID || r.Command.ReceiverID != owner || !ok || !reflect.DeepEqual(d.Record, b.Decision) {
-			return out, ErrPaperOutcomeConflict
+		if id != r.Command.ID || r.Command.ReceiverID != owner || !reflect.DeepEqual(d.Record, b.Decision) {
+			return PaperOutcomeRecord{}, ErrPaperOutcomeConflict
 		}
 		// Outcome observation has its own availability cut. Legacy and current
 		// membership modes are distinct cache inputs, never inferred from a hit.
 		if feed.Retention != nil {
 			if err := verifyFeedSourcePin(feed, outcomeFeedSourcePin(v)); err != nil {
-				return out, err
+				return PaperOutcomeRecord{}, err
 			}
 			if err := verifyPaperDecisionHeaderBasis(d.Record.Command, b.Observation, r.EvaluatedAt, strategies, feed); err != nil {
-				return out, err
+				return PaperOutcomeRecord{}, err
 			}
 			if err := verifyRetiredPaperBasis(d.Record.Command, b.Observation, r.EvaluatedAt, feed); err != nil {
-				return out, err
+				return PaperOutcomeRecord{}, err
 			}
 		} else if err := verify(d.Record.Command, b.Observation, r.EvaluatedAt, r.Schema == "mantik-owned-paper-outcome-v2"); err != nil {
-			return out, err
+			return PaperOutcomeRecord{}, err
 		}
 		if (r.Schema == paperOutcomeSchemaV3 || r.Schema == paperOutcomeSchemaV4) && feed.Retention == nil {
 			if err := verifyFeedPrefix(d.Record.Command, b.Observation, r.EvaluatedAt, d.Record.FinalizedAt, index); err != nil {
-				return out, err
+				return PaperOutcomeRecord{}, err
 			}
 		}
 		var expected PaperOutcomeRecord
@@ -259,7 +243,40 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 			expected, err = paperOutcomeForSchema(r.Schema, r.Command, b, r.EvaluatedAt, eval)
 		}
 		if err != nil || !reflect.DeepEqual(expected, r) {
-			return out, ErrPaperOutcomeInvalid
+			return PaperOutcomeRecord{}, ErrPaperOutcomeInvalid
+		}
+		return r, nil
+	}
+}
+
+func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, decisionEval PaperDecisionEvaluator, eval PaperOutcomeEvaluator) (PaperOutcomeCatalog, error) {
+	out := PaperOutcomeCatalog{ReceiverID: owner, Records: []PaperOutcomeRecord{}}
+	if eval == nil || len(all) > MaxPaperOutcomes {
+		return out, ErrPaperOutcomeInvalid
+	}
+	if _, err := paperDecisionCatalog(owner, decisions, strategies, feed, decisionEval); err != nil {
+		return out, err
+	}
+	if feed.Retention != nil {
+		closed := 0
+		for _, v := range all {
+			if !v.Record.EvaluatedAt.After(feed.Retention.Checkpoint.CutAt) {
+				closed++
+			}
+		}
+		if closed != feed.Retention.Checkpoint.Outcomes {
+			return out, ErrPaperOutcomeConflict
+		}
+	}
+	replay := newPaperOutcomeReplay(owner, all, strategies, feed, eval)
+	for id, v := range all {
+		d, ok := decisions[v.Record.Command.DecisionID]
+		if !ok {
+			return out, ErrPaperOutcomeConflict
+		}
+		r, err := replay(id, v, d)
+		if err != nil {
+			return out, err
 		}
 		out.Records = append(out.Records, r)
 	}
