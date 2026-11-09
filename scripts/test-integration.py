@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run contracts on a uniquely named, disposable PostgreSQL container."""
 import subprocess
+import argparse
 import json
 import os
 import re
@@ -99,7 +100,26 @@ def replay_restored_owner(container, source_runner, database, expect_rejection=F
 
 
 
-def main():
+def test_scope(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--package", choices=("storage", "cli"))
+    parser.add_argument("--shard", type=int, choices=(0, 1))
+    args = parser.parse_args(argv)
+    if args.shard is not None and args.package is None:
+        parser.error("--shard requires --package")
+    packages = ["./internal/" + args.package] if args.package else ["./internal/storage", "./internal/cli"]
+    storage = "./internal/storage" in packages
+    producer = storage and args.shard in (None, 0)
+    command = ["go", "run", "./testshard", "-race", "-parts=2", "-run=^TestPostgresContracts"]
+    if args.shard is not None:
+        command.append("-index=" + str(args.shard))
+    if storage:
+        command.append("-first-only=TestPostgresContractsRecoverySeed")
+    return command + packages, producer
+
+
+def main(argv=None):
+    command, producer = test_scope(argv)
     suffix = uuid.uuid4().hex[:12]
     name = "mantik-test-" + suffix
     database = "mantik_test_" + suffix
@@ -124,28 +144,27 @@ def main():
         # Share only the disposable database network namespace. Copy source
         # instead of mounting a host path: Gitea job paths may not exist on the
         # Docker daemon host. No ports, shared volumes, or existing DB are used.
-        # Package concurrency shares this one database server and CPU budget.
-        # Keep packages sequential; each package still exercises its own
-        # concurrent transactions and the race detector remains enabled.
-        # This is a package-wide budget, not an individual request deadline.
-        # Main run 17333 exhausted 15 minutes across the storage package while
-        # a later test had run for only three seconds. Retain a finite suite
-        # budget without changing transaction/request or recovery deadlines.
+        # Each test binary/group runs sequentially against this owned database.
+        # Splitting complete top-level cases bounds each 30-minute suite alarm;
+        # individual request/transaction deadlines and race checks are unchanged.
         run("docker", "create", "--name", runner, "--network", "container:" + name,
             "-w", "/src", "-e", "MANTIK_TEST_DATABASE_URL=" +
             f"postgres://mantik:fixture-only@127.0.0.1:5432/{database}?sslmode=disable",
-            "-e", "MANTIK_RECOVERY_SEED=1",
-            "golang:1.26.9", "go", "test", "-race", "-p", "1", "./internal/storage", "./internal/cli",
-            "-run", "TestPostgresContracts", "-count=1", "-timeout=30m", stdout=subprocess.DEVNULL)
+            "-e", "MANTIK_RECOVERY_SEED=" + ("1" if producer else "0"),
+            "golang:1.26.9", *command, stdout=subprocess.DEVNULL)
         runner_created = True
         for path in ("go.mod", "go.sum", "internal", "migrations"):
             run("docker", "cp", path, runner + ":/src/" + path)
+        run("docker", "cp", "scripts/testshard", runner + ":/src/testshard")
         run("docker", "start", "-a", runner)
         exit_code = run("docker", "inspect", "--format", "{{.State.ExitCode}}", runner,
                         capture_output=True).stdout.strip()
         if exit_code != "0":
             raise RuntimeError("PostgreSQL contract test container failed: " + exit_code)
-        recovery_contract(name, database, lambda target, rejected: replay_restored_owner(name, runner, target, rejected))
+        if producer:
+            recovery_contract(name, database, lambda target, rejected: replay_restored_owner(name, runner, target, rejected))
+        else:
+            print("Snapshot-bound recovery proof is required separately in storage group zero")
     finally:
         if runner_created:
             run("docker", "rm", "-f", runner, stdout=subprocess.DEVNULL)
