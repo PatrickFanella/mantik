@@ -81,7 +81,7 @@ func fetchDecisionInspection(ctx context.Context, base string, d storage.PaperDe
 	return nil, errDecisionReadback
 }
 
-const decisionSupervisionHelp = "Commands (then Enter): n next | p previous | r refresh | d ID finalized decision | e ID explanation | m ID market evidence | a ID attribution | aj ID attribution JSON | q quit"
+const decisionSupervisionHelp = "Commands (then Enter): n next | p previous | r refresh | d ID finalized decision | e ID explanation | m ID market evidence | a ID attribution | aj ID attribution JSON | aa ID attribution analysis | aaj ID analysis JSON | q quit"
 
 // No natural-language inference or mutation is performed. IDs must belong to
 // the displayed page; stale catalogues cannot authorize follow-up reads.
@@ -178,7 +178,7 @@ func superviseDecisions(ctx context.Context, in io.ReadCloser, out io.Writer, li
 			}
 		case len(fields) == 1 && fields[0] == "p":
 			offset = max(0, offset-limit)
-		case len(fields) == 2 && (fields[0] == "d" || fields[0] == "e" || fields[0] == "m" || fields[0] == "a" || fields[0] == "aj"):
+		case len(fields) == 2 && (fields[0] == "d" || fields[0] == "e" || fields[0] == "m" || fields[0] == "a" || fields[0] == "aj" || fields[0] == "aa" || fields[0] == "aaj"):
 			found := false
 			for _, d := range page.Records[offset:min(offset+limit, len(page.Records))] {
 				if fields[1] != d.Command.ID {
@@ -189,7 +189,7 @@ func superviseDecisions(ctx context.Context, in io.ReadCloser, out io.Writer, li
 				var err error
 				if fields[0] != "d" {
 					kind := fields[0]
-					if kind == "aj" {
+					if kind == "aj" || kind == "aa" || kind == "aaj" {
 						kind = "a"
 					}
 					value, err = inspect(ctx, d, kind)
@@ -197,7 +197,7 @@ func superviseDecisions(ctx context.Context, in io.ReadCloser, out io.Writer, li
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
-				if err == nil && (fields[0] == "a" || fields[0] == "aj") {
+				if err == nil && (fields[0] == "a" || fields[0] == "aj" || fields[0] == "aa" || fields[0] == "aaj") {
 					row, ok := value.(storage.PaperAttributionRow)
 					if !ok || validateAttributionRow(row, owner) != nil || !reflect.DeepEqual(row.Decision, d) {
 						err = errDecisionReadback
@@ -205,6 +205,14 @@ func superviseDecisions(ctx context.Context, in io.ReadCloser, out io.Writer, li
 				}
 				if err != nil {
 					if _, err := fmt.Fprintln(out, "UNAVAILABLE: inspection failed or did not match the displayed decision. No inspection result retained; retry explicitly."); err != nil {
+						return err
+					}
+				} else if fields[0] == "aa" || fields[0] == "aaj" {
+					format := "table"
+					if fields[0] == "aaj" {
+						format = "json"
+					}
+					if err := writeAttributionAnalysis(out, owner, []storage.PaperAttributionRow{value.(storage.PaperAttributionRow)}, format); err != nil {
 						return err
 					}
 				} else if fields[0] == "a" {
