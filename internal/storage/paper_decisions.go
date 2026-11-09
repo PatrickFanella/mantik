@@ -19,7 +19,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const MaxPaperDecisions = 32
+const MaxPaperDecisions = 256
 const MaxPaperDecisionBytes = 2 << 20
 
 var ErrPaperDecisionInvalid = errors.New("invalid owned paper decision")

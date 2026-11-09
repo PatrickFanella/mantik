@@ -19,6 +19,11 @@ const PaperDecisionWorkerCapability = "paper_decision"
 const AutomaticPaperDecisionPrefix = "automatic-decision-"
 const AutomaticPaperComparisonPrefix = "automatic-comparison-"
 
+// AutomaticAbstentionInterval spaces retained abstentions. A market that stays
+// out of a strategy's range would otherwise retain a record per quote, and
+// each counts against the decision limit until it is archived.
+const AutomaticAbstentionInterval = 15 * time.Minute
+
 type PaperDecisionWorkerStore interface {
 	storage.PaperDecisionStore
 	storage.PaperStrategyStore
@@ -61,6 +66,10 @@ func AutomaticPaperComparisonID(decision storage.PaperDecisionRecord) string {
 // the same strategy record, registration and evaluated quote already has one. Identities derive from the
 // inputs, so a retried or concurrent cycle reaches the same records. Each
 // commit is atomic; a later failure keeps the earlier ones.
+//
+// An abstention for the same reason as the pair's last retained one, within
+// AutomaticAbstentionInterval of it, is not retained again. A changed reason
+// and every entry candidate are retained at once.
 func RunPaperDecisionCycle(ctx context.Context, store PaperDecisionWorkerStore, clock Clock) error {
 	if clock == nil {
 		return storage.ErrPaperDecisionInvalid
@@ -107,6 +116,17 @@ func RunPaperDecisionCycle(ctx context.Context, store PaperDecisionWorkerStore, 
 	slices.SortFunc(declared, func(a, b paperstrategy.Record) int {
 		return strings.Compare(a.Command.Definition.ID, b.Command.Definition.ID)
 	})
+	prior, err := store.PaperDecisions(call, evaluateOwnedPaperDecision)
+	if err != nil {
+		return err
+	}
+	newest := map[string]storage.PaperDecisionRecord{}
+	for _, d := range prior.Records {
+		key := d.Command.StrategySHA256 + "/" + d.Command.RegistrationID
+		if old, ok := newest[key]; !ok || d.FinalizedAt.After(old.FinalizedAt) {
+			newest[key] = d
+		}
+	}
 	latest := latestQuotes(feed)
 	registrations := []string{}
 	for id := range feed.Collectors.Entries {
@@ -126,6 +146,9 @@ func RunPaperDecisionCycle(ctx context.Context, store PaperDecisionWorkerStore, 
 				continue
 			}
 			c := storage.PaperDecisionCommand{ID: AutomaticPaperDecisionID(s.SHA256, id, quote), ReceiverID: owner, StrategyID: def.ID, StrategySHA256: s.SHA256, RegistrationID: id}
+			if last, ok := newest[s.SHA256+"/"+id]; ok && repeatsAbstention(last, c, s, feed, at) {
+				continue
+			}
 			call, cancel := bounded()
 			_, err := store.FinalizePaperDecision(call, c, clock.Now, evaluateOwnedPaperDecision)
 			cancel()
@@ -181,6 +204,17 @@ func RunPaperDecisionCycle(ctx context.Context, store PaperDecisionWorkerStore, 
 		}
 	}
 	return errors.Join(failures...)
+}
+
+// repeatsAbstention reports whether a decision now would only repeat the
+// pair's recent abstention. Any evaluation failure retains the decision, so
+// the store reports it.
+func repeatsAbstention(last storage.PaperDecisionRecord, c storage.PaperDecisionCommand, s paperstrategy.Record, feed storage.FeedEvidenceSnapshot, at time.Time) bool {
+	if last.Evaluation.Action != "abstain" || at.Sub(last.FinalizedAt) >= AutomaticAbstentionInterval {
+		return false
+	}
+	now, err := evaluateOwnedPaperDecision(c, storage.PaperDecisionBasis{Strategy: s, Feed: feed}, at)
+	return err == nil && now.Action == "abstain" && now.ReasonCode == last.Evaluation.ReasonCode
 }
 
 // latestQuotes returns each registration's most recently published quote

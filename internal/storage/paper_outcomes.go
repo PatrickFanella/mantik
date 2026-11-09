@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const MaxPaperOutcomes = 64
+const MaxPaperOutcomes = 256
 const MaxPaperOutcomeBytes = 4 << 20
 const PaperOutcomeRecipe = "native-threshold-forward-quote-v1"
 

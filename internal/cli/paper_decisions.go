@@ -41,7 +41,7 @@ func runPaperDecision(ctx context.Context, command string, args []string, out, e
 	}
 	if command == "paper-decisions" {
 		var c storage.PaperDecisionCatalog
-		if err := requestBounded(ctx, *base, "/v1/paper-decisions", nil, &c, nil, 1<<20, true); err != nil {
+		if err := requestBounded(ctx, *base, "/v1/paper-decisions", nil, &c, nil, 4<<20, true); err != nil {
 			return err
 		}
 		if c.ReceiverID != *receiver || c.Records == nil || len(c.Records) > storage.MaxPaperDecisions {

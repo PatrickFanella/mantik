@@ -74,7 +74,7 @@ in PostgreSQL and the journal; the coverage response returns evidence references
 and metadata without raw provider bodies.
 
 New records are immutable under registration/capture/revision. Conflicting
-content returns 409. The service retains at most 128 capture publications across
+content returns 409. The service retains at most 2048 capture publications across
 all registrations, with no pruning or replacement. Exact retries remain possible
 at capacity. Invalid evidence returns 422, unknown registration 404, malformed
 JSON 400, ownership/receiver/history/clock/capacity conflicts 409, and storage

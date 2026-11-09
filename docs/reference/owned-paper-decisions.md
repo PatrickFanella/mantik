@@ -45,7 +45,7 @@ records or a changed result prevents a successful catalogue read or retry.
 
 Exact command retries return the original record without reading a new clock.
 Changed content under the same ID conflicts. The full retained prefix is checked
-before new writes or retries. There are at most 32 records, each with a maximum
+before new writes or retries. There are at most 256 records, each with a maximum
 2 MiB retained envelope; capacity errors preserve existing history. No eviction,
 replacement or deletion route exists. This bounded research registry must not be
 used as an operational ledger or protective-exit queue.
@@ -71,7 +71,10 @@ then every 15 seconds:
    seen, the worker finalizes one decision against it. The identity,
    `automatic-decision-` and a hash of the strategy record, registration and
    latest quote, means a cycle without a newer quote retains nothing. Entry
-   candidates, abstentions and rejections are all retained.
+   candidates, abstentions and rejections are all retained, with one exception:
+   an abstention for the same reason as the pair's last retained one, within 15
+   minutes of it, is not retained again. A changed reason and every entry
+   candidate are retained at once.
 3. Every entry candidate that no allocation comparison pins gets a comparison
    of its own, `automatic-comparison-` and a hash of the decision. The
    allocation owner reserves, defers or rejects it as for any caller. At most
@@ -87,8 +90,10 @@ the `paper_decision` readiness scope; the evidence reference names the
 failing decision or comparison. Schema 98 fences writers that reject this
 worker's health reports.
 
-Retention limits still apply. Decisions stop at 32 and published feed
-evidence at 128 records, so the worker supports a bounded rehearsal; once a
+Retention limits still apply. Decisions stop at 256 and published feed
+evidence at 2048 records. Collector admissions (2048) and commands (4096) stop
+sooner in practice, after about 2.4 trading days at one quote per 30 seconds,
+and nothing is archived yet, so the worker supports a bounded multi-day run; once a
 limit is reached, every cycle fails visibly with the capacity error. See
 #285 for the retention work continuous operation needs.
 

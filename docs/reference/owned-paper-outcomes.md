@@ -144,7 +144,7 @@ Each assessment commits separately. If a later assessment fails,
 earlier committed results remain retained and exact retries recover them.
 Capacity failure is visible; the worker never evicts evidence. Automatic and
 manual assessments of the same underlying observation are not independent
-samples. The existing 64-record retention bound remains a release/soak planning
+samples. The existing 256-record retention bound remains a release/soak planning
 constraint, not a protective queue.
 
 Worker progress, failures and clean stop are reported under the separate
