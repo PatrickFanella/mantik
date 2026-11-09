@@ -129,6 +129,7 @@ CREATE CONSTRAINT TRIGGER reject_allocation_index_commit AFTER INSERT ON mantik_
 		t.Fatal("audit", audit, err)
 	}
 	verifyAllocationIndexSegments(t, s, eval)
+	verifyAllocationTargetReads(t, s, eval, catalog)
 	if len(retireDecision) > 0 && retireDecision[0] {
 		other := decision.Record.Command
 		other.ID = "still-active"
@@ -211,6 +212,7 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 		if got, err := s.OwnedAllocations(ctx, eval); err != nil || !reflect.DeepEqual(got, catalog) {
 			t.Fatal("approved retirement changed allocation replay", err)
 		}
+		verifyAllocationTargetReads(t, s, eval, catalog)
 		if got, err := auditor.AuditOwnedAllocations(ctx, eval); err != nil || !reflect.DeepEqual(got, audit) {
 			t.Fatal("approved retirement changed full-history audit", err)
 		}

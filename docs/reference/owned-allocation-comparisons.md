@@ -586,7 +586,11 @@ evaluation, execution reconciliation and atomic operational ledger ownership
 remain separate unfinished gates.
 
 A targeted `GET /v1/allocation-comparisons/{id}` returns the exact retained
-comparison after complete owner replay. It requires authentication, accepts no
+comparison after native owner replay. Indexed archived comparisons replay only
+their original sealed segment and compare its resulting checkpoint with the
+retained original. Active comparisons replay the active journal after checking
+its checkpoint against the indexed original. Legacy unindexed segments use the
+complete-history reader. The route requires authentication, accepts no
 query parameters or GET body, returns 404 for a missing ID, and preserves owner
 unavailability errors. The supervision `inspect_record` tool exposes this read
 as `allocation_comparison`, alongside `admission_review` and
@@ -966,10 +970,20 @@ does not establish that replay. Selected reads do not reconstruct later
 segments. Existing unindexed segments explicitly report that absence; their
 original records and full-history audit remain available.
 
-The public history/attribution consumers still need targeted segment integration
-and paging. The v1 checkpoint's alias and consumed-identity state still grows;
-this storage foundation does not establish a growing-history operational bound
-or enable physical paper retirement. Backups must retain all four index tables
+Targeted comparison inspection uses this reader for indexed segments, including
+the supervision adapter. It resolves at most 256 distinct decision dependencies
+from active owners or their approved original archives. Missing indexed payloads,
+changed membership and a mismatched native end checkpoint fail the selected
+read. Damage in a later, unrelated segment does not prevent inspection of an
+earlier intact segment; complete-catalogue reads and audits still check the
+complete history. These reads use the existing Memory lock or PostgreSQL
+repeatable-read transaction and return no record after cancellation or a failed
+COMMIT.
+
+Historical attribution and catalogue paging still need segment integration.
+The v1 checkpoint's alias and consumed-identity state still grows; this reader
+does not establish a growing-history operational bound or enable physical paper
+retirement. Backups must retain all four index tables
 with the original journal/archive and owner sources. A schema-108 predecessor
 refuses schema 109; rollback requires the matching pre-upgrade backup and binary.
 

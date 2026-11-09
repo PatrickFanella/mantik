@@ -16,7 +16,9 @@ func ownedAllocationError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, storage.ErrOwnedAllocationInvalid):
 		write(w, 422, map[string]string{"error": "invalid owned allocation comparison"})
-	case errors.Is(err, storage.ErrOwnedAllocationConflict), errors.Is(err, storage.ErrOwnedAllocationCapacity), errors.Is(err, storage.ErrReceiverMismatch):
+	case errors.Is(err, storage.ErrOwnedAllocationNotFound):
+		write(w, 404, map[string]string{"error": err.Error()})
+	case errors.Is(err, storage.ErrOwnedAllocationConflict), errors.Is(err, storage.ErrOwnedAllocationCapacity), errors.Is(err, storage.ErrOwnedAllocationAudit), errors.Is(err, storage.ErrReceiverMismatch):
 		write(w, 409, map[string]string{"error": err.Error()})
 	default:
 		write(w, 503, map[string]string{"error": "owned allocation storage unavailable"})
@@ -62,6 +64,17 @@ func ownedAllocationRoutes(mux *http.ServeMux, store storage.Store, clock Clock)
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
 		defer cancel()
+		if id != "" {
+			if lookup, ok := store.(storage.OwnedAllocationLookupStore); ok {
+				record, err := lookup.OwnedAllocationComparison(ctx, id, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+				if err != nil {
+					ownedAllocationError(w, err)
+					return
+				}
+				write(w, 200, record)
+				return
+			}
+		}
 		result, err := backend.OwnedAllocations(ctx, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		if err != nil {
 			ownedAllocationError(w, err)

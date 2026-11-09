@@ -988,6 +988,12 @@ func readOwnedAllocationJournal(ctx context.Context, tx pgx.Tx) (ownedAllocation
 type ownedJournalAppend func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error)
 
 func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, pins []OwnedDecisionPin, apply ownedJournalAppend, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, OwnedAllocationReceipt, error) {
+	return p.ownedAllocationAccessFromJournal(ctx, write, pins, apply, nil, eval, outcomeEvals...)
+}
+
+type ownedAllocationJournalRead func(context.Context, pgx.Tx, ownedAllocationJournal) (ownedAllocationJournal, error)
+
+func (p *Postgres) ownedAllocationAccessFromJournal(ctx context.Context, write bool, pins []OwnedDecisionPin, apply ownedJournalAppend, selectJournal ownedAllocationJournalRead, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, OwnedAllocationReceipt, error) {
 	options := pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}
 	if write {
 		options = pgx.TxOptions{}
@@ -1038,7 +1044,15 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, pins [
 	if err != nil {
 		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
 	}
-	if write {
+	if selectJournal != nil {
+		if write {
+			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, ErrOwnedAllocationInvalid
+		}
+		journal, err = selectJournal(ctx, tx, journal)
+		if err != nil {
+			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
+		}
+	} else if write {
 		journal.lookup = postgresArchiveLookup(ctx, tx)
 	} else if journal.Checkpoint != nil {
 		if journal.archived, err = readOwnedAllocationArchive(ctx, tx); err != nil {
