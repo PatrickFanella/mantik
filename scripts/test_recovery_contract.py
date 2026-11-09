@@ -8,6 +8,17 @@ MODULE = runpy.run_path(str(Path(__file__).with_name('test-integration.py')))
 
 
 class OwnerReplayProofTests(unittest.TestCase):
+    def test_owned_runner_must_have_finished_successfully(self):
+        check = MODULE['require_runner_exit']
+        complete = {'Status': 'exited', 'Running': False, 'ExitCode': 0, 'OOMKilled': False}
+        check(json.dumps(complete))
+        for state in [[], {}, complete | {'Status': 'running', 'Running': True},
+                      complete | {'Status': 'created'}, complete | {'ExitCode': 1},
+                      complete | {'ExitCode': False}, complete | {'OOMKilled': True},
+                      complete | {'Running': True}]:
+            with self.subTest(state=state), self.assertRaises(RuntimeError):
+                check(json.dumps(state))
+
     def test_complete_integration_scope_has_one_recovery_producer(self):
         scope = MODULE['test_scope']
         command, producer = scope([])
