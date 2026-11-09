@@ -1105,4 +1105,11 @@ selected originals and outcome dependencies against original feed custody;
 missing unretired rows still fail. This supplies sealed source history, while
 financial attribution paging and physical paper retirement remain unfinished.
 
+`mantik allocation-history` and authenticated `GET /v1/allocation-history`
+page original sealed comparisons and standalone execution records at a fixed
+checkpoint boundary. The reader replays complete selected segments, including
+their original financial effects and approved retired decision dependencies.
+Missing indexed originals fail without a partial page. Legacy-index backfill,
+decision-specific financial attribution and automatic retention remain required.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

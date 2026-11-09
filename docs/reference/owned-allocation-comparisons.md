@@ -987,3 +987,40 @@ retirement. Backups must retain all four index tables
 with the original journal/archive and owner sources. A schema-108 predecessor
 refuses schema 109; rollback requires the matching pre-upgrade backup and binary.
 
+### Sealed allocation-history pages
+
+`GET /v1/allocation-history` and `mantik allocation-history` inspect original
+sealed comparisons and standalone execution steps in their committed sequence.
+Each comparison retains its original allocation, readiness and execution
+context; each execution step retains its original fill, close and release
+effects. These records grant no new financial authority or qualification.
+
+Pass the service receiver as `receiver_id` or `--receiver-id`. The page size is
+`limit` or `--limit`, defaults to 16, and accepts 1 through 64. Supply the returned
+`next_after` as `after` or `--after` to continue. The HTTP route requires operator
+authentication and accepts no GET body, duplicate parameters or unknown query
+keys. The CLI emits the validated JSON page.
+
+The first page closes at the active journal's original sealed checkpoint.
+`through_sequence` and `checkpoint_sha256` bind that cut. Later pages keep it
+through appends, new seals and approved decision retirement. Active journal
+records are outside this scope; a journal without a seal returns an empty page.
+Missing original checkpoints, absent index members, incomplete original segments
+and changed native results fail without returning a partial page. Older
+unindexed history needs its original-index backfill before this endpoint can
+page it; existing targeted comparison inspection retains its legacy fallback.
+
+The service seeks at most the requested number of sequence-index members,
+checks their complete original segments, resolves their native decision
+dependencies and rebuilds each segment's end checkpoint. Original segment data
+for one page is capped at 64 MiB, and the returned JSON page at 8 MiB. Memory uses
+one lock; PostgreSQL uses one repeatable-read snapshot and returns the page only
+after COMMIT. Cancellation returns no page. A selected intact segment can be
+read independently of damage in a later unrelated segment; the full audit still
+checks the complete history.
+
+These pages provide original financial records for inspection. Decision-specific
+financial attribution still needs complete execution-effect references and a
+bounded native contribution reader. The v1 checkpoint identity collections,
+legacy-index backfill and automatic retention remain required archive work.
+

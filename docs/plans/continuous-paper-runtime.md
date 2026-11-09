@@ -102,6 +102,13 @@ their working journal and original checkpoint; unindexed legacy targets retain
 the complete-history path. Historical attribution and catalogue paging, compact
 checkpoint identities and automatic retention remain separate required work.
 
+Sealed allocation-history pages expose original comparisons and standalone
+execution records in committed sequence, with a cursor bound to its initial
+checkpoint. Each selected segment replays its native owner inputs and rebuilds
+its original end checkpoint. This supplies paged financial records; complete
+decision-specific effect references and financial attribution, legacy-index
+backfill, compact identities and automatic retirement remain required.
+
 Schema changes must preserve existing envelopes and hashes and fence older
 writers. Backup includes source owners, archive rows, manifests/checkpoints,
 receiver identity and schema history. Rollback uses a matching restored backup
