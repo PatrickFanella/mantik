@@ -507,6 +507,21 @@ func (m *Memory) AssessPaperEvaluation(ctx context.Context, c PaperEvaluationAss
 	if err := ctx.Err(); err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
 	}
+	if old, ok := m.evaluationAssessments[c.ID]; ok {
+		if _, err := m.paperAssessmentOwnersLocked(ctx, de, oe); err != nil {
+			return PaperEvaluationAssessmentReceipt{}, err
+		}
+		if c.Validate() != nil {
+			return PaperEvaluationAssessmentReceipt{}, ErrPaperEvaluationAssessmentInvalid
+		}
+		if c.ReceiverID != m.receiverID {
+			return PaperEvaluationAssessmentReceipt{}, ErrReceiverMismatch
+		}
+		if c != old.Command {
+			return PaperEvaluationAssessmentReceipt{}, ErrPaperEvaluationAssessmentConflict
+		}
+		return PaperEvaluationAssessmentReceipt{clone(old), true}, nil
+	}
 	s, err := m.paperEvaluationSourcesLocked(de, oe)
 	if err != nil {
 		return PaperEvaluationAssessmentReceipt{}, err
@@ -530,11 +545,7 @@ func (m *Memory) PaperEvaluationAssessments(ctx context.Context, de PaperDecisio
 	if err := ctx.Err(); err != nil {
 		return PaperEvaluationAssessmentCatalog{}, err
 	}
-	s, err := m.paperEvaluationSourcesLocked(de, oe)
-	if err != nil {
-		return PaperEvaluationAssessmentCatalog{}, err
-	}
-	return paperEvaluationAssessmentCatalog(ctx, m.receiverID, m.evaluationAssessments, s)
+	return m.paperAssessmentOwnersLocked(ctx, de, oe)
 }
 func readPaperEvaluationAssessments(ctx context.Context, tx pgx.Tx) (map[string]PaperEvaluationAssessment, error) {
 	rows, err := tx.Query(ctx, "SELECT id,payload FROM mantik_paper_evaluation_assessments ORDER BY id LIMIT $1", MaxPaperEvaluationAssessments+1)
@@ -572,11 +583,52 @@ func (p *Postgres) paperEvaluationAssessmentAccess(ctx context.Context, write bo
 		return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, write, de, oe, p.portfolioEvaluator)
+	// Exact retries and inspection can replay an original assessment even after
+	// its paper inputs leave active state. New issuance still reads current
+	// sources under the usual collector -> state -> receiver ownership locks.
+	query := "SELECT id FROM mantik_research_receiver WHERE singleton"
+	var feedOwner string
+	if write {
+		feed, err := readFeedEvidence(ctx, tx, true)
+		if err != nil {
+			return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, err
+		}
+		feedOwner = feed.ReceiverID
+		query += " FOR UPDATE"
+	}
+	var owner string
+	if err := tx.QueryRow(ctx, query).Scan(&owner); err != nil {
+		return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, err
+	}
+	if write && feedOwner != owner {
+		return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, ErrReceiverMismatch
+	}
+	all, err := readPaperEvaluationAssessments(ctx, tx)
 	if err != nil {
 		return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, err
 	}
-	all, err := readPaperEvaluationAssessments(ctx, tx)
+	old, retry := all[c.ID]
+	if !write || retry {
+		catalog, err := readPaperAssessmentOwners(ctx, tx, owner, all, de, oe, p.portfolioEvaluator)
+		if err != nil {
+			return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, err
+		}
+		var receipt PaperEvaluationAssessmentReceipt
+		if retry {
+			if c.ReceiverID != owner {
+				return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, ErrReceiverMismatch
+			}
+			if c != old.Command {
+				return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, ErrPaperEvaluationAssessmentConflict
+			}
+			receipt = PaperEvaluationAssessmentReceipt{clone(old), true}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, err
+		}
+		return catalog, receipt, nil
+	}
+	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return PaperEvaluationAssessmentCatalog{}, PaperEvaluationAssessmentReceipt{}, err
 	}

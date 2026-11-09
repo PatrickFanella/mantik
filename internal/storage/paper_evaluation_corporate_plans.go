@@ -94,12 +94,18 @@ type PaperEvaluationCorporateSelectionStore interface {
 	PaperEvaluationCorporateSelection(context.Context, string, PaperDecisionEvaluator, PaperOutcomeEvaluator) (PaperEvaluationCorporateSelection, error)
 }
 
-func selectAssessmentCorporateSources(ctx context.Context, owner, id string, all map[string]PaperEvaluationAssessment, s paperEvaluationSources) (PaperEvaluationCorporateSelection, error) {
-	inspection, err := inspectAssessmentCorporateSources(ctx, owner, id, all, s)
+func selectAssessmentCorporateSources(ctx context.Context, id string, cat PaperEvaluationAssessmentCatalog, records []CorporateActionSourceRecord) (PaperEvaluationCorporateSelection, error) {
+	inspection, err := inspectAssessmentCorporateSources(ctx, id, cat, records)
 	if err != nil {
 		return PaperEvaluationCorporateSelection{}, err
 	}
-	d := all[id].Evidence.Declaration // catalogue replay above verified this record
+	var d PaperEvaluationDeclaration
+	for _, r := range cat.Records {
+		if r.Command.ID == id {
+			d = r.Evidence.Declaration
+			break
+		}
+	}
 	out := PaperEvaluationCorporateSelection{Schema: "mantik-owned-predeclared-corporate-selection-v1", AssessmentID: id, AssessmentSHA256: inspection.AssessmentSHA256, DeclarationSHA256: inspection.DeclarationSHA256, SourceCutSHA256: inspection.SourceCutSHA256, Rows: []PaperEvaluationCorporateSelectionRow{}, Status: "corporate_source_plan_not_predeclared", Authority: "service_owned_predeclared_acquisition_selection_only"}
 	if d.Command.Plan.CorporateSources != nil {
 		out.Status = "predeclared_acquisition_selection_only"
@@ -107,7 +113,7 @@ func selectAssessmentCorporateSources(ctx context.Context, owner, id string, all
 			row := PaperEvaluationCorporateSelectionRow{Plan: plan, PlanSHA256: workerplan.Hash(plan), Status: "predeclared_root_unavailable_at_cut"}
 			roots := []CorporateActionSourceRecord{}
 			for _, p := range inspection.Pages {
-				r := s.corporateSources[p.Pin.Sequence-1]
+				r := records[p.Pin.Sequence-1]
 				if r.Acquisition != nil && r.Acquisition.JournalID == plan.JournalID && r.Acquisition.CollectionID == plan.RootCollectionID {
 					roots = append(roots, r)
 				}
@@ -123,7 +129,7 @@ func selectAssessmentCorporateSources(ctx context.Context, owner, id string, all
 				if p.PageToken != "" || p.Start != plan.Start || p.End != plan.End || p.AccessRef != plan.AccessRef || !slices.Equal(p.Symbols, []string{plan.Symbol}) {
 					row.Status = "predeclared_query_scope_mismatch"
 				} else {
-					chain, err := inspectAssessmentCorporateChain(ctx, owner, id, r.Command.ID, all, s)
+					chain, err := inspectAssessmentCorporateChain(ctx, id, r.Command.ID, cat, records)
 					if err != nil {
 						return PaperEvaluationCorporateSelection{}, err
 					}
@@ -154,11 +160,11 @@ func (m *Memory) PaperEvaluationCorporateSelection(ctx context.Context, id strin
 	if err := ctx.Err(); err != nil {
 		return PaperEvaluationCorporateSelection{}, err
 	}
-	s, err := m.paperEvaluationSourcesLocked(de, oe)
+	cat, records, err := m.assessmentInspectionSourcesLocked(ctx, de, oe)
 	if err != nil {
 		return PaperEvaluationCorporateSelection{}, err
 	}
-	return selectAssessmentCorporateSources(ctx, m.receiverID, id, m.evaluationAssessments, s)
+	return selectAssessmentCorporateSources(ctx, id, cat, records)
 }
 func (p *Postgres) PaperEvaluationCorporateSelection(ctx context.Context, id string, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperEvaluationCorporateSelection, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -166,15 +172,11 @@ func (p *Postgres) PaperEvaluationCorporateSelection(ctx context.Context, id str
 		return PaperEvaluationCorporateSelection{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	s, err := readPaperEvaluationSources(ctx, tx, false, de, oe, p.portfolioEvaluator)
+	cat, records, err := readAssessmentInspectionSources(ctx, tx, de, oe, p.portfolioEvaluator)
 	if err != nil {
 		return PaperEvaluationCorporateSelection{}, err
 	}
-	all, err := readPaperEvaluationAssessments(ctx, tx)
-	if err != nil {
-		return PaperEvaluationCorporateSelection{}, err
-	}
-	out, err := selectAssessmentCorporateSources(ctx, s.declarations.ReceiverID, id, all, s)
+	out, err := selectAssessmentCorporateSources(ctx, id, cat, records)
 	if err != nil {
 		return PaperEvaluationCorporateSelection{}, err
 	}

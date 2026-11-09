@@ -1067,5 +1067,9 @@ stay unchanged; no production writer can retire paper owners in this version.
 Private source-custody reads select seals for the actual working owners or the
 specific historical cut, so unrelated historical seals do not consume the
 512-record read budget. Missing required seals continue to fail replay.
+Assessment inspection and exact retries replay their first archived native
+source context, preserving complete original evidence and legacy hashes after
+input rows move. New assessment sample selection and the remaining consumers
+must gain archive access before physical paper retirement can be enabled.
 
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

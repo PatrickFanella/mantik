@@ -124,6 +124,12 @@ established paper/protection reads.
 
 ## Recovery and remaining work
 
+Assessment inspection and exact retries now use the original paper archive's
+native source context when the assessment has been sealed. They rederive the
+original assessment after its input rows move, preserving legacy recipes and
+the complete original evidence hash. Corporate-source readbacks use the same
+resolver. See [historical assessment replay](paper-evaluation-assessments.md#historical-assessment-replay).
+
 Backups must include `mantik_paper_record_archives`,
 `mantik_paper_record_epochs`, `mantik_paper_archive_members` and
 `mantik_paper_archive_batches`, together with all original source owners, feed
@@ -138,8 +144,9 @@ decisions, waiting outcomes and an actual assessment. Restore replays its origin
 evidence, verifies first-ID lookup and exact retries, and checks archive audit
 without starting workers or making provider requests.
 
-Historical paper/source checkpoints now have bounded owner views. Physical
-paper retirement still requires historical owner views for assessments,
-pending outcomes, allocation references and reviews. Admission-review and other
+Historical paper/source checkpoints and existing assessment inspection now have
+bounded original owner views. Physical paper retirement still requires complete
+historical sample selection for new assessments, pending outcomes, allocation
+references and reviews. Admission-review and other
 workflow/source retention, automatic scheduling and growing-history operational
 cost checks also remain part of the complete archive work.

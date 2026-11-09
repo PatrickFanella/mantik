@@ -28,14 +28,7 @@ func legacyCalibrationFixture(t *testing.T, s assessmentBackend, receipt PaperEv
 			t.Fatal(c)
 		}
 	}
-	switch b := s.(type) {
-	case *Memory:
-		b.evaluationAssessments[old.Command.ID] = clone(old)
-	case *Postgres:
-		if _, err = b.pool.Exec(context.Background(), "UPDATE mantik_paper_evaluation_assessments SET payload=$1 WHERE id=$2", raw, old.Command.ID); err != nil {
-			t.Fatal(err)
-		}
-	}
+	setPredecessorAssessment(t, s, old)
 	got, err := s.AssessPaperEvaluation(context.Background(), old.Command, func() time.Time { t.Fatal("legacy calibration retry read clock"); return time.Time{} }, de, oe)
 	if err != nil || !got.Duplicate || !reflect.DeepEqual(got.Record, old) {
 		t.Fatal("legacy v2 retry changed", got, err)
