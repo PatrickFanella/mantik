@@ -240,7 +240,15 @@ therefore costs one calendar read. Any other stop waits one minute, and five
 consecutive failed runs end the process with an error. Each run's status is
 printed as JSON.
 
-The journal's 128 captures and the server's feed limits still apply, so the loop
-ends with an error once capacity runs out rather than pruning anything. It does
-not yet support unattended operation for longer than those limits allow; #285
-tracks the retention work.
+With `--archive-root`, the loop rolls the journal over before a run that would
+not fit in its 128 captures. A rollover exports the journal to a new
+`JOURNAL_ID-NNNNNN` directory, verifies the export, records it in a hash-chained
+`rollover-NNNNNN.json` kept in the journal, and removes the exported working
+files. It refuses while any input is unacknowledged. A crash partway through
+finishes the next time the journal opens, and the journal keeps its identity and
+binding. Each export can be checked and restored with the existing
+[archive commands](alpaca-archives.md).
+
+Without `--archive-root`, or once the server's feed limits are reached, the loop
+ends with an error rather than pruning anything. It does not yet support
+unattended operation past the server limits; #285 tracks that work.

@@ -33,7 +33,7 @@ func (r remoteCollectorControl) Command(ctx context.Context, receiver string, c 
 func runAlpacaCollectorLoop(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs := flag.NewFlagSet("alpaca-collector-loop", flag.ContinueOnError)
 	fs.SetOutput(errOut)
-	var root, path, credentials, base, receiver, registration string
+	var root, path, credentials, base, receiver, registration, archives string
 	windowSeconds := 480
 	fs.StringVar(&root, "journal", "", "absolute private journal directory")
 	fs.StringVar(&path, "spec", "", "quote session template JSON; its id, at most 15 characters, prefixes each run")
@@ -42,6 +42,7 @@ func runAlpacaCollectorLoop(ctx context.Context, args []string, out, errOut io.W
 	fs.StringVar(&receiver, "receiver-id", "", "expected persistent receiver identity")
 	fs.StringVar(&registration, "collector-registration-id", "", "existing immutable registration")
 	fs.IntVar(&windowSeconds, "regular-session-seconds", windowSeconds, "wall-clock limit of each run, 1–3600 seconds")
+	fs.StringVar(&archives, "archive-root", "", "absolute private directory for verified journal exports; without it the loop stops when the journal fills")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -74,6 +75,18 @@ func runAlpacaCollectorLoop(ctx context.Context, args []string, out, errOut io.W
 				return alpaca.CollectorStatus{}, err
 			}
 			defer func() { _ = j.Close() }()
+			if archives != "" {
+				status, err := j.Status()
+				if err != nil {
+					return alpaca.CollectorStatus{}, err
+				}
+				// A run needs its declared captures plus one calendar.
+				if status.Captures+spec.Session.Count+1 > alpaca.MaxCaptures {
+					if _, err := j.Rollover(ctx, archives); err != nil {
+						return alpaca.CollectorStatus{}, err
+					}
+				}
+			}
 			return j.RunCollector(ctx, client, spec, control, delivery)
 		},
 		Report: func(status alpaca.CollectorStatus, _ error) { _ = emit(out, status) },
