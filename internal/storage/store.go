@@ -53,6 +53,8 @@ type Memory struct {
 	feedArchives                []FeedArchive
 	feedArchiveSources          map[string]int64
 	feedArchiveRecords          map[string]feedArchiveSourceRef
+	feedArchivePrefixPoints     map[string]feedArchivePrefixRef
+	feedArchivePrefixOrder      map[string][]feedArchivePrefixRef
 	portfolioEvaluator          PaperPortfolioEvaluator
 	executionQuotes             PaperExecutionQuoteSource
 	corporateActionSources      []CorporateActionSourceRecord

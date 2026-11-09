@@ -155,3 +155,53 @@ Backups now include `mantik_feed_archive_sources` and
 owners and schema/receiver state. Restore all of them consistently; rollback
 still uses an independently restored matching backup. Lookup/index delivery
 does not yet authorize active-source removal or complete continuous retention.
+
+## Archived registration prefixes
+
+Schema 102 persists publication and collector-admission prefix points for each
+registration. Counts and chained digests match the existing v3 decision/outcome
+prefix contract: publication order is `(published_at, key)`, and admission order
+is `(at, id)` with its actual routed input included in the digest. Repeated
+sources keep their original point and first archive reference. Changed earlier
+points fail the complete archive transaction.
+
+An archive, its source index, prefix points and both complete segment manifests
+commit together. A deferred database guard rejects a schema-101 writer that
+supplies a source manifest but omits the prefix manifest. Existing archive
+headers, source snapshots and v1-v3 paper envelopes keep their hashes. Startup
+backfills schema-101 archives one segment at a time under the existing schema
+and collector locks. It does not silently repair complete manifests on a read.
+
+The internal `FeedArchivePrefixStore` read accepts a registration and source
+cut. It selects the first archived snapshot covering the requested cut, or the
+latest archive when the requested cut is later. Its returned `At` explicitly
+limits coverage to the earlier of the request and that archive's cut; active
+sources beyond the archive are not included. A known registration can have an
+empty prefix before its first publication/admission. An absent archive or
+registration is unavailable rather than a fabricated empty history.
+
+PostgreSQL uses indexed archive-cut and prefix-end lookups. The read loads one
+bounded archive segment, verifies its prefix manifest and rederives the selected
+ends from that segment's original source fields. Missing or changed selected
+index points fail instead of returning a shorter prefix. It does not load every
+prior archive. The Memory implementation maintains an ordered prefix index with
+binary cut selection. These are internal source-custody reads; no additional
+HTTP endpoint or operational authority is introduced.
+
+Source and archive cuts retain separate integer Unix seconds and nanoseconds in
+the SQL indexes. PostgreSQL timestamp rounding must not admit a source one
+nanosecond after a historical cut or drop an equal-clock ID tie. The complete
+source/index audit also rederives every prefix point from actual source snapshots
+and compares the entire point index and each manifest. The Memory audit checks
+its ordered index too. Full audit work grows with history, separately from the
+bounded cut read.
+
+Backups additionally include `mantik_feed_archive_prefixes` and
+`mantik_feed_archive_prefix_batches`. Restore these with all archive/source,
+receiver and schema tables. Schema-101 startup binaries refuse schema 102;
+rollback requires an independently restored compatible backup and binary.
+
+Prefix custody is a prerequisite for archive-aware paper replay. Existing paper
+readers still verify against active sources; pruning, archived paper records and
+automatic continuous retention remain unfinished. This schema does not grant
+permission to delete active sources independently.

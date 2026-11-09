@@ -1028,4 +1028,9 @@ audit to that custody contract. Snapshot, index and manifest commit together;
 older snapshots are backfilled without changing their hashes. Active-source
 pruning remains unfinished.
 
+Schema 102 retains the same v3 registration-prefix counts and hashes in the
+archive, with nanosecond cut indexes, atomic manifests and source-backed audit.
+These internal prefix reads prepare archive-aware replay; active-source pruning
+and automatic continuous retention remain unfinished.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.
