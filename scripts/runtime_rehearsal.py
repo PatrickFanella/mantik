@@ -177,9 +177,11 @@ class Rehearsal:
         seed = {"id": "rehearsal-seed", "capability": "latest_quotes", "feed": "iex", "symbols": ["SPY"],
                 "access_ref": "alpaca-read-access-check", "max_quote_age_seconds": 60}
         save(self.root / "seed-spec.json", seed)
-        self.command("alpaca-collect", "--journal", self.root / "journal", "--spec", self.root / "seed-spec.json",
+        seed_journal = self.root / "seed-journal"
+        self.command("alpaca-journal", "--journal", seed_journal, "--init")
+        self.command("alpaca-collect", "--journal", seed_journal, "--spec", self.root / "seed-spec.json",
                      "--credentials-file", self.credentials)
-        captures = list((self.root / "journal").glob("capture-rehearsal-seed-*.json"))
+        captures = list(seed_journal.glob("capture-rehearsal-seed-*.json"))
         if len(captures) != 1:
             raise RuntimeError("seed quote capture was not retained exactly once")
         recording = json.loads(captures[0].read_text())["recording"]
@@ -266,7 +268,7 @@ class Rehearsal:
             return
         self.receipt["mode"] = "market_rehearsal"
         collector = self.collector()
-        self.start("research", "paper-research-loop", "--api-url", self.origin, "--receiver-id", self.owner,
+        research = self.start("research", "paper-research-loop", "--api-url", self.origin, "--receiver-id", self.owner,
             "--model-config", self.root / "model-proxy" / "model.json", "--capture-root", self.root / "reviews",
             "--interval-seconds", "30")
         began, phase = time.monotonic(), "baseline"
@@ -300,6 +302,10 @@ class Rehearsal:
             self.snapshot(phase)
             if self.service.poll() is not None:
                 raise RuntimeError("rehearsal service stopped unexpectedly")
+            if research.poll() is not None:
+                raise RuntimeError("rehearsal research loop stopped unexpectedly; inspect its private log")
+            if phase != "feed_outage" and collector.poll() is not None:
+                raise RuntimeError("rehearsal collector stopped unexpectedly; inspect its private log")
             time.sleep(min(30, max(0, duration - (time.monotonic() - began))))
         final = self.snapshot("finished")
         self.receipt["decisions"] = [{"id": r["command"]["id"], "sha256": r["sha256"],

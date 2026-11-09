@@ -23,6 +23,11 @@ Switchyard's existing `http://10.0.0.50:11434` model listener with
 workflow, configuration or private historical data is changed. No raw Ollama
 listener is used.
 
+The seed quote is retained in its own `seed-journal`. The registered continuous
+collector uses a separate, initially empty `journal`, so the seed's unacknowledged
+input cannot violate the collector's fenced-binding precondition. Both original
+captures remain in the private rehearsal directory.
+
 Build the intended exact source with the pinned toolchain before invoking the
 runner. Supply its full 40-character commit as `--source-commit`, the absolute
 binary path as `--binary`, a new absolute private directory as `--root`, the
@@ -83,6 +88,8 @@ outcomes, assessments, comparisons, attribution and service state. Readiness
 degradation during a declared outage is captured rather than discarded. Failure
 of an owner read stops the run visibly. The runner records handles before using
 them and stops only its own `Popen` objects and exact database container ID.
+Unexpected service, research-loop or active collector exits also stop the run;
+the deliberately stopped collector is exempt during the feed-outage phase.
 Database dump failure does not skip container cleanup. Credentials, dumps,
 receipts and model captures stay outside Git in mode-0700 directories with
 mode-0600 files.
