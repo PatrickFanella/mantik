@@ -51,6 +51,14 @@ func TestPostgresContractsFeedArchiveSourceIndexUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(reopened.Close)
+	// Historical upgrade fixtures replay later DDL while retaining its tables.
+	// Replay must preserve populated archives, index rows and manifests too.
+	if _, err := reopened.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version=101"); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.migrate(ctx); err != nil {
+		t.Fatal("source-index migration replay", err)
+	}
 	got, err := reopened.FeedArchiveSource(ctx, "command", "index-register")
 	if err != nil || !reflect.DeepEqual(got, want) || got.Archive != r.Header {
 		t.Fatal("upgrade rewrote the source or archive identity", err)
