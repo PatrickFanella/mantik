@@ -68,4 +68,19 @@ func paperFeedCustodyHTTP(t *testing.T, request func(string, string, any, int) [
 	if err := json.Unmarshal(request("GET", "/v1/feed-archives/paper-custody-audit", nil, 200), &audit); err != nil || audit.Status != "verified" || audit.Decisions != len(decisions.Records) || audit.Outcomes != len(outcomes.Records) {
 		t.Fatal("lifecycle original-source audit", audit, err)
 	}
+	clock.panicRead = false
+	var paperArchive storage.PaperRecordArchiveReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-record-archives", map[string]string{"receiver_id": owner}, 201), &paperArchive); err != nil || paperArchive.Header.Validate() != nil || paperArchive.Header.Decisions != len(decisions.Records) || paperArchive.Header.Outcomes != len(outcomes.Records) {
+		t.Fatal("native lifecycle paper archive", paperArchive, err)
+	}
+	clock.panicRead = true
+	request("POST", "/v1/paper-record-archives", map[string]string{"receiver_id": owner}, 200)
+	var archived storage.PaperRecordArchive
+	if err := json.Unmarshal(request("GET", "/v1/paper-record-archives/1", nil, 200), &archived); err != nil || archived.Validate() != nil || archived.SHA256 != paperArchive.Header.SHA256 {
+		t.Fatal("native lifecycle archived replay", err)
+	}
+	var paperAudit storage.PaperRecordArchiveAudit
+	if err := json.Unmarshal(request("GET", "/v1/paper-record-archives/audit", nil, 200), &paperAudit); err != nil || paperAudit.Status != "verified" || paperAudit.Archives != 1 || paperAudit.Records < len(decisions.Records)+len(outcomes.Records) {
+		t.Fatal("native lifecycle paper archive audit", paperAudit, err)
+	}
 }

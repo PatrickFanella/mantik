@@ -93,7 +93,7 @@ func TestFeedRetentionWorkingSetAndPrefixContinuation(t *testing.T) {
 		t.Fatal("empty paper owner evaluated")
 		return PaperOutcomeEvaluation{}, nil
 	}}
-	data, err := paperFeedCheckpointData(a, nil, nil, strategies, e)
+	data, err := paperFeedCheckpointData(a, nil, nil, strategies, e, PaperRecordArchiveHeader{})
 	if err != nil {
 		t.Fatal(err)
 	}

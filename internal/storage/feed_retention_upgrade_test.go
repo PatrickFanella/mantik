@@ -7,6 +7,7 @@ import "testing"
 // writer; normal startup and rollback never remove custody in place.
 func dropFeedRetentionSchema(t *testing.T, p *Postgres) {
 	t.Helper()
+	dropPaperRecordArchiveSchema(t, p)
 	for _, sql := range []string{
 		"DROP TRIGGER IF EXISTS mantik_collector_retention_root ON mantik_feed_collectors",
 		"DROP TRIGGER IF EXISTS mantik_archive_retention_root ON mantik_feed_archives",

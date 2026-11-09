@@ -252,9 +252,12 @@ qualification flags.
 
 Current operational reads replay retained paper bases and verify the owner
 checkpoint and any still-active source overlap. They do not acquire an
-archive-body dependency. `paper_archive_sequence` is zero because physical paper
-archival has not begun. Feed rotation uses these checkpoints; paper archive
-membership and automatic retention remain unfinished.
+archive-body dependency. The original schema-103 checkpoint format fixes
+`paper_archive_sequence` at zero. Feed rotation uses these checkpoints.
+Schema 105 adds [paper owner epochs](paper-record-archives.md): subsequent custody
+checkpoints use v2 and bind their actual paper archive sequence. Earlier v1
+checkpoints retain their original epoch-zero identities. Physical paper
+retirement and automatic retention remain unfinished.
 
 Backups now include `mantik_paper_feed_checkpoints` together with every feed
 archive/index, active paper/source owner and receiver/schema history. Schema-102

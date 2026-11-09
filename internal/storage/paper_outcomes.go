@@ -335,6 +335,7 @@ func (m *Memory) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand, 
 			return PaperOutcomeReceipt{}, err
 		}
 		m.retainPaperFeedSourceSeal(outcomeFeedSourcePin(v))
+		m.retainPaperRecordEpoch("outcome", c.ID, v.Record.SHA256, v.Record.EvaluatedAt)
 		m.paperOutcomes[c.ID] = clone(v)
 	}
 	return PaperOutcomeReceipt{clone(v.Record), dup}, nil

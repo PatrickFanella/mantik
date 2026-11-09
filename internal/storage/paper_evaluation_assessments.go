@@ -520,6 +520,7 @@ func (m *Memory) AssessPaperEvaluation(ctx context.Context, c PaperEvaluationAss
 	}
 	if !r.Duplicate {
 		m.evaluationAssessments[c.ID] = clone(r.Record)
+		m.retainPaperRecordEpoch("assessment", c.ID, r.Record.SHA256, r.Record.AssessedAt)
 	}
 	return r, nil
 }

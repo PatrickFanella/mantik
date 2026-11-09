@@ -1051,4 +1051,12 @@ existing paper envelopes and hashes are unchanged. The authenticated
 Rotation is explicit; physical paper/assessment/review archival and automatic
 continuous retention remain unfinished.
 
+[Paper record custody](docs/reference/paper-record-archives.md) adds immutable
+decision, outcome, assessment and review snapshots with original-ID lookup and
+native source replay. Schema 105 records creation epochs and binds subsequent
+paper-source checkpoints to their actual archive epoch, preserving earlier
+envelopes and hashes. The authenticated `/v1/paper-record-archives` routes expose
+creation, paged headers, targeted originals and full audit. Active paper records
+remain retained; physical retirement and automatic retention are still pending.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.
