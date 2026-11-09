@@ -18,6 +18,10 @@ namespace, publish no ports, and copy test source rather than bind-mounting a
 host path. Cleanup removes only those containers. It does not read a supplied
 DATABASE_URL or touch existing database volumes. The storage and CLI integration
 packages and their test groups run sequentially against this disposable server.
+The harness verifies that each attached test container actually reached
+`exited` with exit code zero and no OOM kill before accepting tests or recovery
+proof. A detached attachment returning zero while its container still runs is
+an error, and cleanup removes that owned container.
 The race detector and concurrent transaction checks inside each test remain
 enabled. Each group has a thirty-minute test budget. Normal-build request
 timeouts and all assertions retain their existing values. Race-build owner replay
