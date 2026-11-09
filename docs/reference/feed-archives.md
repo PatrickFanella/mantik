@@ -256,4 +256,6 @@ isolated resources; removing migration records or checkpoint rows in place is
 unsupported. The checkpoint tests cover exact retries, concurrent creation,
 clock fences, restart, an older writer during upgrade, populated DDL replay,
 source corruption, self-rehashed omissions and rollback at both statement and
-COMMIT boundaries.
+COMMIT boundaries. The disposable backup/restore contract also retains populated
+archive indexes and a paper checkpoint with a waiting forward outcome, then
+replays that checkpoint and its exact retry against the restored original owners.

@@ -27,6 +27,25 @@ func TestPostgresContractsPaperFeedCheckpoints(t *testing.T) {
 	paperFeedCheckpointContracts(t, timerPostgres(t, "paperfeedcustody"))
 }
 
+func assertRestoredPaperFeedCheckpoint(t *testing.T, s *Postgres, owner string) {
+	t.Helper()
+	ctx := t.Context()
+	c, err := s.PaperFeedCheckpoint(ctx, 1, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
+	if err != nil || c.Validate() != nil || c.ReceiverID != owner || c.Decisions != 1 || c.Outcomes != 1 || c.Records[0].ID != "recovery-decision" || c.Records[1].ID != "recovery-outcome" {
+		t.Fatal("restored paper source custody", c, err)
+	}
+	noClock := func() time.Time { t.Fatal("restored custody retry sampled time"); return time.Time{} }
+	retry, err := s.ArchivePaperFeed(ctx, owner, noClock, func(FeedEvidenceSnapshot, time.Time) error { return nil }, recoveryFixtureDecisionEvaluator, recoveryFixtureOutcomeEvaluator)
+	if err != nil || !retry.Duplicate || retry.Header != c.Archive || retry.PaperCustody == nil || !retry.PaperCustody.Duplicate || retry.PaperCustody.Header != c.PaperFeedCheckpointHeader {
+		t.Fatal("restored custody retry changed original identity", retry, err)
+	}
+	audit, err := s.AuditFeedArchiveSources(ctx)
+	if err != nil || audit.Archives != 1 || audit.Status != "verified" || audit.Sources != 6 {
+		t.Fatal("restored archive indexes changed", audit, err)
+	}
+	t.Logf("paper custody restore preserved checkpoint=%s records=%s archive=%s", c.SHA256, c.RecordsSHA256, c.Archive.SHA256)
+}
+
 func paperFeedCheckpointContracts(t *testing.T, s paperFeedBackend) {
 	t.Helper()
 	ctx := t.Context()
