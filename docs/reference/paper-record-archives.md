@@ -129,6 +129,12 @@ the index is selection metadata and grants no evaluation or financial authority.
 Existing archive payloads, creation-pin hashes and original source hashes stay
 unchanged. The retirement guard continues to reject removal of paper owners.
 
+Predecessor backfill can omit the later scope columns only for an exact duplicate
+of an already reserved identity with its original record hash and event clock.
+Its candidate insert reuses that immutable original scope before PostgreSQL
+checks the row shape and applies `ON CONFLICT`. A missing reservation or changed
+hash/clock remains a conflict; this path never fills new identities by guessing.
+
 Schema 108 makes the sample index use native byte ordering for decision IDs,
 record kinds and record IDs. This keeps PostgreSQL and memory pagination aligned
 when event clocks tie and IDs contain case or punctuation. The private sample

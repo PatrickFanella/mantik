@@ -580,10 +580,15 @@ func assertFeedRetirementOldWriterFences(t *testing.T, pg *Postgres, before Feed
 			body, _ = json.Marshal(retainedPaperDecision{Record: decision})
 			id, table = decision.Command.ID, "mantik_paper_decisions"
 		} else {
+			var retained retainedPaperOutcome
+			var original []byte
+			if err := pg.pool.QueryRow(ctx, "SELECT payload FROM mantik_paper_outcomes WHERE id=$1", outcome.Command.ID).Scan(&original); err != nil || json.Unmarshal(original, &retained) != nil {
+				t.Fatal("old writer outcome scope fixture", err)
+			}
 			outcome.Command.ID, outcome.EvaluatedAt = "old-writer-outcome", at
 			outcome.SHA256 = ""
 			outcome.SHA256 = workerplan.Hash(outcome)
-			body, _ = json.Marshal(retainedPaperOutcome{Record: outcome})
+			body, _ = json.Marshal(retainedPaperOutcome{Record: outcome, Basis: retained.Basis})
 			id, table = outcome.Command.ID, "mantik_paper_outcomes"
 		}
 		tx, err := pg.pool.Begin(ctx)

@@ -105,6 +105,18 @@ func paperRecordScopeContract(t *testing.T, s paperArchiveBackend) {
 			t.Fatal("populated schema-106 scope backfill", err)
 		}
 		checkScopes()
+		if _, err := pg.pool.Exec(ctx, "INSERT INTO mantik_paper_record_epochs(kind,record_id,created_epoch,record_sha256,at_seconds,at_nanos) SELECT kind,record_id,0,record_sha256,at_seconds,at_nanos FROM mantik_paper_record_epochs WHERE kind IN ('decision','outcome') ON CONFLICT(kind,record_id) DO NOTHING"); err != nil {
+			t.Fatal("duplicate predecessor backfill lost original scope", err)
+		}
+		checkScopes()
+		for _, sql := range []string{
+			"INSERT INTO mantik_paper_record_epochs(kind,record_id,created_epoch,record_sha256,at_seconds,at_nanos) SELECT kind,'missing-scope',created_epoch,record_sha256,at_seconds,at_nanos FROM mantik_paper_record_epochs WHERE kind='decision' ON CONFLICT(kind,record_id) DO NOTHING",
+			"INSERT INTO mantik_paper_record_epochs(kind,record_id,created_epoch,record_sha256,at_seconds,at_nanos) SELECT kind,record_id,created_epoch,repeat('0',64),at_seconds,at_nanos FROM mantik_paper_record_epochs WHERE kind='decision' ON CONFLICT(kind,record_id) DO NOTHING",
+		} {
+			if _, err := pg.pool.Exec(ctx, sql); err == nil || !strings.Contains(err.Error(), "scope missing or changed") {
+				t.Fatal("missing or changed reservation borrowed predecessor scope", err)
+			}
+		}
 		if _, err := pg.pool.Exec(ctx, "UPDATE mantik_paper_record_epochs SET strategy_id='changed'"); err == nil {
 			t.Fatal("ordinary writer changed immutable scope")
 		}
