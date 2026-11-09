@@ -58,7 +58,9 @@ func feedArchiveError(w http.ResponseWriter, err error) {
 		write(w, 404, map[string]string{"error": err.Error()})
 	case errors.Is(err, storage.ErrFeedArchiveInvalid):
 		write(w, 422, map[string]string{"error": err.Error()})
-	case errors.Is(err, storage.ErrFeedArchiveConflict), errors.Is(err, storage.ErrFeedArchiveCapacity):
+	case errors.Is(err, storage.ErrFeedArchiveConflict), errors.Is(err, storage.ErrFeedArchiveCapacity),
+		errors.Is(err, storage.ErrPaperDecisionInvalid), errors.Is(err, storage.ErrPaperDecisionConflict),
+		errors.Is(err, storage.ErrPaperOutcomeInvalid), errors.Is(err, storage.ErrPaperOutcomeConflict):
 		write(w, 409, map[string]string{"error": err.Error()})
 	default:
 		feedEvidenceError(w, err)
@@ -86,7 +88,12 @@ func feedArchiveRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		receipt, err := backend.ArchiveFeed(ctx, command.ReceiverID, clock.Now, validateFeedArchiveSource)
+		var receipt storage.FeedArchiveReceipt
+		if paper, ok := store.(storage.PaperFeedArchiveStore); ok {
+			receipt, err = paper.ArchivePaperFeed(ctx, command.ReceiverID, clock.Now, validateFeedArchiveSource, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+		} else {
+			receipt, err = backend.ArchiveFeed(ctx, command.ReceiverID, clock.Now, validateFeedArchiveSource)
+		}
 		if err != nil {
 			feedArchiveError(w, err)
 			return
@@ -130,6 +137,23 @@ func feedArchiveRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		write(w, 200, page)
 	})
+	if paper, ok := store.(storage.PaperFeedArchiveStore); ok {
+		mux.HandleFunc("GET /v1/feed-archives/paper-custody/{sequence}", func(w http.ResponseWriter, r *http.Request) {
+			sequence, err := strconv.ParseInt(r.PathValue("sequence"), 10, 64)
+			if err != nil || r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
+				feedArchiveError(w, storage.ErrFeedArchiveInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*30*time.Second)
+			defer cancel()
+			checkpoint, err := paper.PaperFeedCheckpoint(ctx, sequence, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+			if err != nil {
+				feedArchiveError(w, err)
+				return
+			}
+			write(w, 200, checkpoint)
+		})
+	}
 	mux.HandleFunc("GET /v1/feed-archives/{sequence}", func(w http.ResponseWriter, r *http.Request) {
 		sequence, err := strconv.ParseInt(r.PathValue("sequence"), 10, 64)
 		if err != nil || r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 {

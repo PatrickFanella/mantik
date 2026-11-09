@@ -34,6 +34,7 @@ func TestPostgresContractsFeedArchiveSourceIndexUpgrade(t *testing.T) {
 	// Construct the exact schema-100 predecessor on this disposable database.
 	// The original source snapshot and its header remain untouched.
 	for _, sql := range []string{
+		"DROP TABLE mantik_paper_feed_checkpoints",
 		"DROP TRIGGER mantik_feed_archive_prefix_batch_required ON mantik_feed_archives",
 		"DROP FUNCTION mantik_require_feed_archive_prefix_batch()",
 		"DROP TABLE mantik_feed_archive_prefix_batches",

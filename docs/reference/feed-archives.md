@@ -205,3 +205,55 @@ Prefix custody is a prerequisite for archive-aware paper replay. Existing paper
 readers still verify against active sources; pruning, archived paper records and
 automatic continuous retention remain unfinished. This schema does not grant
 permission to delete active sources independently.
+
+## Paper source checkpoints
+
+Schema 103 extends `POST /v1/feed-archives` with a paper source checkpoint in the
+same owner transaction. The request still accepts only `receiver_id`. The
+service reads every retained decision and outcome, verifies its original basis
+against the archived feed and re-executes the compiled evaluators. It retains
+original record, basis and outcome-observation digests with the registration
+prefixes. A failed replay, INSERT or COMMIT leaves both owners unchanged.
+
+The receipt adds `paper_custody`, containing its own header and `duplicate`
+flag. Feed and paper identities advance independently: an unchanged feed returns
+HTTP 200 and the original feed header, while newly finalized paper records can
+produce a new paper checkpoint. An unchanged pair returns both original headers
+without sampling a clock. Paper checkpoints are limited to 1 MiB and bind the
+complete active paper membership at their cut.
+
+The checkpoint's `cut_at` is the later of its feed archive time and the latest
+retained decision/outcome time. This also closes the known-empty feed interval
+when paper records advance on an unchanged feed. Subsequent new source events,
+decisions and outcomes must be strictly later than this cut. Equal or earlier
+clocks fail; exact historical retries remain readbacks. SQL guards enforce the
+paper fence for older running writers using separate seconds and nanoseconds,
+without PostgreSQL timestamp rounding. Migration acquires the collector lock
+before installing those guards, in the same order as existing paper writers.
+
+`GET /v1/feed-archives/paper-custody/{sequence}` returns a checkpoint by positive
+sequence. It requires normal bearer authentication and accepts no query, body,
+caller clock, source content or evaluator. The owner loads the named bounded
+feed archive and actual paper records through the sealed cut, replays them, and
+compares complete membership, identities and prefixes. Removing a pin and
+rehashing the envelope cannot replace the owner's closed record set. Later
+paper records leave the original readback unchanged. The header schema is
+`mantik-paper-feed-checkpoint-v1`; its authority is
+`service_owned_paper_source_custody_only`, with false admission, execution and
+qualification flags.
+
+This checkpoint prepares archive-aware paper replay. Active records remain
+retained, and current operational reads continue to use active owners. They do
+not acquire an archive-body dependency. `paper_archive_sequence` is zero in this
+version because physical paper archival has not begun. Pruning, paper archive
+membership and automatic retention remain required before these checkpoints
+can extend the active limits.
+
+Backups now include `mantik_paper_feed_checkpoints` together with every feed
+archive/index, active paper/source owner and receiver/schema history. Schema-102
+startup binaries refuse schema 103. Restore matching state and binaries in
+isolated resources; removing migration records or checkpoint rows in place is
+unsupported. The checkpoint tests cover exact retries, concurrent creation,
+clock fences, restart, an older writer during upgrade, populated DDL replay,
+source corruption, self-rehashed omissions and rollback at both statement and
+COMMIT boundaries.
