@@ -50,6 +50,8 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	feedRetention              *FeedRetention
+	paperFeedSourceSeals       map[string]PaperFeedSourcePin
 	paperFeedCheckpoints       []PaperFeedCheckpoint
 	paperFeedCheckpointSources map[string]int64
 

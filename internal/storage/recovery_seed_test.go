@@ -175,6 +175,22 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	if err != nil || archive.PaperCustody == nil || archive.PaperCustody.Header.Decisions != 1 || archive.PaperCustody.Header.Outcomes != 1 {
 		t.Fatal("paper custody recovery seed", archive, err)
 	}
+	retirement, err := s.RotateFeed(ctx, account.ReceiverID, func() time.Time { t.Fatal("same-source retirement sampled clock"); return time.Time{} }, func(FeedEvidenceSnapshot, time.Time) error { return nil }, eval, recoveryFixtureOutcomeEvaluator)
+	if err != nil || retirement.Retention == nil || retirement.Retention.CommandsRetired != 1 {
+		t.Fatal("feed retirement recovery seed", retirement, err)
+	}
+	custodyAt = custodyAt.Add(time.Nanosecond)
+	postRetirement, err := s.FinalizePaperDecision(ctx, PaperDecisionCommand{ID: "recovery-retired-feed-decision", ReceiverID: account.ReceiverID, StrategyID: d.ID, StrategySHA256: strategy.Record.SHA256, RegistrationID: reg.ID}, func() time.Time { return custodyAt }, eval)
+	if err != nil || postRetirement.Record.Schema != paperDecisionSchemaV4 {
+		t.Fatal("retired feed paper recovery seed", postRetirement, err)
+	}
+	custodyAt = custodyAt.Add(time.Nanosecond)
+	if outcome, err := s.AssessPaperOutcome(ctx, PaperOutcomeCommand{ID: "recovery-retired-feed-outcome", ReceiverID: account.ReceiverID, DecisionID: postRetirement.Record.Command.ID, DecisionSHA256: postRetirement.Record.SHA256}, func() time.Time { return custodyAt }, eval, recoveryFixtureOutcomeEvaluator); err != nil || outcome.Record.Schema != paperOutcomeSchemaV4 {
+		t.Fatal("retired feed outcome recovery seed", outcome, err)
+	}
+	if audit, err := s.AuditPaperFeed(ctx, eval, recoveryFixtureOutcomeEvaluator); err != nil || audit.Decisions != 2 || audit.Outcomes != 2 {
+		t.Fatal("retired feed recovery source replay", audit, err)
+	}
 }
 
 // Shared by source seeding and restore replay. This compiled storage fixture

@@ -73,7 +73,7 @@ type PaperOutcomeRecord struct {
 }
 
 func (r PaperOutcomeRecord) Validate() error {
-	if r.Command.Validate() != nil || (r.Schema != "mantik-owned-paper-outcome-v1" && r.Schema != "mantik-owned-paper-outcome-v2" && r.Schema != paperOutcomeSchemaV3) || r.Recipe != PaperOutcomeRecipe || r.EvaluatedAt.IsZero() || r.Authority != "service_owned_forward_quote_outcome_only" || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || !decisionPin.MatchString(r.BasisSHA256) {
+	if r.Command.Validate() != nil || (r.Schema != "mantik-owned-paper-outcome-v1" && r.Schema != "mantik-owned-paper-outcome-v2" && r.Schema != paperOutcomeSchemaV3 && r.Schema != paperOutcomeSchemaV4) || r.Recipe != PaperOutcomeRecipe || r.EvaluatedAt.IsZero() || r.Authority != "service_owned_forward_quote_outcome_only" || r.AdmissionAvailable || r.ExecutionAvailable || r.QualificationCredit || !decisionPin.MatchString(r.BasisSHA256) {
 		return ErrPaperOutcomeInvalid
 	}
 	switch r.Evaluation.Status {
@@ -114,6 +114,12 @@ func newPaperOutcome(c PaperOutcomeCommand, b PaperOutcomeBasis, at time.Time, e
 }
 
 func paperOutcomeForSchema(schema string, c PaperOutcomeCommand, b PaperOutcomeBasis, at time.Time, eval PaperOutcomeEvaluator) (PaperOutcomeRecord, error) {
+	if schema != "mantik-owned-paper-outcome-v1" && schema != "mantik-owned-paper-outcome-v2" && schema != paperOutcomeSchemaV3 && schema != paperOutcomeSchemaV4 {
+		return PaperOutcomeRecord{}, ErrPaperOutcomeInvalid
+	}
+	if schema == paperOutcomeSchemaV4 && !canonicalPaperBasisValid(b.Observation) {
+		return PaperOutcomeRecord{}, ErrPaperOutcomeInvalid
+	}
 	if c.Validate() != nil || eval == nil || at.IsZero() || at.UTC().Year() < 1 || at.UTC().Year() > 9999 || b.Decision.Validate() != nil || b.Decision.Command.ReceiverID != c.ReceiverID || b.Decision.Command.ID != c.DecisionID || b.Decision.SHA256 != c.DecisionSHA256 || at.Before(b.Decision.FinalizedAt) || at.Before(b.Observation.Feed.Collectors.LastClock) {
 		return PaperOutcomeRecord{}, ErrPaperOutcomeInvalid
 	}
@@ -180,6 +186,17 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 	if _, err := paperDecisionCatalog(owner, decisions, strategies, feed, decisionEval); err != nil {
 		return out, err
 	}
+	if feed.Retention != nil {
+		closed := 0
+		for _, v := range all {
+			if !v.Record.EvaluatedAt.After(feed.Retention.Checkpoint.CutAt) {
+				closed++
+			}
+		}
+		if closed != feed.Retention.Checkpoint.Outcomes {
+			return out, ErrPaperOutcomeConflict
+		}
+	}
 	eval = memoPaperOutcomeEvaluator(eval)
 	// The actual owner snapshot is fixed for this catalogue call. Reuse only
 	// successful custody checks for a fully equal command, basis, clock and mode.
@@ -201,10 +218,20 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 		}
 		// Outcome observation has its own availability cut. Legacy and current
 		// membership modes are distinct cache inputs, never inferred from a hit.
-		if err := verify(d.Record.Command, b.Observation, r.EvaluatedAt, r.Schema == "mantik-owned-paper-outcome-v2"); err != nil {
+		if feed.Retention != nil {
+			if err := verifyFeedSourcePin(feed, outcomeFeedSourcePin(v)); err != nil {
+				return out, err
+			}
+			if err := verifyPaperDecisionHeaderBasis(d.Record.Command, b.Observation, r.EvaluatedAt, strategies, feed); err != nil {
+				return out, err
+			}
+			if err := verifyRetiredPaperBasis(d.Record.Command, b.Observation, r.EvaluatedAt, feed); err != nil {
+				return out, err
+			}
+		} else if err := verify(d.Record.Command, b.Observation, r.EvaluatedAt, r.Schema == "mantik-owned-paper-outcome-v2"); err != nil {
 			return out, err
 		}
-		if r.Schema == paperOutcomeSchemaV3 {
+		if (r.Schema == paperOutcomeSchemaV3 || r.Schema == paperOutcomeSchemaV4) && feed.Retention == nil {
 			if err := verifyFeedPrefix(d.Record.Command, b.Observation, r.EvaluatedAt, d.Record.FinalizedAt, index); err != nil {
 				return out, err
 			}
@@ -219,6 +246,9 @@ func paperOutcomeCatalog(owner string, all map[string]retainedPaperOutcome, deci
 	return clone(out), nil
 }
 func appendPaperOutcome(c PaperOutcomeCommand, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed FeedEvidenceSnapshot, now func() time.Time, decisionEval PaperDecisionEvaluator, eval PaperOutcomeEvaluator) (retainedPaperOutcome, bool, error) {
+	return appendPaperOutcomeFromFeed(c, all, decisions, strategies, feed, feed, now, decisionEval, eval)
+}
+func appendPaperOutcomeFromFeed(c PaperOutcomeCommand, all map[string]retainedPaperOutcome, decisions map[string]retainedPaperDecision, strategies paperstrategy.Catalog, feed, observation FeedEvidenceSnapshot, now func() time.Time, decisionEval PaperDecisionEvaluator, eval PaperOutcomeEvaluator) (retainedPaperOutcome, bool, error) {
 	if _, err := paperOutcomeCatalog(feed.ReceiverID, all, decisions, strategies, feed, decisionEval, eval); err != nil {
 		return retainedPaperOutcome{}, false, err
 	}
@@ -247,13 +277,22 @@ func appendPaperOutcome(c PaperOutcomeCommand, all map[string]retainedPaperOutco
 	if d.Record.SHA256 != c.DecisionSHA256 {
 		return retainedPaperOutcome{}, false, ErrPaperOutcomeConflict
 	}
-	full, err := decisionBasis(d.Record.Command, strategies, feed)
+	full, err := decisionBasis(d.Record.Command, strategies, observation)
 	if err != nil {
 		return retainedPaperOutcome{}, false, err
 	}
 	at := now()
-	b := PaperOutcomeBasis{d.Record, withFeedPrefix(d.Record.Command, full, feed, at, d.Record.FinalizedAt)}
-	r, err := newPaperOutcome(c, b, at, eval)
+	b := PaperOutcomeBasis{d.Record, withFeedPrefix(d.Record.Command, full, observation, at, d.Record.FinalizedAt)}
+	var r PaperOutcomeRecord
+	if feed.Retention != nil {
+		b.Observation, err = canonicalPaperBasis(b.Observation)
+		if err != nil {
+			return retainedPaperOutcome{}, false, err
+		}
+		r, err = paperOutcomeForSchema(paperOutcomeSchemaV4, c, b, at, eval)
+	} else {
+		r, err = newPaperOutcome(c, b, at, eval)
+	}
 	if err != nil {
 		return retainedPaperOutcome{}, false, err
 	}
@@ -274,7 +313,14 @@ func (m *Memory) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand, 
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
-	v, dup, err := appendPaperOutcome(c, m.paperOutcomes, m.paperDecisions, s, m.decisionFeedLocked(), now, decisionEval, eval)
+	feed := m.decisionFeedLocked()
+	observation, ownedNow, err := outcomeObservationFeed(c, m.paperOutcomes, m.paperDecisions, feed, now, func(reg string, since, at time.Time) (FeedEvidenceSnapshot, error) {
+		return m.archivedOutcomeFeedLocked(ctx, feed, reg, since, at)
+	})
+	if err != nil {
+		return PaperOutcomeReceipt{}, err
+	}
+	v, dup, err := appendPaperOutcomeFromFeed(c, m.paperOutcomes, m.paperDecisions, s, feed, observation, ownedNow, decisionEval, eval)
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
@@ -288,6 +334,7 @@ func (m *Memory) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand, 
 		if err := paperEvaluationSourceClock(m.receiverID, m.evaluationAssessments, v.Record.EvaluatedAt); err != nil {
 			return PaperOutcomeReceipt{}, err
 		}
+		m.retainPaperFeedSourceSeal(outcomeFeedSourcePin(v))
 		m.paperOutcomes[c.ID] = clone(v)
 	}
 	return PaperOutcomeReceipt{clone(v.Record), dup}, nil
@@ -364,7 +411,13 @@ func (p *Postgres) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
-	v, dup, err := appendPaperOutcome(c, all, decisions, s, feed, now, decisionEval, eval)
+	observation, ownedNow, err := outcomeObservationFeed(c, all, decisions, feed, now, func(reg string, since, at time.Time) (FeedEvidenceSnapshot, error) {
+		return readArchivedOutcomeFeed(ctx, tx, feed, reg, since, at)
+	})
+	if err != nil {
+		return PaperOutcomeReceipt{}, err
+	}
+	v, dup, err := appendPaperOutcomeFromFeed(c, all, decisions, s, feed, observation, ownedNow, decisionEval, eval)
 	if err != nil {
 		return PaperOutcomeReceipt{}, err
 	}
@@ -384,6 +437,9 @@ func (p *Postgres) AssessPaperOutcome(ctx context.Context, c PaperOutcomeCommand
 			return PaperOutcomeReceipt{}, err
 		}
 		if _, err = tx.Exec(ctx, "INSERT INTO mantik_paper_outcomes(id,payload) VALUES($1,$2)", c.ID, raw); err != nil {
+			return PaperOutcomeReceipt{}, err
+		}
+		if err := writePaperFeedSourceSeal(ctx, tx, feed.Retention, outcomeFeedSourcePin(v)); err != nil {
 			return PaperOutcomeReceipt{}, err
 		}
 	}

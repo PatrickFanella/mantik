@@ -206,7 +206,17 @@ func feedArchiveContracts(t *testing.T, s feedArchiveBackend) {
 		if _, err := s.ArchiveFeed(ctx, owner, now, check); err != nil {
 			t.Fatal("rolled-back archive could not be retried", err)
 		}
+		if _, err := reopened.pool.Exec(ctx, "DELETE FROM mantik_feed_archive_sources WHERE kind='publication' AND source_id='archive-feed:capture-000'"); err == nil {
+			t.Fatal("original identity index allowed deletion")
+		}
+		// Corruption injection deliberately bypasses the normal immutable index guard.
+		if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_feed_archive_sources DISABLE TRIGGER mantik_immutable_feed_sources"); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := reopened.pool.Exec(ctx, "DELETE FROM mantik_feed_archive_sources WHERE kind='publication' AND source_id='archive-feed:capture-000'"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reopened.pool.Exec(ctx, "ALTER TABLE mantik_feed_archive_sources ENABLE TRIGGER mantik_immutable_feed_sources"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.AuditFeedArchiveSources(ctx); !errors.Is(err, ErrFeedArchiveConflict) {

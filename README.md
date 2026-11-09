@@ -1022,25 +1022,33 @@ archive and remaining #24 attribution work.
 
 [Feed archive custody](docs/reference/feed-archives.md) seals publications,
 collector history and routed inputs in one receiver-owned snapshot, with exact
-source-cut retries and paged archive headers. Schema 100 preserves the existing
-active copies; archive-aware replay and pruning are still required before this
-removes the runtime's retention limits.
+source-cut retries and paged archive headers. The source-cut endpoint keeps
+active copies; explicit rotation can remove sources after verifying their
+original custody and retained dependencies.
 
 Schema 101 adds original-ID archive lookup and a full source/index integrity
 audit to that custody contract. Snapshot, index and manifest commit together;
-older snapshots are backfilled without changing their hashes. Active-source
-pruning remains unfinished.
+older snapshots are backfilled without changing their hashes.
 
 Schema 102 retains the same v3 registration-prefix counts and hashes in the
 archive, with nanosecond cut indexes, atomic manifests and source-backed audit.
-These internal prefix reads prepare archive-aware replay; active-source pruning
-and automatic continuous retention remain unfinished.
+These internal prefix reads support archive-aware replay without loading all
+historical feed records.
 
 Schema 103 adds paper source checkpoints to the same feed-archive transaction.
 The owner replays retained decisions and outcomes against original archived
 sources, seals their complete membership and fences subsequent backdated writes.
 Authenticated inspection at `/v1/feed-archives/paper-custody/{sequence}` replays
-that original cut. Active records remain retained; pruning and the full paper
-archive are still pending.
+that original cut. Finalized paper records remain retained in their active owners.
+
+Schema 104 adds `POST /v1/feed-archives/rotate`: archive, verify paper-source
+custody and retire the feed working set atomically, retaining current coverage,
+lease proof, pending admissions and routing references. Original IDs remain
+reserved and retry against their archived receipts. New paper v4 records can
+recover original forward observation windows across retired source segments;
+existing paper envelopes and hashes are unchanged. The authenticated
+`/v1/feed-archives/paper-custody-audit` independently replays original sources.
+Rotation is explicit; physical paper/assessment/review archival and automatic
+continuous retention remain unfinished.
 
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

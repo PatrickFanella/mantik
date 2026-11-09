@@ -72,7 +72,7 @@ func feedArchiveRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 	if !ok {
 		return
 	}
-	mux.HandleFunc("POST /v1/feed-archives", func(w http.ResponseWriter, r *http.Request) {
+	create := func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.RawQuery != "" || r.URL.ForceQuery {
 			feedArchiveError(w, storage.ErrFeedArchiveInvalid)
 			return
@@ -89,7 +89,10 @@ func feedArchiveRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		var receipt storage.FeedArchiveReceipt
-		if paper, ok := store.(storage.PaperFeedArchiveStore); ok {
+		if r.Pattern == "POST /v1/feed-archives/rotate" {
+			retention := store.(storage.FeedRetentionStore)
+			receipt, err = retention.RotateFeed(ctx, command.ReceiverID, clock.Now, validateFeedArchiveSource, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+		} else if paper, ok := store.(storage.PaperFeedArchiveStore); ok {
 			receipt, err = paper.ArchivePaperFeed(ctx, command.ReceiverID, clock.Now, validateFeedArchiveSource, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
 		} else {
 			receipt, err = backend.ArchiveFeed(ctx, command.ReceiverID, clock.Now, validateFeedArchiveSource)
@@ -103,7 +106,11 @@ func feedArchiveRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 			status = http.StatusOK
 		}
 		write(w, status, receipt)
-	})
+	}
+	mux.HandleFunc("POST /v1/feed-archives", create)
+	if _, ok := store.(storage.FeedRetentionStore); ok {
+		mux.HandleFunc("POST /v1/feed-archives/rotate", create)
+	}
 	mux.HandleFunc("GET /v1/feed-archives", func(w http.ResponseWriter, r *http.Request) {
 		values, queryErr := url.ParseQuery(r.URL.RawQuery)
 		if queryErr != nil || r.ContentLength != 0 {
@@ -137,6 +144,22 @@ func feedArchiveRoutes(mux *http.ServeMux, store storage.Store, clock Clock) {
 		}
 		write(w, 200, page)
 	})
+	if audit, ok := store.(storage.PaperFeedAuditStore); ok {
+		mux.HandleFunc("GET /v1/feed-archives/paper-custody-audit", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.RawQuery != "" || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
+				feedArchiveError(w, storage.ErrFeedArchiveInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*30*time.Second)
+			defer cancel()
+			result, err := audit.AuditPaperFeed(ctx, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+			if err != nil {
+				feedArchiveError(w, err)
+				return
+			}
+			write(w, 200, result)
+		})
+	}
 	if paper, ok := store.(storage.PaperFeedArchiveStore); ok {
 		mux.HandleFunc("GET /v1/feed-archives/paper-custody/{sequence}", func(w http.ResponseWriter, r *http.Request) {
 			sequence, err := strconv.ParseInt(r.PathValue("sequence"), 10, 64)

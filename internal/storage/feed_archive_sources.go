@@ -164,22 +164,29 @@ func (m *Memory) FeedArchiveSource(ctx context.Context, kind, id string) (FeedAr
 	if err := ctx.Err(); err != nil {
 		return FeedArchivedSource{}, err
 	}
+	r, _, err := m.feedArchivedSourceLocked(ctx, kind, id)
+	return r, err
+}
+func (m *Memory) feedArchivedSourceLocked(ctx context.Context, kind, id string) (FeedArchivedSource, FeedEvidenceSnapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, err
+	}
 	ref, ok := m.feedArchiveRecords[archivedSourceKey(kind, id)]
 	if !ok {
-		return FeedArchivedSource{}, ErrFeedArchiveNotFound
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, ErrFeedArchiveNotFound
 	}
 	if ref.Kind != kind || ref.ID != id || ref.Sequence < 1 || ref.Sequence > int64(len(m.feedArchives)) {
-		return FeedArchivedSource{}, ErrFeedArchiveConflict
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, ErrFeedArchiveConflict
 	}
 	records, err := archiveSourceRecords(m.feedArchives[ref.Sequence-1])
 	if err != nil {
-		return FeedArchivedSource{}, err
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, err
 	}
 	record, ok := records[archivedSourceKey(kind, id)]
 	if !ok || record.RecordSHA256 != ref.RecordSHA256 || record.Archive.ReceiverID != m.receiverID {
-		return FeedArchivedSource{}, ErrFeedArchiveConflict
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, ErrFeedArchiveConflict
 	}
-	return clone(record), nil
+	return clone(record), clone(m.feedArchives[ref.Sequence-1].Source), nil
 }
 
 func writeFeedArchiveSourceIndex(ctx context.Context, tx pgx.Tx, a FeedArchive) error {
@@ -263,46 +270,56 @@ func (p *Postgres) FeedArchiveSource(ctx context.Context, kind, id string) (Feed
 		return FeedArchivedSource{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	var sequence int64
-	var digest string
-	err = tx.QueryRow(ctx, "SELECT archive_sequence,record_sha256 FROM mantik_feed_archive_sources WHERE kind=$1 AND source_id=$2", kind, id).Scan(&sequence, &digest)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return FeedArchivedSource{}, ErrFeedArchiveNotFound
-	}
+	r, _, err := readFeedArchivedSource(ctx, tx, kind, id)
 	if err != nil {
 		return FeedArchivedSource{}, err
-	}
-	a, err := readFeedArchive(ctx, tx, sequence)
-	if err != nil {
-		return FeedArchivedSource{}, err
-	}
-	var owner string
-	if err := tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton").Scan(&owner); err != nil {
-		return FeedArchivedSource{}, err
-	}
-	if owner != a.ReceiverID {
-		return FeedArchivedSource{}, ErrFeedArchiveConflict
-	}
-	records, err := archiveSourceRecords(a)
-	if err != nil {
-		return FeedArchivedSource{}, err
-	}
-	if err := readFeedArchiveSourceBatch(ctx, tx, a, sortedSourceRefs(records)); err != nil {
-		return FeedArchivedSource{}, err
-	}
-	r, ok := records[archivedSourceKey(kind, id)]
-	if !ok || r.RecordSHA256 != digest {
-		return FeedArchivedSource{}, ErrFeedArchiveConflict
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return FeedArchivedSource{}, err
 	}
 	return r, nil
 }
+func readFeedArchivedSource(ctx context.Context, tx pgx.Tx, kind, id string) (FeedArchivedSource, FeedEvidenceSnapshot, error) {
+	var sequence int64
+	var digest string
+	err := tx.QueryRow(ctx, "SELECT archive_sequence,record_sha256 FROM mantik_feed_archive_sources WHERE kind=$1 AND source_id=$2", kind, id).Scan(&sequence, &digest)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, ErrFeedArchiveNotFound
+	}
+	if err != nil {
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, err
+	}
+	a, err := readFeedArchive(ctx, tx, sequence)
+	if err != nil {
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, err
+	}
+	var owner string
+	if err := tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton").Scan(&owner); err != nil {
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, err
+	}
+	if owner != a.ReceiverID {
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, ErrFeedArchiveConflict
+	}
+	records, err := archiveSourceRecords(a)
+	if err != nil {
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, err
+	}
+	if err := readFeedArchiveSourceBatch(ctx, tx, a, sortedSourceRefs(records)); err != nil {
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, err
+	}
+	r, ok := records[archivedSourceKey(kind, id)]
+	if !ok || r.RecordSHA256 != digest {
+		return FeedArchivedSource{}, FeedEvidenceSnapshot{}, ErrFeedArchiveConflict
+	}
+	return r, a.Source, nil
+}
 
 func (m *Memory) AuditFeedArchiveSources(ctx context.Context) (FeedArchiveSourceAudit, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.auditFeedArchiveSourcesLocked(ctx)
+}
+func (m *Memory) auditFeedArchiveSourcesLocked(ctx context.Context) (FeedArchiveSourceAudit, error) {
 	out := FeedArchiveSourceAudit{ReceiverID: m.receiverID, Status: "verified"}
 	expected := map[string]feedArchiveSourceRef{}
 	previous := ""
@@ -312,6 +329,11 @@ func (m *Memory) AuditFeedArchiveSources(ctx context.Context) (FeedArchiveSource
 		}
 		if a.Sequence != int64(index+1) || a.PreviousSHA256 != previous || a.ReceiverID != m.receiverID {
 			return FeedArchiveSourceAudit{}, ErrFeedArchiveConflict
+		}
+		if index > 0 {
+			if err := extendsFeedArchive(m.feedArchives[index-1], a.Source); err != nil {
+				return FeedArchiveSourceAudit{}, err
+			}
 		}
 		var err error
 		expected, err = indexFeedArchive(expected, a)
@@ -329,6 +351,18 @@ func (m *Memory) AuditFeedArchiveSources(ctx context.Context) (FeedArchiveSource
 	if err := auditArchivePrefixes(ctx, m.feedArchives, m.feedArchivePrefixPoints, m.feedArchivePrefixOrder); err != nil {
 		return FeedArchiveSourceAudit{}, err
 	}
+	active := m.decisionFeedLocked()
+	if active.Retention != nil {
+		sequence := active.Retention.Checkpoint.Archive.Sequence
+		if sequence < 1 || sequence > int64(len(m.feedArchives)) {
+			return FeedArchiveSourceAudit{}, ErrFeedArchiveConflict
+		}
+		if err := auditFeedRetention(active, m.feedArchives[sequence-1]); err != nil {
+			return FeedArchiveSourceAudit{}, err
+		}
+	} else if active.Collectors.ArchiveSHA256 != "" {
+		return FeedArchiveSourceAudit{}, ErrFeedArchiveConflict
+	}
 	out.Sources, out.HeadSHA256, out.SourceSHA256 = int64(len(expected)), previous, workerplan.Hash(expected)
 	return out, nil
 }
@@ -339,12 +373,23 @@ func (p *Postgres) AuditFeedArchiveSources(ctx context.Context) (FeedArchiveSour
 		return FeedArchiveSourceAudit{}, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
+	out, err := auditPostgresFeedArchiveSources(ctx, tx)
+	if err != nil {
+		return FeedArchiveSourceAudit{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return FeedArchiveSourceAudit{}, err
+	}
+	return out, nil
+}
+func auditPostgresFeedArchiveSources(ctx context.Context, tx pgx.Tx) (FeedArchiveSourceAudit, error) {
 	out := FeedArchiveSourceAudit{Status: "verified"}
 	if err := tx.QueryRow(ctx, "SELECT id FROM mantik_research_receiver WHERE singleton").Scan(&out.ReceiverID); err != nil {
 		return FeedArchiveSourceAudit{}, err
 	}
 	expected := map[string]feedArchiveSourceRef{}
 	previous := ""
+	var previousArchive FeedArchive
 	for sequence := int64(1); ; sequence++ {
 		a, err := readFeedArchive(ctx, tx, sequence)
 		if errors.Is(err, ErrFeedArchiveNotFound) {
@@ -356,6 +401,12 @@ func (p *Postgres) AuditFeedArchiveSources(ctx context.Context) (FeedArchiveSour
 		if a.PreviousSHA256 != previous || a.ReceiverID != out.ReceiverID {
 			return FeedArchiveSourceAudit{}, ErrFeedArchiveConflict
 		}
+		if sequence > 1 {
+			if err := extendsFeedArchive(previousArchive, a.Source); err != nil {
+				return FeedArchiveSourceAudit{}, err
+			}
+		}
+		previousArchive = a
 		records, err := archiveSourceRecords(a)
 		if err != nil {
 			return FeedArchiveSourceAudit{}, err
@@ -404,8 +455,18 @@ func (p *Postgres) AuditFeedArchiveSources(ctx context.Context) (FeedArchiveSour
 		return FeedArchiveSourceAudit{}, err
 	}
 	out.Sources, out.HeadSHA256, out.SourceSHA256 = int64(len(expected)), previous, workerplan.Hash(expected)
-	if err := tx.Commit(ctx); err != nil {
+	active, err := readFeedEvidence(ctx, tx, false)
+	if err != nil {
 		return FeedArchiveSourceAudit{}, err
+	}
+	if active.Retention != nil {
+		original, err := readFeedArchive(ctx, tx, active.Retention.Checkpoint.Archive.Sequence)
+		if err != nil {
+			return FeedArchiveSourceAudit{}, err
+		}
+		if err := auditFeedRetention(active, original); err != nil {
+			return FeedArchiveSourceAudit{}, err
+		}
 	}
 	return out, nil
 }

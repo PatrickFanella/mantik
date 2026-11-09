@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/domain"
@@ -51,6 +52,24 @@ func (m *Memory) routeInput(ctx context.Context, receiver string, i domain.Routi
 	if receiver != "" && receiver != m.receiverID {
 		return domain.RoutingReceipt{}, ErrReceiverMismatch
 	}
+	if _, active := m.state.Routing.Inputs[i.ID]; !active {
+		old, _, err := m.feedArchivedSourceLocked(ctx, "input", i.ID)
+		if err == nil {
+			if err := retiredArchiveSource(m.feedRetention, old); err != nil {
+				return domain.RoutingReceipt{}, err
+			}
+			var record domain.RetainedRoutingInput
+			if json.Unmarshal(old.Payload, &record) != nil || !reflect.DeepEqual(record.Input, i) {
+				return domain.RoutingReceipt{}, routing.ErrConflict
+			}
+			receipt := clone(record.Receipt)
+			receipt.Duplicate = true
+			return receipt, nil
+		}
+		if !errors.Is(err, ErrFeedArchiveNotFound) {
+			return domain.RoutingReceipt{}, err
+		}
+	}
 	next, receipt, err := routing.Apply(m.state.Routing, i)
 	if err != nil {
 		return receipt, err
@@ -76,6 +95,9 @@ func (p *Postgres) routingMutation(ctx context.Context, update func(*domain.Rout
 	return p.routingMutationForReceiver(ctx, "", update)
 }
 func (p *Postgres) routingMutationForReceiver(ctx context.Context, receiver string, update func(*domain.RoutingState) (*domain.RoutingState, any, error)) (any, error) {
+	return p.routingMutationWithInput(ctx, receiver, nil, update)
+}
+func (p *Postgres) routingMutationWithInput(ctx context.Context, receiver string, input *domain.RoutingInput, update func(*domain.RoutingState) (*domain.RoutingState, any, error)) (any, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -97,6 +119,33 @@ func (p *Postgres) routingMutationForReceiver(ctx context.Context, receiver stri
 	var state domain.State
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return nil, err
+	}
+	if input != nil {
+		if _, active := state.Routing.Inputs[input.ID]; !active {
+			old, _, err := readFeedArchivedSource(ctx, tx, "input", input.ID)
+			if err == nil {
+				r, err := readFeedRetention(ctx, tx)
+				if err != nil {
+					return nil, err
+				}
+				if err := retiredArchiveSource(r, old); err != nil {
+					return nil, err
+				}
+				var record domain.RetainedRoutingInput
+				if json.Unmarshal(old.Payload, &record) != nil || !reflect.DeepEqual(record.Input, *input) {
+					return nil, routing.ErrConflict
+				}
+				receipt := record.Receipt
+				receipt.Duplicate = true
+				if err := tx.Commit(ctx); err != nil {
+					return nil, err
+				}
+				return receipt, nil
+			}
+			if !errors.Is(err, ErrFeedArchiveNotFound) {
+				return nil, err
+			}
+		}
 	}
 	next, value, err := update(state.Routing)
 	if err != nil {
@@ -142,7 +191,7 @@ func (p *Postgres) routeInput(ctx context.Context, receiver string, i domain.Rou
 	if i.Source == routing.OwnedSocialResearchSource {
 		return domain.RoutingReceipt{}, routing.ErrInvalid
 	}
-	value, err := p.routingMutationForReceiver(ctx, receiver, func(s *domain.RoutingState) (*domain.RoutingState, any, error) {
+	value, err := p.routingMutationWithInput(ctx, receiver, &i, func(s *domain.RoutingState) (*domain.RoutingState, any, error) {
 		next, receipt, err := routing.Apply(s, i)
 		return next, receipt, err
 	})

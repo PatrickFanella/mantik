@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
@@ -39,6 +40,15 @@ func (m *Memory) FeedCollectorCommand(ctx context.Context, receiver string, c fe
 	defer m.mu.Unlock()
 	if receiver != m.receiverID {
 		return feedcollector.Receipt{}, ErrReceiverMismatch
+	}
+	if _, active := m.collectors.Commands[c.RequestID]; !active {
+		old, _, err := m.feedArchivedSourceLocked(ctx, "command", c.RequestID)
+		if err == nil {
+			return retiredCollectorCommand(m.feedRetention, old, c)
+		}
+		if !errors.Is(err, ErrFeedArchiveNotFound) {
+			return feedcollector.Receipt{}, err
+		}
 	}
 	next, receipt, err := feedcollector.Apply(m.collectors, c, now())
 	if err != nil {
@@ -106,6 +116,26 @@ func (p *Postgres) FeedCollectorCommand(ctx context.Context, receiver string, c 
 	var state feedcollector.State
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return feedcollector.Receipt{}, err
+	}
+	if _, active := state.Commands[c.RequestID]; !active {
+		old, _, err := readFeedArchivedSource(ctx, tx, "command", c.RequestID)
+		if err == nil {
+			r, err := readFeedRetention(ctx, tx)
+			if err != nil {
+				return feedcollector.Receipt{}, err
+			}
+			receipt, err := retiredCollectorCommand(r, old, c)
+			if err != nil {
+				return feedcollector.Receipt{}, err
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return feedcollector.Receipt{}, err
+			}
+			return receipt, nil
+		}
+		if !errors.Is(err, ErrFeedArchiveNotFound) {
+			return feedcollector.Receipt{}, err
+		}
 	}
 	// Sample the service clock after acquiring the ownership lock. Concurrent
 	// requests cannot carry pre-lock timestamps that appear to rewind the clock.

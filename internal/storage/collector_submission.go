@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"time"
 
@@ -37,6 +38,15 @@ func (m *Memory) SubmitCollectorResearch(ctx context.Context, receiver string, f
 	defer m.mu.Unlock()
 	if receiver != m.receiverID {
 		return domain.RoutingReceipt{}, ErrReceiverMismatch
+	}
+	if _, active := m.collectors.Admissions[i.ID]; !active {
+		old, original, err := m.feedArchivedSourceLocked(ctx, "admission", i.ID)
+		if err == nil {
+			return retiredCollectorAdmission(m.feedRetention, old, original, f, i)
+		}
+		if !errors.Is(err, ErrFeedArchiveNotFound) {
+			return domain.RoutingReceipt{}, err
+		}
 	}
 	at := now().UTC()
 	replay, err := feedcollector.CheckSubmission(m.collectors, f, i, at)
@@ -100,6 +110,26 @@ func (p *Postgres) SubmitCollectorResearch(ctx context.Context, receiver string,
 	var state domain.State
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return domain.RoutingReceipt{}, err
+	}
+	if _, active := collectors.Admissions[i.ID]; !active {
+		old, original, err := readFeedArchivedSource(ctx, tx, "admission", i.ID)
+		if err == nil {
+			r, err := readFeedRetention(ctx, tx)
+			if err != nil {
+				return domain.RoutingReceipt{}, err
+			}
+			receipt, err := retiredCollectorAdmission(r, old, original, f, i)
+			if err != nil {
+				return domain.RoutingReceipt{}, err
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return domain.RoutingReceipt{}, err
+			}
+			return receipt, nil
+		}
+		if !errors.Is(err, ErrFeedArchiveNotFound) {
+			return domain.RoutingReceipt{}, err
+		}
 	}
 	at := now().UTC()
 	replay, err := feedcollector.CheckSubmission(collectors, f, i, at)
