@@ -97,3 +97,61 @@ rollback uses an independently restored compatible backup and matching binary.
 Dropping archives or migration records in place is unsupported. Reconnect and
 failed-write tests establish storage contracts, not a deployed restore or
 natural-run qualification.
+
+## Original source identities
+
+Schema 101 adds a receiver-owned index of original source identities. Archive
+creation writes the snapshot, source index and complete segment manifest in one
+transaction. A repeated source keeps its first archive reference and original
+payload hash. Different bytes under that identity fail the complete transaction.
+An index failure leaves neither a partial archive nor a partially indexed source.
+The active source maps remain unchanged.
+
+`GET /v1/feed-archives/source` accepts exactly one `kind` and one `id` query
+parameter. Supported kinds are `publication`, `admission`, `input` and `command`.
+A publication ID is its registration/capture key from the archived `Records`
+map. The other kinds use the original input or command ID. No body, alternate
+receiver, caller hash, source content or query override is accepted.
+
+The response schema is `mantik-feed-archive-source-v1`. It contains the actual
+archive header, selected kind/ID, original typed payload and its canonical
+`record_sha256`. The owner loads only the indexed archive segment, verifies its
+header and complete source digest, and checks the selected field against the
+index and segment manifest. The payload retains the original source's occurrence,
+availability, publication or command times; archive time does not replace them.
+The normal service authentication protects these private bytes.
+
+Portable envelope validation checks shape, header and payload digests. It cannot
+prove field membership in an imported archive header without the corresponding
+owner source snapshot. The actual source owner performs that selection. This
+read grants no new evidence, model interpretation or operational authority.
+
+## Source/index audit and upgrade
+
+`GET /v1/feed-archives/source-audit` accepts no query or body. It reads every
+archive in order, reconstructs the first source identity/hash/reference from the
+actual stored source fields, verifies every complete segment manifest, and
+compares that result with the entire source index. Missing/extra/changed index
+rows, conflicting repeated identities, missing archive sequences and changed
+source bytes fail without a partial success. A successful response reports the
+receiver, archive/source counts, final archive hash and reconstructed index hash.
+
+This is a full integrity audit whose work grows with history. It is separate
+from bounded targeted reads and supplies no strategy evaluation or qualification.
+The HTTP audit has a finite 30-second normal-build deadline; exhaustion returns
+failure and does not mean the unexamined history passed. The audit does not
+repair or rewrite an index.
+
+Schema-100 snapshots retain their exact headers, payloads and hashes. During
+schema-101 startup, the owner backfills unindexed snapshots one segment at a
+time under the schema and collector locks, in the migration transaction. A
+failed backfill rolls the upgrade back. Existing complete manifests are not
+silently rebuilt during inspection. A deferred database guard rejects an older
+running archive writer's COMMIT if it inserts a snapshot without its source
+manifest. Schema-100 startup binaries also refuse schema 101.
+
+Backups now include `mantik_feed_archive_sources` and
+`mantik_feed_archive_source_batches` with the original archive table, active
+owners and schema/receiver state. Restore all of them consistently; rollback
+still uses an independently restored matching backup. Lookup/index delivery
+does not yet authorize active-source removal or complete continuous retention.

@@ -103,6 +103,18 @@ func TestValidatedFeedCoveragePublicationAndClock(t *testing.T) {
 		t.Fatal("feed archive did not bind source owners", created.Body.String(), err)
 	}
 	request("POST", "/v1/feed-archives", map[string]any{"receiver_id": receiver}, 200)
+	for _, key := range []struct{ kind, id string }{{"publication", registration.ID + ":quote-r1"}, {"command", "register"}, {"input", report.Evidence.Quote.InputID}, {"admission", report.Evidence.Quote.InputID}} {
+		var original storage.FeedArchivedSource
+		response := request("GET", "/v1/feed-archives/source?kind="+key.kind+"&id="+key.id, nil, 200)
+		if err := json.Unmarshal(response.Body.Bytes(), &original); err != nil || original.Validate() != nil || original.Kind != key.kind || original.ID != key.id || original.Archive != archived.Header {
+			t.Fatal("archive identity lookup changed source", key, err)
+		}
+	}
+	request("GET", "/v1/feed-archives/source-audit", nil, 200)
+	request("GET", "/v1/feed-archives/source?kind=command&id=absent", nil, 404)
+	request("GET", "/v1/feed-archives/source?kind=command&id=register&id=other", nil, 422)
+	request("GET", "/v1/feed-archives/source?kind=unsupported&id=register", nil, 422)
+	request("GET", "/v1/feed-archives/source-audit?repair=true", nil, 422)
 	request("POST", "/v1/feed-archives?prune=true", map[string]any{"receiver_id": receiver}, 422)
 	request("POST", "/v1/feed-archives", map[string]any{"receiver_id": receiver, "source": "caller"}, 422)
 	unauthenticated := httptest.NewRecorder()

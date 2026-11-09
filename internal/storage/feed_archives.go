@@ -208,7 +208,20 @@ func (m *Memory) ArchiveFeed(ctx context.Context, receiver string, now func() ti
 	if err := ctx.Err(); err != nil {
 		return FeedArchiveReceipt{}, err
 	}
+	additions, err := feedArchiveIndexAdditions(m.feedArchiveRecords, a)
+	if err != nil {
+		return FeedArchiveReceipt{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return FeedArchiveReceipt{}, err
+	}
 	m.feedArchives = append(m.feedArchives, clone(a))
+	if m.feedArchiveRecords == nil {
+		m.feedArchiveRecords = map[string]feedArchiveSourceRef{}
+	}
+	for key, ref := range additions {
+		m.feedArchiveRecords[key] = ref
+	}
 	if m.feedArchiveSources == nil {
 		m.feedArchiveSources = map[string]int64{}
 	}
@@ -320,6 +333,13 @@ func (p *Postgres) ArchiveFeed(ctx context.Context, receiver string, now func() 
 		if err := check(clone(a.Source), a.ArchivedAt); err != nil {
 			return FeedArchiveReceipt{}, err
 		}
+		records, err := archiveSourceRecords(a)
+		if err != nil {
+			return FeedArchiveReceipt{}, err
+		}
+		if err := readFeedArchiveSourceBatch(ctx, tx, a, sortedSourceRefs(records)); err != nil {
+			return FeedArchiveReceipt{}, err
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return FeedArchiveReceipt{}, err
 		}
@@ -360,6 +380,9 @@ func (p *Postgres) ArchiveFeed(ctx context.Context, receiver string, now func() 
 		return FeedArchiveReceipt{}, err
 	}
 	if _, err := tx.Exec(ctx, "INSERT INTO mantik_feed_archives(sequence,source_sha256,sha256,header,payload) VALUES($1,$2,$3,$4,$5)", a.Sequence, a.SourceSHA256, a.SHA256, header, raw); err != nil {
+		return FeedArchiveReceipt{}, err
+	}
+	if err := writeFeedArchiveSourceIndex(ctx, tx, a); err != nil {
 		return FeedArchiveReceipt{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
