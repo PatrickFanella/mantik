@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/candidateexec"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
@@ -167,38 +166,50 @@ func TestCandidateJournalConcurrentIntentAndCapacity(t *testing.T) {
 	j, data := behaviorFixture(t)
 	image := j.Plan.Candidate.Toolchain.ImageSHA256
 	root := filepath.Join(t.TempDir(), "journal")
-	var wg sync.WaitGroup
-	freshCount := make(chan bool, 8)
-	for n := 0; n < 8; n++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for tries := 0; tries < 200; tries++ {
-				_, _, fresh, err := reserveCandidate(ctx, root, "same", j, data, image)
-				if errors.Is(err, ErrBusy) {
-					time.Sleep(time.Millisecond)
-					continue
-				}
-				if err != nil {
-					t.Error(err)
-					return
-				}
-				freshCount <- fresh
-				return
-			}
-			t.Error("lock contention did not settle")
-		}()
-	}
-	wg.Wait()
-	close(freshCount)
-	count := 0
-	for fresh := range freshCount {
-		if fresh {
-			count++
+	pending, completed, count := 8, 0, 0
+	for pending > 0 {
+		type result struct {
+			fresh bool
+			err   error
 		}
+		results := make(chan result, pending)
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for n := 0; n < pending; n++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				_, _, fresh, err := reserveCandidate(ctx, root, "same", j, data, image)
+				results <- result{fresh, err}
+			}()
+		}
+		close(start)
+		wg.Wait()
+		close(results)
+		busy := 0
+		for r := range results {
+			if errors.Is(r.err, ErrBusy) {
+				busy++
+				continue
+			}
+			if r.err != nil {
+				t.Fatal(r.err)
+			}
+			completed++
+			if r.fresh {
+				count++
+			}
+		}
+		// This private fixture has no external owner. Each completed round
+		// must release its winner before the busy callers compete again.
+		if busy == pending {
+			t.Fatal("no reservation completed in the concurrent round")
+		}
+		pending = busy
 	}
-	if count != 1 {
-		t.Fatal("multiple intents", count)
+	if count != 1 || completed != 8 {
+		t.Fatal("concurrent intent results", count, completed)
 	}
 	for n := 1; n < MaxCandidateAttempts; n++ {
 		if _, _, _, err := reserveCandidate(ctx, root, fmt.Sprintf("attempt-%02d", n), j, data, image); err != nil {
