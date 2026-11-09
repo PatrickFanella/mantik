@@ -110,3 +110,34 @@ END;
 $$;
 
 COMMENT ON INDEX mantik_paper_sample_window IS 'Owner-only assessment sample metadata across active and archived records; exact decision clocks and strategy versions; no payload or qualification authority';
+
+-- PostgreSQL checks candidate rows before ON CONFLICT. Schema 105's duplicate
+-- backfill omits these later columns, so preserve its exact original reservation
+-- before the shape check. A new or changed identity cannot borrow this path.
+CREATE OR REPLACE FUNCTION mantik_replay_paper_scope() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE original mantik_paper_record_epochs;
+BEGIN
+    IF NEW.kind IN ('decision','outcome') AND
+       NEW.strategy_id IS NULL AND NEW.strategy_sha256 IS NULL AND
+       NEW.decision_id IS NULL AND NEW.decision_sha256 IS NULL AND
+       NEW.decision_at_seconds IS NULL AND NEW.decision_at_nanos IS NULL THEN
+        SELECT * INTO original FROM mantik_paper_record_epochs e WHERE e.kind=NEW.kind AND e.record_id=NEW.record_id;
+        IF NOT FOUND OR ROW(original.record_sha256,original.at_seconds,original.at_nanos)
+            IS DISTINCT FROM ROW(NEW.record_sha256,NEW.at_seconds,NEW.at_nanos) OR
+           original.strategy_id IS NULL OR original.strategy_sha256 IS NULL OR
+           original.decision_id IS NULL OR original.decision_sha256 IS NULL OR
+           original.decision_at_seconds IS NULL OR original.decision_at_nanos IS NULL THEN
+            RAISE EXCEPTION 'paper selection scope missing or changed for predecessor replay' USING ERRCODE='23514';
+        END IF;
+        NEW.strategy_id := original.strategy_id;
+        NEW.strategy_sha256 := original.strategy_sha256;
+        NEW.decision_id := original.decision_id;
+        NEW.decision_sha256 := original.decision_sha256;
+        NEW.decision_at_seconds := original.decision_at_seconds;
+        NEW.decision_at_nanos := original.decision_at_nanos;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS mantik_paper_scope_replay ON mantik_paper_record_epochs;
+CREATE TRIGGER mantik_paper_scope_replay BEFORE INSERT ON mantik_paper_record_epochs FOR EACH ROW EXECUTE FUNCTION mantik_replay_paper_scope();

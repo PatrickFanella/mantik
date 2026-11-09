@@ -129,6 +129,12 @@ the index is selection metadata and grants no evaluation or financial authority.
 Existing archive payloads, creation-pin hashes and original source hashes stay
 unchanged. The retirement guard continues to reject removal of paper owners.
 
+Predecessor backfill can omit the later scope columns only for an exact duplicate
+of an already reserved identity with its original record hash and event clock.
+Its candidate insert reuses that immutable original scope before PostgreSQL
+checks the row shape and applies `ON CONFLICT`. A missing reservation or changed
+hash/clock remains a conflict; this path never fills new identities by guessing.
+
 After a paper archive exists, new feed/paper custody checkpoints use
 `mantik-paper-feed-checkpoint-v2` and bind the actual `paper_archive_sequence`.
 The cut covers at least that paper archive's original time, even when the feed

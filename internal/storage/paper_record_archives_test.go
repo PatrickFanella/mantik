@@ -274,11 +274,6 @@ func paperRecordArchiveContract(t *testing.T, s paperArchiveBackend) {
 		if _, err := pg.pool.Exec(ctx, "ALTER TABLE mantik_paper_record_epochs ENABLE TRIGGER mantik_immutable_paper_epochs"); err != nil {
 			t.Fatal(err)
 		}
-		// Replaying schema 105 exercises its original six-column INSERT. The
-		// schema-107 shape guard is reinstalled after that predecessor DDL.
-		if _, err := pg.pool.Exec(ctx, "ALTER TABLE mantik_paper_record_epochs DROP CONSTRAINT mantik_paper_scope_shape"); err != nil {
-			t.Fatal(err)
-		}
 		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=105"); err != nil {
 			t.Fatal(err)
 		}
@@ -322,9 +317,6 @@ func paperRecordArchiveContract(t *testing.T, s paperArchiveBackend) {
 		t.Fatal("archive readback was not detached", err)
 	}
 	if pg, ok := s.(*Postgres); ok {
-		if _, err := pg.pool.Exec(ctx, "ALTER TABLE mantik_paper_record_epochs DROP CONSTRAINT mantik_paper_scope_shape"); err != nil {
-			t.Fatal(err)
-		}
 		if _, err := pg.pool.Exec(ctx, "DELETE FROM mantik_schema WHERE version>=105"); err != nil {
 			t.Fatal(err)
 		}
