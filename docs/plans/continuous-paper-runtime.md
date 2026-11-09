@@ -1,0 +1,71 @@
+# Continuous paper runtime delivery
+
+The owner requested the complete archive, the #285 rehearsal, and the remaining
+#24 attribution work on 2026-11-09 UTC. The earlier capacity stretch is merged
+in #347. It permits bounded runs; it does not replace this archive work.
+
+## Delivery order
+
+| Unit | Result and boundary | Verification | State |
+| --- | --- | --- | --- |
+| Rehearsal prerequisites | Read all 2,048 supported publications in PostgreSQL, including exact retries beyond the former 128-record bound. | Reproduce the 129-of-140 truncation, then run Memory/PostgreSQL contracts, `make verify`, race and disposable integration. | PR #348 |
+| Rehearsal preparation | Start only new PostgreSQL and Mantik processes; register SPY/IEX declarations; forward advisory requests to Switchyard; interrupt only that connection; retain phases, failure attempts, restart readbacks and exact build/config identities. | Closed-market preflight, proxy outage/recovery tests, then a scheduled regular-session run. | In progress |
+| Feed and collector archive | Seal immutable raw publications, admissions, lease commands and their routed inputs together. Keep current leases, latest coverage inputs, pending publications and routing facts available. Preserve exact historical retries and original source bytes. | Cross the active bounds, verify old retries and conflicts, audit seals against original records, fail on missing/changed source, exercise concurrent writes and rollback/restart/restore. | Next |
+| Paper archive | Archive finalized decisions, completed outcomes and assessments with their full source dependencies. Retain open execution books, pending outcome windows and still-applicable evaluation inputs. Historical assessment replay must use the original cut. | Compare pre/post-archive replay and attribution, test pending and open references, inspect historical records, inject corruption and failed commits, verify isolated backup/restore. | Pending |
+| Continuous retention | Run owner-controlled archival automatically before active limits are reached. Retain advisory review and allocation cross-references too; inspection must page or target history without loading every archived record. | Run beyond collector/decision/review limits with restart and concurrent archival; measure active append/read cost against growing archive history. | Pending |
+| #24 attribution | Complete source/copy-delay analysis, applicable signal/forecast-quality readbacks and readable interactive attribution. | Known-result timing/outcome fixtures, no-action and missing-evidence cases, CLI validation, interactive navigation, race and disposable integration. | Pending |
+
+Each unit should land as a reviewable feature branch and PR. Merge only after
+checks pass on its exact head. Keep local checks, hosted CI, a running-service
+receipt and natural qualification as separate evidence. Update this plan as each
+unit changes the remaining implementation.
+
+## Archive contract
+
+Increasing limits or keeping unbounded JSON in the active aggregate is not an
+archive. A sealed record must remain inspectable by its original identity and
+hash. Archive moves, owner checkpoints and removal from active state must commit
+atomically. No old identity becomes reusable after a move. A failed move retains
+the original state. Integrity checks must detect omitted, reordered or changed
+records; full audit must re-execute the archived evidence rather than accept a
+self-rehashed summary as proof.
+
+Routing inputs are coupled to collector admissions and source-prefix checks.
+Never prune one without retaining the other and its exact receipt. Active
+decisions and outcomes currently verify original source membership, while
+assessments rederive their declared evidence from owner records. Those consumers
+need archive-aware reads before any source can leave their active catalogues.
+Open protection must remain independent of models and of archival availability.
+The existing allocation checkpoints are a useful precedent, but their identity
+indexes and complete-history reads also require a growing-history audit.
+
+Schema changes must preserve existing envelopes and hashes and fence older
+writers. Backup includes source owners, archive rows, manifests/checkpoints,
+receiver identity and schema history. Rollback uses a matching restored backup
+in isolated resources; deleting migration rows or archives is unsupported.
+
+## Rehearsal scope
+
+The scheduled run is Monday, 2026-11-09 at 14:40 UTC / 09:40 New York time.
+Use SPY on Alpaca IEX and the existing read-only credential file under
+`~/.local/state/mantik/alpaca-access-20261014/`. Never copy its values into Git,
+logs or receipts. The owner authorized Switchyard's existing model route for this
+rehearsal; no Switchyard service, workflow data or configuration is changed.
+
+A fresh short run may produce entry proposals and deferred allocations without
+any eligible funded position. Record that outcome. Do not manufacture a passing
+evaluation, weaken minimum samples, import old pilot observations or rewrite a
+quote to force execution. Model transport availability and a schema-valid draft
+are separate from review quality. Synthetic positive lifecycle tests remain
+separate evidence from this live-feed run. Issue #285 is not closed merely by
+successful collection or a model outage demonstration.
+
+## #24 scope
+
+The native threshold emits a boolean predicate, so probability calibration is
+not applicable. Present the actual outcome and applicability evidence; do not
+invent probabilities to calculate a score. Copy-source timestamps currently
+describe post-decision review sources. Delay analysis must preserve that
+provenance and distinguish measured latency from a verified causal input or a
+counterfactual financial return. Keep insufficient samples, missing observations,
+failed workflows and valid abstention visibly distinct in CLI and TUI.

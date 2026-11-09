@@ -7,7 +7,7 @@ SHELL := /usr/bin/env bash
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*##"; printf "Commands:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-verify: fmt-check lint test build compose-config open-pilot-check pilot-check backtesting-contract-check recovery-contract-check release-preflight-check ## Run all checks
+verify: fmt-check lint test build compose-config open-pilot-check pilot-check backtesting-contract-check recovery-contract-check release-preflight-check rehearsal-check ## Run all checks
 
 fmt: ## Format Go files
 	@find cmd internal migrations -name '*.go' -print0 | xargs -0 -r gofmt -w
@@ -70,3 +70,8 @@ recovery-contract-check: ## Check restored-owner proof and target guards without
 .PHONY: release-preflight-check
 release-preflight-check: ## Check source/image preflight guards without starting Docker
 	python3 -m unittest discover -s scripts -p 'test_release_preflight.py'
+
+.PHONY: rehearsal-check
+rehearsal-check: ## Check isolated model outage and rehearsal cleanup without external services
+	python3 -m unittest discover -s scripts -p 'test_rehearsal*.py'
+	python3 -m unittest discover -s scripts -p 'test_runtime_rehearsal.py'
