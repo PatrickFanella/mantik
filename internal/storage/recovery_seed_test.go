@@ -69,8 +69,19 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	if _, err = s.CompareOwnedAllocation(ctx, command, func() time.Time { return at.Add(time.Second) }, eval); err != nil {
 		t.Fatal(err)
 	}
+	// Seal an actual original segment into all four new index owners. The
+	// snapshot must restore populated custody, not only empty tables.
+	previousThreshold := ownedCheckpointRecords
+	ownedCheckpointRecords = 1
+	defer func() { ownedCheckpointRecords = previousThreshold }()
+	continued := command
+	continued.ID = "recovery-comparison-next"
+	if _, err = s.CompareOwnedAllocation(ctx, continued, func() time.Time { return at.Add(time.Second + time.Nanosecond) }, eval); err != nil {
+		t.Fatal(err)
+	}
+	ownedCheckpointRecords = previousThreshold
 	valid, err := s.OwnedAllocations(ctx, eval)
-	if err != nil || len(valid.Records) != 1 || len(valid.Ledgers) != 1 || valid.Records[0].AdmissionChecks[0].AdmissionAvailable || valid.Records[0].ExecutionAvailable || valid.Records[0].QualificationCredit {
+	if err != nil || len(valid.Records) != 2 || len(valid.Ledgers) != 1 || valid.Records[0].AdmissionChecks[0].AdmissionAvailable || valid.Records[0].ExecutionAvailable || valid.Records[0].QualificationCredit {
 		t.Fatal("invalid recovery seed", valid, err)
 	}
 	// Retain actual evaluation owners in the exported snapshot. This storage
@@ -195,6 +206,7 @@ func TestPostgresContractsRecoverySeed(t *testing.T) {
 	if paperArchive, err := s.ArchivePaperRecords(ctx, account.ReceiverID, func() time.Time { return custodyAt }, eval, recoveryFixtureOutcomeEvaluator); err != nil || paperArchive.Header.Decisions != 2 || paperArchive.Header.Outcomes != 2 || paperArchive.Header.Assessments != 1 {
 		t.Fatal("paper record archive recovery seed", paperArchive, err)
 	}
+	assertRestoredAllocationIndex(t, s)
 }
 
 // Shared by source seeding and restore replay. This compiled storage fixture
@@ -235,7 +247,7 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 		}
 		return
 	}
-	if err != nil || len(got.Records) != 1 || len(got.Ledgers) != 1 || len(got.Capital) != 1 {
+	if err != nil || len(got.Records) != 2 || len(got.Ledgers) != 1 || len(got.Capital) != 1 {
 		t.Fatal("restored owner replay", err)
 	}
 	r := got.Records[0]
@@ -250,6 +262,7 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 	assertRestoredCorporateSource(t, s, got.ReceiverID)
 	assertRestoredPaperFeedCheckpoint(t, s, got.ReceiverID)
 	assertRestoredPaperRecordArchive(t, s, got.ReceiverID)
+	assertRestoredAllocationIndex(t, s)
 	history, err := s.SocialHistory(ctx)
 	if err != nil || history.ReceiverID != got.ReceiverID || len(history.ResearchRequests) != 2 || history.ResearchRequests[0].DispatchAvailable || history.ResearchRequests[0].AdmissionAvailable || history.ResearchRequests[0].ExecutionAvailable || history.ResearchRequests[0].QualificationCredit {
 		t.Fatal("restored social owner", err)
@@ -275,6 +288,36 @@ func TestPostgresContractsRecoveryReplay(t *testing.T) {
 	}
 	t.Logf("social dispatch restore preserved receipts=%s", workerplan.Hash(dispatches))
 	t.Logf("owner replay preserved allocation=%s safety=%s ledger=%s social=%s", r.SHA256, r.ExecutionSafety[0].SHA256, r.LedgerSHA256, workerplan.Hash(history))
+}
+
+func assertRestoredAllocationIndex(t *testing.T, s *Postgres) {
+	t.Helper()
+	ctx := t.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(context.Background())
+	sources, err := readPaperEvaluationContext(ctx, tx, false, s.portfolioEvaluator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources.decisions, err = readActivePaperDecisions(ctx, tx, sources.declarations.ReceiverID, sources.retained, sources.strategies, sources.feed, recoveryFixtureDecisionEvaluator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	segment, err := readOwnedAllocationSegment(ctx, tx, 1)
+	if err != nil || segment.Before != nil || segment.After.Sequence != 1 || len(segment.Records) != 1 || segment.Records[0].Record.Command.ID != "recovery-comparison" {
+		t.Fatal("restored allocation segment", err)
+	}
+	catalog, err := replayOwnedAllocationSegment(ctx, segment, sources, s.ownedExecution(sources.feed))
+	if err != nil || len(catalog.Records) != 1 {
+		t.Fatal("restored allocation segment native replay", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("allocation segment restore preserved checkpoint=%s", segment.After.SHA256)
 }
 
 // This runs only against the exact runner-owned restored database. It verifies

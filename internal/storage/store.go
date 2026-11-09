@@ -78,6 +78,7 @@ type Memory struct {
 	socialJournal               *socialwatch.Journal
 	ownedAllocations            ownedAllocationJournal
 	ownedAllocationArchive      []retainedOwnedAllocation
+	ownedAllocationIndex        ownedAllocationArchiveIndex
 	decisionReviews             map[string]DecisionReviewRecord
 	paperOutcomes               map[string]retainedPaperOutcome
 	paperDecisions              map[string]retainedPaperDecision

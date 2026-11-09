@@ -926,7 +926,9 @@ func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCo
 		return OwnedAllocationReceipt{}, err
 	}
 	if !r.Duplicate {
-		m.commitOwnedAllocationsLocked(next)
+		if err := m.commitOwnedAllocationsLocked(next); err != nil {
+			return OwnedAllocationReceipt{}, err
+		}
 	}
 	return r, nil
 }
@@ -1082,6 +1084,7 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, pins [
 	}
 	var receipt OwnedAllocationReceipt
 	if apply != nil {
+		previousCheckpoint := journal.Checkpoint
 		next, changed, e := apply(ctx, owner, journal, policies, decisions, strategies, retained, p.ownedExecution(feed), feed.Collectors.LastClock, declarations, assessmentCatalog)
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
@@ -1092,6 +1095,9 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, pins [
 		journal = next
 		if changed {
 			if e = writeOwnedAllocationArchive(ctx, tx, journal); e != nil {
+				return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
+			}
+			if e = writeOwnedAllocationIndex(ctx, tx, journal, previousCheckpoint); e != nil {
 				return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 			}
 			raw, e = json.Marshal(journal)
