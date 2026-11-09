@@ -61,7 +61,7 @@ func (i Intent) Validate() error {
 	sha := i.SHA256
 	i.SHA256 = ""
 	raw, err := json.Marshal(i)
-	if err != nil || len(raw) > MaxIntentBytes || sha != workerplan.Hash(i) {
+	if err != nil || len(raw) > MaxIntentBytes || sha != workerplan.Digest(raw) {
 		return ErrInvalid
 	}
 	return nil
