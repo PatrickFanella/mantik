@@ -36,7 +36,7 @@ func fixtureExecutionQuotes(ask int64) PaperExecutionQuoteSource {
 
 func (f eligibilityFixture) step(t *testing.T, journal ownedAllocationJournal, c OwnedExecutionCommand, at time.Time, assessments ...PaperEvaluationAssessment) (ownedAllocationJournal, OwnedExecutionReceipt, error) {
 	t.Helper()
-	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(f.decide)
+	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(context.Background(), f.decide)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestOwnedReplacementExitClosesExpiredExit(t *testing.T) {
 func TestOwnedAppendsReportDeadlines(t *testing.T) {
 	f := newEligibilityFixture(t)
 	f.exec = &ownedExecution{feed: f.m.decisionFeedLocked(), quotes: fixtureExecutionQuotes(1)}
-	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(f.decide)
+	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(context.Background(), f.decide)
 	if err != nil {
 		t.Fatal(err)
 	}

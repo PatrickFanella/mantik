@@ -875,7 +875,7 @@ func (a *proposalAliases) check(c OwnedAllocationCommand) error {
 	return nil
 }
 
-func (m *Memory) ownedAllocationSourcesLocked(eval PaperDecisionEvaluator) (allocation.PolicyCatalog, PaperDecisionCatalog, paperstrategy.Catalog, error) {
+func (m *Memory) ownedAllocationSourcesLocked(ctx context.Context, eval PaperDecisionEvaluator) (allocation.PolicyCatalog, PaperDecisionCatalog, paperstrategy.Catalog, error) {
 	policies, err := m.allocationPoliciesLocked()
 	if err != nil {
 		return policies, PaperDecisionCatalog{}, paperstrategy.Catalog{}, err
@@ -884,16 +884,19 @@ func (m *Memory) ownedAllocationSourcesLocked(eval PaperDecisionEvaluator) (allo
 	if err != nil {
 		return policies, PaperDecisionCatalog{}, strategies, err
 	}
-	decisions, err := paperDecisionCatalog(m.receiverID, m.paperDecisions, strategies, m.decisionFeedLocked(), eval)
+	decisions, err := m.activePaperDecisionsLocked(ctx, strategies, m.decisionFeedLocked(), eval)
 	return policies, decisions, strategies, err
 }
 func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCommand, now func() time.Time, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationReceipt, error) {
+	if c.Validate() != nil {
+		return OwnedAllocationReceipt{}, ErrOwnedAllocationInvalid
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
-	policies, decisions, strategies, err := m.ownedAllocationSourcesLocked(eval)
+	policies, decisions, strategies, err := m.ownedAllocationSourcesLocked(ctx, eval)
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
@@ -910,7 +913,12 @@ func (m *Memory) CompareOwnedAllocation(ctx context.Context, c OwnedAllocationCo
 		return OwnedAllocationReceipt{}, err
 	}
 
-	next, r, err := appendOwnedAllocation(ctx, m.receiverID, m.ownedAllocationsForAppendLocked(), policies, decisions, strategies, m.paperDecisions, m.ownedExecutionLocked(), c, now, m.collectors.LastClock, declarations, assessments)
+	journal := m.ownedAllocationsForAppendLocked()
+	decisions, retained, err := m.allocationOwnerDecisionsLocked(ctx, decisions, journal, c.Decisions, eval)
+	if err != nil {
+		return OwnedAllocationReceipt{}, err
+	}
+	next, r, err := appendOwnedAllocation(ctx, m.receiverID, journal, policies, decisions, strategies, retained, m.ownedExecutionLocked(), c, now, m.collectors.LastClock, declarations, assessments)
 	if err != nil {
 		return OwnedAllocationReceipt{}, err
 	}
@@ -928,7 +936,7 @@ func (m *Memory) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluat
 	if err := ctx.Err(); err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
-	p, d, s, err := m.ownedAllocationSourcesLocked(eval)
+	p, d, s, err := m.ownedAllocationSourcesLocked(ctx, eval)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
@@ -945,7 +953,12 @@ func (m *Memory) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluat
 		return OwnedAllocationCatalog{}, err
 	}
 
-	catalog, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocationHistoryLocked(), p, d, s, m.paperDecisions, m.ownedExecutionLocked(), declarations, assessments)
+	journal := m.ownedAllocationHistoryLocked()
+	d, retained, err := m.allocationOwnerDecisionsLocked(ctx, d, journal, nil, eval)
+	if err != nil {
+		return OwnedAllocationCatalog{}, err
+	}
+	catalog, err := replayOwnedAllocations(ctx, m.receiverID, journal, p, d, s, retained, m.ownedExecutionLocked(), declarations, assessments)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}
@@ -972,7 +985,7 @@ func readOwnedAllocationJournal(ctx context.Context, tx pgx.Tx) (ownedAllocation
 // It reports whether the journal changed and must be written.
 type ownedJournalAppend func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error)
 
-func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, apply ownedJournalAppend, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, OwnedAllocationReceipt, error) {
+func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, pins []OwnedDecisionPin, apply ownedJournalAppend, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, OwnedAllocationReceipt, error) {
 	options := pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}
 	if write {
 		options = pgx.TxOptions{}
@@ -1015,7 +1028,7 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, apply 
 	if err != nil {
 		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
 	}
-	decisions, err := paperDecisionCatalog(owner, retained, strategies, feed, eval)
+	decisions, err := readActivePaperDecisions(ctx, tx, owner, retained, strategies, feed, eval)
 	if err != nil {
 		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
 	}
@@ -1055,13 +1068,17 @@ func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, apply 
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}
-		if _, e = paperOutcomeCatalog(owner, outcomes, retained, strategies, feed, eval, oe); e != nil {
+		if _, e = readActivePaperOutcomes(ctx, tx, owner, outcomes, retained, strategies, feed, eval, oe); e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}
 		assessmentCatalog, e = readPaperAssessmentOwners(ctx, tx, owner, assessments, eval, oe, p.portfolioEvaluator)
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}
+	}
+	decisions, retained, err = readAllocationOwnerDecisions(ctx, tx, decisions, retained, journal, pins, eval)
+	if err != nil {
+		return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, err
 	}
 	var receipt OwnedAllocationReceipt
 	if apply != nil {
@@ -1105,7 +1122,7 @@ func (p *Postgres) CompareOwnedAllocation(ctx context.Context, c OwnedAllocation
 		return OwnedAllocationReceipt{}, ErrOwnedAllocationInvalid
 	}
 	var r OwnedAllocationReceipt
-	_, _, e := p.ownedAllocationAccess(ctx, true, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
+	_, _, e := p.ownedAllocationAccess(ctx, true, c.Decisions, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
 		next, receipt, err := appendOwnedAllocation(ctx, owner, journal, policies, decisions, strategies, retained, x, c, now, sourceClock, declarations, assessments)
 		r = receipt
 		return next, err == nil && !receipt.Duplicate, err
@@ -1116,6 +1133,6 @@ func (p *Postgres) CompareOwnedAllocation(ctx context.Context, c OwnedAllocation
 	return r, nil
 }
 func (p *Postgres) OwnedAllocations(ctx context.Context, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, error) {
-	c, _, e := p.ownedAllocationAccess(ctx, false, nil, eval, outcomeEvals...)
+	c, _, e := p.ownedAllocationAccess(ctx, false, nil, nil, eval, outcomeEvals...)
 	return c, e
 }

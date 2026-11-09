@@ -881,7 +881,7 @@ func (m *Memory) ExecuteOwnedAllocations(ctx context.Context, c OwnedExecutionCo
 	if err := ctx.Err(); err != nil {
 		return OwnedExecutionReceipt{}, err
 	}
-	policies, decisions, strategies, err := m.ownedAllocationSourcesLocked(eval)
+	policies, decisions, strategies, err := m.ownedAllocationSourcesLocked(ctx, eval)
 	if err != nil {
 		return OwnedExecutionReceipt{}, err
 	}
@@ -897,7 +897,12 @@ func (m *Memory) ExecuteOwnedAllocations(ctx context.Context, c OwnedExecutionCo
 	if err != nil {
 		return OwnedExecutionReceipt{}, err
 	}
-	next, r, err := appendOwnedExecution(ctx, m.receiverID, m.ownedAllocationsForAppendLocked(), policies, decisions, strategies, m.paperDecisions, m.ownedExecutionLocked(), c, now, m.collectors.LastClock, declarations, assessments)
+	journal := m.ownedAllocationsForAppendLocked()
+	decisions, retained, err := m.allocationOwnerDecisionsLocked(ctx, decisions, journal, nil, eval)
+	if err != nil {
+		return OwnedExecutionReceipt{}, err
+	}
+	next, r, err := appendOwnedExecution(ctx, m.receiverID, journal, policies, decisions, strategies, retained, m.ownedExecutionLocked(), c, now, m.collectors.LastClock, declarations, assessments)
 	if err != nil {
 		return OwnedExecutionReceipt{}, err
 	}
@@ -915,7 +920,7 @@ func (p *Postgres) ExecuteOwnedAllocations(ctx context.Context, c OwnedExecution
 		return OwnedExecutionReceipt{}, ErrOwnedExecutionUnavailable
 	}
 	var r OwnedExecutionReceipt
-	_, _, err := p.ownedAllocationAccess(ctx, true, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
+	_, _, err := p.ownedAllocationAccess(ctx, true, nil, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
 		next, receipt, err := appendOwnedExecution(ctx, owner, journal, policies, decisions, strategies, retained, x, c, now, sourceClock, declarations, assessments)
 		r = receipt
 		return next, err == nil && receipt.Record != nil && !receipt.Duplicate, err

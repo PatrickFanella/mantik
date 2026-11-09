@@ -231,7 +231,7 @@ func (m *Memory) admissionReviewSourcesLocked(ctx context.Context, de PaperDecis
 	if de == nil || oe == nil {
 		return OwnedAllocationCatalog{}, ErrOwnedAdmissionReviewInvalid
 	}
-	p, d, s, err := m.ownedAllocationSourcesLocked(de)
+	p, d, s, err := m.ownedAllocationSourcesLocked(ctx, de)
 	if err != nil {
 		return OwnedAllocationCatalog{}, err
 	}

@@ -392,7 +392,7 @@ func ownedAllocationCostContracts(t *testing.T, s ownedAllocationBackend, withMo
 		until := plan.Decisions[0].Proposal.ValidUntil
 		if m, ok := s.(*Memory); ok {
 			m.mu.Lock()
-			policies, decisions, strategies, e := m.ownedAllocationSourcesLocked(eval)
+			policies, decisions, strategies, e := m.ownedAllocationSourcesLocked(ctx, eval)
 			if e != nil {
 				m.mu.Unlock()
 				t.Fatal(e)

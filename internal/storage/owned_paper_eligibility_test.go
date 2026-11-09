@@ -72,7 +72,7 @@ func (f eligibilityFixture) decide(c PaperDecisionCommand, _ PaperDecisionBasis,
 
 func (f eligibilityFixture) append(t *testing.T, journal ownedAllocationJournal, c OwnedAllocationCommand, at time.Time, assessments ...PaperEvaluationAssessment) (ownedAllocationJournal, OwnedAllocationReceipt, error) {
 	t.Helper()
-	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(f.decide)
+	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(context.Background(), f.decide)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func (f eligibilityFixture) append(t *testing.T, journal ownedAllocationJournal,
 
 func (f eligibilityFixture) replay(t *testing.T, journal ownedAllocationJournal, assessments ...PaperEvaluationAssessment) (OwnedAllocationCatalog, error) {
 	t.Helper()
-	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(f.decide)
+	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(context.Background(), f.decide)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestOwnedEligibilityWithdrawnByLaterBlockedAssessment(t *testing.T) {
 
 func TestOwnedEvaluationAdmissionWindowAndExecutionModel(t *testing.T) {
 	f := newEligibilityFixture(t)
-	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(f.decide)
+	policies, decisions, strategies, err := f.m.ownedAllocationSourcesLocked(context.Background(), f.decide)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -405,7 +405,7 @@ func (m *Memory) AuditOwnedAllocations(ctx context.Context, eval PaperDecisionEv
 	if err := ctx.Err(); err != nil {
 		return OwnedAllocationAudit{}, err
 	}
-	p, d, s, err := m.ownedAllocationSourcesLocked(eval)
+	p, d, s, err := m.ownedAllocationSourcesLocked(ctx, eval)
 	if err != nil {
 		return OwnedAllocationAudit{}, err
 	}
@@ -421,12 +421,17 @@ func (m *Memory) AuditOwnedAllocations(ctx context.Context, eval PaperDecisionEv
 	if err != nil {
 		return OwnedAllocationAudit{}, err
 	}
-	return auditOwnedAllocations(ctx, m.receiverID, m.ownedAllocationHistoryLocked(), p, d, s, m.paperDecisions, m.ownedExecutionLocked(), declarations, assessments)
+	journal := m.ownedAllocationHistoryLocked()
+	d, retained, err := m.allocationOwnerDecisionsLocked(ctx, d, journal, nil, eval)
+	if err != nil {
+		return OwnedAllocationAudit{}, err
+	}
+	return auditOwnedAllocations(ctx, m.receiverID, journal, p, d, s, retained, m.ownedExecutionLocked(), declarations, assessments)
 }
 
 func (p *Postgres) AuditOwnedAllocations(ctx context.Context, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationAudit, error) {
 	var out OwnedAllocationAudit
-	_, _, err := p.ownedAllocationAccess(ctx, false, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, _ time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
+	_, _, err := p.ownedAllocationAccess(ctx, false, nil, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, _ time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
 		var err error
 		out, err = auditOwnedAllocations(ctx, owner, journal, policies, decisions, strategies, retained, x, declarations, assessments)
 		return journal, false, err
