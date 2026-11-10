@@ -389,7 +389,13 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	return withClaimReviewAttribution(ctx, out, decisions, m.decisionReviews, sources)
+	// Claim reviews can name an approved retired decision; resolve it from
+	// its first original archive, as the review catalogue does.
+	reviewed, err := m.reviewOwnerDecisionsLocked(ctx, decisions, DecisionReviewCommand{}, m.decisionReviews, decisionEval)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	return withClaimReviewAttribution(ctx, out, reviewed, m.decisionReviews, sources)
 }
 func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecisionEvaluator, outcomeEval PaperOutcomeEvaluator) (PaperAttributionCatalog, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -484,7 +490,11 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 		}
 		sources = []socialwatch.Journal{j}
 	}
-	out, err = withClaimReviewAttribution(ctx, out, decisions, claims, sources)
+	reviewed, err := readReviewOwnerDecisions(ctx, tx, decisions, DecisionReviewCommand{}, claims, decisionEval)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	out, err = withClaimReviewAttribution(ctx, out, reviewed, claims, sources)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}

@@ -222,7 +222,11 @@ func (m *Memory) PaperAttributionDecision(ctx context.Context, id string, de Pap
 	if err != nil {
 		return PaperAttributionRow{}, err
 	}
-	return paperAttributionDecision(ctx, d, decisions, strategies, outcomes, scoped, m.admissionReviews, m.decisionReviews, sources)
+	reviewed, err := m.reviewOwnerDecisionsLocked(ctx, decisions, DecisionReviewCommand{}, m.decisionReviews, de)
+	if err != nil {
+		return PaperAttributionRow{}, err
+	}
+	return paperAttributionDecision(ctx, d, reviewed, strategies, outcomes, scoped, m.admissionReviews, m.decisionReviews, sources)
 }
 
 func (p *Postgres) PaperAttributionDecision(ctx context.Context, id string, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) (PaperAttributionRow, error) {
@@ -354,7 +358,11 @@ func (p *Postgres) PaperAttributionDecision(ctx context.Context, id string, de P
 		}
 		sources = []socialwatch.Journal{j}
 	}
-	row, err := paperAttributionDecision(ctx, d, decisions, strategies, outcomes, scoped, admission, claims, sources)
+	reviewed, err := readReviewOwnerDecisions(ctx, tx, decisions, DecisionReviewCommand{}, claims, de)
+	if err != nil {
+		return PaperAttributionRow{}, err
+	}
+	row, err := paperAttributionDecision(ctx, d, reviewed, strategies, outcomes, scoped, admission, claims, sources)
 	if err != nil {
 		return PaperAttributionRow{}, err
 	}
