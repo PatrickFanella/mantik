@@ -193,25 +193,33 @@ func (m *Memory) OwnedAllocationComparison(ctx context.Context, id string, de Pa
 	if err != nil {
 		return OwnedAllocationRecord{}, err
 	}
-	policies, decisions, strategies, err := m.ownedAllocationSourcesLocked(ctx, de)
+	catalog, err := m.replayAllocationReadLocked(ctx, j, segment, de, outcomeEvals...)
 	if err != nil {
 		return OwnedAllocationRecord{}, err
+	}
+	return allocationComparisonFromCatalog(id, catalog)
+}
+
+func (m *Memory) replayAllocationReadLocked(ctx context.Context, j ownedAllocationJournal, segment *ownedAllocationSegment, de PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, error) {
+	policies, decisions, strategies, err := m.ownedAllocationSourcesLocked(ctx, de)
+	if err != nil {
+		return OwnedAllocationCatalog{}, err
 	}
 	declarations, err := paperEvaluationDeclarationCatalog(m.receiverID, m.paperEvaluationPlans, strategies, policies)
 	if err != nil {
-		return OwnedAllocationRecord{}, err
+		return OwnedAllocationCatalog{}, err
 	}
 	oe, err := allocationOutcomeEvaluator(outcomeEvals)
 	if err != nil {
-		return OwnedAllocationRecord{}, err
+		return OwnedAllocationCatalog{}, err
 	}
 	assessments, err := m.allocationAssessmentOwnersLocked(ctx, de, oe)
 	if err != nil {
-		return OwnedAllocationRecord{}, err
+		return OwnedAllocationCatalog{}, err
 	}
 	decisions, retained, err := m.allocationOwnerDecisionsLocked(ctx, decisions, j, nil, de)
 	if err != nil {
-		return OwnedAllocationRecord{}, err
+		return OwnedAllocationCatalog{}, err
 	}
 	var catalog OwnedAllocationCatalog
 	if segment != nil {
@@ -221,12 +229,12 @@ func (m *Memory) OwnedAllocationComparison(ctx context.Context, id string, de Pa
 		catalog, err = replayOwnedAllocations(ctx, m.receiverID, j, policies, decisions, strategies, retained, m.ownedExecutionLocked(), declarations, assessments)
 	}
 	if err != nil {
-		return OwnedAllocationRecord{}, err
+		return OwnedAllocationCatalog{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return OwnedAllocationRecord{}, err
+		return OwnedAllocationCatalog{}, err
 	}
-	return allocationComparisonFromCatalog(id, catalog)
+	return catalog, nil
 }
 
 func (p *Postgres) OwnedAllocationComparison(ctx context.Context, id string, de PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationRecord, error) {

@@ -92,6 +92,7 @@ func handlerWithAcquisitions(store storage.Store, token string, clock Clock, pol
 	feedArchiveRoutes(mux, store, clock)
 	paperRecordArchiveRoutes(mux, store, clock)
 	paperHistoryRoutes(mux, store)
+	ownedAllocationHistoryRoutes(mux, store)
 	feedArchiveSourceRoutes(mux, store)
 	corporateActionSourceRoutes(mux, store, clock)
 	corporateAcquisitionRoutes(mux, acquisitions, store, clock)

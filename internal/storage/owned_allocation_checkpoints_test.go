@@ -130,6 +130,7 @@ CREATE CONSTRAINT TRIGGER reject_allocation_index_commit AFTER INSERT ON mantik_
 	}
 	verifyAllocationIndexSegments(t, s, eval)
 	verifyAllocationTargetReads(t, s, eval, catalog)
+	historyBefore := verifyAllocationHistoryPages(t, s, eval, catalog)
 	if len(retireDecision) > 0 && retireDecision[0] {
 		other := decision.Record.Command
 		other.ID = "still-active"
@@ -213,6 +214,9 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 			t.Fatal("approved retirement changed allocation replay", err)
 		}
 		verifyAllocationTargetReads(t, s, eval, catalog)
+		if got := verifyAllocationHistoryPages(t, s, eval, catalog); !reflect.DeepEqual(got, historyBefore) {
+			t.Fatal("approved retirement changed sealed allocation page")
+		}
 		if got, err := auditor.AuditOwnedAllocations(ctx, eval); err != nil || !reflect.DeepEqual(got, audit) {
 			t.Fatal("approved retirement changed full-history audit", err)
 		}
@@ -262,6 +266,23 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 		catalog, err = s.OwnedAllocations(ctx, eval)
 		if err != nil || len(catalog.Records) != len(receipts) {
 			t.Fatal("allocation append after decision retirement", err)
+		}
+		// Cross another real seal while an earlier cursor remains in use.
+		r, err = s.CompareOwnedAllocation(ctx, command(9), func() time.Time { return at.Add(12 * time.Second) }, eval)
+		if err != nil || r.Duplicate {
+			t.Fatal("allocation append crossing a seal after retirement", err)
+		}
+		receipts = append(receipts, r)
+		catalog, err = s.OwnedAllocations(ctx, eval)
+		if err != nil || len(catalog.Records) != len(receipts) {
+			t.Fatal("new sealed allocation catalogue", err)
+		}
+		if got := verifyAllocationHistoryPages(t, s, eval, catalog); got.ThroughSequence <= historyBefore.ThroughSequence {
+			t.Fatal("new history request did not see the new seal")
+		}
+		continued, err := s.(OwnedAllocationHistoryStore).OwnedAllocationHistory(ctx, OwnedAllocationHistoryQuery{ReceiverID: owner, Limit: 2, After: historyBefore.NextAfter}, eval)
+		if err != nil || continued.ThroughSequence != historyBefore.ThroughSequence || continued.CheckpointSHA256 != historyBefore.CheckpointSHA256 || len(continued.Records) != 2 || !reflect.DeepEqual(*continued.Records[0].Comparison, catalog.Records[2]) || !reflect.DeepEqual(*continued.Records[1].Comparison, catalog.Records[3]) {
+			t.Fatal("old allocation cursor expanded after append and sealing", err)
 		}
 		if got, err := auditor.AuditOwnedAllocations(ctx, eval); err != nil || got.Records != len(receipts) {
 			t.Fatal("audit after append with retired dependency", err)
@@ -413,6 +434,12 @@ func TestOwnedCheckpointsSealExecutedHistory(t *testing.T) {
 			}
 		}
 		commit := func(next ownedAllocationJournal) {
+			f.m.mu.Lock()
+			err := f.m.commitOwnedAllocationsLocked(next)
+			f.m.mu.Unlock()
+			if err != nil {
+				t.Fatal("original executed segment index", err)
+			}
 			archive = append(archive, clone(next.sealing)...)
 			journal = clone(next)
 		}
@@ -467,6 +494,7 @@ func TestOwnedCheckpointsSealExecutedHistory(t *testing.T) {
 	if audit, err := f.audit(t, history, f.complete); err != nil || audit.Status != "verified" || audit.Records != 6 {
 		t.Fatal("audit", audit, err)
 	}
+	verifyExecutedAllocationHistory(t, f, checkpointed.Executions[0])
 	// With every record past the threshold, sealing still waits for the
 	// grant's book to finish: its entry fills and its protective exit closes.
 	if _, eager, _, _ := run(1); openBookSealed || eager.Checkpoint == nil {

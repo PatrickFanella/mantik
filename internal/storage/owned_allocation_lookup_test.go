@@ -44,6 +44,9 @@ func verifyAllocationTargetReads(t *testing.T, s ownedAllocationBackend, de Pape
 			m.ownedAllocationIndex = ownedAllocationArchiveIndex{}
 			m.mu.Unlock()
 			defer func() { m.mu.Lock(); m.ownedAllocationIndex = index; m.mu.Unlock() }()
+			if got, err := m.OwnedAllocationHistory(t.Context(), OwnedAllocationHistoryQuery{ReceiverID: all.ReceiverID, Limit: 2}, de); err == nil || !reflect.DeepEqual(got, OwnedAllocationHistoryPage{}) {
+				t.Fatal("unindexed legacy history became a successful partial page")
+			}
 			for _, n := range []int{0, len(all.Records) - 1} {
 				if got, err := lookup.OwnedAllocationComparison(t.Context(), all.Records[n].Command.ID, de); err != nil || !reflect.DeepEqual(got, all.Records[n]) {
 					t.Fatal("legacy checkpoint lost original target", err)
@@ -113,6 +116,14 @@ func verifyAllocationTargetReads(t *testing.T, s ownedAllocationBackend, de Pape
 	}
 	if got, err := lookup.OwnedAllocationComparison(ctx, later.Command.ID, de); err == nil || !reflect.DeepEqual(got, OwnedAllocationRecord{}) {
 		t.Fatal("damaged selected segment returned a record", err)
+	}
+	pages := s.(OwnedAllocationHistoryStore)
+	firstPage, err := pages.OwnedAllocationHistory(ctx, OwnedAllocationHistoryQuery{ReceiverID: all.ReceiverID, Limit: 2}, de)
+	if err != nil || firstPage.NextAfter == "" {
+		t.Fatal("intact original page loaded an unrelated damaged segment", err)
+	}
+	if got, err := pages.OwnedAllocationHistory(ctx, OwnedAllocationHistoryQuery{ReceiverID: all.ReceiverID, Limit: 2, After: firstPage.NextAfter}, de); err == nil || !reflect.DeepEqual(got, OwnedAllocationHistoryPage{}) {
+		t.Fatal("damaged allocation history returned a partial page", err)
 	}
 	if got, err := s.OwnedAllocations(ctx, de); err == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
 		t.Fatal("partial target proof replaced complete history validation", err)
