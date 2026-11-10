@@ -109,6 +109,25 @@ archive copy exists. `mantik allocation-contribution` can still total a retired
 decision's reserved funding and execution effects. Retirement itself remains
 disabled in production; only disposable test fixtures supply that state.
 
+The targeted read does not load the sealed allocation archive. It replays the
+working journal from its checkpoint, and from sealed history only the segments
+the decision index selects for that decision, following every decision-history
+page of one checkpoint cut in the same Memory lock or PostgreSQL snapshot. It
+then joins the active decision, outcome and claim-review owners and the
+decision's own admission-review chain with the same row builder as the
+catalogue, so the row and its hash are identical to the catalogue's row. A
+damaged sealed record that belongs only to other decisions fails the catalogue
+but not this read; the catalogue and the full allocation audit remain the
+complete checks. The admission-review chain is checked against the comparisons
+it names, and review sequences must be exactly 1..n. Checks that span all
+decisions run only in the catalogue: other decisions' review chains and the
+global review clock, orphaned outcomes, comparison pins or reviews naming an
+absent unretired decision, and the 8 MiB catalogue bound (the targeted row has
+its own 8 MiB bound). An inactive or unknown decision returns 404 before any
+allocation history is read. On legacy sealed history without its original
+segment index, the route answers from the complete catalogue instead, as before;
+`allocation-history-index` rebuilds the index.
+
 This is a read-only part of #24. Strategy analysis is described below; funded
 paper execution is covered above. Issue #24 stays open for its acceptance audit. These
 readbacks do not supply the admission or atomic funded effects still needed by

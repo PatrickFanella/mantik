@@ -755,6 +755,28 @@ func positiveExecutionAttribution(t testing.TB, url, owner string, filled, proce
 	if validateAttributionRow(row, owner) != nil {
 		t.Fatal("command rejects the closed grant's row")
 	}
+	// The targeted row replays only the decision's records, yet it is the
+	// complete catalogue's row.
+	r, _ = http.NewRequestWithContext(context.Background(), "GET", url+"/v1/paper-attribution", nil)
+	r.Header.Set("Authorization", "Bearer positive-fixture-token")
+	all, err := http.DefaultClient.Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer all.Body.Close()
+	var catalogue storage.PaperAttributionCatalog
+	if all.StatusCode != 200 || json.NewDecoder(all.Body).Decode(&catalogue) != nil {
+		t.Fatal("attribution catalogue", all.StatusCode)
+	}
+	found := false
+	for _, c := range catalogue.Rows {
+		if c.Decision.Command.ID == "grant-decision" {
+			found = reflect.DeepEqual(c, row)
+		}
+	}
+	if !found {
+		t.Fatal("targeted attribution row differs from the catalogue row")
+	}
 	t.Setenv("MANTIK_API_TOKEN", "positive-fixture-token")
 	var out, diag bytes.Buffer
 	if err := Run(context.Background(), []string{"paper-attribution", "--api-url", url, "--receiver-id", owner}, &out, &diag); err != nil {

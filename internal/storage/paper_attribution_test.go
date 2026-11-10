@@ -111,6 +111,7 @@ func paperAttributionContracts(t *testing.T, s attributionBackend) {
 	if original.Schema != "mantik-owned-paper-attribution-v5" || original.ReceiverID != owner || original.ExecutionAvailable || original.QualificationCredit || original.Authority != "service_owned_phase_attribution_only" || len(original.Rows) != 2 {
 		t.Fatal(original)
 	}
+	requireAttributionTargets(t, s, original, de, oe)
 	row := original.Rows[1]
 	if !reflect.DeepEqual(row.Decision, decision.Record) || row.DefinitionSHA256 != strategy.Record.DefinitionSHA256 || row.EvidenceClass != d.InputEvidenceClass || row.Method != paperstrategy.Method || row.Symbol != "SPY" || row.QualificationCredit || len(row.Observations) != 2 || len(row.Allocations) != 1 {
 		t.Fatal(row)
@@ -283,6 +284,7 @@ func attributionAdmissionReviewContracts(t *testing.T, s attributionBackend, com
 	}
 	wg.Wait()
 	final := get()
+	requireAttributionTargets(t, s, final, de, oe)
 	h := final.Rows[1].AdmissionReviewHistory
 	actual, err := s.OwnedAdmissionReviews(ctx, de, oe)
 	if err != nil || !reflect.DeepEqual(h.Records, actual.Records) || len(actual.CurrentIDs) != 1 || h.CurrentID != actual.CurrentIDs[0] || h.SourceSHA256 != workerplan.Hash(actual) || h.AdmissionAvailable || h.ExecutionAvailable || h.QualificationCredit || final.Rows[1].Economics.FeesCents != nil {
@@ -313,6 +315,19 @@ func attributionAdmissionReviewContracts(t *testing.T, s attributionBackend, com
 		cancel()
 		if !tracer.fired.Load() || err == nil || !reflect.DeepEqual(partial, PaperAttributionCatalog{}) {
 			t.Fatal("failed read COMMIT exposed review history", partial, err, tracer.fired.Load())
+		}
+		request, cancel = context.WithCancel(ctx)
+		tracer = &cancelCollectorCommit{cancel: cancel}
+		config.ConnConfig.Tracer = tracer
+		if pool, err = pgxpool.NewWithConfig(ctx, config); err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		row, err := (&Postgres{pool: pool}).PaperAttributionDecision(request, decision.Command.ID, de, oe)
+		pool.Close()
+		cancel()
+		if !tracer.fired.Load() || err == nil || !reflect.DeepEqual(row, PaperAttributionRow{}) {
+			t.Fatal("failed read COMMIT exposed a targeted attribution row", err, tracer.fired.Load())
 		}
 		reopened, err := OpenPostgres(ctx, pg.pool.Config().ConnString())
 		if err != nil {
@@ -356,6 +371,9 @@ func attributionAdmissionReviewContracts(t *testing.T, s attributionBackend, com
 			defer write(original)
 			if partial, err := s.PaperAttribution(ctx, de, oe); err == nil || !reflect.DeepEqual(partial, PaperAttributionCatalog{}) {
 				t.Fatal("corrupt review produced partial attribution", partial, err)
+			}
+			if row, err := s.(PaperAttributionDecisionStore).PaperAttributionDecision(ctx, decision.Command.ID, de, oe); err == nil || !reflect.DeepEqual(row, PaperAttributionRow{}) {
+				t.Fatal("corrupt review produced a targeted attribution row", err)
 			}
 		})
 	}

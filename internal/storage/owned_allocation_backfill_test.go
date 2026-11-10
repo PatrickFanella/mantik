@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 	"git.subcult.tv/subculture-collective/mantik/migrations"
@@ -151,6 +152,7 @@ CREATE CONSTRAINT TRIGGER reject_native_index_backfill AFTER INSERT ON mantik_ow
 	}
 	requireEmptyIndex()
 	verifyOriginals()
+	requireAttributionIndexUnavailable(t, s, de, all)
 	got, err := store.IndexOwnedAllocationHistory(ctx, command, de)
 	if err != nil || got.Validate(command) != nil || got.ThroughSequence != 6 || got.MembersAdded != 6 || got.SegmentsAdded != 2 || got.CheckpointsAdded != 2 || got.AuditedRecords != len(all.Records) {
 		t.Fatal("native legacy index reconstruction", got, err)
@@ -191,6 +193,7 @@ ALTER TABLE mantik_owned_allocation_batches ENABLE TRIGGER USER`); err != nil {
 			t.Fatal(err)
 		}
 	}
+	requireAttributionIndexUnavailable(t, s, de, all)
 	mixed, err := store.IndexOwnedAllocationHistory(ctx, command, de)
 	if err != nil || mixed.Validate(command) != nil || mixed.SegmentsAdded != 1 || mixed.MembersAdded != 3 || mixed.CheckpointsAdded != 0 || mixed.CheckpointSHA256 != got.CheckpointSHA256 {
 		t.Fatal("mixed legacy and original index reconstruction", mixed, err)
@@ -265,5 +268,37 @@ CROSS JOIN LATERAL mantik_allocation_financial_decisions(convert_from(a.payload,
 	}
 	if got, err := s.(OwnedAllocationIndexStore).IndexOwnedAllocationHistory(ctx, command, de); !errors.Is(err, ErrOwnedAllocationAudit) || !reflect.DeepEqual(got, OwnedAllocationIndexReceipt{}) {
 		t.Fatal("backfill accepted an incomplete existing index", err)
+	}
+}
+
+// requireAttributionIndexUnavailable checks that legacy sealed history without
+// its segment index makes the targeted attribution read refuse, so the route
+// can fall back to the complete catalogue instead of returning a partial row.
+func requireAttributionIndexUnavailable(t *testing.T, s ownedAllocationBackend, de PaperDecisionEvaluator, all OwnedAllocationCatalog) {
+	t.Helper()
+	target := s.(PaperAttributionDecisionStore)
+	noOutcome := func(PaperOutcomeBasis, time.Time) (PaperOutcomeEvaluation, error) {
+		return PaperOutcomeEvaluation{}, errors.New("index fixture has no outcomes")
+	}
+	ids := map[string]bool{"still-active": true}
+	for _, r := range all.Records {
+		for _, pin := range r.Command.Decisions {
+			ids[pin.ID] = true
+		}
+	}
+	refused := 0
+	for id := range ids {
+		got, err := target.PaperAttributionDecision(t.Context(), id, de, noOutcome)
+		if errors.Is(err, ErrPaperAttributionIndexUnavailable) {
+			refused++
+		} else if !errors.Is(err, ErrPaperAttributionNotFound) {
+			t.Fatal("targeted attribution on unindexed history", id, err)
+		}
+		if !reflect.DeepEqual(got, PaperAttributionRow{}) {
+			t.Fatal("targeted attribution returned a row from unindexed history", id)
+		}
+	}
+	if refused == 0 {
+		t.Fatal("index fixture has no active decision to read")
 	}
 }
