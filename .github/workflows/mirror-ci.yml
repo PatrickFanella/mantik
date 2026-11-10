@@ -1,0 +1,113 @@
+name: Mirror CI
+run-name: Mirror CI ${{ github.sha }}
+'on':
+  push:
+    branches-ignore:
+    - main
+  workflow_dispatch: null
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # Gitea's ten PR jobs run here as four. Each moved command is unchanged;
+  # every disposable PostgreSQL shard still gets its own new container, and
+  # every test group keeps its own 30-minute alarm inside the scripts.
+  verify:
+    name: Verify and build images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+    - name: Verify Mantik
+      run: make verify
+    - name: Build container images
+      run: make compose-build
+    if: github.repository == 'subculture-collective/mantik'
+  race:
+    name: Race detector
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+    - name: Race-check packages other than storage
+      run: make test-race-other
+    - name: Race-check storage group 0
+      run: go run ./scripts/testshard -race -parts=2 -index=0 ./internal/storage
+    - name: Race-check storage group 1
+      run: go run ./scripts/testshard -race -parts=2 -index=1 ./internal/storage
+    if: github.repository == 'subculture-collective/mantik'
+  integration-storage:
+    name: Integration storage recovery and capacity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+    - name: Pull disposable test images
+      run: |
+        docker pull -q postgres:17
+        docker pull -q golang:1.26.9
+    - name: Storage group 0 with recovery replay
+      run: python3 scripts/test-integration.py --package storage --shard 0
+    - name: Storage capacity group
+      run: python3 scripts/test-integration.py --package storage --shard 2
+    if: github.repository == 'subculture-collective/mantik'
+  integration-storage-cli:
+    name: Integration storage group 1 and CLI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+    - name: Pull disposable test images
+      run: |
+        docker pull -q postgres:17
+        docker pull -q golang:1.26.9
+    - name: Storage group 1
+      run: python3 scripts/test-integration.py --package storage --shard 1
+    - name: CLI group 0
+      run: python3 scripts/test-integration.py --package cli --shard 0
+    - name: CLI group 1
+      run: python3 scripts/test-integration.py --package cli --shard 1
+    if: github.repository == 'subculture-collective/mantik'
+  mirror-gate:
+    name: Mirror CI gate
+    if: always() && github.repository == 'subculture-collective/mantik'
+    needs:
+    - verify
+    - race
+    - integration-storage
+    - integration-storage-cli
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+    - name: Require every verification job
+      env:
+        RESULTS: ${{ toJSON(needs) }}
+      run: |
+        python3 - <<'PY'
+        import json, os
+        results = json.loads(os.environ["RESULTS"])
+        expected = {'verify', 'race', 'integration-storage', 'integration-storage-cli'}
+        assert set(results) == expected, results
+        for name, result in results.items():
+            assert result["result"] == "success", name + " did not pass"
+        PY
