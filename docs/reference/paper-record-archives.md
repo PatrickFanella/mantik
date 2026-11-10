@@ -286,7 +286,8 @@ bounded original owner views. Allocation replay, comparison and execution
 appends, exact retries and full-history audit can resolve their actual decision
 dependencies from first original archives after approved retirement. The
 complete active owner check remains separate; absence alone never permits
-archive fallback. Physical paper retirement still requires pending outcome,
-attribution, review and archive-writer dependency contracts. Admission-review and other
+archive fallback. The paper attribution catalogue reads through the same
+dependencies after approved retirement. Physical paper retirement still requires
+pending outcome, review and archive-writer dependency contracts. Admission-review and other
 workflow/source retention, automatic scheduling and growing-history operational
 cost checks also remain part of the complete archive work.

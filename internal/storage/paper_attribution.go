@@ -189,9 +189,18 @@ type PaperAttributionStore interface {
 
 // All source catalogues have been replayed against actual retained owner sources
 // in one Memory lock or repeatable-read transaction before this join.
-func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, outcomes PaperOutcomeCatalog, allocations OwnedAllocationCatalog, allReviews map[string]OwnedAdmissionReview) (PaperAttributionCatalog, error) {
-	if decisions.ReceiverID != strategies.ReceiverID || outcomes.ReceiverID != decisions.ReceiverID || allocations.ReceiverID != decisions.ReceiverID {
+//
+// Rows cover the active decisions. dependencies is that catalogue plus the
+// approved retired decisions allocation replay resolved from their original
+// archives: a comparison or admission review may still name one of those, but
+// a reference to any other absent decision remains an orphan.
+func paperAttribution(ctx context.Context, decisions, dependencies PaperDecisionCatalog, strategies paperstrategy.Catalog, outcomes PaperOutcomeCatalog, allocations OwnedAllocationCatalog, allReviews map[string]OwnedAdmissionReview) (PaperAttributionCatalog, error) {
+	if decisions.ReceiverID != strategies.ReceiverID || outcomes.ReceiverID != decisions.ReceiverID || allocations.ReceiverID != decisions.ReceiverID || dependencies.ReceiverID != decisions.ReceiverID {
 		return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
+	}
+	resolved := map[string]string{}
+	for _, d := range dependencies.Records {
+		resolved[d.Command.ID] = d.SHA256
 	}
 	out := PaperAttributionCatalog{Schema: "mantik-owned-paper-attribution-v5", ReceiverID: decisions.ReceiverID, Rows: []PaperAttributionRow{}, Authority: "service_owned_phase_attribution_only"}
 	reviews, err := ownedAdmissionReviewCatalog(ctx, decisions.ReceiverID, allReviews, allocations)
@@ -305,13 +314,13 @@ func paperAttribution(ctx context.Context, decisions PaperDecisionCatalog, strat
 	}
 	for _, a := range allocations.Records {
 		for _, pin := range a.Command.Decisions {
-			if !seen[pin.ID] {
+			if !seen[pin.ID] && resolved[pin.ID] != pin.SHA256 {
 				return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
 			}
 		}
 	}
 	for _, review := range reviews.Records {
-		if !seen[review.Command.DecisionID] {
+		if !seen[review.Command.DecisionID] && resolved[review.Command.DecisionID] != review.Command.DecisionSHA256 {
 			return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
 		}
 	}
@@ -333,7 +342,9 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	outcomes, err := paperOutcomeCatalog(m.receiverID, m.paperOutcomes, m.paperDecisions, strategies, m.decisionFeedLocked(), decisionEval, outcomeEval)
+	// Active owner intervals, not the feed checkpoint's closed count, decide
+	// completeness: approved retirement removes rows that checkpoint counted.
+	outcomes, err := m.activePaperOutcomesLocked(ctx, strategies, m.decisionFeedLocked(), decisionEval, outcomeEval)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
@@ -346,11 +357,16 @@ func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisio
 		return PaperAttributionCatalog{}, err
 	}
 
-	allocations, err := replayOwnedAllocations(ctx, m.receiverID, m.ownedAllocationHistoryLocked(), policies, decisions, strategies, m.paperDecisions, m.ownedExecutionLocked(), declarations, assessmentCatalog)
+	history := m.ownedAllocationHistoryLocked()
+	dependencies, owners, err := m.allocationOwnerDecisionsLocked(ctx, decisions, history, nil, decisionEval)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	out, err := paperAttribution(ctx, decisions, strategies, outcomes, allocations, m.admissionReviews)
+	allocations, err := replayOwnedAllocations(ctx, m.receiverID, history, policies, dependencies, strategies, owners, m.ownedExecutionLocked(), declarations, assessmentCatalog)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	out, err := paperAttribution(ctx, decisions, dependencies, strategies, outcomes, allocations, m.admissionReviews)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
@@ -378,7 +394,9 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	decisions, err := paperDecisionCatalog(feed.ReceiverID, retained, strategies, feed, decisionEval)
+	// Active owner intervals, not the feed checkpoint's closed count, decide
+	// completeness: approved retirement removes rows that checkpoint counted.
+	decisions, err := readActivePaperDecisions(ctx, tx, feed.ReceiverID, retained, strategies, feed, decisionEval)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
@@ -386,7 +404,7 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	outcomes, err := paperOutcomeCatalog(feed.ReceiverID, all, retained, strategies, feed, decisionEval, outcomeEval)
+	outcomes, err := readActivePaperOutcomes(ctx, tx, feed.ReceiverID, all, retained, strategies, feed, decisionEval, outcomeEval)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
@@ -423,7 +441,11 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 		return PaperAttributionCatalog{}, err
 	}
 
-	allocations, err := replayOwnedAllocations(ctx, feed.ReceiverID, journal, policies, decisions, strategies, retained, p.ownedExecution(feed), declarations, assessmentCatalog)
+	dependencies, owners, err := readAllocationOwnerDecisions(ctx, tx, decisions, retained, journal, nil, decisionEval)
+	if err != nil {
+		return PaperAttributionCatalog{}, err
+	}
+	allocations, err := replayOwnedAllocations(ctx, feed.ReceiverID, journal, policies, dependencies, strategies, owners, p.ownedExecution(feed), declarations, assessmentCatalog)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
@@ -431,7 +453,7 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}
-	out, err := paperAttribution(ctx, decisions, strategies, outcomes, allocations, allReviews)
+	out, err := paperAttribution(ctx, decisions, dependencies, strategies, outcomes, allocations, allReviews)
 	if err != nil {
 		return PaperAttributionCatalog{}, err
 	}

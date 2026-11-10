@@ -179,6 +179,11 @@ CREATE TRIGGER zz_omit_financial_refs BEFORE INSERT ON mantik_owned_allocation_f
 		if err != nil || len(reviews.Records) != 1 {
 			t.Fatal("admission catalogue before retirement", err)
 		}
+		attributor := s.(PaperAttributionStore)
+		attribution, err := attributor.PaperAttribution(ctx, eval, noOutcome)
+		if err != nil || len(attribution.Rows) != 2 || len(attribution.Rows[0].Allocations) == 0 {
+			t.Fatal("attribution before retirement", err)
+		}
 		if _, err := archives.RotateFeed(ctx, owner, func() time.Time { return at.Add(10 * time.Second) }, func(FeedEvidenceSnapshot, time.Time) error { return nil }, eval, noOutcome); err != nil {
 			t.Fatal(err)
 		}
@@ -193,6 +198,9 @@ CREATE TRIGGER zz_omit_financial_refs BEFORE INSERT ON mantik_owned_allocation_f
 			if got, err := s.OwnedAllocations(ctx, eval); err == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
 				t.Fatal("missing unretired decision used archive fallback", err)
 			}
+			if got, err := attributor.PaperAttribution(ctx, eval, noOutcome); err == nil || !reflect.DeepEqual(got, PaperAttributionCatalog{}) {
+				t.Fatal("attribution used archive fallback for a missing unretired decision", err)
+			}
 			m.mu.Lock()
 			m.paperDecisions["first"] = retained
 			m.mu.Unlock()
@@ -204,6 +212,9 @@ CREATE TRIGGER zz_omit_financial_refs BEFORE INSERT ON mantik_owned_allocation_f
 			}
 			if got, err := s.OwnedAllocations(ctx, eval); err == nil || !reflect.DeepEqual(got, OwnedAllocationCatalog{}) {
 				t.Fatal("missing unretired decision used archive fallback", err)
+			}
+			if got, err := attributor.PaperAttribution(ctx, eval, noOutcome); err == nil || !reflect.DeepEqual(got, PaperAttributionCatalog{}) {
+				t.Fatal("attribution used archive fallback for a missing unretired decision", err)
 			}
 			// A normal insert correctly rejects the already reserved identity.
 			tx, err := pg.pool.Begin(ctx)
@@ -250,6 +261,23 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 		}
 		if got, err := reviewBackend.OwnedAdmissionReviews(ctx, eval, noOutcome); err != nil || !reflect.DeepEqual(got, reviews) {
 			t.Fatal("approved retirement changed admission review", err)
+		}
+		// The retired decision leaves the active rows. Its comparisons and
+		// admission review stay in the replayed sources without becoming
+		// orphans, and every remaining row is unchanged.
+		after, err := attributor.PaperAttribution(ctx, eval, noOutcome)
+		if err != nil || len(after.Rows) != 1 || after.Rows[0].Decision.Command.ID != "still-active" || after.QualificationCredit {
+			t.Fatal("attribution after approved retirement", err)
+		}
+		for _, row := range attribution.Rows {
+			if row.Decision.Command.ID == "still-active" && !reflect.DeepEqual(row, after.Rows[0]) {
+				t.Fatal("approved retirement changed an active attribution row")
+			}
+		}
+		unsigned := after
+		unsigned.SHA256 = ""
+		if after.SHA256 != workerplan.Hash(unsigned) || after.SourceSHA256 == attribution.SourceSHA256 {
+			t.Fatal("attribution kept a stale source binding after retirement")
 		}
 		if got, err := reviewBackend.ReviewOwnedAdmission(ctx, reviewCommand, func() time.Time { t.Fatal("admission retry read clock"); return time.Time{} }, eval, noOutcome); err != nil || !got.Duplicate || !reflect.DeepEqual(got.Record, review.Record) {
 			t.Fatal("admission retry changed after retirement", err)

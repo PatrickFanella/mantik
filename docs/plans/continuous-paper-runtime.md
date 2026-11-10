@@ -113,7 +113,9 @@ contribution pages (`GET /v1/allocation-history/contributions`,
 `mantik allocation-contribution`) sum one decision's reserved funding and
 execution effects from those indexed segments plus the working journal, and
 match the full attribution replay for that decision. The complete attribution
-catalogue still loads the whole archive. Explicit
+catalogue still loads the whole archive; it now resolves approved retired
+decision dependencies and keeps its active rows unchanged after retirement.
+Explicit
 `allocation-history-index` maintenance rebuilds missing legacy indexes through
 the complete native audit and recorded seal boundaries, atomically with no
 change to original record bytes. New checkpoint envelopes are native
