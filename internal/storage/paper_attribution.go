@@ -461,7 +461,6 @@ func (p *Postgres) PaperAttribution(ctx context.Context, decisionEval PaperDecis
 // records and execution steps, archived ones included, so it survives
 // checkpoints that seal settled reservations out of the ledgers.
 func paperExecutionAttribution(decisionID string, choices []PaperAllocationAttribution, allocations OwnedAllocationCatalog) PaperEconomicAttribution {
-	out := PaperEconomicAttribution{Status: "owned_execution_unavailable"}
 	var reserved int64
 	for _, c := range choices {
 		if c.Status == "reserve_plan" {
@@ -469,7 +468,7 @@ func paperExecutionAttribution(decisionID string, choices []PaperAllocationAttri
 		}
 	}
 	if reserved == 0 {
-		return out
+		return PaperEconomicAttribution{Status: "owned_execution_unavailable"}
 	}
 	effects := []PaperExecutionEffect{}
 	collect := func(record string, entries []allocation.LedgerEntry) {
@@ -489,6 +488,17 @@ func paperExecutionAttribution(decisionID string, choices []PaperAllocationAttri
 		for _, x := range step.Executions {
 			collect(step.Command.ID, x.Entries)
 		}
+	}
+	return paperEconomicsFromEffects(reserved, effects)
+}
+
+// paperEconomicsFromEffects is the one accounting rule for a decision's
+// reserved funding and retained effects. Paper attribution and the bounded
+// allocation contribution total both use it.
+func paperEconomicsFromEffects(reserved int64, effects []PaperExecutionEffect) PaperEconomicAttribution {
+	out := PaperEconomicAttribution{Status: "owned_execution_unavailable"}
+	if reserved == 0 {
+		return out
 	}
 	slices.SortStableFunc(effects, func(a, b PaperExecutionEffect) int { return a.At.Compare(b.At) })
 	var filled, closed, proceeds, released int64

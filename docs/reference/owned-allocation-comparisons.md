@@ -1046,11 +1046,61 @@ and checks the financial-reference sets. Missing references or a self-rehashed
 intermediate checkpoint fail the audit. The public audit methods return no
 acknowledgment on any error, including cancellation or failed COMMIT.
 
-These pages provide original financial records for inspection. Complete
-decision-specific financial attribution still needs its bounded native
-contribution consumer; a filtered page is not a complete financial total.
-The v1 checkpoint identity collections and automatic
-retention remain required archive work.
+These pages provide original financial records for inspection. A filtered page
+is not a complete financial total; the contribution reader below sums one
+decision across the sealed cut and the working journal. The v1 checkpoint
+identity collections and automatic retention remain required archive work.
+
+### Decision financial contributions
+
+`GET /v1/allocation-history/contributions` reports what one decision
+contributed to the allocation ledgers: the plan's choice for it in each
+comparison, and every fill, close and release effect retained for it. It
+requires operator authentication and the query parameters `receiver_id` and
+`decision_id`; `limit` (1 through 64, default 16) and `after` are optional. GET
+bodies, duplicate parameters and unknown keys are rejected.
+
+Each page projects the same records the decision-filtered history page selects.
+The service seeks at most `limit` indexed sealed records plus one lookahead,
+replays their complete original segments and rebuilds each end checkpoint
+before it projects anything. A record that names the decision without a choice
+or effect is still listed, with an empty effect list. The page carries no
+original comparison or execution payload; use `allocation-history
+--decision-id` to inspect those.
+
+The first page, requested without `after`, also contains `active`: the same
+projection of the working journal after the sealed checkpoint, replayed in the
+same Memory lock or PostgreSQL repeatable-read snapshot. `through_sequence` and
+`checkpoint_sha256` bind the sealed cut, and `active.through_sequence` is the
+last journal sequence at that read. Later pages reuse the decision-history
+cursor, keep the first page's cut through later appends and seals, and never
+repeat `active`. The pages of one cut therefore describe the journal as it
+stood at the first request.
+
+`subtotal` sums the records on one page: funding requested by `reserve_plan`
+choices, filled cost, closed cost, net proceeds and released funding. One page
+is not a decision total. `mantik allocation-contribution --receiver-id ...
+--decision-id ...` requests every page of the cut, validates each envelope and
+the cursor chain, and emits `mantik-allocation-contribution-total-v1`. A missing
+first page, an unfinished or reordered chain, or a page from another receiver,
+decision or checkpoint fails without a total. The CLI stops after 4,096 pages.
+
+The total applies the accounting rule paper attribution uses. Its status is
+`owned_execution_unavailable` without reserved funding, then
+`reserved_unfilled`, `released_unfilled`, `position_open` or `position_closed`;
+without a reservation the amounts stay null, not zero. Realized PnL is net
+proceeds less closed cost once something has closed. Read at the same journal
+position, the total equals the `economics` amounts and effects of that
+decision's `GET /v1/paper-attribution/{id}` row; effects that share one clock
+may be listed in a different order. The total has no baseline comparison,
+because it reads no outcomes. Its `assembly` field records that the caller
+summed native pages: the service does not attest the sum.
+
+A request's work grows with the segments its selected records touch, not with
+total history. A decision referenced by many comparisons needs many requests.
+The complete attribution catalogue (`GET /v1/paper-attribution`) still loads
+and replays the whole archive, and legacy unindexed history must be indexed
+first. These reads grant no financial authority or qualification.
 
 ### Legacy allocation index maintenance
 

@@ -305,6 +305,10 @@ func (m *Memory) OwnedAllocationHistory(ctx context.Context, q OwnedAllocationHi
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.allocationHistoryPageLocked(ctx, q, de, oe...)
+}
+
+func (m *Memory) allocationHistoryPageLocked(ctx context.Context, q OwnedAllocationHistoryQuery, de PaperDecisionEvaluator, oe ...PaperOutcomeEvaluator) (OwnedAllocationHistoryPage, error) {
 	if q.ReceiverID != m.receiverID {
 		return OwnedAllocationHistoryPage{}, ErrReceiverMismatch
 	}
@@ -363,10 +367,19 @@ func (p *Postgres) OwnedAllocationHistory(ctx context.Context, q OwnedAllocation
 	if q.Validate() != nil || de == nil {
 		return OwnedAllocationHistoryPage{}, ErrOwnedAllocationInvalid
 	}
+	out, _, _, err := p.readAllocationHistory(ctx, q, false, de, oe...)
+	return out, err
+}
+
+// readAllocationHistory reads one sealed page. With active set it also
+// replays the working journal in the same snapshot and returns that journal
+// with its native catalogue; otherwise both are empty.
+func (p *Postgres) readAllocationHistory(ctx context.Context, q OwnedAllocationHistoryQuery, active bool, de PaperDecisionEvaluator, oe ...PaperOutcomeEvaluator) (OwnedAllocationHistoryPage, ownedAllocationJournal, OwnedAllocationCatalog, error) {
 	var selected allocationHistorySelection
 	var out OwnedAllocationHistoryPage
 	var snapshot pgx.Tx
-	_, _, err := p.ownedAllocationAccessFromJournal(ctx, false, nil, func(ctx context.Context, _ pgx.Tx, owner string, j ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, _ time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
+	working := ownedAllocationJournal{Records: []retainedOwnedAllocation{}}
+	catalog, _, err := p.ownedAllocationAccessFromJournal(ctx, false, nil, func(ctx context.Context, _ pgx.Tx, owner string, j ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, _ time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
 		if owner != q.ReceiverID {
 			return ownedAllocationJournal{}, false, ErrReceiverMismatch
 		}
@@ -436,10 +449,14 @@ func (p *Postgres) OwnedAllocationHistory(ctx context.Context, q OwnedAllocation
 			}
 			return result, rows.Err()
 		}, func(n int) (ownedAllocationSegment, error) { return readOwnedAllocationSegment(ctx, tx, n) })
-		return ownedAllocationJournal{Records: []retainedOwnedAllocation{}}, err
+		if err == nil && active {
+			working = ownedAllocationJournal{Checkpoint: j.Checkpoint, Records: j.Records}
+			err = allocationTargetDependencies(working)
+		}
+		return working, err
 	}, de, oe...)
 	if err != nil {
-		return OwnedAllocationHistoryPage{}, err
+		return OwnedAllocationHistoryPage{}, ownedAllocationJournal{}, OwnedAllocationCatalog{}, err
 	}
-	return out, nil
+	return out, working, catalog, nil
 }

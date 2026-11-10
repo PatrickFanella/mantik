@@ -1135,4 +1135,15 @@ no receipt and publishes no partial index. This maintenance scan uses the owner
 write locks and a one-minute audit deadline; it does not make growing history
 bounded. See [legacy allocation index maintenance](docs/reference/owned-allocation-comparisons.md#legacy-allocation-index-maintenance).
 
+`mantik allocation-contribution` and authenticated
+`GET /v1/allocation-history/contributions` report one decision's reserved
+funding and its fill, close and release effects without loading the complete
+allocation archive. Each request replays at most 64 indexed sealed records and
+their segments; the first request also replays the working journal in the same
+lock or snapshot. The CLI reads every page of that cut and emits their sum,
+using the accounting rule paper attribution uses. The complete attribution
+catalogue still loads the whole archive. Compact identities and automatic
+retirement remain unfinished. See
+[decision financial contributions](docs/reference/owned-allocation-comparisons.md#decision-financial-contributions).
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

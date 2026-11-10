@@ -50,6 +50,7 @@ func verifyAllocationHistoryPages(t *testing.T, s ownedAllocationBackend, de Pap
 		t.Fatal("history omitted a sealed original or included an active record")
 	}
 	verifyDecisionAllocationHistory(t, store, de, first, got)
+	verifyAllocationContributions(t, s, de, all)
 	q.After = ""
 	detached := clone(first)
 	detached.Records[0].Comparison.Command.Decisions[0].ID = "caller-mutation"
@@ -171,8 +172,9 @@ func TestMemoryAllocationHistoryEmptyAndInvalid(t *testing.T) {
 // The positive execution fixture supplies its explicit synthetic assessment.
 // Original segment replay still rederives every fill, close and release from
 // the fixture quote source; this does not establish a qualified model or run.
-func verifyExecutedAllocationHistory(t *testing.T, f eligibilityFixture, expected OwnedExecutionRecord) {
+func verifyExecutedAllocationHistory(t *testing.T, f eligibilityFixture, all OwnedAllocationCatalog) {
 	t.Helper()
+	expected := all.Executions[0]
 	m := f.m
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -188,6 +190,7 @@ func verifyExecutedAllocationHistory(t *testing.T, f eligibilityFixture, expecte
 	verify := func(decision string) {
 		q := OwnedAllocationHistoryQuery{ReceiverID: m.receiverID, Limit: 1, DecisionID: decision}
 		found, count := false, 0
+		pages := []OwnedAllocationHistoryPage{}
 		for {
 			selected, err := selectAllocationHistory(t.Context(), q, m.ownedAllocations.Checkpoint, func(n int) (OwnedAllocationCheckpoint, error) {
 				return m.ownedAllocationIndex.Checkpoints[n], nil
@@ -222,9 +225,13 @@ func verifyExecutedAllocationHistory(t *testing.T, f eligibilityFixture, expecte
 					found = true
 				}
 			}
+			pages = append(pages, page)
 			if page.NextAfter == "" {
 				if !found || count != page.ThroughSequence {
 					t.Fatal("paged history omitted a sealed execution record")
+				}
+				if decision != "" {
+					verifyExecutedContribution(t, m, decision, pages, all)
 				}
 				break
 			}

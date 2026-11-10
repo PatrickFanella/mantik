@@ -377,6 +377,7 @@ func ownedPaperDecisionHTTP(t *testing.T, s ownedDecisionHTTPBackend) {
 	paperFeedCustodyHTTP(t, request, owner, clock)
 	paperHistoryHTTP(t, request, server.URL, owner, clock)
 	allocationHistoryHTTP(t, request, server.URL, owner, clock)
+	allocationContributionHTTP(t, request, server.URL, owner, clock, first.Record.Command.ID)
 	after, _ := s.Snapshot(ctx)
 	if before.ObservationCount != after.ObservationCount || !reflect.DeepEqual(before.Events, after.Events) || !reflect.DeepEqual(before.State.Case, after.State.Case) || !reflect.DeepEqual(before.State.Actions, after.State.Actions) {
 		t.Fatal("finalization changed operational state")

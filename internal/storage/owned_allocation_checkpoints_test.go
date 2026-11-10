@@ -526,7 +526,7 @@ func TestOwnedCheckpointsSealExecutedHistory(t *testing.T) {
 	if audit, err := f.audit(t, history, f.complete); err != nil || audit.Status != "verified" || audit.Records != 6 {
 		t.Fatal("audit", audit, err)
 	}
-	verifyExecutedAllocationHistory(t, f, checkpointed.Executions[0])
+	verifyExecutedAllocationHistory(t, f, checkpointed)
 	// With every record past the threshold, sealing still waits for the
 	// grant's book to finish: its entry fills and its protective exit closes.
 	if _, eager, _, _ := run(1); openBookSealed || eager.Checkpoint == nil {
