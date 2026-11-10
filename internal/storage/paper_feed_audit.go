@@ -139,7 +139,11 @@ func (m *Memory) AuditPaperFeed(ctx context.Context, de PaperDecisionEvaluator, 
 	}
 	feed := m.decisionFeedLocked()
 	e := &paperFeedArchiveEvaluators{de, oe}
-	if _, err := paperOutcomeCatalog(m.receiverID, m.paperOutcomes, m.paperDecisions, strategies, feed, de, oe); err != nil {
+	// Active owner intervals, not the feed checkpoint's closed counts, prove
+	// the working set: approved retirement removes rows those counts include.
+	// Retired owners are checked below through their archived checkpoints.
+	// The outcome proof also proves the active decisions.
+	if _, err := m.activePaperOutcomesLocked(ctx, strategies, feed, de, oe); err != nil {
 		return PaperFeedAudit{}, err
 	}
 	if err := auditOriginalPaperFeed(ctx, feed, m.paperDecisions, m.paperOutcomes, strategies, e, time.Time{}, m.feedWindowReaderLocked(ctx, m.receiverID)); err != nil {
@@ -201,7 +205,8 @@ func (p *Postgres) AuditPaperFeed(ctx context.Context, de PaperDecisionEvaluator
 		return PaperFeedAudit{}, err
 	}
 	e := &paperFeedArchiveEvaluators{de, oe}
-	if _, err := paperOutcomeCatalog(feed.ReceiverID, outcomes, decisions, strategies, feed, de, oe); err != nil {
+	// See the Memory audit: the active owner proof replaces the closed counts.
+	if _, err := readActivePaperOutcomes(ctx, tx, feed.ReceiverID, outcomes, decisions, strategies, feed, de, oe); err != nil {
 		return PaperFeedAudit{}, err
 	}
 	if err := auditOriginalPaperFeed(ctx, feed, decisions, outcomes, strategies, e, time.Time{}, postgresFeedWindowReader(ctx, tx, feed.ReceiverID)); err != nil {

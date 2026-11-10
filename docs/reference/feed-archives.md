@@ -333,7 +333,13 @@ an error; unrelated history does not occupy the working view.
 `GET /v1/feed-archives/paper-custody-audit` accepts no query or body. It performs
 the complete source/index/retirement audit, then independently reconstructs every
 retained paper record's original observation window and replays its evaluator.
-It also rederives every checkpoint's closed membership. A self-rehashed paper
+It also rederives every checkpoint's closed membership. The working decisions
+and outcomes are proved against their active owner intervals, as attribution
+and allocation reads are, so the audit still completes after an approved
+retirement removes rows the feed checkpoint's closed counts include. Retired
+records are replayed through the checkpoints that closed them; `decisions` and
+`outcomes` in the response count the working records. A missing record without
+approved retirement still fails the audit. A self-rehashed paper
 row and matching source seal cannot replace original archived source bytes.
 The response binds the actual paper record root and source archive/index head,
 with false admission, execution and qualification flags. Full audit work grows
