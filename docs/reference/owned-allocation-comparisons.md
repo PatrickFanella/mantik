@@ -934,10 +934,12 @@ Exact allocation retries retain their original receipts and do not read a new
 clock. The full-history audit also resolves decisions referenced by sealed
 segments before re-executing them.
 
-This reader support does not enable paper-record retirement. Attribution,
-admission reviews, archive writers, unfinished dependencies and automatic
-retention still need their remaining consumer and retirement contracts. Full
-history reads and audits retain their existing archive-loading costs.
+This reader support does not enable paper-record retirement. The attribution
+catalogue resolves the same retired dependencies and keeps its active rows
+unchanged; see [paper attribution](paper-attribution.md#read-routes-and-retained-phase-data).
+Pending outcomes, archive writers, unfinished dependencies and automatic
+retention still need their retirement contracts. Full history reads and audits
+retain their existing archive-loading costs.
 
 `GET /v1/allocation-comparisons/audit` re-executes the whole history against
 current owner records, one sealed segment at a time, rebuilding each

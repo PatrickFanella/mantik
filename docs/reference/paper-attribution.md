@@ -97,6 +97,18 @@ reviews. The authenticated targeted
 read is `GET /v1/paper-attribution/{decision_id}`. Both use the existing bearer
 token, accept no query parameters and make no model or provider requests.
 
+Rows cover the active decisions. Completeness comes from the active owner
+intervals, the same check allocation reads use, so the catalogue still reads
+after an approved decision retirement. A comparison or admission review that
+names a retired decision stays in the replayed sources: allocation replay
+resolves that decision from its first original archive, and the join accepts
+the reference only when its pin matches the resolved record. The retired
+decision has no row, and its targeted read returns 404. A decision that is
+missing without approved retirement still fails the whole read, even when an
+archive copy exists. `mantik allocation-contribution` can still total a retired
+decision's reserved funding and execution effects. Retirement itself remains
+disabled in production; only disposable test fixtures supply that state.
+
 This is a read-only part of #24. Strategy analysis is described below; funded
 paper execution is covered above. Issue #24 stays open for its acceptance audit. These
 readbacks do not supply the admission or atomic funded effects still needed by
