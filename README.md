@@ -1118,4 +1118,11 @@ their original financial effects and approved retired decision dependencies.
 Missing indexed originals fail without a partial page. Legacy-index backfill,
 decision-specific financial attribution and automatic retention remain required.
 
+Schema 111 indexes every decision named by original comparison or execution
+effects. `allocation-history --decision-id` and the HTTP `decision_id` filter
+use that index while retaining original records and a fixed checkpoint cut.
+The full audit also checks indexed intermediate checkpoints and reference sets
+against native replay. Financial totals, compact identities and automatic
+retirement remain unfinished.
+
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

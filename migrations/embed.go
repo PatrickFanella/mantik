@@ -343,3 +343,6 @@ var IndexedAllocationArchives string
 
 //go:embed 0110_paper_history_pages.sql
 var PaperHistoryPages string
+
+//go:embed 0111_allocation_financial_references.sql
+var AllocationFinancialReferences string

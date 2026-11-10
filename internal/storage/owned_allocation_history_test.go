@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -48,6 +49,7 @@ func verifyAllocationHistoryPages(t *testing.T, s ownedAllocationBackend, de Pap
 	if len(got) != first.ThroughSequence || len(got) >= len(all.Records) || !reflect.DeepEqual(got, all.Records[:len(got)]) {
 		t.Fatal("history omitted a sealed original or included an active record")
 	}
+	verifyDecisionAllocationHistory(t, store, de, first, got)
 	q.After = ""
 	detached := clone(first)
 	detached.Records[0].Comparison.Command.Decisions[0].ID = "caller-mutation"
@@ -75,8 +77,8 @@ func verifyAllocationHistoryPages(t *testing.T, s ownedAllocationBackend, de Pap
 		}
 	}
 	for _, cursor := range []allocationHistoryCursor{
-		{"mantik-allocation-history-cursor-v1", "another-owner", first.ThroughSequence, first.CheckpointSHA256, 2},
-		{"mantik-allocation-history-cursor-v1", first.ReceiverID, first.ThroughSequence, workerplan.Hash("other checkpoint"), 2},
+		{"mantik-allocation-history-cursor-v1", "another-owner", first.ThroughSequence, first.CheckpointSHA256, 2, ""},
+		{"mantik-allocation-history-cursor-v1", first.ReceiverID, first.ThroughSequence, workerplan.Hash("other checkpoint"), 2, ""},
 	} {
 		raw, _ := json.Marshal(cursor)
 		bad := q
@@ -86,6 +88,62 @@ func verifyAllocationHistoryPages(t *testing.T, s ownedAllocationBackend, de Pap
 		}
 	}
 	return first
+}
+
+func verifyDecisionAllocationHistory(t *testing.T, store OwnedAllocationHistoryStore, de PaperDecisionEvaluator, unfiltered OwnedAllocationHistoryPage, expected []OwnedAllocationRecord) {
+	t.Helper()
+	decision := expected[0].Command.Decisions[0].ID
+	q := OwnedAllocationHistoryQuery{ReceiverID: unfiltered.ReceiverID, Limit: 2, DecisionID: decision}
+	first, err := store.OwnedAllocationHistory(t.Context(), q, de)
+	if err != nil || first.Validate(q) != nil || first.Schema != "mantik-allocation-history-page-v2" || first.ThroughSequence != unfiltered.ThroughSequence || first.CheckpointSHA256 != unfiltered.CheckpointSHA256 {
+		t.Fatal("decision-scoped original history", err)
+	}
+	var got []OwnedAllocationRecord
+	var last OwnedAllocationHistoryPage
+	for page := first; ; {
+		if page.Validate(q) != nil {
+			t.Fatal("decision history page changed its scope")
+		}
+		for _, r := range page.Records {
+			if r.Comparison == nil || r.Execution != nil {
+				t.Fatal("decision history changed original record kind")
+			}
+			got = append(got, *r.Comparison)
+		}
+		if page.NextAfter == "" {
+			last = page
+			break
+		}
+		q.After = page.NextAfter
+		page, err = store.OwnedAllocationHistory(t.Context(), q, de)
+		if err != nil {
+			t.Fatal("next scoped original page", err)
+		}
+	}
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatal("decision filtering changed or omitted original comparisons")
+	}
+	for _, bad := range []OwnedAllocationHistoryQuery{
+		{ReceiverID: q.ReceiverID, Limit: 2, After: first.NextAfter},
+		{ReceiverID: q.ReceiverID, Limit: 2, DecisionID: "another-decision", After: first.NextAfter},
+		{ReceiverID: q.ReceiverID, Limit: 2, DecisionID: decision, After: unfiltered.NextAfter},
+	} {
+		if got, err := store.OwnedAllocationHistory(t.Context(), bad, de); !errors.Is(err, ErrOwnedAllocationInvalid) || !reflect.DeepEqual(got, OwnedAllocationHistoryPage{}) {
+			t.Fatal("history cursor borrowed another decision scope", err)
+		}
+	}
+	q.After, q.DecisionID = "", "absent-decision"
+	if empty, err := store.OwnedAllocationHistory(t.Context(), q, de); err != nil || empty.Validate(q) != nil || len(empty.Records) != 0 || empty.NextAfter != "" || empty.ThroughSequence != first.ThroughSequence {
+		t.Fatal("missing decision filter fabricated or lost archive records", err)
+	}
+	// A valid original cannot be relabelled as another decision's financial
+	// evidence by rehashing only the page presentation.
+	last.DecisionID = q.DecisionID
+	last.SHA256 = ""
+	last.SHA256 = workerplan.Hash(last)
+	if last.Validate(q) == nil {
+		t.Fatal("rehashing the page reassigned original decision references")
+	}
 }
 
 func TestMemoryAllocationHistoryEmptyAndInvalid(t *testing.T) {
@@ -127,42 +185,52 @@ func verifyExecutedAllocationHistory(t *testing.T, f eligibilityFixture, expecte
 		t.Fatal(err)
 	}
 	sources := paperEvaluationSources{policies: policies, decisions: decisions, strategies: strategies, retained: m.paperDecisions, declarations: declarations}
-	q := OwnedAllocationHistoryQuery{ReceiverID: m.receiverID, Limit: 1}
-	found, count := false, 0
-	for {
-		selected, err := selectAllocationHistory(t.Context(), q, m.ownedAllocations.Checkpoint, func(n int) (OwnedAllocationCheckpoint, error) {
-			return m.ownedAllocationIndex.Checkpoints[n], nil
-		}, func(start, end int) ([]ownedAllocationMember, error) {
-			result := []ownedAllocationMember{}
-			for n := start + 1; n <= end; n++ {
-				result = append(result, m.ownedAllocationIndex.Members[n])
-			}
-			return result, nil
-		}, func(n int) (ownedAllocationSegment, error) { return m.ownedAllocationSegmentLocked(t.Context(), n) })
-		if err != nil {
-			t.Fatal(err)
-		}
-		page, err := finishAllocationHistory(t.Context(), q, selected, func(s ownedAllocationSegment) (OwnedAllocationCatalog, error) {
-			return replayOwnedAllocationSegment(t.Context(), s, sources, f.exec, PaperEvaluationAssessmentCatalog{ReceiverID: m.receiverID, Records: []PaperEvaluationAssessment{f.complete}})
-		})
-		if err != nil || page.Validate(q) != nil {
-			t.Fatal("native executed history page", err)
-		}
-		for _, r := range page.Records {
-			count++
-			if r.Kind == "execution" {
-				if found || r.Execution == nil || !reflect.DeepEqual(*r.Execution, expected) {
-					t.Fatal("execution original changed or repeated")
+	verify := func(decision string) {
+		q := OwnedAllocationHistoryQuery{ReceiverID: m.receiverID, Limit: 1, DecisionID: decision}
+		found, count := false, 0
+		for {
+			selected, err := selectAllocationHistory(t.Context(), q, m.ownedAllocations.Checkpoint, func(n int) (OwnedAllocationCheckpoint, error) {
+				return m.ownedAllocationIndex.Checkpoints[n], nil
+			}, func(start, end int) ([]ownedAllocationMember, error) {
+				result := []ownedAllocationMember{}
+				for n := start + 1; n <= end; n++ {
+					if decision != "" && !slices.Contains(m.ownedAllocationIndex.Financial[n], decision) {
+						continue
+					}
+					result = append(result, m.ownedAllocationIndex.Members[n])
+					if decision != "" && len(result) == q.Limit+1 {
+						break
+					}
 				}
-				found = true
+				return result, nil
+			}, func(n int) (ownedAllocationSegment, error) { return m.ownedAllocationSegmentLocked(t.Context(), n) })
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
-		if page.NextAfter == "" {
-			if !found || count != page.ThroughSequence {
-				t.Fatal("paged history omitted a sealed execution record")
+			page, err := finishAllocationHistory(t.Context(), q, selected, func(s ownedAllocationSegment) (OwnedAllocationCatalog, error) {
+				return replayOwnedAllocationSegment(t.Context(), s, sources, f.exec, PaperEvaluationAssessmentCatalog{ReceiverID: m.receiverID, Records: []PaperEvaluationAssessment{f.complete}})
+			})
+			if err != nil || page.Validate(q) != nil {
+				t.Fatal("native executed history page", err)
 			}
-			break
+			for _, r := range page.Records {
+				count++
+				if r.Kind == "execution" {
+					if found || r.Execution == nil || !reflect.DeepEqual(*r.Execution, expected) {
+						t.Fatal("execution original changed or repeated")
+					}
+					found = true
+				}
+			}
+			if page.NextAfter == "" {
+				if !found || count != page.ThroughSequence {
+					t.Fatal("paged history omitted a sealed execution record")
+				}
+				break
+			}
+			q.After = page.NextAfter
 		}
-		q.After = page.NextAfter
 	}
+	verify("")
+	verify(f.command.Decisions[0].ID)
 }

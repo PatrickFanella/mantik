@@ -22,12 +22,12 @@ func ownedAllocationHistoryRoutes(mux *http.ServeMux, store storage.Store) {
 			return
 		}
 		for key, values := range q {
-			if (key != "receiver_id" && key != "after" && key != "limit") || len(values) != 1 {
+			if (key != "receiver_id" && key != "after" && key != "limit" && key != "decision_id") || len(values) != 1 {
 				ownedAllocationError(w, storage.ErrOwnedAllocationInvalid)
 				return
 			}
 		}
-		query := storage.OwnedAllocationHistoryQuery{ReceiverID: q.Get("receiver_id"), After: q.Get("after"), Limit: 16}
+		query := storage.OwnedAllocationHistoryQuery{ReceiverID: q.Get("receiver_id"), After: q.Get("after"), Limit: 16, DecisionID: q.Get("decision_id")}
 		if v, exists := q["limit"]; exists {
 			query.Limit, err = strconv.Atoi(v[0])
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,6 +78,18 @@ func ownedAllocationCheckpointContracts(t *testing.T, s ownedAllocationBackend, 
 	receipts := []OwnedAllocationReceipt{}
 	for i := range 8 {
 		if p, ok := s.(*Postgres); ok && i == 3 {
+			requireRollback := func() {
+				t.Helper()
+				for _, table := range []string{"mantik_owned_allocation_archive", "mantik_owned_allocation_checkpoints", "mantik_owned_allocation_batches", "mantik_owned_allocation_members", "mantik_owned_allocation_decision_refs", "mantik_owned_allocation_financial_refs"} {
+					var count int
+					if err := p.pool.QueryRow(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil || count != 0 {
+						t.Fatal("failed index commit left partial archive custody", table, count, err)
+					}
+				}
+				if got, err := s.OwnedAllocations(ctx, eval); err != nil || len(got.Records) != i {
+					t.Fatal("failed index commit changed active journal", err)
+				}
+			}
 			if _, err := p.pool.Exec(ctx, `CREATE FUNCTION reject_allocation_index_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'allocation index commit rollback fixture'; END $$;
 CREATE CONSTRAINT TRIGGER reject_allocation_index_commit AFTER INSERT ON mantik_owned_allocation_members DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_allocation_index_commit()`); err != nil {
 				t.Fatal(err)
@@ -85,16 +98,22 @@ CREATE CONSTRAINT TRIGGER reject_allocation_index_commit AFTER INSERT ON mantik_
 			if err == nil || !reflect.DeepEqual(got, OwnedAllocationReceipt{}) {
 				t.Fatal("failed index commit acknowledged allocation", err)
 			}
-			for _, table := range []string{"mantik_owned_allocation_archive", "mantik_owned_allocation_checkpoints", "mantik_owned_allocation_batches", "mantik_owned_allocation_members", "mantik_owned_allocation_decision_refs"} {
-				var count int
-				if err := p.pool.QueryRow(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil || count != 0 {
-					t.Fatal("failed index commit left partial archive custody", table, count, err)
-				}
-			}
-			if got, err := s.OwnedAllocations(ctx, eval); err != nil || len(got.Records) != i {
-				t.Fatal("failed index commit changed active journal", err)
-			}
+			requireRollback()
 			if _, err := p.pool.Exec(ctx, "DROP TRIGGER reject_allocation_index_commit ON mantik_owned_allocation_members; DROP FUNCTION reject_allocation_index_commit()"); err != nil {
+				t.Fatal(err)
+			}
+			// An already-running predecessor writes members without the new
+			// reference set. Suppress those inserts to exercise its COMMIT fence.
+			if _, err := p.pool.Exec(ctx, `CREATE FUNCTION omit_financial_refs() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
+CREATE TRIGGER zz_omit_financial_refs BEFORE INSERT ON mantik_owned_allocation_financial_refs FOR EACH ROW EXECUTE FUNCTION omit_financial_refs()`); err != nil {
+				t.Fatal(err)
+			}
+			got, err = s.CompareOwnedAllocation(ctx, command(i), func() time.Time { return at.Add(time.Duration(i+1) * time.Second) }, eval)
+			if err == nil || !strings.Contains(err.Error(), "financial references incomplete") || !reflect.DeepEqual(got, OwnedAllocationReceipt{}) {
+				t.Fatal("missing financial references acknowledged a new seal", err)
+			}
+			requireRollback()
+			if _, err := p.pool.Exec(ctx, "DROP TRIGGER zz_omit_financial_refs ON mantik_owned_allocation_financial_refs; DROP FUNCTION omit_financial_refs()"); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -131,6 +150,13 @@ CREATE CONSTRAINT TRIGGER reject_allocation_index_commit AFTER INSERT ON mantik_
 	verifyAllocationIndexSegments(t, s, eval)
 	verifyAllocationTargetReads(t, s, eval, catalog)
 	historyBefore := verifyAllocationHistoryPages(t, s, eval, catalog)
+	decisionHistoryBefore, err := s.(OwnedAllocationHistoryStore).OwnedAllocationHistory(ctx, OwnedAllocationHistoryQuery{ReceiverID: owner, DecisionID: decision.Record.Command.ID, Limit: 2}, eval)
+	if err != nil {
+		t.Fatal("initial decision-scoped history", err)
+	}
+	if p, ok := s.(*Postgres); ok && (len(retireDecision) == 0 || !retireDecision[0]) {
+		verifyAllocationFinancialUpgrade(t, p, eval, catalog)
+	}
 	if len(retireDecision) > 0 && retireDecision[0] {
 		other := decision.Record.Command
 		other.ID = "still-active"
@@ -283,6 +309,10 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 		continued, err := s.(OwnedAllocationHistoryStore).OwnedAllocationHistory(ctx, OwnedAllocationHistoryQuery{ReceiverID: owner, Limit: 2, After: historyBefore.NextAfter}, eval)
 		if err != nil || continued.ThroughSequence != historyBefore.ThroughSequence || continued.CheckpointSHA256 != historyBefore.CheckpointSHA256 || len(continued.Records) != 2 || !reflect.DeepEqual(*continued.Records[0].Comparison, catalog.Records[2]) || !reflect.DeepEqual(*continued.Records[1].Comparison, catalog.Records[3]) {
 			t.Fatal("old allocation cursor expanded after append and sealing", err)
+		}
+		continued, err = s.(OwnedAllocationHistoryStore).OwnedAllocationHistory(ctx, OwnedAllocationHistoryQuery{ReceiverID: owner, DecisionID: decision.Record.Command.ID, Limit: 2, After: decisionHistoryBefore.NextAfter}, eval)
+		if err != nil || continued.ThroughSequence != decisionHistoryBefore.ThroughSequence || continued.CheckpointSHA256 != decisionHistoryBefore.CheckpointSHA256 || len(continued.Records) != 2 || !reflect.DeepEqual(*continued.Records[0].Comparison, catalog.Records[2]) || !reflect.DeepEqual(*continued.Records[1].Comparison, catalog.Records[3]) {
+			t.Fatal("old decision cursor expanded after append and sealing", err)
 		}
 		if got, err := auditor.AuditOwnedAllocations(ctx, eval); err != nil || got.Records != len(receipts) {
 			t.Fatal("audit after append with retired dependency", err)

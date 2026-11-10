@@ -105,8 +105,11 @@ checkpoint identities and automatic retention remain separate required work.
 Sealed allocation-history pages expose original comparisons and standalone
 execution records in committed sequence, with a cursor bound to its initial
 checkpoint. Each selected segment replays its native owner inputs and rebuilds
-its original end checkpoint. This supplies paged financial records; complete
-decision-specific effect references and financial attribution, legacy-index
+its original end checkpoint. Schema 111 adds complete original comparison/effect
+decision references, atomic seal guards and native index checks in the full
+audit. Decision-filtered history binds its original receiver, decision and
+checkpoint cut; unfiltered v1 envelopes remain unchanged. Complete financial
+attribution still needs a bounded native contribution consumer. Legacy-index
 backfill, compact identities and automatic retirement remain required.
 
 Schema changes must preserve existing envelopes and hashes and fence older
