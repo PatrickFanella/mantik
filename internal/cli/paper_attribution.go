@@ -26,6 +26,7 @@ func runPaperAttribution(ctx context.Context, args []string, out, errOut io.Writ
 	id := fs.String("id", "", "optional finalized decision ID")
 	pin := fs.String("record-sha256", "", "required row SHA-256 when selecting an ID")
 	format := fs.String("format", "table", "table or json (complete retained source links)")
+	analysis := fs.Bool("analysis", false, "summarize exact strategy outcomes, retained evaluation applicability and unique social/copy source delays")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -44,6 +45,9 @@ func runPaperAttribution(ctx context.Context, args []string, out, errOut io.Writ
 		}
 		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID != *id || row.SHA256 != *pin {
 			return storage.ErrPaperAttributionInvalid
+		}
+		if *analysis {
+			return writeAttributionAnalysis(out, *receiver, []storage.PaperAttributionRow{row}, *format)
 		}
 		if *format == "json" {
 			return emit(out, row)
@@ -84,6 +88,9 @@ func runPaperAttribution(ctx context.Context, args []string, out, errOut io.Writ
 		}
 	}
 	c.SHA256 = hash
+	if *analysis {
+		return writeAttributionAnalysis(out, *receiver, c.Rows, *format)
+	}
 	if *format == "json" {
 		return emit(out, c)
 	}

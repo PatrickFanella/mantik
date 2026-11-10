@@ -97,9 +97,8 @@ reviews. The authenticated targeted
 read is `GET /v1/paper-attribution/{decision_id}`. Both use the existing bearer
 token, accept no query parameters and make no model or provider requests.
 
-This is a read-only part of #24. Social/copy observation-delay analysis, calibrated forecast quality and
-remaining CLI/TUI presentation remain unfinished; funded paper execution is
-covered above. Issue #24 stays open. These
+This is a read-only part of #24. Strategy analysis is described below; funded
+paper execution is covered above. Issue #24 stays open for its acceptance audit. These
 readbacks do not supply the admission or atomic funded effects still needed by
 #19/#20/#21, and they do not start a soak or grant qualification.
 
@@ -253,10 +252,61 @@ do not prove ordering. Missing timings remain unavailable. These are retained
 post-decision review sources, with `decision_input_verified=false`; the view does
 not derive causal decision inputs or counterfactual copy returns from them.
 
-This delivers readable interactive attribution and source-delay presentation.
-Strategy-level source-delay analysis and applicable quality assessment remain
-open under #24; no calibrated forecast or independent performance sample is
-created by this display.
+The `--analysis` flag selects the strategy and source-delay analysis below.
+Interactive `aa ID` displays the selected row's analysis table, and `aaj ID`
+returns its JSON. Both use the same pinned decision inspection as `a ID`.
+
+## Strategy outcomes and source-delay analysis
+
+`paper-attribution --analysis` accepts the existing receiver, selected-row pin,
+and `--format table|json` options. It derives `mantik-paper-attribution-analysis-v1`
+from the validated service readback without another request, a model call, or
+an owner write. `scope: returned_rows_only` and `rows_sha256` identify the input
+set. The complete report has its own `sha256`. Catalogue analysis covers that
+returned catalogue; selected-row and interactive analysis cover one decision.
+Neither claims complete archived-history coverage.
+
+Quality groups separate exact strategy hashes and evidence classes. Each group
+counts decisions, entry candidates, valid abstentions, and all retained outcome
+assessments. The selected outcome is the latest assessment by evaluation time,
+then greatest original ID on a clock tie. A later unavailable assessment remains
+unavailable even if an earlier assessment observed a favorable quote. The report
+counts positive, flat, and negative quote deltas only for entry candidates whose
+selected assessment is observed. These descriptive counts are not forecast
+accuracy, independent samples, or trading returns.
+
+`probability_scoring` is `not_applicable_boolean_predicate`, and
+`independent_samples` is null. A native threshold has no probability forecast.
+The status distinguishes no entry candidates, insufficient observed outcomes,
+and available descriptive observations. Repeated assessments do not increase
+the number of observed candidates.
+
+Each decision trace binds the decision and row hashes, the selected outcome and
+its evaluation time, and the latest retained comparison by time and then ID.
+The original comparison hash, time, readiness hash, evaluation gate, and exact
+applicable assessment evidence remain in the report. The table names retained
+sample status, source applicability, and every failed check with its reason.
+These facts describe the comparison's original cut; inspection does not rerun
+an evaluation at the current clock or issue new admission authority.
+
+Delay groups separate strategy version, evidence class, and source kind.
+`unique_captures` counts distinct original capture identities within a group;
+`review_links` counts the decision-review links. Reusing a capture in multiple
+reviews does not weight that capture's delay more heavily. Conflicting hashes
+or occurrence, observation, or retention clocks for one capture are rejected.
+
+Observation delay runs from claimed occurrence to claimed observation.
+Ingestion delay runs from claimed observation to owner retention. Availability
+delay covers the entire occurrence-to-retention interval. Minimum, median, mean,
+and maximum use the original timestamp precision, then truncate to milliseconds.
+An even-sized median is the mean of the two central durations. Missing source
+timing produces no delay groups and `source_timing_unavailable`.
+
+Source traces preserve every review hash, capture identity and hash, original
+timestamps, decision pin, and clock relation. Counts and clock relations describe
+retained provenance. `decision_inputs_verified`, `copy_returns_verified`, and
+`qualification_credit` remain false. Original recordings keep their declared
+evidence class and provider-access uncertainty.
 
 
 The terminal readback displays `EVALUATION_PLANS` with the captured source hash,

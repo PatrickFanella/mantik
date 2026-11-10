@@ -36,6 +36,20 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil || !reflect.DeepEqual(got, all) {
 		t.Fatal("catalogue differs", err)
 	}
+	if err := run("--analysis", "--format", "json"); err != nil {
+		t.Fatal(err, diag.String())
+	}
+	var analysis attributionAnalysis
+	wantAnalysis, err := analyzePaperAttribution(all.ReceiverID, all.Rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(out.Bytes(), &analysis); err != nil || !reflect.DeepEqual(analysis, wantAnalysis) || len(analysis.DecisionTrace) != len(all.Rows) {
+		t.Fatal("CLI changed actual native catalogue analysis", err)
+	}
+	if err := run("--analysis"); err != nil || !strings.Contains(out.String(), "independent_samples=unavailable") || !strings.Contains(out.String(), "QUALITY_SOURCE") {
+		t.Fatal("actual native analysis table", out.String(), err)
+	}
 	for _, row := range []storage.PaperAttributionRow{candidate, abstain} {
 		if err := run("--id", row.Decision.Command.ID, "--record-sha256", row.SHA256, "--format", "json"); err != nil {
 			t.Fatal(err)
@@ -44,13 +58,23 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 		if err := json.Unmarshal(out.Bytes(), &got); err != nil || !reflect.DeepEqual(got, row) {
 			t.Fatal("selected row differs", err)
 		}
+		if err := run("--id", row.Decision.Command.ID, "--record-sha256", row.SHA256, "--analysis", "--format", "json"); err != nil {
+			t.Fatal(err)
+		}
+		var analysis attributionAnalysis
+		if err := json.Unmarshal(out.Bytes(), &analysis); err != nil || len(analysis.DecisionTrace) != 1 || analysis.DecisionTrace[0].RowSHA256 != row.SHA256 || analysis.Quality[0].ObservedCandidates != 0 || analysis.Quality[0].IndependentSamples != nil {
+			t.Fatal("selected native row analysis", analysis, err)
+		}
+		if row.Decision.Command.ID == candidate.Decision.Command.ID && (analysis.DecisionTrace[0].OutcomeStatus != "waiting_horizon" || analysis.DecisionTrace[0].ComparisonID != candidate.Allocations[0].ComparisonID || analysis.DecisionTrace[0].EvaluationGate == nil || analysis.DecisionTrace[0].EvaluationGate.Status != "unavailable") {
+			t.Fatal("pending candidate became observed or evaluated", analysis.DecisionTrace[0])
+		}
 	}
 	// The interactive table and explicit JSON inspection use these same real
 	// owner rows for both Memory and disposable PostgreSQL lifecycle contracts.
 	for _, row := range []storage.PaperAttributionRow{candidate, abstain} {
 		var display bytes.Buffer
 		id := row.Decision.Command.ID
-		input := fmt.Sprintf("a %s\naj %s\nq\n", id, id)
+		input := fmt.Sprintf("a %s\naj %s\naa %s\naaj %s\nq\n", id, id, id, id)
 		if err := superviseDecisions(context.Background(), io.NopCloser(strings.NewReader(input)), &display, 1, func(context.Context) (storage.PaperDecisionCatalog, error) {
 			return storage.PaperDecisionCatalog{ReceiverID: all.ReceiverID, Records: []storage.PaperDecisionRecord{row.Decision}}, nil
 		}, func(ctx context.Context, d storage.PaperDecisionRecord, kind string) (any, error) {
@@ -59,7 +83,7 @@ func paperAttributionCLIContract(t *testing.T, base string, all storage.PaperAtt
 			t.Fatal(err)
 		}
 		text := display.String()
-		if !strings.Contains(text, "DECISION "+fmt.Sprintf("%q", id)) || !strings.Contains(text, "ROW SHA256 "+row.SHA256) || !strings.Contains(text, "probability_scoring=not_applicable") {
+		if !strings.Contains(text, "DECISION "+fmt.Sprintf("%q", id)) || !strings.Contains(text, "ROW SHA256 "+row.SHA256) || !strings.Contains(text, "probability_scoring=not_applicable") || !strings.Contains(text, "ANALYSIS scope=returned_rows_only") || !strings.Contains(text, "QUALITY_SOURCE decision="+fmt.Sprintf("%q", id)) {
 			t.Fatal("interactive attribution omitted retained facts", text)
 		}
 		start := strings.Index(text, "{\n")
