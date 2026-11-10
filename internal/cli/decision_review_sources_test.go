@@ -81,6 +81,22 @@ func sourceDecisionReviewHTTP(t *testing.T, request func(string, string, any, in
 		if !found {
 			t.Fatal("review timing omitted")
 		}
+		analysis, err := analyzePaperAttribution(d.Command.ReceiverID, []storage.PaperAttributionRow{row})
+		if err != nil || analysis.Quality[0].Decisions != 1 || analysis.Quality[0].IndependentSamples != nil || analysis.DecisionTrace[0].DecisionSHA256 != d.SHA256 {
+			t.Fatal("actual native decision analysis", analysis, err)
+		}
+		measured := false
+		for _, group := range analysis.SourceDelays {
+			if group.Kind == kind {
+				if group.UniqueCaptures != 1 || group.ReviewLinks != 1 || group.Observation != (attributionDelayStats{1000, 1000, 1000, 1000}) || group.Ingestion != (attributionDelayStats{1000, 1000, 1000, 1000}) || group.Availability != (attributionDelayStats{2000, 2000, 2000, 2000}) {
+					t.Fatal("native source clocks changed in analysis", group)
+				}
+				measured = true
+			}
+		}
+		if !measured {
+			t.Fatal("native source-delay analysis omitted source kind", kind)
+		}
 		var supervised storage.PaperAttributionRow
 		if err := json.Unmarshal(request("POST", "/v1/supervision/calls", map[string]any{"tool": "inspect_record", "arguments": map[string]string{"kind": "decision_attribution", "id": d.Command.ID}}, 200), &supervised); err != nil || !reflect.DeepEqual(supervised, row) {
 			t.Fatal("supervision changed claim-source attribution", err)

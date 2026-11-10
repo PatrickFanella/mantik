@@ -281,6 +281,16 @@ func paperEvaluationDeclarationHTTP(t *testing.T, request func(string, string, a
 		if e := validateAttributionRow(row, c.ReceiverID); e != nil {
 			t.Fatal("CLI rejected actual assessment attribution", e)
 		}
+		if row.Decision.Command.ID == newComparison.Decisions[0].ID {
+			var out, diag strings.Builder
+			if err := Run(context.Background(), []string{"paper-attribution", "--api-url", serverURL, "--receiver-id", c.ReceiverID, "--id", row.Decision.Command.ID, "--record-sha256", row.SHA256, "--analysis", "--format", "json"}, &out, &diag); err != nil {
+				t.Fatal("actual applicable evaluation analysis", err, diag.String())
+			}
+			var analysis attributionAnalysis
+			if err := json.Unmarshal([]byte(out.String()), &analysis); err != nil || len(analysis.DecisionTrace) != 1 || analysis.DecisionTrace[0].ComparisonID != newComparison.ID || analysis.DecisionTrace[0].ComparisonSHA256 != boundComparison.Record.SHA256 || analysis.DecisionTrace[0].ReadinessSHA256 != readiness.SHA256 || !reflect.DeepEqual(analysis.DecisionTrace[0].EvaluationEvidence, readiness.EvaluationEvidence) {
+				t.Fatal("analysis changed original applicable evidence", analysis, err)
+			}
+		}
 	}
 
 	raw, _ := json.Marshal(c)
