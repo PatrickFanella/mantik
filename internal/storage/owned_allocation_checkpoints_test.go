@@ -188,6 +188,10 @@ CREATE TRIGGER zz_omit_financial_refs BEFORE INSERT ON mantik_owned_allocation_f
 			t.Fatal("targeted attribution fixture lacks multi-page sealed decision history")
 		}
 		requireAttributionTargets(t, s, attribution, eval, noOutcome)
+		feedAuditor := s.(PaperFeedAuditStore)
+		if audit, err := feedAuditor.AuditPaperFeed(ctx, eval, noOutcome); err != nil || audit.Status != "verified" || audit.Decisions != 2 {
+			t.Fatal("paper feed audit before retirement", audit, err)
+		}
 		if _, err := archives.RotateFeed(ctx, owner, func() time.Time { return at.Add(10 * time.Second) }, func(FeedEvidenceSnapshot, time.Time) error { return nil }, eval, noOutcome); err != nil {
 			t.Fatal(err)
 		}
@@ -205,6 +209,9 @@ CREATE TRIGGER zz_omit_financial_refs BEFORE INSERT ON mantik_owned_allocation_f
 			if got, err := attributor.PaperAttribution(ctx, eval, noOutcome); err == nil || !reflect.DeepEqual(got, PaperAttributionCatalog{}) {
 				t.Fatal("attribution used archive fallback for a missing unretired decision", err)
 			}
+			if got, err := feedAuditor.AuditPaperFeed(ctx, eval, noOutcome); err == nil || !reflect.DeepEqual(got, PaperFeedAudit{}) {
+				t.Fatal("paper feed audit accepted a missing unretired decision", err)
+			}
 			m.mu.Lock()
 			m.paperDecisions["first"] = retained
 			m.mu.Unlock()
@@ -219,6 +226,9 @@ CREATE TRIGGER zz_omit_financial_refs BEFORE INSERT ON mantik_owned_allocation_f
 			}
 			if got, err := attributor.PaperAttribution(ctx, eval, noOutcome); err == nil || !reflect.DeepEqual(got, PaperAttributionCatalog{}) {
 				t.Fatal("attribution used archive fallback for a missing unretired decision", err)
+			}
+			if got, err := feedAuditor.AuditPaperFeed(ctx, eval, noOutcome); err == nil || !reflect.DeepEqual(got, PaperFeedAudit{}) {
+				t.Fatal("paper feed audit accepted a missing unretired decision", err)
 			}
 			// A normal insert correctly rejects the already reserved identity.
 			tx, err := pg.pool.Begin(ctx)
@@ -291,6 +301,14 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 			m.mu.Lock()
 			m.ownedAllocationArchive[0] = sealed
 			m.mu.Unlock()
+		}
+		// The complete feed audit checks the active owners against their owner
+		// intervals and the retired decision through its archived checkpoints.
+		if audit, err := feedAuditor.AuditPaperFeed(ctx, eval, noOutcome); err != nil || audit.Status != "verified" || audit.Decisions != 1 || audit.Checkpoints == 0 {
+			t.Fatal("paper feed audit after approved retirement", audit, err)
+		}
+		if got, err := feedAuditor.AuditPaperFeed(ctx, changedNativeFirst(eval), noOutcome); err == nil || !reflect.DeepEqual(got, PaperFeedAudit{}) {
+			t.Fatal("paper feed audit skipped the retired decision's archived native replay", err)
 		}
 		for _, row := range attribution.Rows {
 			if row.Decision.Command.ID == "still-active" && !reflect.DeepEqual(row, after.Rows[0]) {
@@ -653,5 +671,16 @@ func TestOwnedCheckpointsCompactSettledReservations(t *testing.T) {
 	}
 	if audit, err := f.audit(t, history, f.complete); err != nil || audit.Status != "verified" {
 		t.Fatal("audit", audit, err)
+	}
+}
+
+// changedNativeFirst changes the native result for the retired decision only.
+func changedNativeFirst(eval PaperDecisionEvaluator) PaperDecisionEvaluator {
+	return func(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time) (PaperDecisionEvaluation, error) {
+		e, err := eval(c, b, at)
+		if c.ID == "first" {
+			e.ReasonCode = "changed_original_native_result"
+		}
+		return e, err
 	}
 }

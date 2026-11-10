@@ -242,6 +242,9 @@ DELETE FROM mantik_paper_outcomes WHERE id='target-outcome'; DELETE FROM mantik_
 			}
 		}
 		requireAttributionTargets(t, s, attribution, de, oe, dc.ID)
+		if audit, err := s.(PaperFeedAuditStore).AuditPaperFeed(ctx, de, oe); err != nil || audit.Status != "verified" || audit.Decisions != 2 || audit.Outcomes != 1 {
+			t.Fatal("paper feed audit after retiring a decision with its outcome", audit, err)
+		}
 		t.Run("missing-other-active-owner-is-not-a-smaller-catalogue", func(t *testing.T) {
 			if m, ok := s.(*Memory); ok {
 				m.mu.Lock()
