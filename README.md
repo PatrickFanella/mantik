@@ -1101,7 +1101,7 @@ checkpoint with the retained original. Existing record bytes and hashes stay
 unchanged. Targeted allocation-comparison inspection, including supervision,
 uses the original segment reader; active comparisons replay their working
 journal. Older unindexed segments retain their full-history read and audit path.
-Historical attribution paging, old-index backfill, compact identity indexes and
+Historical attribution paging, compact identity indexes and
 automatic paper retirement remain required for the complete archive.
 
 Schema 110 adds native decision/outcome history pages through the authenticated
@@ -1115,8 +1115,8 @@ financial attribution paging and physical paper retirement remain unfinished.
 page original sealed comparisons and standalone execution records at a fixed
 checkpoint boundary. The reader replays complete selected segments, including
 their original financial effects and approved retired decision dependencies.
-Missing indexed originals fail without a partial page. Legacy-index backfill,
-decision-specific financial attribution and automatic retention remain required.
+Missing indexed originals fail without a partial page. Decision-specific
+financial attribution and automatic retention remain required.
 
 Schema 111 indexes every decision named by original comparison or execution
 effects. `allocation-history --decision-id` and the HTTP `decision_id` filter
@@ -1124,5 +1124,15 @@ use that index while retaining original records and a fixed checkpoint cut.
 The full audit also checks indexed intermediate checkpoints and reference sets
 against native replay. Financial totals, compact identities and automatic
 retirement remain unfinished.
+
+`mantik allocation-history-index` and authenticated
+`POST /v1/allocation-history/index` explicitly rebuild missing legacy allocation
+indexes through the complete native history audit. Existing checkpoint envelopes
+must match; newly added envelopes are native reconstructions from the original
+records and recorded seal boundaries. The working journal and original record
+bytes remain unchanged. Cancellation, native mismatch or failed COMMIT returns
+no receipt and publishes no partial index. This maintenance scan uses the owner
+write locks and a one-minute audit deadline; it does not make growing history
+bounded. See [legacy allocation index maintenance](docs/reference/owned-allocation-comparisons.md#legacy-allocation-index-maintenance).
 
 `mantik serve --automatic-social-research` opts into bounded dispatch of retained social/copy research requests. It is disabled by default and has an independent `social_research_dispatch` readiness scope; it grants no financial authority.

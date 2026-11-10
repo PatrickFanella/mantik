@@ -13,6 +13,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
+	"github.com/jackc/pgx/v5"
 )
 
 // OwnedExecutionSchema is comparison v16: v15 plus owner entry execution.
@@ -922,7 +923,7 @@ func (p *Postgres) ExecuteOwnedAllocations(ctx context.Context, c OwnedExecution
 		return OwnedExecutionReceipt{}, ErrOwnedExecutionUnavailable
 	}
 	var r OwnedExecutionReceipt
-	_, _, err := p.ownedAllocationAccess(ctx, true, nil, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
+	_, _, err := p.ownedAllocationAccess(ctx, true, nil, func(ctx context.Context, _ pgx.Tx, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
 		next, receipt, err := appendOwnedExecution(ctx, owner, journal, policies, decisions, strategies, retained, x, c, now, sourceClock, declarations, assessments)
 		r = receipt
 		return next, err == nil && receipt.Record != nil && !receipt.Duplicate, err

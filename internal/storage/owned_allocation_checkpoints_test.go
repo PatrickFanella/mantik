@@ -148,6 +148,7 @@ CREATE TRIGGER zz_omit_financial_refs BEFORE INSERT ON mantik_owned_allocation_f
 		t.Fatal("audit", audit, err)
 	}
 	verifyAllocationIndexSegments(t, s, eval)
+	verifyAllocationIndexBackfill(t, s, eval, catalog)
 	verifyAllocationTargetReads(t, s, eval, catalog)
 	historyBefore := verifyAllocationHistoryPages(t, s, eval, catalog)
 	decisionHistoryBefore, err := s.(OwnedAllocationHistoryStore).OwnedAllocationHistory(ctx, OwnedAllocationHistoryQuery{ReceiverID: owner, DecisionID: decision.Record.Command.ID, Limit: 2}, eval)
@@ -239,6 +240,7 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 		if got, err := s.OwnedAllocations(ctx, eval); err != nil || !reflect.DeepEqual(got, catalog) {
 			t.Fatal("approved retirement changed allocation replay", err)
 		}
+		verifyAllocationIndexBackfill(t, s, eval, catalog)
 		verifyAllocationTargetReads(t, s, eval, catalog)
 		if got := verifyAllocationHistoryPages(t, s, eval, catalog); !reflect.DeepEqual(got, historyBefore) {
 			t.Fatal("approved retirement changed sealed allocation page")

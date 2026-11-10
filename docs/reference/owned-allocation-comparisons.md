@@ -1049,6 +1049,50 @@ acknowledgment on any error, including cancellation or failed COMMIT.
 These pages provide original financial records for inspection. Complete
 decision-specific financial attribution still needs its bounded native
 contribution consumer; a filtered page is not a complete financial total.
-The v1 checkpoint identity collections, legacy-index backfill and automatic
+The v1 checkpoint identity collections and automatic
 retention remain required archive work.
+
+### Legacy allocation index maintenance
+
+`POST /v1/allocation-history/index` explicitly indexes legacy sealed allocation
+history. It requires operator authentication and one strict JSON object with
+the service's `receiver_id`; unknown or duplicate fields, query parameters and
+bodies above 1 KiB are rejected. The CLI is `mantik allocation-history-index`,
+with `--api-url` set to the service HTTP origin and `--receiver-id` set to that
+receiver. It validates and emits the native JSON receipt, capped at 8 KiB.
+Ordinary history GETs remain read-only.
+
+The operation re-executes the complete retained allocation history from genesis,
+including original owner decisions, policies, assessments, execution sources
+and recorded seal boundaries. It rebuilds each intermediate checkpoint and
+compares the final state with the working checkpoint. Every existing indexed
+segment must match that native reconstruction. An incomplete existing index or
+changed source is an error, not permission to repair or replace it.
+
+Only wholly unindexed segments are added. Newly added checkpoint envelopes are
+native reconstructions, not recovered historical checkpoint bytes. A stored
+checkpoint envelope must match exactly before it can be reused. The original
+archive payloads, financial records, hashes and working journal are never
+rewritten. The receipt uses schema `mantik-allocation-index-receipt-v1` and method
+`native-original-replay-index-backfill-v1`; it binds the receiver, audited sealed
+sequence/checkpoint, total audited records and counts of added segments, members
+and checkpoint envelopes. It grants no financial authority or qualification.
+
+Memory builds a detached candidate and publishes it only after the full audit.
+PostgreSQL uses the normal collector, state and receiver write-lock order and
+commits all derived metadata in one transaction. A native mismatch,
+cancellation or failed COMMIT returns no receipt and leaves no partial index.
+This explicit maintenance call scans all history and temporarily holds owner
+write locks. The audit deadline is one minute, extended by the existing race
+test multiplier; its HTTP write deadline allows five more seconds for the
+receipt. The CLI waits at most 65 seconds. A caller deadline can end it sooner.
+No model, provider or operational clock is consulted.
+
+A repeat call verifies the same history and adds zero rows when it is already
+indexed. After an uncertain transport result, retry the same receiver command;
+the next committed receipt reports that call's additions and current audited
+cut. New seals can advance that cut between calls. Backups must include the
+derived index tables alongside their original sources. Index maintenance does
+not prune records, enable automatic retention or bound the v1 checkpoint's
+growing identity collections.
 

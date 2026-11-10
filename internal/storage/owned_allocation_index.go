@@ -84,18 +84,21 @@ func allocationArchiveMembers(journal ownedAllocationJournal, previous *OwnedAll
 }
 
 func (m *Memory) retainOwnedAllocationIndexLocked(next ownedAllocationJournal) error {
-	members, err := allocationArchiveMembers(next, m.ownedAllocations.Checkpoint)
+	return retainOwnedAllocationIndex(&m.ownedAllocationIndex, m.ownedAllocations.Checkpoint, next)
+}
+
+func retainOwnedAllocationIndex(index *ownedAllocationArchiveIndex, previous *OwnedAllocationCheckpoint, next ownedAllocationJournal) error {
+	members, err := allocationArchiveMembers(next, previous)
 	if err != nil || len(members) == 0 {
 		return err
 	}
-	index := &m.ownedAllocationIndex
 	if (index.Checkpoints == nil) != (index.Batches == nil) || (index.Checkpoints == nil) != (index.Members == nil) || (index.Checkpoints == nil) != (index.Decisions == nil) || (index.Checkpoints == nil) != (index.Financial == nil) {
 		return ErrOwnedAllocationInvalid
 	}
 	if _, exists := index.Batches[next.Checkpoint.Sequence]; exists {
 		return ErrOwnedAllocationConflict
 	}
-	for _, c := range []*OwnedAllocationCheckpoint{m.ownedAllocations.Checkpoint, next.Checkpoint} {
+	for _, c := range []*OwnedAllocationCheckpoint{previous, next.Checkpoint} {
 		if c != nil {
 			if old, ok := index.Checkpoints[c.Sequence]; ok && !reflect.DeepEqual(old, *c) {
 				return ErrOwnedAllocationConflict
@@ -107,6 +110,12 @@ func (m *Memory) retainOwnedAllocationIndexLocked(next ownedAllocationJournal) e
 		if _, exists := index.Members[member.Sequence]; exists {
 			return ErrOwnedAllocationConflict
 		}
+		if _, exists := index.Decisions[member.Sequence]; exists {
+			return ErrOwnedAllocationConflict
+		}
+		if _, exists := index.Financial[member.Sequence]; exists {
+			return ErrOwnedAllocationConflict
+		}
 		ids, err := allocationFinancialDecisions(next.sealing[i])
 		if err != nil {
 			return err
@@ -116,7 +125,7 @@ func (m *Memory) retainOwnedAllocationIndexLocked(next ownedAllocationJournal) e
 	if index.Checkpoints == nil {
 		*index = ownedAllocationArchiveIndex{Checkpoints: map[int]OwnedAllocationCheckpoint{}, Batches: map[int]ownedAllocationBatch{}, Members: map[int]ownedAllocationMember{}, Decisions: map[int][]OwnedDecisionPin{}, Financial: map[int][]string{}}
 	}
-	for _, c := range []*OwnedAllocationCheckpoint{m.ownedAllocations.Checkpoint, next.Checkpoint} {
+	for _, c := range []*OwnedAllocationCheckpoint{previous, next.Checkpoint} {
 		if c != nil {
 			index.Checkpoints[c.Sequence] = clone(*c)
 		}

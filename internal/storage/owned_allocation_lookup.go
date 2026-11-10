@@ -242,7 +242,7 @@ func (p *Postgres) OwnedAllocationComparison(ctx context.Context, id string, de 
 		return OwnedAllocationRecord{}, ErrOwnedAllocationInvalid
 	}
 	var segment *ownedAllocationSegment
-	catalog, _, err := p.ownedAllocationAccessFromJournal(ctx, false, nil, func(ctx context.Context, _ string, j ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, _ time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
+	catalog, _, err := p.ownedAllocationAccessFromJournal(ctx, false, nil, func(ctx context.Context, _ pgx.Tx, _ string, j ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, _ time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
 		if segment != nil {
 			s := paperEvaluationSources{policies: policies, decisions: decisions, strategies: strategies, retained: retained, declarations: declarations}
 			_, err := replayOwnedAllocationSegment(ctx, *segment, s, x, assessments)

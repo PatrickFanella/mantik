@@ -983,9 +983,10 @@ func readOwnedAllocationJournal(ctx context.Context, tx pgx.Tx) (ownedAllocation
 	return j, nil
 }
 
-// ownedJournalAppend computes a journal append inside the owner transaction.
+// ownedJournalAppend runs inside the owner transaction. Archive maintenance
+// can write derived indexes while returning an unchanged working journal.
 // It reports whether the journal changed and must be written.
-type ownedJournalAppend func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error)
+type ownedJournalAppend func(ctx context.Context, tx pgx.Tx, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error)
 
 func (p *Postgres) ownedAllocationAccess(ctx context.Context, write bool, pins []OwnedDecisionPin, apply ownedJournalAppend, eval PaperDecisionEvaluator, outcomeEvals ...PaperOutcomeEvaluator) (OwnedAllocationCatalog, OwnedAllocationReceipt, error) {
 	return p.ownedAllocationAccessFromJournal(ctx, write, pins, apply, nil, eval, outcomeEvals...)
@@ -1099,7 +1100,7 @@ func (p *Postgres) ownedAllocationAccessFromJournal(ctx context.Context, write b
 	var receipt OwnedAllocationReceipt
 	if apply != nil {
 		previousCheckpoint := journal.Checkpoint
-		next, changed, e := apply(ctx, owner, journal, policies, decisions, strategies, retained, p.ownedExecution(feed), feed.Collectors.LastClock, declarations, assessmentCatalog)
+		next, changed, e := apply(ctx, tx, owner, journal, policies, decisions, strategies, retained, p.ownedExecution(feed), feed.Collectors.LastClock, declarations, assessmentCatalog)
 		if e != nil {
 			return OwnedAllocationCatalog{}, OwnedAllocationReceipt{}, e
 		}
@@ -1142,7 +1143,7 @@ func (p *Postgres) CompareOwnedAllocation(ctx context.Context, c OwnedAllocation
 		return OwnedAllocationReceipt{}, ErrOwnedAllocationInvalid
 	}
 	var r OwnedAllocationReceipt
-	_, _, e := p.ownedAllocationAccess(ctx, true, c.Decisions, func(ctx context.Context, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
+	_, _, e := p.ownedAllocationAccess(ctx, true, c.Decisions, func(ctx context.Context, _ pgx.Tx, owner string, journal ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, sourceClock time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
 		next, receipt, err := appendOwnedAllocation(ctx, owner, journal, policies, decisions, strategies, retained, x, c, now, sourceClock, declarations, assessments)
 		r = receipt
 		return next, err == nil && !receipt.Duplicate, err

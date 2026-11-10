@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
@@ -18,6 +19,7 @@ func allocationHistoryHTTP(t *testing.T, request func(string, string, any, int) 
 	t.Helper()
 	clock.panicRead = true
 	defer func() { clock.panicRead = false }()
+	allocationHistoryIndexHTTP(t, request, base, owner)
 	query := url.Values{"receiver_id": {owner}, "limit": {"2"}}
 	raw := request("GET", "/v1/allocation-history?"+query.Encode(), nil, 200)
 	unauthenticated, err := http.Get(base + "/v1/allocation-history?" + query.Encode())
@@ -77,6 +79,47 @@ func allocationHistoryHTTP(t *testing.T, request func(string, string, any, int) 
 		args := append([]string{"allocation-history", "--api-url", base, "--receiver-id", owner}, flags...)
 		if err := Run(context.Background(), args, &out, &diag); err == nil || out.Len() != 0 {
 			t.Fatal("invalid allocation history CLI emitted a page")
+		}
+	}
+}
+
+func allocationHistoryIndexHTTP(t *testing.T, request func(string, string, any, int) []byte, base, owner string) {
+	t.Helper()
+	command := storage.OwnedAllocationIndexCommand{ReceiverID: owner}
+	read := request("POST", "/v1/allocation-history/index", command, 200)
+	var native storage.OwnedAllocationIndexReceipt
+	if err := json.Unmarshal(read, &native); err != nil || native.Validate(command) != nil || native.ThroughSequence != 0 || native.SegmentsAdded != 0 {
+		t.Fatal("unsealed history index maintenance", err)
+	}
+	var out, diag bytes.Buffer
+	if err := Run(t.Context(), []string{"allocation-history-index", "--api-url", base, "--receiver-id", owner}, &out, &diag); err != nil {
+		t.Fatal(err, diag.String())
+	}
+	var got storage.OwnedAllocationIndexReceipt
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil || !reflect.DeepEqual(got, native) {
+		t.Fatal("CLI changed native index receipt", err)
+	}
+	unauthenticated, err := http.Post(base+"/v1/allocation-history/index", "application/json", strings.NewReader(string(read)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unauthenticated.Body.Close()
+	if unauthenticated.StatusCode != http.StatusUnauthorized {
+		t.Fatal("index maintenance without operator authentication", unauthenticated.StatusCode)
+	}
+	for _, body := range []any{nil, "{}", "null", "[]", `{"receiver_id":"` + owner + `","unknown":true}`, `{"receiver_id":"` + owner + `","receiver_id":"` + owner + `"}`, strings.Repeat(" ", 1025)} {
+		request("POST", "/v1/allocation-history/index", body, 422)
+	}
+	for _, query := range []string{"?", "?receiver_id=" + owner} {
+		request("POST", "/v1/allocation-history/index"+query, command, 422)
+	}
+	request("POST", "/v1/allocation-history/index", storage.OwnedAllocationIndexCommand{ReceiverID: "receiver-xxxxxxxxxxxxxxxx"}, 409)
+	for _, flags := range [][]string{{"--receiver-id", ""}, {"--api-url", "http://user:password@127.0.0.1"}, {"--api-url", base + "/unexpected"}, {"--api-url", base + "?"}, {"unexpected"}} {
+		out.Reset()
+		diag.Reset()
+		args := append([]string{"allocation-history-index", "--api-url", base, "--receiver-id", owner}, flags...)
+		if err := Run(t.Context(), args, &out, &diag); err == nil || out.Len() != 0 {
+			t.Fatal("invalid index maintenance CLI emitted a receipt")
 		}
 	}
 }

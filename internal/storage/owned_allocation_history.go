@@ -366,7 +366,7 @@ func (p *Postgres) OwnedAllocationHistory(ctx context.Context, q OwnedAllocation
 	var selected allocationHistorySelection
 	var out OwnedAllocationHistoryPage
 	var snapshot pgx.Tx
-	_, _, err := p.ownedAllocationAccessFromJournal(ctx, false, nil, func(ctx context.Context, owner string, j ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, _ time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
+	_, _, err := p.ownedAllocationAccessFromJournal(ctx, false, nil, func(ctx context.Context, _ pgx.Tx, owner string, j ownedAllocationJournal, policies allocation.PolicyCatalog, decisions PaperDecisionCatalog, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision, x *ownedExecution, _ time.Time, declarations PaperEvaluationDeclarationCatalog, assessments PaperEvaluationAssessmentCatalog) (ownedAllocationJournal, bool, error) {
 		if owner != q.ReceiverID {
 			return ownedAllocationJournal{}, false, ErrReceiverMismatch
 		}
