@@ -1,16 +1,22 @@
 name: CI
 
+# Pull request verification runs on the GitHub organization mirror
+# (.github/workflows/mirror-ci.yml) and reports back as
+# "GitHub CI / Mirror CI gate". This workflow verifies main after merge.
 on:
   push:
     branches: [main]
-  pull_request:
+    # No check reads Markdown or the license; docs-only merges skip the suite.
+    paths-ignore:
+      - '**.md'
+      - LICENSE
 
 permissions:
   contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   unit:
