@@ -102,7 +102,10 @@ intervals, the same check allocation reads use, so the catalogue still reads
 after an approved decision retirement. A comparison or admission review that
 names a retired decision stays in the replayed sources: allocation replay
 resolves that decision from its first original archive, and the join accepts
-the reference only when its pin matches the resolved record. The retired
+the reference only when its pin matches the resolved record. Claim reviews of
+a retired decision are resolved the same way, with the resolver the review
+catalogue uses, so they stay in the claim-review source binding. A decision
+retired together with its outcomes leaves no orphan. The retired
 decision has no row, and its targeted read returns 404. A decision that is
 missing without approved retirement still fails the whole read, even when an
 archive copy exists. `mantik allocation-contribution` can still total a retired

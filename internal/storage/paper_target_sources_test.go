@@ -230,6 +230,18 @@ DELETE FROM mantik_paper_outcomes WHERE id='target-outcome'; DELETE FROM mantik_
 		if err != nil || len(outcomes.Records) != 1 || !reflect.DeepEqual(outcomes.Records[0], newO.Record) {
 			t.Fatal("new active outcome membership", err)
 		}
+		// Attribution covers the active decisions only. The retired decision
+		// and its retired outcome leave no row and no orphan.
+		attribution, err := s.(PaperAttributionStore).PaperAttribution(ctx, de, oe)
+		if err != nil || len(attribution.Rows) != 2 {
+			t.Fatal("attribution after retiring a decision with its outcome", err)
+		}
+		for _, row := range attribution.Rows {
+			if row.Decision.Command.ID == after.ID && (len(row.Observations) != 1 || !reflect.DeepEqual(row.Observations[0], newO.Record)) {
+				t.Fatal("active outcome missing from attribution", row.Observations)
+			}
+		}
+		requireAttributionTargets(t, s, attribution, de, oe, dc.ID)
 		t.Run("missing-other-active-owner-is-not-a-smaller-catalogue", func(t *testing.T) {
 			if m, ok := s.(*Memory); ok {
 				m.mu.Lock()

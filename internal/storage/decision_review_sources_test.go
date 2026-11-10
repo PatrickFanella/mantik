@@ -403,6 +403,27 @@ DELETE FROM mantik_paper_decisions WHERE id='membership-decision'`); err != nil 
 	if err != nil || len(current.Records) != len(final.Records)+1 {
 		t.Fatal("new review lost retained source-backed history", err)
 	}
+	// The retired decision leaves the attribution rows; its claim reviews stay
+	// in the replayed review sources and every active row is unchanged.
+	retiredAttribution, err := s.PaperAttribution(ctx, eval, oe)
+	if err != nil || len(retiredAttribution.Rows) != len(attribution.Rows)-1 {
+		t.Fatal("attribution after retiring a reviewed decision", err)
+	}
+	for _, row := range retiredAttribution.Rows {
+		if row.Decision.Command.ID == command.ID {
+			t.Fatal("retired decision kept an attribution row")
+		}
+		found := false
+		for _, before := range attribution.Rows {
+			if before.Decision.Command.ID == row.Decision.Command.ID {
+				found = reflect.DeepEqual(before, row)
+			}
+		}
+		if !found {
+			t.Fatal("retiring a reviewed decision changed an active attribution row", row.Decision.Command.ID)
+		}
+	}
+	requireAttributionTargets(t, s, retiredAttribution, eval, oe, command.ID)
 	changed := func(c PaperDecisionCommand, b PaperDecisionBasis, at time.Time) (PaperDecisionEvaluation, error) {
 		v, err := eval(c, b, at)
 		if c.ID == command.ID {
@@ -412,6 +433,9 @@ DELETE FROM mantik_paper_decisions WHERE id='membership-decision'`); err != nil 
 	}
 	if got, err := s.DecisionReviews(ctx, changed); err == nil || !reflect.DeepEqual(got, DecisionReviewCatalog{}) {
 		t.Fatal("archive custody replaced native decision replay for reviews", err)
+	}
+	if got, err := s.PaperAttribution(ctx, changed, oe); err == nil || !reflect.DeepEqual(got, PaperAttributionCatalog{}) {
+		t.Fatal("attribution trusted an archived reviewed decision without native replay", err)
 	}
 	if pg, ok := s.(*Postgres); ok {
 		reopened, err := OpenPostgres(ctx, pg.pool.Config().ConnString())
