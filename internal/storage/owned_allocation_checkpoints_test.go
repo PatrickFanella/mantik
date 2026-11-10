@@ -184,6 +184,10 @@ CREATE TRIGGER zz_omit_financial_refs BEFORE INSERT ON mantik_owned_allocation_f
 		if err != nil || len(attribution.Rows) != 2 || len(attribution.Rows[0].Allocations) == 0 {
 			t.Fatal("attribution before retirement", err)
 		}
+		if len(decisionHistoryBefore.Records) == 0 || decisionHistoryBefore.NextAfter == "" {
+			t.Fatal("targeted attribution fixture lacks multi-page sealed decision history")
+		}
+		requireAttributionTargets(t, s, attribution, eval, noOutcome)
 		if _, err := archives.RotateFeed(ctx, owner, func() time.Time { return at.Add(10 * time.Second) }, func(FeedEvidenceSnapshot, time.Time) error { return nil }, eval, noOutcome); err != nil {
 			t.Fatal(err)
 		}
@@ -268,6 +272,25 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 		after, err := attributor.PaperAttribution(ctx, eval, noOutcome)
 		if err != nil || len(after.Rows) != 1 || after.Rows[0].Decision.Command.ID != "still-active" || after.QualificationCredit {
 			t.Fatal("attribution after approved retirement", err)
+		}
+		requireAttributionTargets(t, s, after, eval, noOutcome, "first")
+		if m, ok := s.(*Memory); ok {
+			// The targeted reader replays only the sealed segments its decision
+			// index selects. A damaged sealed record of another decision fails
+			// the complete catalogue but not still-active's row.
+			m.mu.Lock()
+			sealed := clone(m.ownedAllocationArchive[0])
+			m.ownedAllocationArchive[0].Record.SHA256 = workerplan.Hash("forged sealed record")
+			m.mu.Unlock()
+			if got, err := attributor.PaperAttribution(ctx, eval, noOutcome); err == nil || !reflect.DeepEqual(got, PaperAttributionCatalog{}) {
+				t.Fatal("complete attribution accepted a damaged sealed record", err)
+			}
+			if got, err := s.(PaperAttributionDecisionStore).PaperAttributionDecision(ctx, "still-active", eval, noOutcome); err != nil || !reflect.DeepEqual(got, after.Rows[0]) {
+				t.Fatal("targeted attribution read an unrelated sealed segment", err)
+			}
+			m.mu.Lock()
+			m.ownedAllocationArchive[0] = sealed
+			m.mu.Unlock()
 		}
 		for _, row := range attribution.Rows {
 			if row.Decision.Command.ID == "still-active" && !reflect.DeepEqual(row, after.Rows[0]) {

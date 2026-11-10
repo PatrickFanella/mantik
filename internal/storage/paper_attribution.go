@@ -218,92 +218,14 @@ func paperAttribution(ctx context.Context, decisions, dependencies PaperDecision
 		if err := ctx.Err(); err != nil {
 			return PaperAttributionCatalog{}, err
 		}
-		s, err := paperstrategy.Select(strategies, d.Command.StrategyID)
-		if err != nil || s.SHA256 != d.Command.StrategySHA256 || d.Command.ReceiverID != out.ReceiverID || seen[d.Command.ID] {
+		if seen[d.Command.ID] {
 			return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
 		}
 		seen[d.Command.ID] = true
-		row := PaperAttributionRow{Decision: d, Method: s.Command.Definition.Method, Symbol: s.Command.Definition.Symbol, EvidenceClass: s.Command.Definition.InputEvidenceClass, DefinitionSHA256: s.DefinitionSHA256, ForecastStatus: "native_predicate_not_calibrated_forecast", ObservationStatus: "not_assessed", Observations: []PaperOutcomeRecord{}, Allocations: []PaperAllocationAttribution{}, Economics: PaperEconomicAttribution{Status: "owned_execution_unavailable", BaselineStatus: "economic_baselines_unavailable"}}
-		for _, o := range outcomes.Records {
-			if o.Command.DecisionID != d.Command.ID {
-				continue
-			}
-			if o.Command.DecisionSHA256 != d.SHA256 {
-				return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
-			}
-			row.Observations = append(row.Observations, o)
-			row.ObservationStatus = "assessments_retained"
+		row, err := paperAttributionRow(d, out.ReceiverID, strategies, outcomes, allocations, reviews.Records)
+		if err != nil {
+			return PaperAttributionCatalog{}, err
 		}
-		for _, a := range allocations.Records {
-			if a.Entry.Plan == nil {
-				return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
-			}
-			for _, choice := range a.Entry.Plan.Decisions {
-				if choice.Proposal.ID != d.Command.ID {
-					continue
-				}
-				if choice.Proposal.DecisionSHA256 != d.SHA256 || choice.Proposal.StrategyID != d.Command.StrategyID {
-					return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
-				}
-				item := PaperAllocationAttribution{ComparisonID: a.Command.ID, RecordSHA256: a.SHA256, PolicySHA256: a.PolicySHA256, AccountID: a.Entry.Plan.AccountID, At: a.At, Status: choice.Status, Reasons: choice.Reasons, ReconsiderOn: choice.ReconsiderOn, RequestedFundingCents: choice.Proposal.NotionalCents}
-				if a.EvaluationContext != nil {
-					for _, binding := range a.EvaluationContext.Decisions {
-						if binding.DecisionID == d.Command.ID {
-							item.EvaluationContext = &PaperEvaluationPlanAttribution{Schema: "mantik-paper-attribution-evaluation-context-v1", SourceSHA256: a.EvaluationContext.SourceSHA256, Binding: clone(binding), Authority: a.EvaluationContext.Authority, AdmissionAvailable: a.EvaluationContext.AdmissionAvailable, ExecutionAvailable: a.EvaluationContext.ExecutionAvailable, QualificationCredit: a.EvaluationContext.QualificationCredit}
-							if a.EvaluationContext.Schema == "mantik-owned-allocation-evaluation-context-v2" {
-								item.EvaluationContext.Schema = "mantik-paper-attribution-evaluation-context-v2"
-								item.EvaluationContext.AssessmentSourceSHA256 = a.EvaluationContext.AssessmentSourceSHA256
-							}
-							break
-						}
-					}
-					if item.EvaluationContext == nil {
-						return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
-					}
-				}
-				for _, cost := range a.ExecutionCosts {
-					if cost.DecisionID == d.Command.ID {
-						v := cost
-						item.CostCeiling = &v
-						break
-					}
-				}
-				for _, safety := range a.ExecutionSafety {
-					if safety.DecisionID == d.Command.ID {
-						v := clone(safety)
-						item.ExecutionSafety = &v
-						break
-					}
-				}
-				for _, check := range a.AdmissionChecks {
-					if check.DecisionID == d.Command.ID {
-						v := clone(check)
-						item.AdmissionReadiness = &v
-						break
-					}
-				}
-				row.Allocations = append(row.Allocations, item)
-			}
-		}
-		row.Economics = paperExecutionAttribution(d.Command.ID, row.Allocations, allocations)
-		row.Economics.BaselineStatus, row.Economics.Baseline = PaperAttributionBaseline(row.Economics, row.Observations)
-		scoped := OwnedAdmissionReviewCatalog{ReceiverID: out.ReceiverID, Records: []OwnedAdmissionReview{}, CurrentIDs: []string{}}
-		for _, review := range reviews.Records {
-			if review.Command.DecisionID != d.Command.ID {
-				continue
-			}
-			if review.Command.DecisionSHA256 != d.SHA256 {
-				return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
-			}
-			scoped.Records = append(scoped.Records, clone(review))
-		}
-		current := ""
-		if len(scoped.Records) > 0 {
-			current = scoped.Records[len(scoped.Records)-1].Command.ID
-			scoped.CurrentIDs = []string{current}
-		}
-		row.AdmissionReviewHistory = &PaperAdmissionReviewHistory{SourceSHA256: workerplan.Hash(scoped), Records: scoped.Records, CurrentID: current, Authority: "service_owned_non_grant_admission_review_history_only"}
-		row.SHA256 = workerplan.Hash(row)
 		out.Rows = append(out.Rows, row)
 	}
 	// Reject orphaned source rows instead of silently hiding them in a join.
@@ -330,6 +252,99 @@ func paperAttribution(ctx context.Context, decisions, dependencies PaperDecision
 		return PaperAttributionCatalog{}, ErrPaperAttributionInvalid
 	}
 	return clone(out), nil
+}
+
+// paperAttributionRow joins one active decision with its outcomes, the
+// comparisons and execution steps in allocations and its admission reviews.
+// Records naming other decisions are ignored, so the complete catalogue and a
+// decision-scoped selection of the same owners produce the same row.
+func paperAttributionRow(d PaperDecisionRecord, receiver string, strategies paperstrategy.Catalog, outcomes PaperOutcomeCatalog, allocations OwnedAllocationCatalog, reviews []OwnedAdmissionReview) (PaperAttributionRow, error) {
+	s, err := paperstrategy.Select(strategies, d.Command.StrategyID)
+	if err != nil || s.SHA256 != d.Command.StrategySHA256 || d.Command.ReceiverID != receiver {
+		return PaperAttributionRow{}, ErrPaperAttributionInvalid
+	}
+	row := PaperAttributionRow{Decision: d, Method: s.Command.Definition.Method, Symbol: s.Command.Definition.Symbol, EvidenceClass: s.Command.Definition.InputEvidenceClass, DefinitionSHA256: s.DefinitionSHA256, ForecastStatus: "native_predicate_not_calibrated_forecast", ObservationStatus: "not_assessed", Observations: []PaperOutcomeRecord{}, Allocations: []PaperAllocationAttribution{}, Economics: PaperEconomicAttribution{Status: "owned_execution_unavailable", BaselineStatus: "economic_baselines_unavailable"}}
+	for _, o := range outcomes.Records {
+		if o.Command.DecisionID != d.Command.ID {
+			continue
+		}
+		if o.Command.DecisionSHA256 != d.SHA256 {
+			return PaperAttributionRow{}, ErrPaperAttributionInvalid
+		}
+		row.Observations = append(row.Observations, o)
+		row.ObservationStatus = "assessments_retained"
+	}
+	for _, a := range allocations.Records {
+		if a.Entry.Plan == nil {
+			return PaperAttributionRow{}, ErrPaperAttributionInvalid
+		}
+		for _, choice := range a.Entry.Plan.Decisions {
+			if choice.Proposal.ID != d.Command.ID {
+				continue
+			}
+			if choice.Proposal.DecisionSHA256 != d.SHA256 || choice.Proposal.StrategyID != d.Command.StrategyID {
+				return PaperAttributionRow{}, ErrPaperAttributionInvalid
+			}
+			item := PaperAllocationAttribution{ComparisonID: a.Command.ID, RecordSHA256: a.SHA256, PolicySHA256: a.PolicySHA256, AccountID: a.Entry.Plan.AccountID, At: a.At, Status: choice.Status, Reasons: choice.Reasons, ReconsiderOn: choice.ReconsiderOn, RequestedFundingCents: choice.Proposal.NotionalCents}
+			if a.EvaluationContext != nil {
+				for _, binding := range a.EvaluationContext.Decisions {
+					if binding.DecisionID == d.Command.ID {
+						item.EvaluationContext = &PaperEvaluationPlanAttribution{Schema: "mantik-paper-attribution-evaluation-context-v1", SourceSHA256: a.EvaluationContext.SourceSHA256, Binding: clone(binding), Authority: a.EvaluationContext.Authority, AdmissionAvailable: a.EvaluationContext.AdmissionAvailable, ExecutionAvailable: a.EvaluationContext.ExecutionAvailable, QualificationCredit: a.EvaluationContext.QualificationCredit}
+						if a.EvaluationContext.Schema == "mantik-owned-allocation-evaluation-context-v2" {
+							item.EvaluationContext.Schema = "mantik-paper-attribution-evaluation-context-v2"
+							item.EvaluationContext.AssessmentSourceSHA256 = a.EvaluationContext.AssessmentSourceSHA256
+						}
+						break
+					}
+				}
+				if item.EvaluationContext == nil {
+					return PaperAttributionRow{}, ErrPaperAttributionInvalid
+				}
+			}
+			for _, cost := range a.ExecutionCosts {
+				if cost.DecisionID == d.Command.ID {
+					v := cost
+					item.CostCeiling = &v
+					break
+				}
+			}
+			for _, safety := range a.ExecutionSafety {
+				if safety.DecisionID == d.Command.ID {
+					v := clone(safety)
+					item.ExecutionSafety = &v
+					break
+				}
+			}
+			for _, check := range a.AdmissionChecks {
+				if check.DecisionID == d.Command.ID {
+					v := clone(check)
+					item.AdmissionReadiness = &v
+					break
+				}
+			}
+			row.Allocations = append(row.Allocations, item)
+		}
+	}
+	row.Economics = paperExecutionAttribution(d.Command.ID, row.Allocations, allocations)
+	row.Economics.BaselineStatus, row.Economics.Baseline = PaperAttributionBaseline(row.Economics, row.Observations)
+	scoped := OwnedAdmissionReviewCatalog{ReceiverID: receiver, Records: []OwnedAdmissionReview{}, CurrentIDs: []string{}}
+	for _, review := range reviews {
+		if review.Command.DecisionID != d.Command.ID {
+			continue
+		}
+		if review.Command.DecisionSHA256 != d.SHA256 {
+			return PaperAttributionRow{}, ErrPaperAttributionInvalid
+		}
+		scoped.Records = append(scoped.Records, clone(review))
+	}
+	current := ""
+	if len(scoped.Records) > 0 {
+		current = scoped.Records[len(scoped.Records)-1].Command.ID
+		scoped.CurrentIDs = []string{current}
+	}
+	row.AdmissionReviewHistory = &PaperAdmissionReviewHistory{SourceSHA256: workerplan.Hash(scoped), Records: scoped.Records, CurrentID: current, Authority: "service_owned_non_grant_admission_review_history_only"}
+	row.SHA256 = workerplan.Hash(row)
+	return row, nil
 }
 
 func (m *Memory) PaperAttribution(ctx context.Context, decisionEval PaperDecisionEvaluator, outcomeEval PaperOutcomeEvaluator) (PaperAttributionCatalog, error) {

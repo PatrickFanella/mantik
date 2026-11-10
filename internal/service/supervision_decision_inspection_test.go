@@ -30,6 +30,9 @@ func (*unavailableDecisionInspectionStore) OwnedAdmissionReviews(context.Context
 func (*unavailableDecisionInspectionStore) PaperAttribution(context.Context, storage.PaperDecisionEvaluator, storage.PaperOutcomeEvaluator) (storage.PaperAttributionCatalog, error) {
 	return storage.PaperAttributionCatalog{}, errors.New("fixture attribution owner unavailable")
 }
+func (*unavailableDecisionInspectionStore) PaperAttributionDecision(context.Context, string, storage.PaperDecisionEvaluator, storage.PaperOutcomeEvaluator) (storage.PaperAttributionRow, error) {
+	return storage.PaperAttributionRow{}, errors.New("fixture attribution owner unavailable")
+}
 func (*unavailableDecisionInspectionStore) PaperOutcomes(context.Context, storage.PaperDecisionEvaluator, storage.PaperOutcomeEvaluator) (storage.PaperOutcomeCatalog, error) {
 	return storage.PaperOutcomeCatalog{}, errors.New("fixture outcome owner unavailable")
 }

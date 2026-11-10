@@ -1141,7 +1141,9 @@ funding and its fill, close and release effects without loading the complete
 allocation archive. Each request replays at most 64 indexed sealed records and
 their segments; the first request also replays the working journal in the same
 lock or snapshot. The CLI reads every page of that cut and emits their sum,
-using the accounting rule paper attribution uses. The complete attribution
+using the accounting rule paper attribution uses. The targeted
+`GET /v1/paper-attribution/{decision_id}` row reads the same indexed segments
+and the working journal and matches the catalogue row; the complete attribution
 catalogue still loads the whole archive. Compact identities and automatic
 retirement remain unfinished. See
 [decision financial contributions](docs/reference/owned-allocation-comparisons.md#decision-financial-contributions).

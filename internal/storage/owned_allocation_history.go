@@ -396,59 +396,8 @@ func (p *Postgres) readAllocationHistory(ctx context.Context, q OwnedAllocationH
 		return j, false, err
 	}, func(ctx context.Context, tx pgx.Tx, j ownedAllocationJournal) (ownedAllocationJournal, error) {
 		snapshot = tx
-		if j.Checkpoint == nil {
-			var exists bool
-			if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM mantik_owned_allocation_archive) OR EXISTS(SELECT 1 FROM mantik_owned_allocation_members) OR EXISTS(SELECT 1 FROM mantik_owned_allocation_checkpoints) OR EXISTS(SELECT 1 FROM mantik_owned_allocation_batches) OR EXISTS(SELECT 1 FROM mantik_owned_allocation_financial_refs)").Scan(&exists); err != nil {
-				return ownedAllocationJournal{}, err
-			}
-			if exists {
-				return ownedAllocationJournal{}, ErrOwnedAllocationConflict
-			}
-		}
 		var err error
-		selected, err = selectAllocationHistory(ctx, q, j.Checkpoint, func(n int) (OwnedAllocationCheckpoint, error) {
-			var raw []byte
-			var sha string
-			if err := tx.QueryRow(ctx, "SELECT payload,sha256 FROM mantik_owned_allocation_checkpoints WHERE sequence=$1", n).Scan(&raw, &sha); err != nil {
-				if err == pgx.ErrNoRows {
-					err = ErrOwnedAllocationConflict
-				}
-				return OwnedAllocationCheckpoint{}, err
-			}
-			var c OwnedAllocationCheckpoint
-			if workerplan.ReadBoundedShape(raw, &c, MaxOwnedAllocationBytes) != nil || c.SHA256 != sha {
-				return OwnedAllocationCheckpoint{}, ErrOwnedAllocationConflict
-			}
-			return c, nil
-		}, func(start, end int) ([]ownedAllocationMember, error) {
-			query := "SELECT sequence,checkpoint_sequence,command_id,kind,record_sha256,item_sha256 FROM mantik_owned_allocation_members WHERE sequence>$1 AND sequence<=$2 ORDER BY sequence LIMIT $3"
-			args := []any{start, end, q.Limit}
-			if q.DecisionID != "" {
-				var first bool
-				if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM mantik_owned_allocation_members WHERE sequence=1)").Scan(&first); err != nil {
-					return nil, err
-				}
-				if !first {
-					return nil, ErrOwnedAllocationConflict
-				}
-				query = allocationDecisionHistoryQuery
-				args = []any{start, end, q.DecisionID, q.Limit + 1}
-			}
-			rows, err := tx.Query(ctx, query, args...)
-			if err != nil {
-				return nil, err
-			}
-			defer rows.Close()
-			result := []ownedAllocationMember{}
-			for rows.Next() {
-				var r ownedAllocationMember
-				if err := rows.Scan(&r.Sequence, &r.CheckpointSequence, &r.CommandID, &r.Kind, &r.RecordSHA256, &r.ItemSHA256); err != nil {
-					return nil, err
-				}
-				result = append(result, r)
-			}
-			return result, rows.Err()
-		}, func(n int) (ownedAllocationSegment, error) { return readOwnedAllocationSegment(ctx, tx, n) })
+		selected, err = postgresAllocationHistorySelection(ctx, tx, q, j.Checkpoint)
 		if err == nil && active {
 			working = ownedAllocationJournal{Checkpoint: j.Checkpoint, Records: j.Records}
 			err = allocationTargetDependencies(working)
@@ -459,4 +408,61 @@ func (p *Postgres) readAllocationHistory(ctx context.Context, q OwnedAllocationH
 		return OwnedAllocationHistoryPage{}, ownedAllocationJournal{}, OwnedAllocationCatalog{}, err
 	}
 	return out, working, catalog, nil
+}
+
+// postgresAllocationHistorySelection selects one sealed page in the caller's
+// snapshot. current is that snapshot's working checkpoint.
+func postgresAllocationHistorySelection(ctx context.Context, tx pgx.Tx, q OwnedAllocationHistoryQuery, current *OwnedAllocationCheckpoint) (allocationHistorySelection, error) {
+	if current == nil {
+		var exists bool
+		if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM mantik_owned_allocation_archive) OR EXISTS(SELECT 1 FROM mantik_owned_allocation_members) OR EXISTS(SELECT 1 FROM mantik_owned_allocation_checkpoints) OR EXISTS(SELECT 1 FROM mantik_owned_allocation_batches) OR EXISTS(SELECT 1 FROM mantik_owned_allocation_financial_refs)").Scan(&exists); err != nil {
+			return allocationHistorySelection{}, err
+		}
+		if exists {
+			return allocationHistorySelection{}, ErrOwnedAllocationConflict
+		}
+	}
+	return selectAllocationHistory(ctx, q, current, func(n int) (OwnedAllocationCheckpoint, error) {
+		var raw []byte
+		var sha string
+		if err := tx.QueryRow(ctx, "SELECT payload,sha256 FROM mantik_owned_allocation_checkpoints WHERE sequence=$1", n).Scan(&raw, &sha); err != nil {
+			if err == pgx.ErrNoRows {
+				err = ErrOwnedAllocationConflict
+			}
+			return OwnedAllocationCheckpoint{}, err
+		}
+		var c OwnedAllocationCheckpoint
+		if workerplan.ReadBoundedShape(raw, &c, MaxOwnedAllocationBytes) != nil || c.SHA256 != sha {
+			return OwnedAllocationCheckpoint{}, ErrOwnedAllocationConflict
+		}
+		return c, nil
+	}, func(start, end int) ([]ownedAllocationMember, error) {
+		query := "SELECT sequence,checkpoint_sequence,command_id,kind,record_sha256,item_sha256 FROM mantik_owned_allocation_members WHERE sequence>$1 AND sequence<=$2 ORDER BY sequence LIMIT $3"
+		args := []any{start, end, q.Limit}
+		if q.DecisionID != "" {
+			var first bool
+			if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM mantik_owned_allocation_members WHERE sequence=1)").Scan(&first); err != nil {
+				return nil, err
+			}
+			if !first {
+				return nil, ErrOwnedAllocationConflict
+			}
+			query = allocationDecisionHistoryQuery
+			args = []any{start, end, q.DecisionID, q.Limit + 1}
+		}
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		result := []ownedAllocationMember{}
+		for rows.Next() {
+			var r ownedAllocationMember
+			if err := rows.Scan(&r.Sequence, &r.CheckpointSequence, &r.CommandID, &r.Kind, &r.RecordSHA256, &r.ItemSHA256); err != nil {
+				return nil, err
+			}
+			result = append(result, r)
+		}
+		return result, rows.Err()
+	}, func(n int) (ownedAllocationSegment, error) { return readOwnedAllocationSegment(ctx, tx, n) })
 }

@@ -320,6 +320,7 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 	if err != nil || attribution.Schema != "mantik-owned-paper-attribution-v5" {
 		t.Fatal(attribution, err)
 	}
+	requireAttributionTargets(t, s, attribution, eval, oe)
 	for _, row := range attribution.Rows {
 		h := row.ClaimReviewHistory
 		if h == nil || h.Validate(row.Decision) != nil {
@@ -363,6 +364,7 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 		if e != nil || !reflect.DeepEqual(actualAttribution, attribution) {
 			t.Fatal("reopen changed claim attribution", e)
 		}
+		requireAttributionTargets(t, reopened, attribution, eval, oe)
 		sourceReviewMigrationContract(t, pg, final.Records[0].Command.ID)
 	}
 	// A real archive supplies the decision after fixture-only approved
