@@ -79,3 +79,23 @@ func TestReadDecisionHistoryFollowsCursorsToTheEnd(t *testing.T) {
 		t.Fatal("unbounded decision history chain", err, calls)
 	}
 }
+
+func TestDecisionAdmissionReviewsRequireDenseGlobalSequences(t *testing.T) {
+	d := PaperDecisionRecord{Command: PaperDecisionCommand{ID: "decision"}}
+	source := OwnedAllocationCatalog{ReceiverID: "receiver"}
+	other := func(id string, sequence int) OwnedAdmissionReview {
+		return OwnedAdmissionReview{Command: OwnedAdmissionReviewCommand{ID: id, DecisionID: "other"}, Sequence: sequence}
+	}
+	if got, err := decisionAdmissionReviews(t.Context(), d, map[string]OwnedAdmissionReview{"a": other("a", 1), "b": other("b", 2)}, source); err != nil || len(got) != 0 {
+		t.Fatal("dense sequences of other decisions rejected", err)
+	}
+	for name, all := range map[string]map[string]OwnedAdmissionReview{
+		"duplicate": {"a": other("a", 1), "b": other("b", 1)},
+		"gap":       {"a": other("a", 1), "b": other("b", 3)},
+		"zero":      {"a": other("a", 0)},
+	} {
+		if got, err := decisionAdmissionReviews(t.Context(), d, all, source); !errors.Is(err, ErrOwnedAdmissionReviewInvalid) || got != nil {
+			t.Fatal("targeted review chain accepted global sequence damage", name, err)
+		}
+	}
+}

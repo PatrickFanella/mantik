@@ -119,8 +119,11 @@ catalogue, so the row and its hash are identical to the catalogue's row. A
 damaged sealed record that belongs only to other decisions fails the catalogue
 but not this read; the catalogue and the full allocation audit remain the
 complete checks. The admission-review chain is checked against the comparisons
-it names; other decisions' chains and the global review clock are checked only
-by the catalogue. An inactive or unknown decision returns 404 before any
+it names, and review sequences must be exactly 1..n. Checks that span all
+decisions run only in the catalogue: other decisions' review chains and the
+global review clock, orphaned outcomes, comparison pins or reviews naming an
+absent unretired decision, and the 8 MiB catalogue bound (the targeted row has
+its own 8 MiB bound). An inactive or unknown decision returns 404 before any
 allocation history is read. On legacy sealed history without its original
 segment index, the route answers from the complete catalogue instead, as before;
 `allocation-history-index` rebuilds the index.

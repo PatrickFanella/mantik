@@ -81,17 +81,21 @@ func decisionAllocationCatalog(receiver, decision string, sealed []OwnedAllocati
 }
 
 // decisionAdmissionReviews validates one decision's review chain against the
-// comparisons it names. The complete catalogue also checks every other
-// decision's chain and the global review clock; this read does not.
+// comparisons it names, and that global sequences are exactly 1..n. The
+// complete catalogue also checks every other decision's chain and the global
+// review clock; this read does not.
 func decisionAdmissionReviews(ctx context.Context, d PaperDecisionRecord, all map[string]OwnedAdmissionReview, source OwnedAllocationCatalog) ([]OwnedAdmissionReview, error) {
 	if len(all) > MaxOwnedAdmissionReviews {
 		return nil, ErrOwnedAdmissionReviewInvalid
 	}
 	out := []OwnedAdmissionReview{}
+	// Global sequences must be exactly 1..len(all), as the catalogue requires.
+	sequences := make([]bool, len(all)+1)
 	for id, r := range all {
-		if id != r.Command.ID {
+		if id != r.Command.ID || r.Sequence < 1 || r.Sequence > len(all) || sequences[r.Sequence] {
 			return nil, ErrOwnedAdmissionReviewInvalid
 		}
+		sequences[r.Sequence] = true
 		if r.Command.DecisionID == d.Command.ID {
 			out = append(out, clone(r))
 		}
