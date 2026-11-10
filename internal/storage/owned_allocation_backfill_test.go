@@ -198,6 +198,24 @@ ALTER TABLE mantik_owned_allocation_batches ENABLE TRIGGER USER`); err != nil {
 	verifyOriginals()
 	verifyRestoredIndex()
 	verifyBackfillRefusesPartialIndex(t, s, command, de)
+	if m, ok := s.(*Memory); ok {
+		m.mu.Lock()
+		original := clone(m.ownedAllocationIndex)
+		delete(m.ownedAllocationIndex.Batches, 3)
+		for n := 1; n <= 3; n++ {
+			delete(m.ownedAllocationIndex.Members, n)
+		}
+		damaged := clone(m.ownedAllocationIndex)
+		m.mu.Unlock()
+		ack, err := store.IndexOwnedAllocationHistory(ctx, command, de)
+		m.mu.Lock()
+		unchanged := reflect.DeepEqual(damaged, m.ownedAllocationIndex)
+		m.ownedAllocationIndex = original
+		m.mu.Unlock()
+		if err == nil || !reflect.DeepEqual(ack, OwnedAllocationIndexReceipt{}) || !unchanged {
+			t.Fatal("backfill overwrote orphaned original index references", err)
+		}
+	}
 	if catalogue, err := s.OwnedAllocations(ctx, de); err != nil || !reflect.DeepEqual(catalogue, all) {
 		t.Fatal("backfilled indexes changed complete original financial readback", err)
 	}

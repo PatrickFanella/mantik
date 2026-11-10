@@ -110,6 +110,12 @@ func retainOwnedAllocationIndex(index *ownedAllocationArchiveIndex, previous *Ow
 		if _, exists := index.Members[member.Sequence]; exists {
 			return ErrOwnedAllocationConflict
 		}
+		if _, exists := index.Decisions[member.Sequence]; exists {
+			return ErrOwnedAllocationConflict
+		}
+		if _, exists := index.Financial[member.Sequence]; exists {
+			return ErrOwnedAllocationConflict
+		}
 		ids, err := allocationFinancialDecisions(next.sealing[i])
 		if err != nil {
 			return err
