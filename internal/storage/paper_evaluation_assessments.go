@@ -189,11 +189,16 @@ func (m *Memory) paperEvaluationSourcesLocked(de PaperDecisionEvaluator, oe Pape
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	s.decisions, err = paperDecisionCatalog(m.receiverID, s.retained, s.strategies, s.feed, de)
+	// Active owner intervals prove the working set, as in the admission and
+	// attribution readers: an approved retirement removes rows the feed's
+	// closed checkpoint counts include. The outcome proof also proves the
+	// decisions.
+	ctx := context.Background()
+	s.decisions, err = m.activePaperDecisionsLocked(ctx, s.strategies, s.feed, de)
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	s.outcomes, err = paperOutcomeCatalog(m.receiverID, s.retainedOutcomes, s.retained, s.strategies, s.feed, de, oe)
+	s.outcomes, err = m.activePaperOutcomesLocked(ctx, s.strategies, s.feed, de, oe)
 	return s, err
 }
 func readPaperEvaluationContext(ctx context.Context, tx pgx.Tx, write bool, portfolioEval PaperPortfolioEvaluator) (paperEvaluationSources, error) {
@@ -257,11 +262,12 @@ func readPaperEvaluationSources(ctx context.Context, tx pgx.Tx, write bool, de P
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	s.decisions, err = paperDecisionCatalog(s.feed.ReceiverID, s.retained, s.strategies, s.feed, de)
+	// See paperEvaluationSourcesLocked.
+	s.decisions, err = readActivePaperDecisions(ctx, tx, s.feed.ReceiverID, s.retained, s.strategies, s.feed, de)
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	s.outcomes, err = paperOutcomeCatalog(s.feed.ReceiverID, s.retainedOutcomes, s.retained, s.strategies, s.feed, de, oe)
+	s.outcomes, err = readActivePaperOutcomes(ctx, tx, s.feed.ReceiverID, s.retainedOutcomes, s.retained, s.strategies, s.feed, de, oe)
 	return s, err
 }
 func paperEvaluationAssessmentCatalog(ctx context.Context, owner string, all map[string]PaperEvaluationAssessment, s paperEvaluationSources) (PaperEvaluationAssessmentCatalog, error) {

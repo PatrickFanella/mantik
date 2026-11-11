@@ -159,10 +159,29 @@ their complete original owner sets and counters.
 Decision reviews use that active proof and resolve only their additional actual
 retired decision dependencies from the first original archives. The review
 catalogue/cases, source-bound findings and exact retries survive that dependency
-move; a new typed review can also select the original decision. Review retirement,
-allocation/attribution references, archive-writer transitions and automatic
-retention still require their remaining owner work before physical removal is
-enabled.
+move; a new typed review can also select the original decision. Review retirement
+and automatic retention still require their remaining owner work before
+physical removal is enabled.
+
+### Writers after approved retirement
+
+Archive `N` closes the owners active at epoch `N-1`, so writers drop a retired
+owner by its `retired_epoch`:
+
+- The next paper archive omits a record of the previous archive only when an
+  approved retirement ends its interval by the new archive's epoch. Any other
+  omission conflicts. The retired record stays in its original archive.
+- The archive audit applies the same rule to every step of the chain.
+- An unchanged-feed rotation, a new paper archive and a new feed/paper custody
+  checkpoint prove their working set against the active owner intervals, as the
+  readers do. They no longer compare it with the previous checkpoint's closed
+  counts, which still include owners retired since.
+- Reading or auditing an archive or checkpoint replays the owners selected by
+  its epoch. That selection is the completeness proof; the closed counts are
+  not.
+
+Production retirement stays disabled. The tests supply the approved state in a
+disposable fixture.
 
 Private source-custody views use the same owner scope. Working reads load seals
 only for actual active decision/outcome IDs; historical checkpoint inspection
@@ -288,6 +307,6 @@ dependencies from first original archives after approved retirement. The
 complete active owner check remains separate; absence alone never permits
 archive fallback. The paper attribution catalogue reads through the same
 dependencies after approved retirement. Physical paper retirement still requires
-pending outcome, review and archive-writer dependency contracts. Admission-review and other
+pending outcome and review dependency contracts. Admission-review and other
 workflow/source retention, automatic scheduling and growing-history operational
 cost checks also remain part of the complete archive work.

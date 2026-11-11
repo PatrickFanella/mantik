@@ -55,7 +55,7 @@ func (m *Memory) ArchivePaperRecords(ctx context.Context, owner string, now func
 			return PaperRecordArchiveReceipt{}, err
 		}
 		previous = old.PaperRecordArchiveHeader
-		if err := paperArchiveExtends(old, records); err != nil {
+		if err := paperArchiveExtends(old, records, m.paperRecordRetiredEpochs); err != nil {
 			return PaperRecordArchiveReceipt{}, err
 		}
 		if workerplan.Hash(paperArchivePins(records)) == previous.RecordsSHA256 {

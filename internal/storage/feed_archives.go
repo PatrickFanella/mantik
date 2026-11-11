@@ -213,7 +213,9 @@ func (m *Memory) archiveFeed(ctx context.Context, receiver string, now func() ti
 			if err != nil {
 				return FeedArchiveReceipt{}, err
 			}
-			if _, err := paperOutcomeCatalog(m.receiverID, m.paperOutcomes, m.paperDecisions, strategies, owned, paper.decision, paper.outcome); err != nil {
+			// Active owner intervals prove the working set: an approved
+			// retirement removes rows the closed checkpoint counts include.
+			if _, err := m.activePaperOutcomesLocked(ctx, strategies, owned, paper.decision, paper.outcome); err != nil {
 				return FeedArchiveReceipt{}, err
 			}
 			return r, nil
@@ -438,7 +440,7 @@ func (p *Postgres) archiveFeed(ctx context.Context, receiver string, now func() 
 			if err != nil {
 				return FeedArchiveReceipt{}, err
 			}
-			if _, err := paperOutcomeCatalog(receiver, outcomes, decisions, strategies, source, paper.decision, paper.outcome); err != nil {
+			if _, err := readActivePaperOutcomes(ctx, tx, receiver, outcomes, decisions, strategies, source, paper.decision, paper.outcome); err != nil {
 				return FeedArchiveReceipt{}, err
 			}
 			if err := tx.Commit(ctx); err != nil {

@@ -79,8 +79,8 @@ exists. These private dependencies do not enlarge the active decision catalogue.
 Existing reviews, exact retries and reassessments preserve their original
 readiness and predecessor chain after decision retirement. This consumer
 support does not enable physical paper retirement or remove the admission
-review catalogue's 128-record bound. Attribution, archive-writer transitions,
-automatic retention and historical paging remain separate work.
+review catalogue's 128-record bound. Automatic retention and historical paging remain
+separate work.
 
 Issuance clocks cannot precede the selected comparison, collector clock or
 previous review issuance. The same command identity returns the original

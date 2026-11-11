@@ -216,7 +216,11 @@ func (p *Postgres) ArchivePaperRecords(ctx context.Context, owner string, now fu
 			return PaperRecordArchiveReceipt{}, err
 		}
 		previous = old.PaperRecordArchiveHeader
-		if err := paperArchiveExtends(old, records); err != nil {
+		retired, err := readPaperRetiredEpochs(ctx, tx, old, records)
+		if err != nil {
+			return PaperRecordArchiveReceipt{}, err
+		}
+		if err := paperArchiveExtends(old, records, retired); err != nil {
 			return PaperRecordArchiveReceipt{}, err
 		}
 		if workerplan.Hash(paperArchivePins(records)) == previous.RecordsSHA256 {
@@ -361,3 +365,36 @@ func (p *Postgres) PaperRecordArchives(ctx context.Context, after int64, limit i
 
 var _ PaperRecordArchiveStore = (*Memory)(nil)
 var _ PaperRecordArchiveStore = (*Postgres)(nil)
+
+// readPaperRetiredEpochs returns the approved retirement epochs of the
+// previous archive's records that the next archive omits.
+func readPaperRetiredEpochs(ctx context.Context, tx pgx.Tx, old PaperRecordArchive, records []ArchivedPaperRecord) (map[string]int64, error) {
+	kept := map[string]bool{}
+	for _, r := range records {
+		kept[r.Kind+":"+r.ID] = true
+	}
+	kinds, ids := []string{}, []string{}
+	for _, r := range old.Records {
+		if !kept[r.Kind+":"+r.ID] {
+			kinds, ids = append(kinds, r.Kind), append(ids, r.ID)
+		}
+	}
+	out := map[string]int64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := tx.Query(ctx, "SELECT e.kind,e.record_id,e.retired_epoch FROM unnest($1::text[],$2::text[]) AS w(kind,id) JOIN mantik_paper_record_epochs e ON e.kind=w.kind AND e.record_id=w.id WHERE e.retired_epoch IS NOT NULL", kinds, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var kind, id string
+		var epoch int64
+		if err := rows.Scan(&kind, &id, &epoch); err != nil {
+			return nil, err
+		}
+		out[kind+":"+id] = epoch
+	}
+	return out, rows.Err()
+}

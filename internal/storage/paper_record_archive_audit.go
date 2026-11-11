@@ -41,12 +41,14 @@ func paperArchiveAuditReceipt(owner string, head PaperRecordArchiveHeader, origi
 	return PaperRecordArchiveAudit{Schema: "mantik-paper-record-archive-audit-v1", ReceiverID: owner, Status: "verified", Archives: head.Sequence, Records: len(original), HeadSHA256: head.SHA256, OriginalsSHA256: workerplan.Hash(pins)}
 }
 
-func auditPaperArchiveStep(previous PaperRecordArchiveHeader, a PaperRecordArchive, original map[string]originalPaperArchivePin) error {
+func auditPaperArchiveStep(previous PaperRecordArchiveHeader, a PaperRecordArchive, original map[string]originalPaperArchivePin, retired map[string]int64) error {
 	if a.Sequence != previous.Sequence+1 || a.PreviousSHA256 != previous.SHA256 || previous.Sequence > 0 && a.ArchivedAt.Before(previous.ArchivedAt) {
 		return ErrPaperRecordArchiveConflict
 	}
+	present := map[string]bool{}
 	for _, r := range a.Records {
 		key := r.Kind + ":" + r.ID
+		present[key] = true
 		if old, ok := original[key]; ok {
 			if old.PaperArchiveRecordPin != r.PaperArchiveRecordPin {
 				return ErrPaperRecordArchiveConflict
@@ -55,10 +57,12 @@ func auditPaperArchiveStep(previous PaperRecordArchiveHeader, a PaperRecordArchi
 			original[key] = originalPaperArchivePin{r.PaperArchiveRecordPin, a.Sequence}
 		}
 	}
-	// Active originals are still retained in this version. A later snapshot
-	// cannot omit an earlier owner until a retirement owner authorizes the move.
-	if len(original) != len(a.Records) {
-		return ErrPaperRecordArchiveConflict
+	// A later snapshot omits an earlier owner only after an approved
+	// retirement has ended its interval by this archive's epoch.
+	for key, pin := range original {
+		if !present[key] && (retired[key] <= pin.CreatedEpoch || retired[key] > a.Sequence-1) {
+			return ErrPaperRecordArchiveConflict
+		}
 	}
 	return nil
 }
@@ -84,7 +88,7 @@ func (m *Memory) AuditPaperRecordArchives(ctx context.Context, de PaperDecisionE
 		if err != nil {
 			return PaperRecordArchiveAudit{}, err
 		}
-		if err := auditPaperArchiveStep(previous, a, original); err != nil {
+		if err := auditPaperArchiveStep(previous, a, original, m.paperRecordRetiredEpochs); err != nil {
 			return PaperRecordArchiveAudit{}, err
 		}
 		previous = a.PaperRecordArchiveHeader
@@ -116,6 +120,10 @@ func (p *Postgres) AuditPaperRecordArchives(ctx context.Context, de PaperDecisio
 	if err := tx.QueryRow(ctx, "SELECT coalesce(max(sequence),0) FROM mantik_paper_record_archives").Scan(&count); err != nil {
 		return PaperRecordArchiveAudit{}, err
 	}
+	retired, err := readAllPaperRetiredEpochs(ctx, tx)
+	if err != nil {
+		return PaperRecordArchiveAudit{}, err
+	}
 	original := map[string]originalPaperArchivePin{}
 	var previous PaperRecordArchiveHeader
 	for n := int64(1); n <= count; n++ {
@@ -123,7 +131,7 @@ func (p *Postgres) AuditPaperRecordArchives(ctx context.Context, de PaperDecisio
 		if err != nil {
 			return PaperRecordArchiveAudit{}, err
 		}
-		if err := auditPaperArchiveStep(previous, a, original); err != nil {
+		if err := auditPaperArchiveStep(previous, a, original, retired); err != nil {
 			return PaperRecordArchiveAudit{}, err
 		}
 		previous = a.PaperRecordArchiveHeader
@@ -157,4 +165,22 @@ func (p *Postgres) AuditPaperRecordArchives(ctx context.Context, de PaperDecisio
 		return PaperRecordArchiveAudit{}, err
 	}
 	return paperArchiveAuditReceipt(owner, previous, original), nil
+}
+
+func readAllPaperRetiredEpochs(ctx context.Context, tx pgx.Tx) (map[string]int64, error) {
+	rows, err := tx.Query(ctx, "SELECT kind,record_id,retired_epoch FROM mantik_paper_record_epochs WHERE retired_epoch IS NOT NULL")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var kind, id string
+		var epoch int64
+		if err := rows.Scan(&kind, &id, &epoch); err != nil {
+			return nil, err
+		}
+		out[kind+":"+id] = epoch
+	}
+	return out, rows.Err()
 }

@@ -310,6 +310,7 @@ DELETE FROM mantik_paper_decisions WHERE id='first'`); err != nil {
 		if got, err := feedAuditor.AuditPaperFeed(ctx, changedNativeFirst(eval), noOutcome); err == nil || !reflect.DeepEqual(got, PaperFeedAudit{}) {
 			t.Fatal("paper feed audit skipped the retired decision's archived native replay", err)
 		}
+		verifyWritersAfterRetirement(t, s, owner, at, eval, noOutcome)
 		for _, row := range attribution.Rows {
 			if row.Decision.Command.ID == "still-active" && !reflect.DeepEqual(row, after.Rows[0]) {
 				t.Fatal("approved retirement changed an active attribution row")
@@ -682,5 +683,49 @@ func changedNativeFirst(eval PaperDecisionEvaluator) PaperDecisionEvaluator {
 			e.ReasonCode = "changed_original_native_result"
 		}
 		return e, err
+	}
+}
+
+// verifyWritersAfterRetirement runs the archive writers once decision "first"
+// has an approved retirement at epoch 1. Paper archive N closes the owners
+// active at epoch N-1, so the next archive and custody checkpoint cover only
+// "still-active"; "first" stays in archive 1 and its earlier checkpoints.
+func verifyWritersAfterRetirement(t *testing.T, s Store, owner string, at time.Time, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator) {
+	t.Helper()
+	ctx := context.Background()
+	b := s.(paperTargetBackend)
+	noClock := func() time.Time { t.Fatal("duplicate write read the clock"); return time.Time{} }
+	accept := func(FeedEvidenceSnapshot, time.Time) error { return nil }
+	if r, err := b.RotateFeed(ctx, owner, noClock, accept, de, oe); err != nil || !r.Duplicate {
+		t.Fatal("unchanged feed rotation after approved retirement", r, err)
+	}
+	next, err := b.ArchivePaperRecords(ctx, owner, func() time.Time { return at.Add(12 * time.Second) }, de, oe)
+	if err != nil || next.Duplicate || next.Header.Sequence != 2 || next.Header.Decisions != 1 {
+		t.Fatal("paper archive after approved retirement", next, err)
+	}
+	if retry, err := b.ArchivePaperRecords(ctx, owner, noClock, de, oe); err != nil || !retry.Duplicate || retry.Header != next.Header {
+		t.Fatal("paper archive retry after approved retirement", retry, err)
+	}
+	if archived, err := b.PaperRecordArchive(ctx, 2, de, oe); err != nil || archived.PaperRecordArchiveHeader != next.Header {
+		t.Fatal("read paper archive after approved retirement", err)
+	}
+	if archived, err := b.PaperArchivedRecord(ctx, "decision", "first", de, oe); err != nil || archived.Archive.Sequence != 1 {
+		t.Fatal("retired decision left its original archive", archived.Archive.Sequence, err)
+	}
+	custody, err := b.ArchivePaperFeed(ctx, owner, func() time.Time { return at.Add(13 * time.Second) }, accept, de, oe)
+	if err != nil || custody.PaperCustody == nil || custody.PaperCustody.Duplicate {
+		t.Fatal("paper custody checkpoint after approved retirement", custody, err)
+	}
+	if h := custody.PaperCustody.Header; h.PaperArchiveSequence != 2 || h.Decisions != 1 {
+		t.Fatal("custody checkpoint after retirement covers the wrong owners", h)
+	}
+	if got, err := b.PaperFeedCheckpoint(ctx, custody.PaperCustody.Header.Sequence, de, oe); err != nil || got.PaperFeedCheckpointHeader != custody.PaperCustody.Header {
+		t.Fatal("read custody checkpoint after approved retirement", err)
+	}
+	if audit, err := b.AuditPaperRecordArchives(ctx, de, oe); err != nil || audit.Status != "verified" || audit.Archives != 2 {
+		t.Fatal("paper archive audit after approved retirement", audit, err)
+	}
+	if audit, err := s.(PaperFeedAuditStore).AuditPaperFeed(ctx, de, oe); err != nil || audit.Status != "verified" || audit.Decisions != 1 {
+		t.Fatal("paper feed audit after post-retirement writers", audit, err)
 	}
 }

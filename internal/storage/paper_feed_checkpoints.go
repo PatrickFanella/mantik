@@ -188,7 +188,13 @@ func paperFeedCheckpointData(a FeedArchive, decisions map[string]retainedPaperDe
 		c.Records = append(c.Records, PaperFeedSourcePin{"outcome", id, r.Schema, r.SHA256, r.BasisSHA256, workerplan.Hash(v.Basis.Observation), r.EvaluatedAt, r.Command.DecisionID, r.Command.DecisionSHA256})
 		c.Outcomes++
 	}
-	if _, err := paperOutcomeCatalog(a.ReceiverID, outcomes, decisions, strategies, a.Source, e.decision, e.outcome); err != nil {
+	// The caller proves the owner set complete: a writer against the active
+	// owner intervals, a verifier by selecting the owners at the checkpoint's
+	// epoch. The feed's closed checkpoint counts include owners retired since.
+	if _, err := replayPaperDecisionRecords(a.ReceiverID, decisions, strategies, a.Source, e.decision); err != nil {
+		return PaperFeedCheckpoint{}, err
+	}
+	if _, err := replayPaperOutcomeRecords(a.ReceiverID, outcomes, decisions, strategies, a.Source, e.outcome); err != nil {
 		return PaperFeedCheckpoint{}, err
 	}
 	slices.SortFunc(c.Records, func(a, b PaperFeedSourcePin) int { return strings.Compare(a.Kind+":"+a.ID, b.Kind+":"+b.ID) })
@@ -234,6 +240,9 @@ func (m *Memory) preparePaperFeedCheckpoint(ctx context.Context, a FeedArchive, 
 	}
 	epoch, err := m.paperArchiveEpochLocked(int64(len(m.paperRecordArchives)))
 	if err != nil {
+		return nil, false, err
+	}
+	if _, err := m.activePaperOutcomesLocked(ctx, strategies, a.Source, e.decision, e.outcome); err != nil {
 		return nil, false, err
 	}
 	data, err := paperFeedCheckpointData(a, m.paperDecisions, m.paperOutcomes, strategies, e, epoch)
@@ -329,6 +338,9 @@ func writePaperFeedCheckpoint(ctx context.Context, tx pgx.Tx, a FeedArchive, e *
 	}
 	epochHeader, err := readPaperArchiveEpoch(ctx, tx, a.ReceiverID, epoch)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := readActivePaperOutcomes(ctx, tx, a.ReceiverID, outcomes, decisions, strategies, a.Source, e.decision, e.outcome); err != nil {
 		return nil, err
 	}
 	data, err := paperFeedCheckpointData(a, decisions, outcomes, strategies, e, epochHeader)

@@ -283,11 +283,15 @@ func paperArchiveEvaluationSources(ctx context.Context, c PaperArchiveContext, o
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	s.decisions, err = paperDecisionCatalog(c.Feed.ReceiverID, o.decisions, c.Strategies, c.Feed, de)
+	// Epoch membership proves the owner set: archive N holds exactly the
+	// owners active at epoch N-1, which the writer and every reader check
+	// against the creation and retirement epochs. The feed's closed checkpoint
+	// counts cannot: they include owners retired since that checkpoint.
+	s.decisions, err = replayPaperDecisionRecords(c.Feed.ReceiverID, o.decisions, c.Strategies, c.Feed, de)
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
-	s.outcomes, err = paperOutcomeCatalog(c.Feed.ReceiverID, o.outcomes, o.decisions, c.Strategies, c.Feed, de, oe)
+	s.outcomes, err = replayPaperOutcomeRecords(c.Feed.ReceiverID, o.outcomes, o.decisions, c.Strategies, c.Feed, oe)
 	if err != nil {
 		return paperEvaluationSources{}, err
 	}
@@ -347,13 +351,19 @@ func newPaperRecordArchive(c PaperArchiveContext, records []ArchivedPaperRecord,
 	return a, nil
 }
 
-func paperArchiveExtends(old PaperRecordArchive, records []ArchivedPaperRecord) error {
+// The next archive keeps every record of the previous one, except owners
+// whose approved retirement ends their interval by its epoch (old.Sequence).
+func paperArchiveExtends(old PaperRecordArchive, records []ArchivedPaperRecord, retired map[string]int64) error {
 	byID := map[string]ArchivedPaperRecord{}
 	for _, r := range records {
 		byID[r.Kind+":"+r.ID] = r
 	}
 	for _, r := range old.Records {
-		v, ok := byID[r.Kind+":"+r.ID]
+		key := r.Kind + ":" + r.ID
+		v, ok := byID[key]
+		if !ok && retired[key] > r.CreatedEpoch && retired[key] <= old.Sequence {
+			continue
+		}
 		if !ok || !reflect.DeepEqual(v, r) {
 			return ErrPaperRecordArchiveConflict
 		}
