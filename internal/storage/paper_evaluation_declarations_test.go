@@ -303,7 +303,7 @@ func TestPostgresContractsPaperEvaluationDeclarationUpgrade(t *testing.T) {
 		t.Fatal("idempotent schema47 reopen", err)
 	}
 	var maximum int
-	if err = s.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 113 {
+	if err = s.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); err != nil || maximum != 114 {
 		t.Fatal(maximum, err)
 	}
 	after, err := s.Snapshot(ctx)

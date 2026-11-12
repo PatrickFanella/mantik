@@ -251,6 +251,14 @@ func (m *Memory) ReviewPaperDecision(ctx context.Context, c DecisionReviewComman
 	if err := ctx.Err(); err != nil {
 		return DecisionReviewReceipt{}, err
 	}
+	if key := "review:" + c.ID; m.paperRecordRetiredEpochs[key] != 0 {
+		e := m.paperRecordEpochs[key]
+		a, err := m.paperRecordArchivePayloadLocked(e.CreatedEpoch + 1)
+		if err != nil {
+			return DecisionReviewReceipt{}, err
+		}
+		return retiredDecisionReviewRetry(m.receiverID, c, e.RecordSHA256, a)
+	}
 	s, err := m.paperStrategiesLocked()
 	if err != nil {
 		return DecisionReviewReceipt{}, err
@@ -357,6 +365,25 @@ func (p *Postgres) decisionReviewAccess(ctx context.Context, write bool, c Decis
 	}
 	if owner != feed.ReceiverID {
 		return DecisionReviewCatalog{}, DecisionReviewReceipt{}, ErrReceiverMismatch
+	}
+	if write {
+		var epoch int64
+		var sha string
+		err = tx.QueryRow(ctx, "SELECT created_epoch,record_sha256 FROM mantik_paper_record_epochs WHERE kind='review' AND record_id=$1 AND retired_epoch IS NOT NULL", c.ID).Scan(&epoch, &sha)
+		if err == nil {
+			a, e := readPaperRecordArchivePayload(ctx, tx, epoch+1)
+			if e != nil {
+				return DecisionReviewCatalog{}, DecisionReviewReceipt{}, e
+			}
+			receipt, e := retiredDecisionReviewRetry(owner, c, sha, a)
+			if e != nil {
+				return DecisionReviewCatalog{}, DecisionReviewReceipt{}, e
+			}
+			return DecisionReviewCatalog{}, receipt, tx.Commit(ctx)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
+		}
 	}
 	s, err := readPaperStrategies(ctx, tx, owner)
 	if err != nil {

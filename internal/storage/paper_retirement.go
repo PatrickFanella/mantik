@@ -54,6 +54,7 @@ type PaperRetirementReceipt struct {
 	Retired             []PaperArchiveRecordPin `json:"retired"`
 	Decisions           int                     `json:"decisions"`
 	Outcomes            int                     `json:"outcomes"`
+	Reviews             int                     `json:"reviews"`
 	Retained            PaperRetirementRetained `json:"retained"`
 	Authority           string                  `json:"authority"`
 	AdmissionAvailable  bool                    `json:"admission_available"`
@@ -61,8 +62,8 @@ type PaperRetirementReceipt struct {
 	QualificationCredit bool                    `json:"qualification_credit"`
 }
 
-// PaperRetirementStore retires sealed paper decisions and their outcomes from
-// the active working set. The owner selects the records; a caller cannot name
+// PaperRetirementStore retires sealed paper decisions, their outcomes and
+// their claim reviews from the active working set. The owner selects the records; a caller cannot name
 // one, and the result is an empty receipt when nothing is eligible.
 type PaperRetirementStore interface {
 	RetirePaperRecords(context.Context, string, PaperDecisionEvaluator, PaperOutcomeEvaluator) (PaperRetirementReceipt, error)
@@ -77,6 +78,7 @@ type paperRetirementSources struct {
 	archive   PaperRecordArchive
 	decisions map[string]retainedPaperDecision
 	outcomes  map[string]retainedPaperOutcome
+	reviews   map[string]DecisionReviewRecord
 	// working is the unsealed allocation journal.
 	working []retainedOwnedAllocation
 	// custodyBound: a paper custody checkpoint binds the head archive epoch.
@@ -90,6 +92,11 @@ type paperRetirementSources struct {
 // outcomes, and only when nothing that still runs reads it from the active
 // catalogue: the decision worker (newest decision and shared signals), the
 // outcome worker (pending outcomes) and allocation (working journal).
+//
+// A sealed claim review leaves once its decision has left or leaves in the
+// same transaction. The newest review stays: it is the clock floor for the
+// next one. Source-bound reviews stay too, because a new review of the same
+// claim group and decision is refused only while the first one is active.
 func selectPaperRetirement(s paperRetirementSources) ([]PaperArchiveRecordPin, PaperRetirementRetained, error) {
 	var retained PaperRetirementRetained
 	sealed := map[string]ArchivedPaperRecord{}
@@ -217,6 +224,31 @@ func selectPaperRetirement(s paperRetirementSources) ([]PaperArchiveRecordPin, P
 			out = append(out, pins[id]...)
 		}
 	}
+	if !s.custodyBound {
+		leaving := map[string]bool{}
+		for _, p := range out {
+			leaving[p.Kind+":"+p.ID] = true
+		}
+		var newestReview time.Time
+		for _, r := range s.reviews {
+			if r.ReviewedAt.After(newestReview) {
+				newestReview = r.ReviewedAt
+			}
+		}
+		for id, r := range s.reviews {
+			_, active := s.decisions[r.Command.DecisionID]
+			if r.Source != nil || r.Command.Source != nil || r.ReviewedAt.Equal(newestReview) || active && !leaving["decision:"+r.Command.DecisionID] {
+				continue
+			}
+			p, err := pin("review", id, r)
+			if err != nil {
+				return nil, retained, err
+			}
+			if p != nil {
+				out = append(out, *p)
+			}
+		}
+	}
 	slices.SortFunc(out, func(a, b PaperArchiveRecordPin) int { return strings.Compare(a.Kind+":"+a.ID, b.Kind+":"+b.ID) })
 	return out, retained, nil
 }
@@ -224,10 +256,13 @@ func selectPaperRetirement(s paperRetirementSources) ([]PaperArchiveRecordPin, P
 func (r *PaperRetirementReceipt) retire(pins []PaperArchiveRecordPin, retained PaperRetirementRetained) {
 	r.Retired, r.Retained = pins, retained
 	for _, p := range pins {
-		if p.Kind == "decision" {
+		switch p.Kind {
+		case "decision":
 			r.Decisions++
-		} else {
+		case "outcome":
 			r.Outcomes++
+		default:
+			r.Reviews++
 		}
 	}
 }
@@ -253,7 +288,7 @@ func (m *Memory) RetirePaperRecords(ctx context.Context, owner string, de PaperD
 	if err != nil {
 		return PaperRetirementReceipt{}, err
 	}
-	s := paperRetirementSources{archive: a, decisions: m.paperDecisions, outcomes: m.paperOutcomes, working: m.ownedAllocations.Records}
+	s := paperRetirementSources{archive: a, decisions: m.paperDecisions, outcomes: m.paperOutcomes, reviews: m.decisionReviews, working: m.ownedAllocations.Records}
 	if n := len(m.paperFeedCheckpoints); n > 0 {
 		s.custodyBound = m.paperFeedCheckpoints[n-1].PaperArchiveSequence >= head
 	}
@@ -276,10 +311,13 @@ func (m *Memory) RetirePaperRecords(ctx context.Context, owner string, de PaperD
 	}
 	for _, p := range pins {
 		m.paperRecordRetiredEpochs[p.Kind+":"+p.ID] = head
-		if p.Kind == "decision" {
+		switch p.Kind {
+		case "decision":
 			delete(m.paperDecisions, p.ID)
-		} else {
+		case "outcome":
 			delete(m.paperOutcomes, p.ID)
+		default:
+			delete(m.decisionReviews, p.ID)
 		}
 	}
 	receipt := newPaperRetirementReceipt(owner, a.PaperRecordArchiveHeader)
@@ -323,7 +361,11 @@ func (p *Postgres) RetirePaperRecords(ctx context.Context, owner string, de Pape
 	if err != nil {
 		return PaperRetirementReceipt{}, err
 	}
-	s := paperRetirementSources{archive: a, decisions: sources.retained, outcomes: sources.retainedOutcomes, working: journal.Records}
+	reviews, err := readDecisionReviews(ctx, tx)
+	if err != nil {
+		return PaperRetirementReceipt{}, err
+	}
+	s := paperRetirementSources{archive: a, decisions: sources.retained, outcomes: sources.retainedOutcomes, reviews: reviews, working: journal.Records}
 	var raw []byte
 	err = tx.QueryRow(ctx, "SELECT header FROM mantik_paper_feed_checkpoints ORDER BY sequence DESC LIMIT 1").Scan(&raw)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -341,16 +383,13 @@ func (p *Postgres) RetirePaperRecords(ctx context.Context, owner string, de Pape
 		return PaperRetirementReceipt{}, err
 	}
 	kinds, ids := make([]string, len(pins)), make([]string, len(pins))
-	decisions, outcomes := []string{}, []string{}
+	tables := map[string]string{"decision": "mantik_paper_decisions", "outcome": "mantik_paper_outcomes", "review": "mantik_decision_reviews"}
+	removals := map[string][]string{}
 	for i, pin := range pins {
 		kinds[i], ids[i] = pin.Kind, pin.ID
-		if pin.Kind == "decision" {
-			decisions = append(decisions, pin.ID)
-		} else {
-			outcomes = append(outcomes, pin.ID)
-		}
+		removals[tables[pin.Kind]] = append(removals[tables[pin.Kind]], pin.ID)
 	}
-	for table, removed := range map[string][]string{"mantik_paper_outcomes": outcomes, "mantik_paper_decisions": decisions} {
+	for table, removed := range removals {
 		tag, err := tx.Exec(ctx, "DELETE FROM "+table+" WHERE id=ANY($1::text[])", removed)
 		if err != nil {
 			return PaperRetirementReceipt{}, err

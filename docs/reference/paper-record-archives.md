@@ -10,8 +10,9 @@ Active originals remain retained in this version. Creating a paper archive does
 not free the separate decision, outcome, assessment or review limits, schedule
 retention, prune other source owners or change paper capital. Since schema 112
 the [retirement owner](#retirement-owner) frees decision and outcome capacity
-after an archive. Scheduling and the assessment and review limits are remaining
-delivery units; these endpoints alone do not permit indefinite runs.
+after an archive, and since schema 114 it also retires plain claim reviews.
+The assessment limit and source-bound reviews are remaining delivery units;
+these endpoints alone do not permit indefinite runs.
 
 ## Owner operations
 
@@ -162,9 +163,9 @@ their complete original owner sets and counters.
 Decision reviews use that active proof and resolve only their additional actual
 retired decision dependencies from the first original archives. The review
 catalogue/cases, source-bound findings and exact retries survive that dependency
-move; a new typed review can also select the original decision. Review retirement
-and automatic retention still require their remaining owner work before
-physical removal is enabled.
+move; a new typed review can also select the original decision. The
+[retirement owner](#retirement-owner) removes plain reviews once their decision
+has retired.
 
 ### Writers after approved retirement
 
@@ -186,11 +187,12 @@ owner by its `retired_epoch`:
 ### Retirement owner
 
 `POST /v1/paper-record-retirements` with `{"receiver_id": "..."}` removes sealed
-decisions and their outcomes from the active working set. The owner selects the
-records; a caller cannot name one. The response is a
+decisions, their outcomes and their plain claim reviews from the active working
+set. The owner selects the records; a caller cannot name one. The response is a
 `mantik-paper-record-retirement-v1` receipt with the sealing archive (`epoch`,
-`archive_sha256`), the creation pins of the retired records and a count of the
-active decisions it kept, by reason. It grants no admission, execution or
+`archive_sha256`), the creation pins of the retired records, their counts
+(`decisions`, `outcomes`, `reviews`) and a count of the active decisions it
+kept, by reason. It grants no admission, execution or
 qualification authority. A request that finds nothing eligible returns the same
 receipt with an empty `retired` list.
 
@@ -224,14 +226,38 @@ The transaction sets `retired_epoch` and removes the active rows together, under
 the same collector, state and receiver locks as the paper archive. In
 PostgreSQL the `mantik_immutable_paper_epochs` trigger still rejects deletes
 and every other change to an epoch row. It accepts one change: setting
-`retired_epoch` once, to the current archive sequence, for a decision or outcome
-whose creation pin is a member of that archive and whose active row the same
-transaction already removed, while no custody checkpoint binds that epoch. Assessments and decision reviews do not retire yet.
+`retired_epoch` once, to the current archive sequence, for a decision, outcome
+or review whose creation pin is a member of that archive and whose active row
+the same transaction already removed, while no custody checkpoint binds that
+epoch. Assessments do not retire yet.
 
-A decision review stays active after its decision retires, and a retired
-decision can still be reviewed. Later archives seal those reviews without their
-decision: the archive writer, reader and audit resolve it from its original
-archive and replay it natively.
+#### Claim reviews
+
+A retired decision can still be reviewed, and a review can stay active after
+its decision retires. Later archives seal those reviews without their decision:
+the archive writer, reader and audit resolve it from its original archive and
+replay it natively.
+
+Since schema 114 a review retires in the same transaction, without a caller
+naming it, when all of these hold:
+
+- its decision has already retired or retires in this transaction;
+- the current paper archive holds the review, byte for byte;
+- it is a plain (`v1`) review. A source-bound review stays active, because a
+  second review of the same claim group and decision is refused only while the
+  first one is in the active catalogue;
+- it is not the newest review. That one stays as the clock floor for the next
+  review;
+- no custody checkpoint binds the current archive epoch.
+
+A retired review no longer counts against the 64-review limit and no longer
+appears in `GET /v1/paper-decision-reviews` or in a review case. A case that
+loses all of its reviews leaves `GET /v1/decision-review-cases`; a later review
+of the same decision opens it again with only the active reviews. The retired
+review stays readable through
+`GET /v1/paper-record-archives/source?kind=review&id=...`. Its ID stays
+reserved: the same command returns the archived record as a duplicate, and a
+different command with that ID is a conflict.
 
 ### Automatic retention
 
@@ -263,7 +289,9 @@ held by a pending outcome, an open allocation or the newest-decision rule stay
 active, so the working limits can still fill when those do not clear. A
 custody checkpoint written by another caller between the worker's archive and
 its retirement holds those records until the active set next changes.
-Assessments and decision reviews keep their working limits.
+Plain reviews leave with each retirement, but the worker does not watch the
+review count: it asks for a retirement only when decisions or outcomes reach
+their limit. Assessments and source-bound reviews keep their working limits.
 
 Worker progress, failures and clean stop are reported under the
 `paper_retention` capability (`GET /v1/readiness/paper_retention`). Schema 113

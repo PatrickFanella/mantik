@@ -352,3 +352,6 @@ var PaperRecordRetirement string
 
 //go:embed 0113_paper_retention_worker_health.sql
 var PaperRetentionWorkerHealth string
+
+//go:embed 0114_decision_review_retirement.sql
+var DecisionReviewRetirement string

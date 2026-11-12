@@ -179,7 +179,7 @@ func RunPaperRetentionWorker(ctx context.Context, store PaperRetentionWorkerStor
 			slog.Error("paper retention cycle failed", "error", err)
 		}
 		if r := report.Retirement; r != nil && len(r.Retired) > 0 {
-			slog.Info("paper records retired", "epoch", r.Epoch, "decisions", r.Decisions, "outcomes", r.Outcomes)
+			slog.Info("paper records retired", "epoch", r.Epoch, "decisions", r.Decisions, "outcomes", r.Outcomes, "reviews", r.Reviews)
 		}
 		if r := report.Rotation; r != nil && r.Retention != nil && !r.Retention.Duplicate {
 			slog.Info("feed sources rotated", "sequence", r.Retention.Sequence, "publications", r.Retention.PublicationsRetired, "admissions", r.Retention.AdmissionsRetired, "commands", r.Retention.CommandsRetired)

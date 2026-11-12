@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -458,6 +459,72 @@ DELETE FROM mantik_paper_decisions WHERE id='membership-decision'`); err != nil 
 	}
 	if audit, err := s.(PaperRecordArchiveAuditStore).AuditPaperRecordArchives(ctx, eval, oe); err != nil || audit.Status != "verified" {
 		t.Fatal("audit after retiring a reviewed decision", audit, err)
+	}
+	// Archive 2 seals every review. The plain review of the retired decision
+	// leaves; the newest review and the source-bound ones stay active.
+	sealedReviews, err := s.DecisionReviews(ctx, eval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retirement, err := s.(PaperRetirementStore).RetirePaperRecords(ctx, owner, eval, oe)
+	if err != nil || retirement.Epoch != 2 || retirement.Reviews == 0 {
+		t.Fatal("sealed review of a retired decision stayed active", retirement, err)
+	}
+	gone := map[string]bool{}
+	for _, pin := range retirement.Retired {
+		if pin.Kind == "review" {
+			gone[pin.ID] = true
+		}
+	}
+	if !gone[legacyCommand.ID] || gone[newCommand.ID] || len(gone) != retirement.Reviews {
+		t.Fatal("review retirement selection", retirement.Retired)
+	}
+	leftReviews, err := s.DecisionReviews(ctx, eval)
+	if err != nil || len(leftReviews.Records) != len(sealedReviews.Records)-len(gone) {
+		t.Fatal("retired reviews stayed in the active catalogue", err)
+	}
+	for _, r := range sealedReviews.Records {
+		if (r.Source != nil || r.Command.ID == newCommand.ID) == gone[r.Command.ID] {
+			t.Fatal("review retirement kept or removed the wrong review", r.Command.ID)
+		}
+	}
+	for _, r := range leftReviews.Records {
+		if gone[r.Command.ID] {
+			t.Fatal("retired review is still listed", r.Command.ID)
+		}
+	}
+	// A retired ID answers its exact retry from the archive and is never reissued.
+	if retry, err := s.ReviewPaperDecision(ctx, legacyCommand, noClock, eval); err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, legacy.Record) {
+		t.Fatal("retired review lost its exact retry", err)
+	}
+	reused := clone(legacyCommand)
+	reused.Claims[0].Value += "x"
+	if _, err := s.ReviewPaperDecision(ctx, reused, clock, eval); !errors.Is(err, ErrDecisionReviewConflict) {
+		t.Fatal("retired review ID was reissued", err)
+	}
+	if original, err := s.(PaperRecordArchiveStore).PaperArchivedRecord(ctx, "review", legacyCommand.ID, eval, oe); err != nil || original.Record.RecordSHA256 != legacy.Record.SHA256 {
+		t.Fatal("retired review is not readable from its archive", err)
+	}
+	if again, err := s.(PaperRetirementStore).RetirePaperRecords(ctx, owner, eval, oe); err != nil || again.Reviews != 0 {
+		t.Fatal("review retirement is not idempotent", again, err)
+	}
+	at = at.Add(time.Second)
+	third, err := s.(PaperRecordArchiveStore).ArchivePaperRecords(ctx, owner, clock, eval, oe)
+	if err != nil || third.Duplicate || third.Header.Sequence != 3 || third.Header.Reviews != len(leftReviews.Records) {
+		t.Fatal("archive leftReviews retiring reviews", third, err)
+	}
+	if audit, err := s.(PaperRecordArchiveAuditStore).AuditPaperRecordArchives(ctx, eval, oe); err != nil || audit.Status != "verified" {
+		t.Fatal("audit leftReviews retiring reviews", audit, err)
+	}
+	if pg, ok := s.(*Postgres); ok {
+		reopened, err := OpenPostgres(ctx, pg.pool.Config().ConnString())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer reopened.Close()
+		if got, err := reopened.DecisionReviews(ctx, eval); err != nil || !reflect.DeepEqual(got, leftReviews) {
+			t.Fatal("reopen changed the reviews left leftReviews retirement", err)
+		}
 	}
 }
 

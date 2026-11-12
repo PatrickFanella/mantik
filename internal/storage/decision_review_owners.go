@@ -3,9 +3,12 @@ package storage
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 
 	"github.com/jackc/pgx/v5"
+
+	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
 // Reviews retain their bounded working catalogue, but a referenced finalized
@@ -100,4 +103,35 @@ func readReviewOwnerDecisions(ctx context.Context, tx pgx.Tx, active PaperDecisi
 		}
 		return clone(d.Record), nil
 	})
+}
+
+// A retired review answers an exact retry from its original archive, so its
+// ID is never issued a second time. The creation pin and the record hash bind
+// the archived payload; the archive chain was checked by the payload reader.
+func retiredDecisionReviewRetry(owner string, c DecisionReviewCommand, sha string, a PaperRecordArchive) (DecisionReviewReceipt, error) {
+	if c.Validate() != nil {
+		return DecisionReviewReceipt{}, ErrDecisionReviewInvalid
+	}
+	if c.ReceiverID != owner {
+		return DecisionReviewReceipt{}, ErrReceiverMismatch
+	}
+	for _, record := range a.Records {
+		if record.Kind != "review" || record.ID != c.ID {
+			continue
+		}
+		var r DecisionReviewRecord
+		if record.RecordSHA256 != sha || workerplan.ReadBoundedShape(record.Payload, &r, MaxDecisionReviewBytes) != nil {
+			return DecisionReviewReceipt{}, ErrPaperRecordArchiveConflict
+		}
+		unsigned := clone(r)
+		unsigned.SHA256 = ""
+		if r.SHA256 != sha || workerplan.Hash(unsigned) != sha || r.Command.ID != c.ID {
+			return DecisionReviewReceipt{}, ErrPaperRecordArchiveConflict
+		}
+		if !reflect.DeepEqual(c, r.Command) {
+			return DecisionReviewReceipt{}, ErrDecisionReviewConflict
+		}
+		return DecisionReviewReceipt{r, true}, nil
+	}
+	return DecisionReviewReceipt{}, ErrPaperRecordArchiveConflict
 }
