@@ -38,7 +38,7 @@ UNION ALL SELECT 'journal:'||encode(sha256(payload),'hex') FROM mantik_owned_all
 		t.Helper()
 		if _, err := p.pool.Exec(ctx, `DROP TRIGGER mantik_allocation_financial_refs_complete ON mantik_owned_allocation_members;
 DROP TABLE mantik_owned_allocation_financial_refs;
-DELETE FROM mantik_schema WHERE version=111;`); err != nil {
+DELETE FROM mantik_schema WHERE version>=111;`); err != nil {
 			t.Fatal(err)
 		}
 	}

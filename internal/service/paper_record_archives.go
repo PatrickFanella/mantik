@@ -15,11 +15,11 @@ import (
 
 func paperRecordArchiveError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, storage.ErrPaperRecordArchiveInvalid):
+	case errors.Is(err, storage.ErrPaperRecordArchiveInvalid), errors.Is(err, storage.ErrPaperRetirementInvalid):
 		write(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 	case errors.Is(err, storage.ErrPaperRecordArchiveNotFound):
 		write(w, http.StatusNotFound, map[string]string{"error": err.Error()})
-	case errors.Is(err, storage.ErrPaperRecordArchiveConflict), errors.Is(err, storage.ErrPaperRecordArchiveCapacity),
+	case errors.Is(err, storage.ErrPaperRecordArchiveConflict), errors.Is(err, storage.ErrPaperRecordArchiveCapacity), errors.Is(err, storage.ErrPaperRetirementConflict),
 		errors.Is(err, storage.ErrPaperEvaluationAssessmentInvalid), errors.Is(err, storage.ErrPaperEvaluationAssessmentConflict),
 		errors.Is(err, storage.ErrDecisionReviewInvalid), errors.Is(err, storage.ErrDecisionReviewConflict):
 		write(w, http.StatusConflict, map[string]string{"error": err.Error()})
@@ -63,6 +63,32 @@ func paperRecordArchiveRoutes(mux *http.ServeMux, store storage.Store, clock Clo
 		}
 		write(w, status, receipt)
 	})
+	if retirement, ok := store.(storage.PaperRetirementStore); ok {
+		// The owner selects what retires. A caller names only the receiver.
+		mux.HandleFunc("POST /v1/paper-record-retirements", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.RawQuery != "" || r.URL.ForceQuery {
+				paperRecordArchiveError(w, storage.ErrPaperRetirementInvalid)
+				return
+			}
+			defer func() { _ = r.Body.Close() }()
+			raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4096))
+			var command struct {
+				ReceiverID string `json:"receiver_id"`
+			}
+			if err != nil || workerplan.ReadBoundedShape(raw, &command, 4096) != nil {
+				paperRecordArchiveError(w, storage.ErrPaperRetirementInvalid)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*30*time.Second)
+			defer cancel()
+			receipt, err := retirement.RetirePaperRecords(ctx, command.ReceiverID, evaluateOwnedPaperDecision, evaluateOwnedPaperOutcome)
+			if err != nil {
+				paperRecordArchiveError(w, err)
+				return
+			}
+			write(w, http.StatusOK, receipt)
+		})
+	}
 	mux.HandleFunc("GET /v1/paper-record-archives", func(w http.ResponseWriter, r *http.Request) {
 		q, err := url.ParseQuery(r.URL.RawQuery)
 		if err != nil || r.URL.ForceQuery || !readOnly(r) {

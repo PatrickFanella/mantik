@@ -18,6 +18,7 @@ type paperTargetBackend interface {
 	FeedRetentionStore
 	PaperDecisionSourceStore
 	PaperOutcomeSourceStore
+	PaperRetirementStore
 }
 
 func TestMemoryArchivedPaperSources(t *testing.T) {
@@ -152,21 +153,16 @@ func archivedPaperSourcesContract(t *testing.T, s paperTargetBackend) {
 			}
 		})
 	}
-	if m, ok := s.(*Memory); ok {
-		m.mu.Lock()
-		m.paperRecordRetiredEpochs = map[string]int64{"decision:" + dc.ID: 2, "outcome:" + oc.ID: 2}
-		delete(m.paperDecisions, dc.ID)
-		delete(m.paperOutcomes, oc.ID)
-		m.mu.Unlock()
-	} else {
-		// Production still forbids retirement. Only this disposable fixture
-		// bypasses the immutable guard to exercise the future approved state.
-		if _, err := s.(*Postgres).pool.Exec(ctx, `ALTER TABLE mantik_paper_record_epochs DISABLE TRIGGER mantik_immutable_paper_epochs;
-UPDATE mantik_paper_record_epochs SET retired_epoch=2 WHERE record_id IN ('target','target-outcome');
-ALTER TABLE mantik_paper_record_epochs ENABLE TRIGGER mantik_immutable_paper_epochs;
-DELETE FROM mantik_paper_outcomes WHERE id='target-outcome'; DELETE FROM mantik_paper_decisions WHERE id='target'`); err != nil {
-			t.Fatal(err)
-		}
+	// The retirement owner selects the sealed decision with its outcome. The
+	// newest decision of the strategy and registration stays active.
+	retirement, err := s.RetirePaperRecords(ctx, plan.ReceiverID, de, oe)
+	if err != nil || retirement.Epoch != 2 || retirement.Decisions != 1 || retirement.Outcomes != 1 || len(retirement.Retired) != 2 ||
+		retirement.Retired[0].Kind != "decision" || retirement.Retired[0].ID != dc.ID || retirement.Retired[1].Kind != "outcome" || retirement.Retired[1].ID != oc.ID ||
+		retirement.Retained != (PaperRetirementRetained{NewestDecision: 1}) {
+		t.Fatal("retire sealed decision with its outcome", retirement, err)
+	}
+	if retry, err := s.RetirePaperRecords(ctx, plan.ReceiverID, de, oe); err != nil || len(retry.Retired) != 0 || retry.Epoch != 2 || retry.Retained != (PaperRetirementRetained{NewestDecision: 1}) {
+		t.Fatal("retirement retry", retry, err)
 	}
 	assertOriginals := func(t *testing.T) {
 		t.Helper()

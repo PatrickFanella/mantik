@@ -118,6 +118,16 @@ func TestFeedRotationPreservesNativeOutcomeHTTP(t *testing.T) {
 	request("POST", "/v1/paper-record-archives", map[string]string{"receiver_id": f.owner}, 200)
 	request("POST", "/v1/paper-record-archives?", map[string]string{"receiver_id": f.owner}, 422)
 	request("POST", "/v1/paper-record-archives", map[string]any{"receiver_id": f.owner, "records": []any{}}, 422)
+	// The only decision is the newest of its strategy and registration, so
+	// the retirement owner keeps it active.
+	var retirement storage.PaperRetirementReceipt
+	if err := json.Unmarshal(request("POST", "/v1/paper-record-retirements", map[string]string{"receiver_id": f.owner}, 200), &retirement); err != nil || retirement.Schema != storage.PaperRetirementSchema || retirement.Epoch != 1 || retirement.ArchiveSHA256 != archived.Header.SHA256 ||
+		retirement.Retired == nil || len(retirement.Retired) != 0 || retirement.Retained != (storage.PaperRetirementRetained{NewestDecision: 1}) || retirement.AdmissionAvailable || retirement.ExecutionAvailable || retirement.QualificationCredit {
+		t.Fatal("native paper retirement", retirement, err)
+	}
+	request("POST", "/v1/paper-record-retirements?", map[string]string{"receiver_id": f.owner}, 422)
+	request("POST", "/v1/paper-record-retirements", map[string]any{"receiver_id": f.owner, "records": []any{}}, 422)
+	request("POST", "/v1/paper-record-retirements", map[string]string{"receiver_id": ""}, 422)
 	request("GET", "/v1/paper-record-archives/2", nil, 404)
 	request("GET", "/v1/paper-record-archives?limit=0", nil, 422)
 	request("GET", "/v1/paper-record-archives?after=0&after=1", nil, 422)

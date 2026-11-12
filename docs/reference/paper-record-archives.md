@@ -8,8 +8,10 @@ event clocks. This prepares the remaining paper-retirement work in the
 
 Active originals remain retained in this version. Creating a paper archive does
 not free the separate decision, outcome, assessment or review limits, schedule
-retention, prune other source owners or change paper capital. Those are remaining
-delivery units; this custody endpoint alone does not permit indefinite runs.
+retention, prune other source owners or change paper capital. Since schema 112
+the [retirement owner](#retirement-owner) frees decision and outcome capacity
+after an archive. Scheduling and the assessment and review limits are remaining
+delivery units; these endpoints alone do not permit indefinite runs.
 
 ## Owner operations
 
@@ -121,8 +123,9 @@ An interval's optional `retired_epoch` is its exclusive end. This metadata is
 separate from the immutable creation pin and does not change existing payloads,
 record hashes or checkpoint envelopes. Archive `N` retains membership at epoch
 `N-1`, so a later retirement cannot remove an owner from its original archive.
-The existing immutable-epoch guard still rejects retirement writes in schema
-106. No endpoint or scheduler removes active paper records yet.
+The immutable-epoch guard rejected every retirement write from schema 106 to
+111. Schema 112 replaces it with the [retirement owner](#retirement-owner)
+guard. No scheduler removes active paper records yet.
 
 Historical replay reads matching active originals first. After an authorized
 retirement, the resolver can load missing records from their original archive
@@ -180,8 +183,50 @@ owner by its `retired_epoch`:
   its epoch. That selection is the completeness proof; the closed counts are
   not.
 
-Production retirement stays disabled. The tests supply the approved state in a
-disposable fixture.
+### Retirement owner
+
+`POST /v1/paper-record-retirements` with `{"receiver_id": "..."}` removes sealed
+decisions and their outcomes from the active working set. The owner selects the
+records; a caller cannot name one. The response is a
+`mantik-paper-record-retirement-v1` receipt with the sealing archive (`epoch`,
+`archive_sha256`), the creation pins of the retired records and a count of the
+active decisions it kept, by reason. It grants no admission, execution or
+qualification authority. A request that finds nothing eligible returns the same
+receipt with an empty `retired` list.
+
+A retired record keeps its reserved identity and stays readable from its
+original archive through the readers above. It no longer counts against the
+256-decision and 256-outcome working limits. Retirement happens at the current
+paper archive epoch `N`: the record is a member of archive `N`, its active bytes
+equal the sealed original, and archive `N+1` omits it.
+
+A decision retires together with all of its outcomes, and only when every
+condition holds. `retained` counts each kept decision under the first one that
+fails:
+
+| `retained` field | The decision stays active because |
+| --- | --- |
+| `unsealed` | the current paper archive does not hold it |
+| `allocation_open` | a record of the working allocation journal names it in a comparison or an execution effect. The journal seals only when no entry book can still change, so open protection never depends on an archive read |
+| `newest_decision` | it is the latest decision of its strategy record and registration; the decision worker continues from it |
+| `outcome_unsealed` | one of its outcomes is newer than the current archive |
+| `outcome_pending` | it is an entry candidate without an `observed` or `price_unavailable` outcome |
+| `shared_signal` | another kept decision evaluated the same quote for the same strategy record and registration |
+| `custody_bound` | a paper custody checkpoint already binds the current archive epoch |
+
+A custody checkpoint replays the owners active at its paper archive epoch, so a
+retirement at that epoch would change a checkpoint that already committed.
+Retire after `POST /v1/paper-record-archives` and before the next
+`POST /v1/feed-archives` or feed rotation. Decisions counted under
+`custody_bound` retire after the next paper archive.
+
+The transaction sets `retired_epoch` and removes the active rows together, under
+the same collector, state and receiver locks as the paper archive. In
+PostgreSQL the `mantik_immutable_paper_epochs` trigger still rejects deletes
+and every other change to an epoch row. It accepts one change: setting
+`retired_epoch` once, to the current archive sequence, for a decision or outcome
+whose creation pin is a member of that archive and whose active row the same
+transaction already removed, while no custody checkpoint binds that epoch. Assessments and decision reviews do not retire yet.
 
 Private source-custody views use the same owner scope. Working reads load seals
 only for actual active decision/outcome IDs; historical checkpoint inspection
@@ -265,8 +310,8 @@ late attempts. A complete window can exceed active catalogue capacity, subject
 to a 64 MiB total native-source budget and the existing 8 MiB evidence wire bound.
 Issuance, exact retry, assessment inspection, archive replay, allocation and
 attribution consumers validate the same owner-derived cut. Earlier version 3
-evidence keeps its original complete-catalogue recipe and hashes. Physical
-paper retirement and scheduling still require the remaining consumer work.
+evidence keeps its original complete-catalogue recipe and hashes. Scheduled
+retirement still requires the remaining retention work.
 
 After a paper archive exists, new feed/paper custody checkpoints use
 `mantik-paper-feed-checkpoint-v2` and bind the actual `paper_archive_sequence`.

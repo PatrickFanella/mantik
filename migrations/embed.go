@@ -346,3 +346,6 @@ var PaperHistoryPages string
 
 //go:embed 0111_allocation_financial_references.sql
 var AllocationFinancialReferences string
+
+//go:embed 0112_paper_record_retirement.sql
+var PaperRecordRetirement string
