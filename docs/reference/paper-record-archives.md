@@ -228,6 +228,43 @@ and every other change to an epoch row. It accepts one change: setting
 whose creation pin is a member of that archive and whose active row the same
 transaction already removed, while no custody checkpoint binds that epoch. Assessments and decision reviews do not retire yet.
 
+### Automatic retention
+
+`mantik serve --automatic-paper-retention` opts the service into a retention
+worker. The default is off. It uses no model or provider connection and calls
+the same owners as the routes above; it decides when to ask, and the owners
+decide what may leave.
+
+A cycle runs on startup and then every minute:
+
+1. When the active set holds at least 128 decisions or 128 outcomes (half of
+   each working limit), it calls the retirement owner. If nothing retired and
+   the receipt counts a decision under `unsealed`, `outcome_unsealed` or
+   `custody_bound`, it writes a paper archive and calls the retirement owner
+   again.
+2. When the active feed holds at least 1,024 publications, 1,024 admissions or
+   2,048 collector commands (half of each limit), it rotates the feed. This runs
+   after the paper step because rotation keeps every source an active decision
+   or outcome still reads.
+
+Each new paper archive holds the whole active set, so the worker does not write
+one per cycle. After an archive that retired nothing, it waits until the active
+decisions and outcomes have grown by 32 before it writes the next. Feed rotation
+waits the same way for 256 more publications, admissions and commands. A restart
+forgets these counts and costs at most one extra archive of each kind.
+
+Each step commits on its own; a later error keeps the earlier results. Decisions
+held by a pending outcome, an open allocation or the newest-decision rule stay
+active, so the working limits can still fill when those do not clear. A
+custody checkpoint written by another caller between the worker's archive and
+its retirement holds those records until the active set next changes.
+Assessments and decision reviews keep their working limits.
+
+Worker progress, failures and clean stop are reported under the
+`paper_retention` capability (`GET /v1/readiness/paper_retention`). Schema 113
+fences older writers that reject that capability. The scope measures retention
+health only. It grants no admission, execution or qualification authority.
+
 Private source-custody views use the same owner scope. Working reads load seals
 only for actual active decision/outcome IDs; historical checkpoint inspection
 uses its independently selected owner interval, and archive inspection uses its

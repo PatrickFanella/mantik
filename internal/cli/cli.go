@@ -285,7 +285,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs.SetOutput(errOut)
 	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest, feedPolicyPath, corporateJournalPath, corporateJournalID string
 	var references referenceJournals
-	var exportDataset, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions bool
+	var exportDataset, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions, automaticRetention bool
 	switch args[0] {
 	case "serve":
 		fs.StringVar(&corporateJournalPath, "corporate-source-journal", "", "optional existing private journal for verified corporate acquisition reads")
@@ -297,6 +297,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		fs.BoolVar(&automaticDecisions, "automatic-paper-decisions", false, "automatically finalize decisions on new quotes for declared strategies and compare entry candidates; no admission authority beyond the allocation owner's")
 		fs.BoolVar(&automaticSocialResearch, "automatic-social-research", false, "dispatch retained social/copy requests into research-only cases; no provider or financial authority")
 		fs.BoolVar(&automaticEvaluations, "automatic-paper-evaluations", false, "automatically retain post-deadline necessary-check assessments; no admission authority")
+		fs.BoolVar(&automaticRetention, "automatic-paper-retention", false, "automatically archive and retire sealed paper records and rotate feed sources before active limits are reached; no admission authority")
 		fs.BoolVar(&automaticOutcomes, "automatic-paper-outcomes", false, "automatically retain sealed forward quote outcomes; no admission authority")
 		fs.StringVar(&feedPolicyPath, "feed-readiness-policy", "", "optional receiver-bound feed readiness policy JSON file")
 		fs.StringVar(&listen, "listen", "127.0.0.1:40880", "listen address; non-loopback requires MANTIK_API_TOKEN")
@@ -325,7 +326,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	if args[0] == "serve" {
-		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions, corporateJournalPath, corporateJournalID, references)
+		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions, automaticRetention, corporateJournalPath, corporateJournalID, references)
 	}
 	if args[0] == "replay" {
 		if exportDataset {
@@ -449,7 +450,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 
 type referenceJournals struct{ polygonPath, polygonID, issuerPath, issuerID string }
 
-func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions bool, corporateJournalPath, corporateJournalID string, references referenceJournals) error {
+func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions, automaticRetention bool, corporateJournalPath, corporateJournalID string, references referenceJournals) error {
 	var acquisitions *service.CorporateAcquisitionReader
 	if corporateJournalPath != "" || corporateJournalID != "" {
 		var err error
@@ -595,8 +596,18 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 	} else {
 		close(executionDone)
 	}
+	retentionDone := make(chan struct{})
+	if automaticRetention {
+		go func() {
+			defer close(retentionDone)
+			service.RunPaperRetentionWorker(workerCtx, store, workerID+"-retention", service.WallClock{})
+		}()
+	} else {
+		close(retentionDone)
+	}
 	defer func() {
 		stopWorker()
+		<-retentionDone
 		<-workerDone
 		<-actionDone
 		<-outcomeDone

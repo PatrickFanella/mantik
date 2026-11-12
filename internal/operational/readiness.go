@@ -9,7 +9,7 @@ import (
 )
 
 // Scopes are independently inspectable; fixture readiness excludes real feeds.
-var Scopes = []string{"process", "storage", "feed_coverage", "action_delivery", "protective_monitoring", "paper_outcome_collection", "paper_evaluation_assessment", "social_research_dispatch", "paper_execution", "paper_decision", "fixture_operation"}
+var Scopes = []string{"process", "storage", "feed_coverage", "action_delivery", "protective_monitoring", "paper_outcome_collection", "paper_evaluation_assessment", "social_research_dispatch", "paper_execution", "paper_decision", "paper_retention", "fixture_operation"}
 
 // Readiness derives current availability without mutating persisted evidence.
 func Readiness(state domain.State, now time.Time, storageOK bool, scope string) domain.ReadinessReport {
@@ -29,6 +29,7 @@ func Readiness(state domain.State, now time.Time, storageOK bool, scope string) 
 		report.Capabilities["social_research_dispatch"] = cap(false, "unknown", "storage_unavailable")
 		report.Capabilities["paper_execution"] = cap(false, "unknown", "storage_unavailable")
 		report.Capabilities["paper_decision"] = cap(false, "unknown", "storage_unavailable")
+		report.Capabilities["paper_retention"] = cap(false, "unknown", "storage_unavailable")
 	} else {
 		// A copied state detects missing protection/stalled work immediately, even
 		// before the worker persists its next observation of that condition.
@@ -40,7 +41,7 @@ func Readiness(state domain.State, now time.Time, storageOK bool, scope string) 
 		if err == nil {
 			Sync(&observed, now)
 		}
-		for _, name := range []string{"action_delivery", "protective_monitoring", "paper_outcome_collection", "paper_evaluation_assessment", "social_research_dispatch", "paper_execution", "paper_decision"} {
+		for _, name := range []string{"action_delivery", "protective_monitoring", "paper_outcome_collection", "paper_evaluation_assessment", "social_research_dispatch", "paper_execution", "paper_decision", "paper_retention"} {
 			value := cap(false, "not_configured", "worker_not_observed")
 			if state.Operations != nil {
 				w, ok := state.Operations.Workers[name]

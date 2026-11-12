@@ -349,3 +349,6 @@ var AllocationFinancialReferences string
 
 //go:embed 0112_paper_record_retirement.sql
 var PaperRecordRetirement string
+
+//go:embed 0113_paper_retention_worker_health.sql
+var PaperRetentionWorkerHealth string

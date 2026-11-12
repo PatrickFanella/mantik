@@ -108,6 +108,20 @@ credentials from a file passed with `--credentials-file`, and model-backed
 commands read `MANTIK_MODEL_TOKEN` or `MANTIK_LOCAL_MODEL_TOKEN`. The defaults
 in `.env.example` are for local development only.
 
+The background workers are off by default. Each is a `mantik serve` flag:
+
+| Flag | Worker |
+| --- | --- |
+| `--automatic-paper-decisions` | Finalizes decisions on new quotes for declared strategies ([reference](docs/reference/owned-paper-decisions.md)) |
+| `--automatic-paper-outcomes` | Retains sealed forward quote outcomes ([reference](docs/reference/owned-paper-outcomes.md)) |
+| `--automatic-paper-evaluations` | Retains post-deadline assessments ([reference](docs/reference/paper-evaluation-assessments.md)) |
+| `--automatic-social-research` | Dispatches retained social and copy requests into research cases ([reference](docs/reference/owned-social-watches.md)) |
+| `--automatic-paper-retention` | Archives and retires sealed decisions and outcomes and rotates feed sources at half of each working limit ([reference](docs/reference/paper-record-archives.md#automatic-retention)) |
+
+Retention does not cover assessments or decision reviews; they keep their
+working limits. The retention worker grants no admission, execution or
+qualification authority.
+
 ## Deploy
 
 The Dockerfile builds a static `mantik` binary on Alpine and runs `serve` as a
