@@ -228,6 +228,11 @@ and every other change to an epoch row. It accepts one change: setting
 whose creation pin is a member of that archive and whose active row the same
 transaction already removed, while no custody checkpoint binds that epoch. Assessments and decision reviews do not retire yet.
 
+A decision review stays active after its decision retires, and a retired
+decision can still be reviewed. Later archives seal those reviews without their
+decision: the archive writer, reader and audit resolve it from its original
+archive and replay it natively.
+
 ### Automatic retention
 
 `mantik serve --automatic-paper-retention` opts the service into a retention

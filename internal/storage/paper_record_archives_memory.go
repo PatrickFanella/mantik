@@ -38,6 +38,8 @@ func (m *Memory) ArchivePaperRecords(ctx context.Context, owner string, now func
 	c := paperArchiveContext(sources, social)
 	if err := verifyPaperArchiveOwners(ctx, c, owners, de, oe, m.portfolioEvaluator, m.feedWindowReaderLocked(ctx, owner), func(all map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error) {
 		return m.paperAssessmentOwnersFromLocked(ctx, all, de, oe)
+	}, func(active PaperDecisionCatalog, reviews map[string]DecisionReviewRecord) (PaperDecisionCatalog, error) {
+		return m.reviewOwnerDecisionsLocked(ctx, active, DecisionReviewCommand{}, reviews, de)
 	}); err != nil {
 		return PaperRecordArchiveReceipt{}, err
 	}
@@ -140,6 +142,8 @@ func (m *Memory) paperRecordArchiveLocked(ctx context.Context, sequence int64, d
 	a.Context.Feed.custody = view
 	if err := verifyPaperArchiveOwners(ctx, a.Context, owners, de, oe, m.portfolioEvaluator, m.feedWindowReaderLocked(ctx, m.receiverID), func(all map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error) {
 		return m.paperAssessmentOwnersFromLocked(ctx, all, de, oe)
+	}, func(active PaperDecisionCatalog, reviews map[string]DecisionReviewRecord) (PaperDecisionCatalog, error) {
+		return m.reviewOwnerDecisionsLocked(ctx, active, DecisionReviewCommand{}, reviews, de)
 	}); err != nil {
 		return PaperRecordArchive{}, err
 	}

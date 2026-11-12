@@ -447,6 +447,18 @@ DELETE FROM mantik_paper_decisions WHERE id='membership-decision'`); err != nil 
 			t.Fatal("reopen lost archived review dependencies", err)
 		}
 	}
+	// The next archive omits the retired decision and still seals its reviews.
+	at = at.Add(time.Second)
+	next, err := s.(PaperRecordArchiveStore).ArchivePaperRecords(ctx, owner, clock, eval, oe)
+	if err != nil || next.Duplicate || next.Header.Sequence != 2 {
+		t.Fatal("archive after retiring a reviewed decision", next, err)
+	}
+	if _, err := s.(PaperRecordArchiveStore).PaperRecordArchive(ctx, 2, eval, oe); err != nil {
+		t.Fatal("read archive holding reviews of a retired decision", err)
+	}
+	if audit, err := s.(PaperRecordArchiveAuditStore).AuditPaperRecordArchives(ctx, eval, oe); err != nil || audit.Status != "verified" {
+		t.Fatal("audit after retiring a reviewed decision", audit, err)
+	}
 }
 
 func sourceReviewMigrationContract(t *testing.T, p *Postgres, id string) {

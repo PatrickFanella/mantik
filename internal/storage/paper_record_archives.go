@@ -299,7 +299,7 @@ func paperArchiveEvaluationSources(ctx context.Context, c PaperArchiveContext, o
 	return s, nil
 }
 
-func verifyPaperArchiveOwners(ctx context.Context, c PaperArchiveContext, o paperArchiveOwners, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator, reader archivedFeedWindowReader, assessments func(map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error)) error {
+func verifyPaperArchiveOwners(ctx context.Context, c PaperArchiveContext, o paperArchiveOwners, de PaperDecisionEvaluator, oe PaperOutcomeEvaluator, portfolio PaperPortfolioEvaluator, reader archivedFeedWindowReader, assessments func(map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error), reviewed func(PaperDecisionCatalog, map[string]DecisionReviewRecord) (PaperDecisionCatalog, error)) error {
 	owner := c.Feed.ReceiverID
 	s, err := paperArchiveEvaluationSources(ctx, c, o, de, oe, portfolio)
 	if err != nil {
@@ -308,7 +308,13 @@ func verifyPaperArchiveOwners(ctx context.Context, c PaperArchiveContext, o pape
 	if _, err := assessments(o.assessments); err != nil {
 		return err
 	}
-	if _, err := decisionReviewCatalog(owner, o.reviews, s.decisions, c.SocialSources...); err != nil {
+	// A review can outlive its decision in the active set, and a retired
+	// decision can still be reviewed. Its original archive supplies it.
+	decisions, err := reviewed(s.decisions, o.reviews)
+	if err != nil {
+		return err
+	}
+	if _, err := decisionReviewCatalog(owner, o.reviews, decisions, c.SocialSources...); err != nil {
 		return err
 	}
 	return auditOriginalPaperFeed(ctx, c.Feed, o.decisions, o.outcomes, c.Strategies, &paperFeedArchiveEvaluators{de, oe}, time.Time{}, reader)

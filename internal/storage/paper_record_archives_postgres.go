@@ -150,6 +150,8 @@ func readPaperRecordArchive(ctx context.Context, tx pgx.Tx, sequence int64, de P
 	}
 	if err := verifyPaperArchiveOwners(ctx, a.Context, owners, de, oe, portfolio, postgresFeedWindowReader(ctx, tx, owner), func(all map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error) {
 		return readPaperAssessmentOwners(ctx, tx, owner, all, de, oe, portfolio)
+	}, func(active PaperDecisionCatalog, reviews map[string]DecisionReviewRecord) (PaperDecisionCatalog, error) {
+		return readReviewOwnerDecisions(ctx, tx, active, DecisionReviewCommand{}, reviews, de)
 	}); err != nil {
 		return PaperRecordArchive{}, err
 	}
@@ -194,6 +196,8 @@ func (p *Postgres) ArchivePaperRecords(ctx context.Context, owner string, now fu
 	c := paperArchiveContext(s, social)
 	if err := verifyPaperArchiveOwners(ctx, c, owners, de, oe, p.portfolioEvaluator, postgresFeedWindowReader(ctx, tx, owner), func(all map[string]PaperEvaluationAssessment) (PaperEvaluationAssessmentCatalog, error) {
 		return readPaperAssessmentOwners(ctx, tx, owner, all, de, oe, p.portfolioEvaluator)
+	}, func(active PaperDecisionCatalog, reviews map[string]DecisionReviewRecord) (PaperDecisionCatalog, error) {
+		return readReviewOwnerDecisions(ctx, tx, active, DecisionReviewCommand{}, reviews, de)
 	}); err != nil {
 		return PaperRecordArchiveReceipt{}, err
 	}
