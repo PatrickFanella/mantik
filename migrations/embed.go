@@ -355,3 +355,6 @@ var PaperRetentionWorkerHealth string
 
 //go:embed 0114_decision_review_retirement.sql
 var DecisionReviewRetirement string
+
+//go:embed 0115_retired_review_source_groups.sql
+var RetiredReviewSourceGroups string

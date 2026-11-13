@@ -163,7 +163,7 @@ func decisionReviewCatalog(owner string, all map[string]DecisionReviewRecord, de
 			return out, ErrDecisionReviewInvalid
 		}
 		if r.Source != nil {
-			key := r.Source.Kind + ":" + r.Source.ClaimGroupSHA256 + ":" + r.Command.DecisionSHA256
+			key := decisionReviewSourceGroup(r)
 			if sourceGroups[key] {
 				return out, ErrDecisionReviewConflict
 			}
@@ -283,6 +283,9 @@ func (m *Memory) ReviewPaperDecision(ctx context.Context, c DecisionReviewComman
 		return DecisionReviewReceipt{}, err
 	}
 	if !r.Duplicate {
+		if _, retired := m.retiredReviewSourceGroups[decisionReviewSourceGroup(r.Record)]; retired {
+			return DecisionReviewReceipt{}, ErrDecisionReviewConflict
+		}
 		m.decisionReviews[c.ID] = clone(r.Record)
 		m.retainPaperRecordEpoch("review", c.ID, r.Record.SHA256, r.Record.ReviewedAt)
 	}
@@ -420,6 +423,15 @@ func (p *Postgres) decisionReviewAccess(ctx context.Context, write bool, c Decis
 			return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
 		}
 		if !receipt.Duplicate {
+			if group := decisionReviewSourceGroup(receipt.Record); group != "" {
+				var retired bool
+				if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM mantik_retired_review_source_groups WHERE source_group=$1)", group).Scan(&retired); err != nil {
+					return DecisionReviewCatalog{}, DecisionReviewReceipt{}, err
+				}
+				if retired {
+					return DecisionReviewCatalog{}, DecisionReviewReceipt{}, ErrDecisionReviewConflict
+				}
+			}
 			raw, e := json.Marshal(receipt.Record)
 			if e != nil {
 				return DecisionReviewCatalog{}, DecisionReviewReceipt{}, e

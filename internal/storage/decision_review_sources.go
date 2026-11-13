@@ -25,6 +25,15 @@ type DecisionReviewSourceBinding struct {
 	ProviderAccessVerified   bool   `json:"provider_access_verified"`
 }
 
+// One source claim group is reviewed once per decision. The key outlives the
+// review: retirement keeps it so the group is not reviewed a second time.
+func decisionReviewSourceGroup(r DecisionReviewRecord) string {
+	if r.Source == nil {
+		return ""
+	}
+	return r.Source.Kind + ":" + r.Source.ClaimGroupSHA256 + ":" + r.Command.DecisionSHA256
+}
+
 func decisionReviewNeedsSources(c DecisionReviewCommand, all map[string]DecisionReviewRecord) bool {
 	if c.Source != nil {
 		return true

@@ -162,11 +162,13 @@ semantics.
 
 One source claim group can produce at most one source-bound review for a finalized
 decision. A new request ID for that same group and decision conflicts; retry the
-original request ID to recover its receipt. Exact retries return the original
+original request ID to recover its receipt. This also holds after the review
+[retires](paper-record-archives.md#claim-reviews). Exact retries return the original
 record without a new clock or reevaluating a later policy. Historical readback
 reconstructs the original owner source cutoff; later source updates do not rewrite
 it. New social/copy writes must be strictly later than every retained source-bound
-review cutoff. Exact historical source retries remain unchanged.
+review cutoff; the newest source-bound review never retires, so that floor
+does not move back. Exact historical source retries remain unchanged.
 
 PostgreSQL uses the existing collector/state/receiver lock order; source updates
 serialize on the same receiver lock. No receipt or catalogue is returned on failed

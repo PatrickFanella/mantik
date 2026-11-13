@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"reflect"
 	"strings"
 	"sync"
@@ -159,6 +161,27 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 		bad.Source.CaptureSHA256 = strings.Repeat("a", 64)
 		if _, e = s.ReviewPaperDecision(ctx, bad, clock, eval); e == nil {
 			t.Fatal("source pin mismatch accepted")
+		}
+		// A claim group reserved by a retired review refuses a new review of
+		// the same decision. The reservation is removed again for the fixture.
+		group := kind + ":" + captured.Entry.Capture.ClaimGroupSHA256 + ":" + decision.Decision.SHA256
+		const guard = "ALTER TABLE mantik_retired_review_source_groups %s TRIGGER mantik_retired_review_source_group"
+		if m, ok := s.(*Memory); ok {
+			m.mu.Lock()
+			m.retiredReviewSourceGroups = map[string]string{group: "retired-review"}
+			m.mu.Unlock()
+		} else if _, e = s.(*Postgres).pool.Exec(ctx, fmt.Sprintf(guard, "DISABLE")+"; INSERT INTO mantik_retired_review_source_groups(source_group,review_id) VALUES('"+group+"','retired-review')"); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = s.ReviewPaperDecision(ctx, c, clock, eval); !errors.Is(e, ErrDecisionReviewConflict) {
+			t.Fatal("reserved source group was reviewed again", e)
+		}
+		if m, ok := s.(*Memory); ok {
+			m.mu.Lock()
+			m.retiredReviewSourceGroups = nil
+			m.mu.Unlock()
+		} else if _, e = s.(*Postgres).pool.Exec(ctx, "DELETE FROM mantik_retired_review_source_groups; "+fmt.Sprintf(guard, "ENABLE")); e != nil {
+			t.Fatal(e)
 		}
 		at = at.Add(time.Second)
 		if pg, ok := s.(*Postgres); ok {
@@ -460,8 +483,10 @@ DELETE FROM mantik_paper_decisions WHERE id='membership-decision'`); err != nil 
 	if audit, err := s.(PaperRecordArchiveAuditStore).AuditPaperRecordArchives(ctx, eval, oe); err != nil || audit.Status != "verified" {
 		t.Fatal("audit after retiring a reviewed decision", audit, err)
 	}
-	// Archive 2 seals every review. The plain review of the retired decision
-	// leaves; the newest review and the source-bound ones stay active.
+	// Archive 2 seals every review. Reviews that are not a clock floor leave
+	// with their decision: the plain and the social review of the decision
+	// retired above, and the social review of a decision retiring now. The
+	// newest review and the newest source-bound review (copy) stay active.
 	sealedReviews, err := s.DecisionReviews(ctx, eval)
 	if err != nil {
 		t.Fatal(err)
@@ -476,21 +501,49 @@ DELETE FROM mantik_paper_decisions WHERE id='membership-decision'`); err != nil 
 			gone[pin.ID] = true
 		}
 	}
-	if !gone[legacyCommand.ID] || gone[newCommand.ID] || len(gone) != retirement.Reviews {
+	if !gone[legacyCommand.ID] || !gone["social-review"] || !gone["equal-clock-decision-review"] || len(gone) != 3 || retirement.Reviews != 3 {
 		t.Fatal("review retirement selection", retirement.Retired)
 	}
 	leftReviews, err := s.DecisionReviews(ctx, eval)
 	if err != nil || len(leftReviews.Records) != len(sealedReviews.Records)-len(gone) {
 		t.Fatal("retired reviews stayed in the active catalogue", err)
 	}
+	var social DecisionReviewRecord
 	for _, r := range sealedReviews.Records {
-		if (r.Source != nil || r.Command.ID == newCommand.ID) == gone[r.Command.ID] {
-			t.Fatal("review retirement kept or removed the wrong review", r.Command.ID)
+		if r.Command.ID == "social-review" {
+			social = r
 		}
 	}
 	for _, r := range leftReviews.Records {
 		if gone[r.Command.ID] {
 			t.Fatal("retired review is still listed", r.Command.ID)
+		}
+	}
+	// The retired source-bound review answers its exact retry, keeps its
+	// claim group reserved, and the reservation cannot be removed.
+	if retry, err := s.ReviewPaperDecision(ctx, social.Command, noClock, eval); err != nil || !retry.Duplicate || !reflect.DeepEqual(retry.Record, social) {
+		t.Fatal("retired source-bound review lost its exact retry", err)
+	}
+	group := decisionReviewSourceGroup(social)
+	if m, ok := s.(*Memory); ok {
+		m.mu.Lock()
+		reserved := maps.Clone(m.retiredReviewSourceGroups)
+		m.mu.Unlock()
+		if len(reserved) != 2 || reserved[group] != "social-review" {
+			t.Fatal("retired source group reservation", reserved)
+		}
+	} else {
+		pool := s.(*Postgres).pool
+		var id string
+		var count int
+		if err := pool.QueryRow(ctx, "SELECT min(review_id),count(*) FROM mantik_retired_review_source_groups WHERE source_group=$1", group).Scan(&id, &count); err != nil || id != "social-review" || count != 1 {
+			t.Fatal("retired source group reservation", id, count, err)
+		}
+		if _, err := pool.Exec(ctx, "DELETE FROM mantik_retired_review_source_groups"); err == nil {
+			t.Fatal("retired source group reservation was removed")
+		}
+		if _, err := pool.Exec(ctx, "INSERT INTO mantik_retired_review_source_groups(source_group,review_id) VALUES($1,'copy-review')", strings.Replace(group, "social:", "copy:", 1)); err == nil {
+			t.Fatal("active review reserved a retired source group")
 		}
 	}
 	// A retired ID answers its exact retry from the archive and is never reissued.

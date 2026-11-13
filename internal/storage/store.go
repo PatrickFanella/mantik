@@ -53,6 +53,7 @@ type Memory struct {
 	paperRecordScopes          map[string]paperRecordScope
 	paperRecordEpochs          map[string]PaperRecordEpoch
 	paperRecordRetiredEpochs   map[string]int64
+	retiredReviewSourceGroups  map[string]string
 	paperRecordArchives        []PaperRecordArchive
 	paperArchiveMembers        [][]PaperArchiveRecordPin
 	paperArchiveSeals          []PaperRecordArchiveHeader

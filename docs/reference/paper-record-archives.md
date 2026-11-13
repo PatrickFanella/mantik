@@ -10,9 +10,9 @@ Active originals remain retained in this version. Creating a paper archive does
 not free the separate decision, outcome, assessment or review limits, schedule
 retention, prune other source owners or change paper capital. Since schema 112
 the [retirement owner](#retirement-owner) frees decision and outcome capacity
-after an archive, and since schema 114 it also retires plain claim reviews.
-The assessment limit and source-bound reviews are remaining delivery units;
-these endpoints alone do not permit indefinite runs.
+after an archive, since schema 114 it also retires plain claim reviews, and
+since schema 115 source-bound ones. The assessment limit is a remaining
+delivery unit; these endpoints alone do not permit indefinite runs.
 
 ## Owner operations
 
@@ -243,11 +243,11 @@ naming it, when all of these hold:
 
 - its decision has already retired or retires in this transaction;
 - the current paper archive holds the review, byte for byte;
-- it is a plain (`v1`) review. A source-bound review stays active, because a
-  second review of the same claim group and decision is refused only while the
-  first one is in the active catalogue;
 - it is not the newest review. That one stays as the clock floor for the next
   review;
+- it is not the newest source-bound (`v2`) review. That one stays as the clock
+  floor for social and copy source writes. Before schema 115 no source-bound
+  review retired;
 - no custody checkpoint binds the current archive epoch.
 
 A retired review no longer counts against the 64-review limit and no longer
@@ -258,6 +258,14 @@ review stays readable through
 `GET /v1/paper-record-archives/source?kind=review&id=...`. Its ID stays
 reserved: the same command returns the archived record as a duplicate, and a
 different command with that ID is a conflict.
+
+A source claim group is reviewed once per decision, and that also holds after
+retirement. When a source-bound review retires, the same transaction records
+its source kind, claim group and decision hash in
+`mantik_retired_review_source_groups`. A new request ID for that group and
+decision is a conflict, as it was while the review was active. A row is
+accepted only for a retired review and cannot be changed or deleted. Include
+the table in backups with the other archive rows.
 
 ### Automatic retention
 
@@ -289,9 +297,9 @@ held by a pending outcome, an open allocation or the newest-decision rule stay
 active, so the working limits can still fill when those do not clear. A
 custody checkpoint written by another caller between the worker's archive and
 its retirement holds those records until the active set next changes.
-Plain reviews leave with each retirement, but the worker does not watch the
+Reviews leave with each retirement, but the worker does not watch the
 review count: it asks for a retirement only when decisions or outcomes reach
-their limit. Assessments and source-bound reviews keep their working limits.
+their limit. Assessments keep their working limit.
 
 Worker progress, failures and clean stop are reported under the
 `paper_retention` capability (`GET /v1/readiness/paper_retention`). Schema 113

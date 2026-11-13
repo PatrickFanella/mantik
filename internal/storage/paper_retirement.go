@@ -95,8 +95,8 @@ type paperRetirementSources struct {
 //
 // A sealed claim review leaves once its decision has left or leaves in the
 // same transaction. The newest review stays: it is the clock floor for the
-// next one. Source-bound reviews stay too, because a new review of the same
-// claim group and decision is refused only while the first one is active.
+// next one. The newest source-bound review stays as well, as the clock floor
+// for social source writers.
 func selectPaperRetirement(s paperRetirementSources) ([]PaperArchiveRecordPin, PaperRetirementRetained, error) {
 	var retained PaperRetirementRetained
 	sealed := map[string]ArchivedPaperRecord{}
@@ -229,15 +229,18 @@ func selectPaperRetirement(s paperRetirementSources) ([]PaperArchiveRecordPin, P
 		for _, p := range out {
 			leaving[p.Kind+":"+p.ID] = true
 		}
-		var newestReview time.Time
+		var newestReview, newestSource time.Time
 		for _, r := range s.reviews {
 			if r.ReviewedAt.After(newestReview) {
 				newestReview = r.ReviewedAt
 			}
+			if r.Source != nil && r.ReviewedAt.After(newestSource) {
+				newestSource = r.ReviewedAt
+			}
 		}
 		for id, r := range s.reviews {
 			_, active := s.decisions[r.Command.DecisionID]
-			if r.Source != nil || r.Command.Source != nil || r.ReviewedAt.Equal(newestReview) || active && !leaving["decision:"+r.Command.DecisionID] {
+			if r.ReviewedAt.Equal(newestReview) || r.Source != nil && r.ReviewedAt.Equal(newestSource) || active && !leaving["decision:"+r.Command.DecisionID] {
 				continue
 			}
 			p, err := pin("review", id, r)
@@ -317,6 +320,12 @@ func (m *Memory) RetirePaperRecords(ctx context.Context, owner string, de PaperD
 		case "outcome":
 			delete(m.paperOutcomes, p.ID)
 		default:
+			if group := decisionReviewSourceGroup(m.decisionReviews[p.ID]); group != "" {
+				if m.retiredReviewSourceGroups == nil {
+					m.retiredReviewSourceGroups = map[string]string{}
+				}
+				m.retiredReviewSourceGroups[group] = p.ID
+			}
 			delete(m.decisionReviews, p.ID)
 		}
 	}
@@ -407,6 +416,17 @@ func (p *Postgres) RetirePaperRecords(ctx context.Context, owner string, de Pape
 	}
 	if tag.RowsAffected() != int64(len(pins)) {
 		return PaperRetirementReceipt{}, ErrPaperRetirementConflict
+	}
+	// A retired source-bound review keeps its claim group reserved.
+	for _, pin := range pins {
+		if pin.Kind != "review" {
+			continue
+		}
+		if group := decisionReviewSourceGroup(reviews[pin.ID]); group != "" {
+			if _, err := tx.Exec(ctx, "INSERT INTO mantik_retired_review_source_groups(source_group,review_id) VALUES($1,$2)", group, pin.ID); err != nil {
+				return PaperRetirementReceipt{}, err
+			}
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return PaperRetirementReceipt{}, err
