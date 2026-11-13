@@ -9,7 +9,7 @@ Use Go 1.26.9 from `mise.toml`. Read [AGENTS.md](AGENTS.md) and the
    when their boundaries are affected; run `make compose-build` for image
    changes.
 4. Update affected maintained documentation.
-5. Open a Gitea PR with behavior, validation, limitations, and the issue link.
+5. Open a GitHub PR with behavior, validation, limitations, and the issue link.
 
 Use concise conventional commit subjects. Preserve unrelated changes and do
 not commit generated evidence, credentials, local data, or binaries.

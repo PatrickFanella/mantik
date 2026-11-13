@@ -1,8 +1,9 @@
 # Continuous paper runtime delivery
 
-The owner requested the complete archive, the #285 rehearsal, and the remaining
-#24 attribution work on 2026-11-09 UTC. The earlier capacity stretch is merged
-in #347. It permits bounded runs; it does not replace this archive work.
+The owner requested the complete archive, the #33 rehearsal (Gitea #285), and
+the remaining #25 attribution work (Gitea #24) on 2026-11-09 UTC. The earlier
+capacity stretch is merged in #347. It permits bounded runs; it does not replace
+this archive work.
 
 ## Delivery order
 
@@ -13,7 +14,7 @@ in #347. It permits bounded runs; it does not replace this archive work.
 | Feed and collector archive | Seal immutable raw publications, admissions, lease commands and their routed inputs together. Keep current leases, latest coverage inputs, pending publications and routing facts available. Preserve exact historical retries and original source bytes. | Cross the active bounds, verify old retries and conflicts, audit seals against original records, fail on missing/changed source, exercise concurrent writes and rollback/restart/restore. | #350 custody, #351 source lookup, #353 prefix points and #354 paper-source checkpoints merged; #355 explicit rotation and archive-aware replay merged |
 | Paper archive | Archive finalized decisions, completed outcomes and assessments with their full source dependencies. Retain open execution books, pending outcome windows and still-applicable evaluation inputs. Historical assessment replay must use the original cut. | Compare pre/post-archive replay and attribution, test pending and open references, inspect historical records, inject corruption and failed commits, verify isolated backup/restore. | Paper source checkpoints #354, custody #356, historical owner/scoped custody/assessment replay #359, and scope/paging #360/#362 merged; combined reader work in #367 covers original/native pages, versioned window assessments, original-ID reads and active-owner/review dependencies; allocation history pages, decision references, legacy index maintenance and per-decision contribution totals follow in #377 to #380, and the targeted attribution row reads indexed history; feed rotation, paper archives and custody checkpoints accept approved retirement by owner epoch; schema 112 adds the retirement owner (`POST /v1/paper-record-retirements`) for sealed decisions with their outcomes; complete-catalogue paging and assessment/review retirement pending |
 | Continuous retention | Run owner-controlled archival automatically before active limits are reached. Retain advisory review and allocation cross-references too; inspection must page or target history without loading every archived record. | Run beyond collector/decision/review limits with restart and concurrent archival; measure active append/read cost against growing archive history. | Schema 113 adds the opt-in retention worker (`serve --automatic-paper-retention`): paper archive, retirement and feed rotation at half of each working limit; schema 114 retires plain claim reviews with their decision and schema 115 source-bound ones; assessment retirement and the growing-history run beyond the limits with restart and concurrent archival are pending |
-| #24 attribution | Complete source/copy-delay analysis, applicable signal/forecast-quality readbacks and readable interactive attribution. | Known-result timing/outcome fixtures, no-action and missing-evidence cases, CLI validation, interactive navigation, race and disposable integration. | Readable terminal attribution merged in #352; strategy outcomes, retained evaluation applicability and unique source-delay analysis implemented, with qualification and acceptance audit pending |
+| #25 attribution | Complete source/copy-delay analysis, applicable signal/forecast-quality readbacks and readable interactive attribution. | Known-result timing/outcome fixtures, no-action and missing-evidence cases, CLI validation, interactive navigation, race and disposable integration. | Readable terminal attribution merged in #352; strategy outcomes, retained evaluation applicability and unique source-delay analysis implemented, with qualification and acceptance audit pending |
 
 Each unit should land as a reviewable feature branch and PR. Merge only after
 checks pass on its exact head. Keep local checks, hosted CI, a running-service
@@ -163,7 +164,7 @@ any eligible funded position. Record that outcome. Do not manufacture a passing
 evaluation, weaken minimum samples, import old pilot observations or rewrite a
 quote to force execution. Model transport availability and a schema-valid draft
 are separate from review quality. Synthetic positive lifecycle tests remain
-separate evidence from this live-feed run. Issue #285 is not closed merely by
+separate evidence from this live-feed run. Issue #33 is not closed merely by
 successful collection or a model outage demonstration.
 
 The first market run stopped because a pending seed capture shared the live
@@ -175,11 +176,11 @@ during the controlled model outage. Feed pause/resume and restart readbacks were
 retained, and owned runtime resources were removed. Other model attempts timed
 out; a successful model review and recovery were not observed. The retained dump
 was not restored by that run. These observations grant no qualification or
-funded-position/profitability claim. See the [actual rehearsal report](https://git.subcult.tv/subculture-collective/mantik/issues/285#issuecomment-49868)
+funded-position/profitability claim. See the [actual rehearsal report](https://github.com/subculture-collective/mantik/issues/33#issuecomment-6781603118)
 for results and exclusions; the scheduled run is fulfilled and is not repeated
 as a preparation step.
 
-## #24 scope
+## #25 scope
 
 The native threshold emits a boolean predicate, so probability calibration is
 not applicable. Present the actual outcome and applicability evidence; do not

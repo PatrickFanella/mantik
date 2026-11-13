@@ -1,8 +1,8 @@
 # Complete paper release and natural-soak plan
 
-The [1.0 roadmap](../roadmap.md) and [release gate #286](https://git.subcult.tv/subculture-collective/mantik/issues/286)
+The [1.0 roadmap](../roadmap.md) and [release gate #34](https://github.com/subculture-collective/mantik/issues/34)
 define the remaining delivery path. Finish all development and release acceptance
-before starting [#27](https://git.subcult.tv/subculture-collective/mantik/issues/27).
+before starting [#28](https://github.com/subculture-collective/mantik/issues/28).
 Social/copy-follow, conversational direction, economic attribution and financial
 recovery are included; none is deferred merely to start a soak sooner.
 
@@ -15,21 +15,21 @@ baseline, not the future run declaration.
 
 ## Development exit gates
 
-1. [#282](https://git.subcult.tv/subculture-collective/mantik/issues/282) supplies
+1. [#30](https://github.com/subculture-collective/mantik/issues/30) supplies
    source-bound portfolio economics, cash/passive benchmarks and complete
    applicable evaluation results, including statistical/sensitivity evidence.
-2. [#283](https://git.subcult.tv/subculture-collective/mantik/issues/283) supplies
-   owner-issued paper eligibility and atomic finite commitments; [#284](https://git.subcult.tv/subculture-collective/mantik/issues/284)
+2. [#31](https://github.com/subculture-collective/mantik/issues/31) supplies
+   owner-issued paper eligibility and atomic finite commitments; [#32](https://github.com/subculture-collective/mantik/issues/32)
    supplies ongoing financial effects, protection and reconciliation. Audit all
-   parent criteria in #19–#21; internal reducers are not operational authority.
-3. [#285](https://git.subcult.tv/subculture-collective/mantik/issues/285) proves
+   parent criteria in #20–#22; internal reducers are not operational authority.
+3. [#33](https://github.com/subculture-collective/mantik/issues/33) proves
    actual owned-worker collection/dispatch/research/evaluation/decision/allocation/
    execution scheduling, with positive, abstention, deferred and failed paths.
-4. #13/#14 complete verified social/copy journeys through those owners; #23
-   completes typed conversational direction; #24 exposes actual financial and
+4. #14/#15 complete verified social/copy journeys through those owners; #24
+   completes typed conversational direction; #25 exposes actual financial and
    source-delay attribution in CLI/TUI with missing/uncertain evidence visible.
-5. #25 proves recovery of actual funded state, pending protection and unknown
-   effects. #26 assembles all of this into an isolated running release with exact
+5. #26 proves recovery of actual funded state, pending protection and unknown
+   effects. #27 assembles all of this into an isolated running release with exact
    identities, fresh data, backup and rollback evidence.
 
 A child PR or passed CI job does not close a parent acceptance issue. Preserve
@@ -61,7 +61,7 @@ schedule:
   Git. Keep the rehearsal database separate from prospective observations.
 
 Evaluation completion and bounded eligibility for isolated paper operation are
-not natural qualification credit. Requiring #27 qualification before allowing
+not natural qualification credit. Requiring #28 qualification before allowing
 any evaluated paper operation would prevent the system from collecting its own
 prospective evidence. This distinction never allows unavailable evaluations,
 synthetic fixtures or caller assertions to manufacture a grant.
@@ -108,5 +108,5 @@ Report three conclusions separately: functional reliability, economic performanc
 and statistical/strategy qualification. Losses remain losses; insufficient samples
 remain insufficient. A safety/functional gate failure blocks 1.0 acceptance.
 Neither a fixture nor an attractive short run proves profitability or authorizes
-Alpaca real-money operation. Publish #286's release acceptance only with verified
+Alpaca real-money operation. Publish #34's release acceptance only with verified
 artifact identities, the actual report and clear capabilities/limitations.

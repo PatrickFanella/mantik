@@ -3,9 +3,9 @@
 ## Sources of truth
 
 [The roadmap](roadmap.md) records product direction, sequencing, and milestone
-exit gates. Gitea issues own acceptance criteria and implementation evidence.
+exit gates. GitHub issues own acceptance criteria and implementation evidence.
 Native dependencies describe blocking work. The
-[project board](https://git.subcult.tv/subculture-collective/mantik/projects/5)
+[project board](https://github.com/orgs/subculture-collective/projects/43)
 shows current activity; do not copy its changing status into a second tracker.
 
 Architecture decisions belong in `docs/adr/`. Maintained procedures belong in
