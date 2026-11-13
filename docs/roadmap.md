@@ -127,19 +127,25 @@ inherited overnight cutoff.
 Work proceeds in four tracks. Track A needs no owner input and comes first.
 
 **A. Finish continuous retention (#33).** The retention worker retires decisions,
-outcomes and claim reviews and rotates feed sources, but a service running for
-weeks still fills two working limits and has never run past the real ones.
+outcomes and claim reviews and rotates feed sources. Nothing has run past the
+real limits yet.
 
-1. Retire paper evaluation assessments (working limit 16) once nothing active
-   reads them, with the same archive-membership, epoch and custody rules as
-   decisions. Until then, assessments cap continuous operation.
-2. Let the retention worker trigger on the decision-review count (limit 64), not
-   only on decisions and outcomes.
-3. Run a disposable PostgreSQL service past every real working limit with the
-   worker on, a restart and concurrent archival. Measure active append and read
-   cost against archive size. This run is the acceptance check for the unit.
-4. Page the complete attribution catalogue and compact the v1 checkpoint
+1. Run a disposable PostgreSQL service past every working limit the automatic
+   workers fill (decisions, outcomes, feed sources and the allocation journal),
+   with the retention worker on, a restart and concurrent archival. Measure
+   active append and read cost against archive size. This run is the acceptance
+   check for the unit.
+2. Page the complete attribution catalogue and compact the v1 checkpoint
    identities, so that no complete read loads the whole archive.
+
+Assessments, declarations and claim reviews are not on this list. The
+evaluation worker writes at most one assessment per declaration and recipe, only
+an operator issues declarations (limit 16), and reviews are written only on
+request (limit 64). They grow with operator activity, not with running time.
+Retiring declarations or assessments also needs an allocation change first: an
+allocation record rebuilds its evaluation context from every active declaration
+and assessment at its clock, so removing one breaks the replay of every later
+record. B5 below decides whether the natural window needs that.
 
 **B. Owner decisions.** These block acceptance, not implementation:
 
@@ -152,6 +158,10 @@ weeks still fills two working limits and has never run past the real ones.
    and #33 still lack. Before it, find why the 2026-11-09 model reviews timed
    out on the Switchyard route.
 4. On #14: which social provider and account Mantik may bind. #15 waits on it.
+5. Whether the natural window (#28) needs more than 16 evaluation declarations,
+   for example to renew eligibility after its admission TTL. If it does,
+   declarations and assessments need retirement, starting with an allocation
+   record schema that pins only the declarations and assessments it used.
 
 **C. Operator journey (#24).** Conversational direction uses typed operations
 that already exist and needs no new provider. It can start once track A no
