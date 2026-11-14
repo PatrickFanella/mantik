@@ -1,175 +1,139 @@
 # Mantik roadmap to 1.0
 
-Mantik 1.0 is a complete, isolated paper-research and paper-operation service
-supervised from the terminal. It must turn attributed inputs into research,
-applicable evaluation, finalized decisions or abstentions, owner-issued paper
-eligibility, finite capital allocation, reconciled paper execution, protection
-and inspectable outcomes. Social/copy-follow, conversational direction,
-attribution and recovery remain part of 1.0.
+Mantik 1.0 is an isolated paper-trading service supervised from the terminal.
+It trades a portfolio of strategies on its own, in Alpaca paper trading:
+- code makes and enforces every money decision;
+- a model researches, proposes and tests strategies with tools.
 
-**Current state, 2026-11-13** (main `1d12217`, schema 115): economics, applicable
-evaluation, paper eligibility, atomic commitments and the ongoing paper execution
-worker are merged. Their evidence is synthetic fixture evidence. One live-feed
-rehearsal on 2026-11-09 produced decisions and deferred comparisons but no
-funded position and no successful model review. Continuous retention is the
-active implementation unit. There is no accepted complete paper release or
-natural qualification run. Successful tests, merged PRs, healthy workers and
-closed foundation issues do not establish those outcomes. The
-[2026-10-27 delivery audit](research/1-0-delivery-audit.md) records the earlier
-baseline at main `897a3b433afc599835ae60b74c4db9166a5ee67c` (schema 74).
+The book starts at $2,000 and receives $500 every other Friday. It holds a
+library of well-studied strategies, including multi-leg options, plus evolved
+ones and Kalshi prediction markets. 1.0 ends with a correct, honestly reported
+paper run of at least six months. 2.0, live trading, starts only after the
+portfolio beats SPY after costs over that run.
+
+The approved design is [the trading system design](plans/trading-system.md).
+The work is tracked in
+[roadmap #47](https://github.com/subculture-collective/mantik/issues/47).
+
+**Current state, 2026-11-13** (schema 115). Mantik has these working parts:
+- a paper ledger, an execution worker and protective exits;
+- feed custody and archives, and a retention worker;
+- prospective evaluation rules;
+- terminal supervision, and finalized-decision explanations.
+
+All of them are built around a single price-threshold rule, and their evidence
+is synthetic fixture evidence. No running service has funded a paper position.
+
+On 2026-11-13 the owner changed direction: away from deepening threshold-specific
+contracts, toward a general strategy core on real data. Mantik replaces Augr.
+Augr's workflows were reviewed and evaluated rather than ported
+([review](https://claude.ai/artifact/TSXsuuFA5WPgSBAQMb3dJ1), private).
+
+The [2026-10-27 delivery audit](research/1-0-delivery-audit.md) records the
+earlier baseline.
 
 Issues, pull requests and the project board moved to GitHub on 2026-11-10 and
-were renumbered. Links below use the GitHub numbers. Dated audits under
-`docs/research/` keep their original Gitea numbers; each GitHub issue names its
-Gitea original in its first line. Three-digit pull request numbers in the plans
-(#100–#385) are Gitea history; #1, #2 and #38 onward are GitHub.
+were renumbered. Dated audits under `docs/research/` keep their original Gitea
+numbers; each GitHub issue names its Gitea original in its first line.
+Three-digit pull request numbers in the plans (#100–#385) are Gitea history;
+#1, #2 and #38 onward are GitHub.
 
 ## Release definition and scope
 
 The [1.0 release gate, #34](https://github.com/subculture-collective/mantik/issues/34),
-is the acceptance index. Release requires the development, isolated runtime,
-recovery and fresh natural-run gates below. A safety or functional gate failure
-blocks release. Minimum evidence and stop criteria are declared before the run;
-an insufficient or curtailed run remains incomplete.
+is the acceptance index. A safety or functional failure blocks release. Minimum
+evidence and stop criteria are declared before the natural run, and an
+insufficient or curtailed run remains incomplete.
 
-Operational reliability, strategy performance and statistical qualification are
-separate conclusions. A paper system can reveal losses or insufficient strategy
-samples; those results must be visible and must not be represented as profitability
-or a qualified strategy. A test fixture never receives natural qualification
-credit. Live trading is outside 1.0.
+1.0 and 2.0 have different bars:
 
-The first complete lifecycle uses an explicit supported native baseline,
-instruments, feed scope and versioned cost/evaluation methods. Do not expand to a
-fleet of strategies, providers, venues or languages to demonstrate activity.
-Generated and copy-follow methods use the same applicable evaluation, admission,
-allocation and execution authorities; their existing isolation/source contracts
-remain useful foundations.
+- **1.0** needs the whole system to run correctly and report honestly through
+  a natural paper window of at least six months, whether or not it beat SPY.
+- **2.0 (live trading)** starts only after the portfolio beats SPY. The measure
+  is total return after all costs, time-weighted, over that window.
+
+Operational reliability, strategy performance and statistical qualification
+stay separate conclusions. Losses and insufficient samples must be visible. A
+test fixture never earns qualification credit.
+
+The design's decisions apply to every issue:
+- free market data;
+- models through the owner's Claude and OpenAI subscriptions;
+- a $2,000 capped book inside the $100,000 Alpaca paper account;
+- cash and margin account rules;
+- options and margin in 1.0;
+- reuse of open-source strategy code;
+- one lifecycle for every strategy.
+
+The design replaces the earlier rule that the first lifecycle use a single
+native baseline. 1.0 now runs a strategy library on purpose, but every strategy
+must earn its capital through the same gates.
 
 ## Delivery order
 
-Milestones are acceptance gates with no promised dates. The
-[project board](https://github.com/orgs/subculture-collective/projects/43)
-and [milestones](https://github.com/subculture-collective/mantik/milestones)
-track this sequence. New planning issues have no automatic pickup labels,
-assignment or deadline. Each implementation PR must deliver behavior needed by
-its issue; another inspection endpoint is justified only by a concrete acceptance
-blocker.
+[Roadmap #47](https://github.com/subculture-collective/mantik/issues/47) holds
+the full order, waves and critical path. Its epics:
 
-### RC1: Complete one evaluated paper lifecycle
+| Epic | Result |
+| --- | --- |
+| [A #48](https://github.com/subculture-collective/mantik/issues/48) Free point-in-time market data | Daily bars since 2016, option bars since February 2024, Kalshi markets; SPY checked against an independent source |
+| [B #49](https://github.com/subculture-collective/mantik/issues/49) One strategy interface and engine | Strategy interface, engine, cash and margin rules, biweekly deposits; SPY buy-and-hold reproduced |
+| [C #50](https://github.com/subculture-collective/mantik/issues/50) Base strategy library for stocks | Indicators and four ported strategies with replication tests |
+| [D #51](https://github.com/subculture-collective/mantik/issues/51) Trial registry and backtest gate | Every trial recorded; walk-forward, stress, deflated Sharpe, overfitting probability |
+| [E #52](https://github.com/subculture-collective/mantik/issues/52) Real-quote paper trading on the capped book | Alpaca paper adapter, $2,000 book, capital distributor, risk limits, incubation |
+| [F #53](https://github.com/subculture-collective/mantik/issues/53) Overseer and daily brief | Health admission, daily review and resizing, owner brief and controls |
+| [G #54](https://github.com/subculture-collective/mantik/issues/54) Options and multi-leg strategies | Chains, structures with reserves and Greek caps, Alpaca multi-leg orders |
+| [H #55](https://github.com/subculture-collective/mantik/issues/55) Model research desk | Subscription model adapter, typed specs, research desk, evolution, model analyst |
+| [I #56](https://github.com/subculture-collective/mantik/issues/56) Kalshi decision engine | Calibrated weather forecasts, fill simulator, maker-first strategy |
+| [J #57](https://github.com/subculture-collective/mantik/issues/57) Forward qualification and promotion | Generalised prospective rules, automatic promotion and demotion |
 
-| Order | Delivery issue | Observable result | State, 2026-11-13 |
-| --- | --- | --- | --- |
-| 1 | [#30: Economics and applicable evaluation](https://github.com/subculture-collective/mantik/issues/30) | Source-bound cash/passive benchmarks, corporate-action treatment, equity/drawdown and all applicable evaluation checks produce reproducible complete/pass, fail or insufficient results. No caller-supplied results or retroactive criteria. | Closed |
-| 2 | [#31: Paper eligibility and atomic commitments](https://github.com/subculture-collective/mantik/issues/31) | Actual retained decision/evaluation/policy/account evidence produces a bounded owner-issued eligibility decision and one durable reservation/commitment under competing capital/exposure limits. Expiry, reassessment and retirement are enforced. | Closed |
-| 3 | [#32: Ongoing paper effects](https://github.com/subculture-collective/mantik/issues/32) | Only allocator commitments can create paper orders/effects. Fills, costs, cash, positions, releases and protection reconcile atomically through partial/unknown outcomes and restart. Missing quotes cannot invent a fill. | Open. The 2026-11-08 audit against main `4eade6d` found every development criterion met with fixture evidence; closure is the owner's call |
-| 4 | [#33: Autonomous input-to-ledger integration](https://github.com/subculture-collective/mantik/issues/33) | Owned workers actually collect, dispatch research, evaluate, finalize, admit/defer, allocate, execute and reconcile. Runtime evidence proves scheduling rather than a test harness driving every step; model/feed outages retain safe behavior. | Open. Decision, execution and retention workers are merged; continuous retention is in progress ([plan](plans/continuous-paper-runtime.md)) |
+After the epics, the remaining acceptance issues close in this order:
 
-These issues complete the implementation units underlying the still-open parent
-acceptance issues [#20](https://github.com/subculture-collective/mantik/issues/20),
-[#21](https://github.com/subculture-collective/mantik/issues/21) and
-[#22](https://github.com/subculture-collective/mantik/issues/22). Parent issues
-close only after their complete requirement-by-requirement audit. Issue #20 was
-reopened: its earlier closure covered deferral-oriented groundwork, not funded
-allocation.
+1. [#25](https://github.com/subculture-collective/mantik/issues/25)
+   Attribution, including the gross amount, fee and share quantity on every
+   fill.
+2. [#24](https://github.com/subculture-collective/mantik/issues/24)
+   Conversation.
+3. [#14](https://github.com/subculture-collective/mantik/issues/14) and
+   [#15](https://github.com/subculture-collective/mantik/issues/15) Social
+   intake and copy-follow, once the owner's provider accounts exist.
+4. [#26](https://github.com/subculture-collective/mantik/issues/26) Recovery
+   drills.
+5. [#27](https://github.com/subculture-collective/mantik/issues/27) Release
+   candidate.
+6. [#28](https://github.com/subculture-collective/mantik/issues/28) Natural
+   paper window.
+7. [#34](https://github.com/subculture-collective/mantik/issues/34) 1.0 audit.
 
-The applicable recipe must address leakage, warm-up, out-of-sample behavior,
-parameter/cost sensitivity, benchmark comparison, calibration, sample sufficiency
-and dependence, and search multiplicity. A `not_applicable` result requires the
-compiled method's actual contract. Crossing an occurrence count does not prove
-independent samples. Original inputs, failed attempts, exact numeric terms,
-source availability and correction/unsupported-action states remain retained.
-
-Three states must stay distinct:
-
-1. **Evaluation complete:** the applicable method and evidence windows have a
-   complete retained result, which can pass or fail.
-2. **Paper-operationally eligible:** an owner-derived decision permits the
-   isolated paper lifecycle under a bounded strategy/account/policy/version and
-   expiry. It does not prove profitability.
-3. **Qualification credit:** supplied only by the later fresh natural-run report
-   when its predeclared criteria are actually met.
-
-Issue #28 cannot be a prerequisite to the paper operation needed to collect its
-own prospective evidence. This distinction does not permit a synthetic fixture,
-caller assertion or unavailable evaluation to issue a grant.
-
-### RC2: Complete source and operator journeys
-
-| Acceptance issue | Remaining result | State, 2026-11-13 |
-| --- | --- | --- |
-| [#14: Verified social intake and dispatch](https://github.com/subculture-collective/mantik/issues/14) | Bind an authorized provider/account, retain original posts/edits/deletions/reposts and scoped failures, and dispatch applicable observations into actual owned research/cases. A social claim is not an observed fill. | Open; social worker runtime rehearsed with fixtures on 2026-10-29; no authorized provider account bound |
-| [#15: Verified bounded copy-follow](https://github.com/subculture-collective/mantik/issues/15) | Verify source activity, instrument/quantity semantics and delay; derive independently sized owner-bound proposals with common evaluation/admission/protection. Repeated sources, reversals and mismatches cannot multiply exposure. | Open; depends on verified observations from #14 |
-| [#24: Conversational direction](https://github.com/subculture-collective/mantik/issues/24) | Complete a running-service conversation through existing typed operations: inspect, request research, change authorized watches and perform scoped actions with readback. Finalized-evidence explanations and contradiction reviews cannot change financial authority. Model outage leaves protection running. | Open; typed tools and explanations exist, no running-service conversation |
-| [#25: Economic and delay attribution](https://github.com/subculture-collective/mantik/issues/25) | Trace actual forecast/decision/allocation/execution outcomes and costs against cash/passive baselines, including social/copy delay. CLI/TUI expose uncertainty, missing evidence, abstention and insufficient samples; quote deltas and cost ceilings are not P&L. | Open; the 2026-11-10 audit lists three owner decisions and a missing funded-position runtime receipt |
-
-These workflows can be developed alongside RC1 where their owners already exist,
-but all four must be accepted before the complete release's natural run. Recorded
-manifests, typed tools and deterministic explanations are delivered foundations,
-not substitutes for these end-to-end journeys.
-
-### Release, recovery and natural qualification
-
-| Gate | Acceptance issue | Required evidence |
-| --- | --- | --- |
-| Financial recovery | [#26](https://github.com/subculture-collective/mantik/issues/26) | Exact-release backup/isolated restore and interruption drills with actual commitments, orders, fills, positions, cash, protection and unknown outcomes; no duplicate effect or lost obligation. Current nonfinancial-owner restore tests are supporting evidence. |
-| Complete isolated candidate | [#27](https://github.com/subculture-collective/mantik/issues/27) | All remaining development criteria accepted; exact source/image/schema/config/capabilities, new Mantik-owned data, configured workers, integrated rehearsal, running readbacks, pre-change backup and rollback proof. A build/help preflight is only a sub-gate. |
-| Fresh natural window | [#28](https://github.com/subculture-collective/mantik/issues/28) | Predeclare the exact release, strategies/evaluator/account/policy/source scope, metrics, baselines/costs, minimum evidence/window and stop criteria. Observe natural behavior; retain failures and report reliability, economics and qualification separately. |
-| Verification reliability | [#35](https://github.com/subculture-collective/mantik/issues/35) | Closed. Loopback test fakes are wrapped with `loopbacktest.GoClientOnly`, so local `make verify` and `make test-race` tolerate T3 port detection. Supporting verification only, not release evidence. |
-| 1.0 acceptance | [#34](https://github.com/subculture-collective/mantik/issues/34) | Audit the complete gates, then publish the release's verified source/artifact identities, acceptance/soak report, capabilities and known limitations. No unsupported profitability or live-admission claim. |
-
-The [paper-soak delivery plan](plans/paper-soak.md) defines the assembled rehearsal
-and natural-run evidence. No previous curtailed observation is credited as the
-new run. The old overnight schedule stays disabled; this development task has no
-inherited overnight cutoff.
+#20, #21, #22, #32 and #33 are closed. #32 was closed by the owner. The others
+were superseded by roadmap #47 on 2026-11-13.
 
 ## Next steps, 2026-11-13
 
-Work proceeds in four tracks. Track A needs no owner input and comes first.
+These five issues have no blockers and can start in parallel:
 
-**A. Finish continuous retention (#33).** The retention worker retires decisions,
-outcomes and claim reviews and rotates feed sources. Nothing has run past the
-real limits yet.
+- [A1 #58](https://github.com/subculture-collective/mantik/issues/58)
+  Confirm what Alpaca's free data actually covers. This is a spike, and it
+  heads the critical path.
+- [E1 #59](https://github.com/subculture-collective/mantik/issues/59)
+  Submit and reconcile stock orders on Alpaca paper.
+- [C1 #60](https://github.com/subculture-collective/mantik/issues/60)
+  Choose the Go indicator library. This is a spike.
+- [A6 #80](https://github.com/subculture-collective/mantik/issues/80)
+  Collect Kalshi markets and order books.
+- [H2 #82](https://github.com/subculture-collective/mantik/issues/82)
+  Call models through the owner's subscriptions.
 
-1. Run a disposable PostgreSQL service past every working limit the automatic
-   workers fill (decisions, outcomes, feed sources and the allocation journal),
-   with the retention worker on, a restart and concurrent archival. Measure
-   active append and read cost against archive size. This run is the acceptance
-   check for the unit.
-2. Page the complete attribution catalogue and compact the v1 checkpoint
-   identities, so that no complete read loads the whole archive.
-
-Assessments, declarations and claim reviews are not on this list. The
-evaluation worker writes at most one assessment per declaration and recipe, only
-an operator issues declarations (limit 16), and reviews are written only on
-request (limit 64). They grow with operator activity, not with running time.
-Retiring declarations or assessments also needs an allocation change first: an
-allocation record rebuilds its evaluation context from every active declaration
-and assessment at its clock, so removing one breaks the replay of every later
-record. B5 below decides whether the natural window needs that.
-
-**B. Owner decisions.** These block acceptance, not implementation:
-
-1. Close #32, or name a missing criterion.
-2. On #25: whether fees and executed quantities must be retained separately in
-   ledger effects (a schema and replay change), and whether "probability scoring
-   not applicable" meets the model-uncertainty criterion.
-3. Schedule a regular-session rehearsal that can reach a funded position and a
-   successful model review. It supplies the running-service evidence #25, #32
-   and #33 still lack. Before it, find why the 2026-11-09 model reviews timed
-   out on the Switchyard route.
-4. On #14: which social provider and account Mantik may bind. #15 waits on it.
-5. Whether the natural window (#28) needs more than 16 evaluation declarations,
-   for example to renew eligibility after its admission TTL. If it does,
-   declarations and assessments need retirement, starting with an allocation
-   record schema that pins only the declarations and assessments it used.
-
-**C. Operator journey (#24).** Conversational direction uses typed operations
-that already exist and needs no new provider. It can start once track A no
-longer needs the same storage owners.
-
-**D. Release.** After A and B3: funded-state recovery drills (#26), the isolated
-candidate with rollback proof (#27), then a fresh predeclared natural window
-(#28) and the 1.0 audit (#34).
+The critical path runs through:
+1. the data spike;
+2. bars;
+3. adjusted reads;
+4. the strategy interface;
+5. the engine;
+6. account rules;
+7. the gate statistics;
+8. incubation;
+9. qualification.
 
 ## Delivered foundations and historical milestones
 
