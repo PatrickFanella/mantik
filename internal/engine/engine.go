@@ -1,0 +1,440 @@
+// Package engine runs one strategy through trading days. On each session it
+// asks the strategy for target weights from a point-in-time view, fills them
+// at the next session's open with fees and slippage, applies splits and
+// dividends to the holdings, and records cash, positions, equity and the
+// daily return. The same code is meant to drive paper trading later.
+package engine
+
+import (
+	"cmp"
+	"context"
+	"errors"
+	"fmt"
+	"math/big"
+	"regexp"
+	"slices"
+	"strings"
+	"time"
+	_ "time/tzdata"
+
+	"git.subcult.tv/subculture-collective/mantik/internal/marketdata"
+	"git.subcult.tv/subculture-collective/mantik/internal/strategy"
+)
+
+// Scale is the number of decimal places results are rounded to when rendered.
+// Arithmetic is exact until then.
+const Scale = 12
+
+var (
+	ErrInvalidConfig = errors.New("invalid engine config")
+
+	newYork      = mustZone("America/New_York")
+	plainDecimal = regexp.MustCompile(`^(0|[1-9][0-9]{0,11})(\.[0-9]{1,12})?$`)
+	versionText  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+	tenThousand  = big.NewRat(10000, 1)
+)
+
+func mustZone(name string) *time.Location {
+	zone, err := time.LoadLocation(name)
+	if err != nil {
+		panic(err)
+	}
+	return zone
+}
+
+// CostModel prices a fill. Slippage moves the fill price against the trade by
+// SlippageBps of the open; the fee is FeeBps of the fill's notional. Version
+// names the model, so a result records which costs produced it.
+type CostModel struct {
+	Version     string `json:"version"`
+	FeeBps      string `json:"fee_bps"`
+	SlippageBps string `json:"slippage_bps"`
+}
+
+// DefaultCost is the first cost model: no commission, as on Alpaca, and five
+// basis points of slippage each way.
+var DefaultCost = CostModel{Version: "next-open-bps-v1", FeeBps: "0", SlippageBps: "5"}
+
+func (c CostModel) parse() (fee, slip *big.Rat, err error) {
+	fee, ok1 := decimal(c.FeeBps)
+	slip, ok2 := decimal(c.SlippageBps)
+	if !versionText.MatchString(c.Version) || !ok1 || !ok2 || fee.Cmp(tenThousand) >= 0 || slip.Cmp(tenThousand) >= 0 {
+		return nil, nil, fmt.Errorf("%w: cost model", ErrInvalidConfig)
+	}
+	return fee.Quo(fee, tenThousand), slip.Quo(slip, tenThousand), nil
+}
+
+// Config is one run. The engine reads bars through Source; the strategy sees
+// only the views the engine builds. Sessions are the bar dates of Assets whose
+// decision time falls within [Start, End].
+type Config struct {
+	Strategy    strategy.Strategy
+	Source      strategy.BarSource
+	Assets      []string
+	Start, End  time.Time
+	InitialCash string
+	Cost        CostModel
+}
+
+// Position is a holding in shares, rendered to Scale places.
+type Position struct {
+	Asset  string `json:"asset"`
+	Shares string `json:"shares"`
+}
+
+// Fill is one executed trade. DecidedOn is the session whose decision it
+// carries out; Date is the later session whose open it filled at.
+type Fill struct {
+	Date      string `json:"date"`
+	DecidedOn string `json:"decided_on"`
+	Asset     string `json:"asset"`
+	Shares    string `json:"shares"` // negative sells
+	Open      string `json:"open"`
+	Price     string `json:"price"`
+	Fee       string `json:"fee"`
+}
+
+// Day is the book at one session's close.
+type Day struct {
+	Date      string     `json:"date"`
+	DecidedAt time.Time  `json:"decided_at"`
+	Cash      string     `json:"cash"`
+	Equity    string     `json:"equity"`
+	Return    string     `json:"return"`
+	Positions []Position `json:"positions"`
+	Decided   bool       `json:"decided"`
+}
+
+// Result is a whole run. Pending holds the last decision's targets, which
+// have no later session to fill at.
+type Result struct {
+	StrategyID  string            `json:"strategy_id"`
+	Cost        CostModel         `json:"cost"`
+	Start       time.Time         `json:"start"`
+	End         time.Time         `json:"end"`
+	InitialCash string            `json:"initial_cash"`
+	Days        []Day             `json:"days"`
+	Fills       []Fill            `json:"fills"`
+	Pending     []strategy.Target `json:"pending"`
+}
+
+type session struct {
+	date string
+	day  time.Time
+	at   time.Time // decision time: 16:30 New York on the session date
+}
+
+type bar struct{ open, close *big.Rat }
+
+type action struct {
+	kind          string
+	ex, pay       time.Time
+	amount, ratio *big.Rat
+}
+
+type owed struct {
+	pay  time.Time
+	cash *big.Rat
+}
+
+// Run steps the configured sessions in order. For each session it applies
+// corporate actions to the holdings, pays dividends due, fills the previous
+// decision at this session's open, marks the book at the close, and then asks
+// the strategy for its next decision. No fill uses a price from the session
+// whose decision it carries out.
+func Run(ctx context.Context, cfg Config) (Result, error) {
+	spec := cfg.Strategy.Spec()
+	id, err := spec.ID()
+	if err != nil {
+		return Result{}, err
+	}
+	fee, slip, err := cfg.Cost.parse()
+	if err != nil {
+		return Result{}, err
+	}
+	cash, ok := decimal(cfg.InitialCash)
+	if !ok || cash.Sign() <= 0 || cfg.Start.IsZero() || cfg.End.Before(cfg.Start) || len(cfg.Assets) == 0 {
+		return Result{}, ErrInvalidConfig
+	}
+	assets := slices.Clone(cfg.Assets)
+	slices.Sort(assets)
+	if len(slices.Compact(slices.Clone(assets))) != len(assets) {
+		return Result{}, fmt.Errorf("%w: repeated asset", ErrInvalidConfig)
+	}
+
+	// The engine itself reads as of End to lay out the sessions, raw prices
+	// and corporate actions. Strategies only ever see views as of their own
+	// decision times.
+	bars := map[string]map[string]bar{}
+	actions := map[string][]action{}
+	dates := map[string]bool{}
+	for _, a := range assets {
+		s, err := cfg.Source.AdjustedBars(ctx, a, cfg.End)
+		if err != nil {
+			return Result{}, fmt.Errorf("bars for %s: %w", a, err)
+		}
+		bars[a] = map[string]bar{}
+		for _, b := range s.Bars {
+			o, ok1 := decimal(b.Raw.Open)
+			c, ok2 := decimal(b.Raw.Close)
+			if !ok1 || !ok2 {
+				return Result{}, fmt.Errorf("%s bar %s has an invalid raw price", a, b.Date)
+			}
+			bars[a][b.Date] = bar{o, c}
+			dates[b.Date] = true
+		}
+		if actions[a], err = parseActions(s.Applied); err != nil {
+			return Result{}, fmt.Errorf("actions for %s: %w", a, err)
+		}
+	}
+	sessions := []session{}
+	for date := range dates {
+		day, _ := time.Parse(time.DateOnly, date)
+		if at := decisionTime(day); !at.Before(cfg.Start) && !at.After(cfg.End) {
+			sessions = append(sessions, session{date: date, day: day, at: at})
+		}
+	}
+	slices.SortFunc(sessions, func(a, b session) int { return strings.Compare(a.date, b.date) })
+
+	out := Result{StrategyID: id, Cost: cfg.Cost, Start: cfg.Start.UTC(), End: cfg.End.UTC(), InitialCash: render(cash), Days: []Day{}, Fills: []Fill{}, Pending: []strategy.Target{}}
+	shares := map[string]*big.Rat{}
+	last := map[string]*big.Rat{} // last raw close seen per asset
+	pending := map[string]*big.Rat{}
+	decidedOn, decidedAt := "", time.Time{}
+	dividends := []owed{}
+	var prior *time.Time
+	equity := new(big.Rat).Set(cash)
+	book := strategy.Book{}
+	for _, s := range sessions {
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
+		// Corporate actions since the previous session, in ex-date order with
+		// dividends first on a shared date: a dividend is earned on the shares
+		// held before its ex-date, which includes any earlier split in the gap.
+		// Nothing is held before the first session.
+		for _, a := range assets {
+			for _, c := range actions[a] {
+				if prior == nil || !c.ex.After(*prior) || c.ex.After(s.day) {
+					continue
+				}
+				held := shares[a]
+				switch {
+				case c.kind == "cash_dividend" && held != nil:
+					dividends = append(dividends, owed{c.pay, new(big.Rat).Mul(held, c.amount)})
+				case c.kind == "split":
+					if held != nil {
+						held.Mul(held, c.ratio)
+					}
+					if l := last[a]; l != nil {
+						l.Quo(l, c.ratio)
+					}
+				}
+			}
+		}
+		kept := dividends[:0]
+		for _, d := range dividends {
+			if d.pay.After(s.day) {
+				kept = append(kept, d)
+				continue
+			}
+			cash.Add(cash, d.cash)
+		}
+		dividends = kept
+
+		// Fill the previous decision at this session's open. Size from equity
+		// at the open, priced with opens where available.
+		if len(pending) > 0 {
+			open := new(big.Rat).Set(cash)
+			for _, a := range assets {
+				if held := shares[a]; held != nil {
+					p := last[a]
+					if b, ok := bars[a][s.date]; ok {
+						p = b.open
+					}
+					open.Add(open, new(big.Rat).Mul(held, p))
+				}
+			}
+			if fillAt := openTime(s.day); !fillAt.After(decidedAt) {
+				return Result{}, fmt.Errorf("fill at %s is not after its decision at %s", fillAt, decidedAt)
+			}
+			for _, a := range assets {
+				w, want := pending[a]
+				b, ok := bars[a][s.date]
+				if !want || !ok {
+					continue
+				}
+				delete(pending, a)
+				held := shares[a]
+				if held == nil {
+					held = new(big.Rat)
+				}
+				target := new(big.Rat).Quo(new(big.Rat).Mul(w, open), b.open)
+				delta := new(big.Rat).Sub(target, held)
+				if delta.Sign() == 0 {
+					continue
+				}
+				move := new(big.Rat).Mul(b.open, slip)
+				price := new(big.Rat).Set(b.open)
+				if delta.Sign() > 0 {
+					price.Add(price, move)
+				} else {
+					price.Sub(price, move)
+				}
+				notional := new(big.Rat).Mul(delta, price)
+				cost := new(big.Rat).Mul(new(big.Rat).Abs(notional), fee)
+				cash.Sub(cash, notional)
+				cash.Sub(cash, cost)
+				shares[a] = target
+				out.Fills = append(out.Fills, Fill{Date: s.date, DecidedOn: decidedOn, Asset: a, Shares: render(delta), Open: render(b.open), Price: render(price), Fee: render(cost)})
+				book.Fills = append(book.Fills, strategy.Fill{Asset: a, Time: openTime(s.day), Quantity: render(delta), Price: render(price)})
+			}
+		}
+
+		// Mark the book at the close.
+		for _, a := range assets {
+			if b, ok := bars[a][s.date]; ok {
+				last[a] = new(big.Rat).Set(b.close)
+			}
+		}
+		next := new(big.Rat).Set(cash)
+		positions := []Position{}
+		for _, a := range assets {
+			if held := shares[a]; held != nil && held.Sign() != 0 {
+				next.Add(next, new(big.Rat).Mul(held, last[a]))
+				positions = append(positions, Position{Asset: a, Shares: render(held)})
+			}
+		}
+		ret := new(big.Rat)
+		if equity.Sign() != 0 {
+			ret.Sub(new(big.Rat).Quo(next, equity), big.NewRat(1, 1))
+		}
+		equity = next
+		day := Day{Date: s.date, DecidedAt: s.at.UTC(), Cash: render(cash), Equity: render(equity), Return: render(ret), Positions: positions}
+
+		// Decide for the next session, once the warm-up is covered.
+		book.Positions = book.Positions[:0]
+		for _, p := range positions {
+			book.Positions = append(book.Positions, strategy.Position{Asset: p.Asset, Quantity: p.Shares})
+		}
+		view, err := strategy.Build(ctx, spec, cfg.Source, s.at, assets, book)
+		if err != nil {
+			return Result{}, fmt.Errorf("view for %s: %w", s.date, err)
+		}
+		if warm(view, assets, spec.Warmup) {
+			d, err := strategy.Decide(cfg.Strategy, view)
+			if err != nil {
+				return Result{}, fmt.Errorf("decision for %s: %w", s.date, err)
+			}
+			// A decision is the complete target set: held assets it leaves out
+			// go to zero.
+			pending = map[string]*big.Rat{}
+			for _, a := range assets {
+				if held := shares[a]; held != nil && held.Sign() != 0 {
+					pending[a] = new(big.Rat)
+				}
+			}
+			for _, t := range d.Targets {
+				w, _ := new(big.Rat).SetString(t.Weight)
+				pending[t.Asset] = w
+			}
+			book.State = d.State
+			decidedOn, decidedAt, day.Decided = s.date, s.at, true
+		}
+		out.Days = append(out.Days, day)
+		p := s.day
+		prior = &p
+	}
+	for _, a := range assets {
+		if w, ok := pending[a]; ok {
+			out.Pending = append(out.Pending, strategy.Target{Asset: a, Weight: render(w)})
+		}
+	}
+	return out, nil
+}
+
+// warm reports whether every asset has at least the warm-up number of bars.
+func warm(v strategy.View, assets []string, n int) bool {
+	for _, a := range assets {
+		if len(v.Bars(a)) < max(n, 1) {
+			return false
+		}
+	}
+	return true
+}
+
+func parseActions(in []marketdata.CorporateAction) ([]action, error) {
+	out := []action{}
+	for _, c := range in {
+		ex, err := time.Parse(time.DateOnly, c.ExDate)
+		if err != nil {
+			return nil, err
+		}
+		a := action{kind: c.Kind, ex: ex}
+		switch c.Kind {
+		case "cash_dividend":
+			pay, err := time.Parse(time.DateOnly, c.PayDate)
+			amount, ok := decimal(c.Amount)
+			if err != nil || !ok {
+				return nil, errors.New("invalid dividend")
+			}
+			a.pay, a.amount = pay, amount
+		case "split":
+			from, ok1 := decimal(c.From)
+			to, ok2 := decimal(c.To)
+			if !ok1 || !ok2 || from.Sign() == 0 {
+				return nil, errors.New("invalid split")
+			}
+			a.ratio = to.Quo(to, from)
+		default:
+			return nil, fmt.Errorf("unsupported action %q", c.Kind)
+		}
+		out = append(out, a)
+	}
+	// Ex-date order, with dividends before splits on the same date.
+	slices.SortStableFunc(out, func(a, b action) int {
+		return cmp.Or(a.ex.Compare(b.ex), cmp.Compare(kindOrder(a.kind), kindOrder(b.kind)))
+	})
+	return out, nil
+}
+
+func kindOrder(kind string) int {
+	if kind == "cash_dividend" {
+		return 0
+	}
+	return 1
+}
+
+// decisionHour and decisionMinute set when a session's decision is made: 16:30 New York, half an
+// hour after the regular close and past the SIP feed's 15-minute embargo. A
+// fixed clock keeps decision times independent of later bar corrections. A bar
+// that becomes available after this time is not in that session's view.
+const decisionHour, decisionMinute = 16, 30
+
+func decisionTime(day time.Time) time.Time {
+	return time.Date(day.Year(), day.Month(), day.Day(), decisionHour, decisionMinute, 0, 0, newYork).UTC()
+}
+
+// openTime is the session's 09:30 New York open, when its fills happen.
+func openTime(day time.Time) time.Time {
+	return time.Date(day.Year(), day.Month(), day.Day(), 9, 30, 0, 0, newYork).UTC()
+}
+
+func decimal(s string) (*big.Rat, bool) {
+	if !plainDecimal.MatchString(s) {
+		return nil, false
+	}
+	return new(big.Rat).SetString(s)
+}
+
+// render rounds to Scale places, half away from zero, without trailing zeros.
+func render(r *big.Rat) string {
+	s := r.FloatString(Scale)
+	if strings.Contains(s, ".") {
+		s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	}
+	if s == "-0" {
+		return "0"
+	}
+	return s
+}
