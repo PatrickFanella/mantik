@@ -36,7 +36,7 @@ type Client struct {
 	http                       *http.Client
 	gate                       chan struct{}
 	last                       time.Time
-	interval                   time.Duration
+	interval, barInterval      time.Duration
 	dataOrigin, calendarOrigin string
 }
 
@@ -47,7 +47,7 @@ func NewClient(key, secret, feed string) (*Client, error) {
 	if !valid(key) || !valid(secret) || !slices.Contains([]string{"iex", "sip", "delayed_sip"}, feed) {
 		return nil, errors.New("alpaca reads require credentials and explicit supported feed")
 	}
-	return &Client{key: key, secret: secret, feed: feed, http: &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, gate: make(chan struct{}, 1), interval: time.Second, dataOrigin: "https://data.alpaca.markets", calendarOrigin: "https://paper-api.alpaca.markets"}, nil
+	return &Client{key: key, secret: secret, feed: feed, http: &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, gate: make(chan struct{}, 1), interval: time.Second, barInterval: barInterval, dataOrigin: "https://data.alpaca.markets", calendarOrigin: "https://paper-api.alpaca.markets"}, nil
 }
 
 func wait(ctx context.Context, d time.Duration) error {
@@ -64,8 +64,10 @@ func wait(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func (c *Client) target(q Query) (string, error) {
+func (c *Client) target(q Query, now time.Time) (string, error) {
 	switch q.Capability {
+	case "daily_bars":
+		return c.barsTarget(q, now)
 	case "latest_quotes":
 		if len(q.Symbols) < 1 || len(q.Symbols) > 10 || q.Start != "" || q.End != "" || q.PageToken != "" {
 			return "", errors.New("quote request requires 1–10 symbols")
@@ -115,9 +117,11 @@ func (c *Client) target(q Query) (string, error) {
 	}
 }
 
-// Fetch admits one in-flight operation, at least one second between attempts,
-// at most three attempts, and at most 1 MiB per response. The caller must retain
-// response bytes and attribution before normalization or any service submission.
+// Fetch admits one in-flight operation, at least one second between attempts
+// (barInterval for daily bars), at most three attempts, and at most 1 MiB per
+// response. A 429 waits for Retry-After or X-RateLimit-Reset. The caller must
+// retain response bytes and attribution before normalization or any service
+// submission.
 func (c *Client) Fetch(ctx context.Context, q Query) (Response, error) {
 	return c.fetch(ctx, q, nil, time.Now)
 }
@@ -129,7 +133,7 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 	if err := ctx.Err(); err != nil {
 		return Response{}, err
 	}
-	target, err := c.target(q)
+	target, err := c.target(q, now().UTC())
 	if err != nil {
 		return Response{}, err
 	}
@@ -139,8 +143,12 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 	default:
 		return Response{}, ErrBackpressure
 	}
+	interval := c.interval
+	if q.Capability == "daily_bars" {
+		interval = c.barInterval
+	}
 	for attempt := 1; attempt <= 3; attempt++ {
-		if err := wait(ctx, time.Until(c.last.Add(c.interval))); err != nil {
+		if err := wait(ctx, time.Until(c.last.Add(interval))); err != nil {
 			return Response{}, err
 		}
 		if observe != nil {
@@ -193,7 +201,7 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 			return Response{}, fmt.Errorf("alpaca read failed (HTTP %d; attempts %d)", res.StatusCode, attempt)
 		}
 		if res.StatusCode == 429 {
-			delay := c.interval
+			delay := interval
 			if value := res.Header.Get("Retry-After"); value != "" {
 				seconds, e := strconv.Atoi(value)
 				if e == nil && seconds >= 0 && seconds <= 30 {
@@ -206,9 +214,19 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 				if delay > 30*time.Second {
 					return Response{}, errors.New("alpaca rate limit exceeds bounded retry window")
 				}
+			} else if value := res.Header.Get("X-RateLimit-Reset"); value != "" {
+				// Market Data reports when the per-minute window resets, in Unix seconds.
+				unix, e := strconv.ParseInt(value, 10, 64)
+				if e != nil {
+					return Response{}, errors.New("alpaca rate limit has an invalid reset time")
+				}
+				delay = time.Unix(unix, 0).Sub(now())
+				if delay > 61*time.Second {
+					return Response{}, errors.New("alpaca rate limit exceeds bounded retry window")
+				}
 			}
-			if delay < c.interval {
-				delay = c.interval
+			if delay < interval {
+				delay = interval
 			}
 			if err := wait(ctx, delay); err != nil {
 				return Response{}, err

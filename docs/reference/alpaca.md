@@ -128,8 +128,48 @@ not retry. Cancellation interrupts pacing and retry waits. Errors omit provider
 bodies and credentials. These limits apply per client; a collector must own one
 client and respect account-wide entitlements and limits too.
 
+A 429 without `Retry-After` waits until the `X-RateLimit-Reset` time that
+Market Data reports, up to 61 seconds.
+
 Local HTTP tests use manufactured credentials and responses. They establish
 contracts, not real access or coverage. Those tests made no real provider requests.
+
+## Historical daily bars
+
+`Client.FetchDailyBars(ctx, symbols, start, end)` reads raw daily bars from
+`/v2/stocks/bars` for 1–100 symbols. It always asks for the SIP feed, whatever
+feed the client uses for quotes, because the free plan serves SIP history once
+a request ends at least 15 minutes ago. Other fixed parameters are
+`timeframe=1Day`, `adjustment=raw`, `sort=asc` and `limit=4000`, a limit shared
+across the request's symbols.
+
+- **Embargo.** An end later than 15 minutes ago is clamped to that point, and
+  the result reports `Clamped`. A range that lies entirely inside the embargo
+  fails without a request. A `daily_bars` query sent directly through `Fetch`
+  with a recent end is refused before it is sent.
+- **Paging.** Page tokens are followed to the last page, at most 1,000 pages.
+  A repeated or invalid token fails the call.
+- **Pacing.** Bar requests, retries included, start at least 320 ms apart:
+  187.5 per minute, under the plan's 200. Other capabilities keep the
+  one-second spacing.
+- **Raw bytes.** `Pages` keeps every successful response's original bytes and
+  SHA-256 in request order, for the archive.
+- **Bars.** Each symbol's bars come back in strictly increasing time order.
+  Prices and VWAP stay exact decimal text, because many are sub-cent. Volume
+  and trade count are integers. A page must carry both the `bars` object and
+  `next_page_token`; an empty range is `{"bars":{},"next_page_token":null}`,
+  so `null`, `{}` or another object fails. A page fails the whole call if it names a
+  symbol that was not requested, repeats or reorders a bar time, falls outside
+  the range, or carries a zero, negative or exponent-form price.
+
+Bars are keyed by symbol only. Alpaca reuses tickers, so storage must add asset
+identity before joining bars across companies (#62, #89).
+
+A real check on 2026-11-14 used the paper account's read-only token, with GET
+requests to Market Data only. Six symbols from 2016-01-01 took four pages; the
+largest was 451 KB. SPY, QQQ, IWM, AAPL and MSFT each returned 2,733 bars from
+2016-01-04 to 2026-11-13. TWTR returned 1,718 bars ending at its 2022-10-27
+delisting. The end was clamped, and every sub-cent price parsed exactly.
 
 [The private capture journal](alpaca-journal.md) now retains validated recordings
 and supports explicit collection, finite sessions, fenced submission, and isolated
