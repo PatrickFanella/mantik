@@ -358,3 +358,6 @@ var DecisionReviewRetirement string
 
 //go:embed 0115_retired_review_source_groups.sql
 var RetiredReviewSourceGroups string
+
+//go:embed 0116_daily_bars.sql
+var DailyBars string

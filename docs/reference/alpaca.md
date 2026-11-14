@@ -162,8 +162,9 @@ across the request's symbols.
   symbol that was not requested, repeats or reorders a bar time, falls outside
   the range, or carries a zero, negative or exponent-form price.
 
-Bars are keyed by symbol only. Alpaca reuses tickers, so storage must add asset
-identity before joining bars across companies (#62, #89).
+Fetched bars are keyed by symbol only. Alpaca reuses tickers, so the
+[daily bar store](daily-bars.md) keys them by asset identity, which the caller
+supplies (#89).
 
 A real check on 2026-11-14 used the paper account's read-only token, with GET
 requests to Market Data only. Six symbols from 2016-01-01 took four pages; the
