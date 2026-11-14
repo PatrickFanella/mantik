@@ -5,8 +5,9 @@ the times needed to read them as of a past clock. PostgreSQL keeps them in
 `mantik_daily_bars` (schema 116). Both pass the same contract tests in
 `internal/storage/daily_bars_test.go`.
 
-The store only keeps and serves bars. Fetching, backfill, the stock universe
-and split or dividend adjustment are separate work (#88, #89, #63).
+The store only keeps and serves bars. Fetching, backfill and the stock universe
+are separate work (#88, #89). Split and dividend adjustment happens on
+[read](adjusted-bars.md).
 
 ## A bar
 
@@ -69,7 +70,8 @@ returned then.
 
 ## Limits
 
-- Prices are raw. Adjusted reads are #63.
+- Prices are raw. [Adjusted reads](adjusted-bars.md) apply splits and
+  dividends on read.
 - There is no read by ticker and no date-range filter.
 - Nothing retires or archives bars.
 - The store does not check `AvailableAt` against the wall clock.

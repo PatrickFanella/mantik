@@ -117,3 +117,4 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Owned paper evaluation declarations](paper-evaluation-declarations.md) — immutable future windows, strategy/model pins and intended checks; no evaluation or admission result.
 
 - [Daily bar store](daily-bars.md) — raw daily bars per asset and date with published, observed and available times; idempotent writes, corrections as revisions and reads as of a clock.
+- [Adjusted daily bars](adjusted-bars.md) — split and dividend adjustment applied on read with only the actions known at the clock, and a total-return series paid on dividend pay dates.
