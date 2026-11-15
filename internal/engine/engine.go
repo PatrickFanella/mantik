@@ -17,6 +17,7 @@ import (
 	"time"
 	_ "time/tzdata"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/account"
 	"git.subcult.tv/subculture-collective/mantik/internal/marketdata"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy"
 )
@@ -76,6 +77,10 @@ type Config struct {
 	InitialCash string
 	Cost        CostModel
 	Deposits    *DepositSchedule
+	Account     account.Type
+	// SettlementDate overrides the default US equity T+1 calendar, for
+	// exceptional clearing closures. It must return a later UTC civil date.
+	SettlementDate func(time.Time) time.Time
 }
 
 // Position is a holding in shares, rendered to Scale places.
@@ -102,15 +107,37 @@ type Fill struct {
 // that value plus the deposits to the close. TWR chains the returns from the
 // start of the run, so deposits never count as profit.
 type Day struct {
-	Date      string     `json:"date"`
-	DecidedAt time.Time  `json:"decided_at"`
-	Cash      string     `json:"cash"`
-	Equity    string     `json:"equity"`
-	Deposited string     `json:"deposited"`
-	Return    string     `json:"return"`
-	TWR       string     `json:"twr"`
-	Positions []Position `json:"positions"`
-	Decided   bool       `json:"decided"`
+	Date      string        `json:"date"`
+	DecidedAt time.Time     `json:"decided_at"`
+	Cash      string        `json:"cash"`
+	Equity    string        `json:"equity"`
+	Deposited string        `json:"deposited"`
+	Return    string        `json:"return"`
+	TWR       string        `json:"twr"`
+	Positions []Position    `json:"positions"`
+	Decided   bool          `json:"decided"`
+	Account   AccountStatus `json:"account"`
+}
+
+// AccountStatus is the capped book's cash and margin readback at the close.
+type AccountStatus struct {
+	EffectiveType        account.Type `json:"effective_type"`
+	SettledCash          string       `json:"settled_cash"`
+	UnsettledCash        string       `json:"unsettled_cash"`
+	OvernightBuyingPower string       `json:"overnight_buying_power"`
+	Maintenance          string       `json:"maintenance"`
+	MarginExcess         string       `json:"margin_excess"`
+	MaintenanceShortfall string       `json:"maintenance_shortfall"`
+}
+
+// Refusal is an attempted fill rejected by the account rules. The decision
+// is consumed, so a later attempt needs a new strategy decision.
+type Refusal struct {
+	Date      string       `json:"date"`
+	DecidedOn string       `json:"decided_on"`
+	Asset     string       `json:"asset"`
+	Shares    string       `json:"shares"`
+	Code      account.Code `json:"code"`
 }
 
 // Result is a whole run. Pending holds the last decision's targets, which
@@ -125,6 +152,8 @@ type Result struct {
 	Fills       []Fill            `json:"fills"`
 	Deposits    []Deposit         `json:"deposits"`
 	Pending     []strategy.Target `json:"pending"`
+	Account     account.Type      `json:"account"`
+	Refusals    []Refusal         `json:"refusals"`
 }
 
 type session struct {
@@ -162,7 +191,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		return Result{}, err
 	}
 	cash, ok := decimal(cfg.InitialCash)
-	if !ok || cash.Sign() <= 0 || cfg.Start.IsZero() || cfg.End.Before(cfg.Start) || len(cfg.Assets) == 0 {
+	if !ok || cash.Sign() <= 0 || cfg.Start.IsZero() || cfg.End.Before(cfg.Start) || len(cfg.Assets) == 0 || !cfg.Account.Valid() {
 		return Result{}, ErrInvalidConfig
 	}
 	assets := slices.Clone(cfg.Assets)
@@ -186,7 +215,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		for _, b := range s.Bars {
 			o, ok1 := decimal(b.Raw.Open)
 			c, ok2 := decimal(b.Raw.Close)
-			if !ok1 || !ok2 {
+			if !ok1 || !ok2 || o.Sign() <= 0 || c.Sign() <= 0 {
 				return Result{}, fmt.Errorf("%s bar %s has an invalid raw price", a, b.Date)
 			}
 			bars[a][b.Date] = bar{o, c}
@@ -212,7 +241,16 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		}
 	}
 
-	out := Result{StrategyID: id, Cost: cfg.Cost, Start: cfg.Start.UTC(), End: cfg.End.UTC(), InitialCash: render(cash), Days: []Day{}, Fills: []Fill{}, Deposits: []Deposit{}, Pending: []strategy.Target{}}
+	kind := cfg.Account
+	if kind == "" {
+		kind = account.Cash
+	}
+	funds := account.New(kind, cash)
+	settlementDate := cfg.SettlementDate
+	if settlementDate == nil {
+		settlementDate = account.SettlementDate
+	}
+	out := Result{StrategyID: id, Cost: cfg.Cost, Start: cfg.Start.UTC(), End: cfg.End.UTC(), InitialCash: render(cash), Days: []Day{}, Fills: []Fill{}, Deposits: []Deposit{}, Pending: []strategy.Target{}, Account: kind, Refusals: []Refusal{}}
 	growth := big.NewRat(1, 1) // chained time-weighted growth
 	shares := map[string]*big.Rat{}
 	last := map[string]*big.Rat{} // last raw close seen per asset
@@ -226,6 +264,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
+		funds.Advance(s.day)
 		// Corporate actions since the previous session, in ex-date order with
 		// dividends first on a shared date: a dividend is earned on the shares
 		// held before its ex-date, which includes any earlier split in the gap.
@@ -255,9 +294,10 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 				kept = append(kept, d)
 				continue
 			}
-			cash.Add(cash, d.cash)
+			funds.AddCash(d.cash)
 		}
 		dividends = kept
+		cash = funds.Cash()
 
 		// Deposits due by this session's open arrive first, as settled cash.
 		// Each scheduled deposit is applied once, at the first session open at
@@ -284,7 +324,8 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 				atOpen.Add(atOpen, new(big.Rat).Mul(held, p))
 			}
 		}
-		cash.Add(cash, deposited)
+		funds.AddCash(deposited)
+		cash = funds.Cash()
 
 		// Fill the previous decision at this session's open, sized from the
 		// equity at the open including the deposits.
@@ -293,7 +334,17 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 			if fillAt := openTime(s.day); !fillAt.After(decidedAt) {
 				return Result{}, fmt.Errorf("fill at %s is not after its decision at %s", fillAt, decidedAt)
 			}
-			for _, a := range assets {
+			settlesOn := settlementDate(s.day)
+			if !settlesOn.After(s.day) || !settlesOn.Equal(time.Date(settlesOn.Year(), settlesOn.Month(), settlesOn.Day(), 0, 0, 0, 0, time.UTC)) {
+				return Result{}, fmt.Errorf("%w: settlement date", ErrInvalidConfig)
+			}
+			// Reduce existing positions before opening new ones. Ties use asset
+			// order. Cash sales still cannot fund another buy until settlement.
+			fillOrder := slices.Clone(assets)
+			slices.SortStableFunc(fillOrder, func(a, b string) int {
+				return cmp.Compare(reductionOrder(a, pending, shares, bars, s.date, open), reductionOrder(b, pending, shares, bars, s.date, open))
+			})
+			for _, a := range fillOrder {
 				w, want := pending[a]
 				b, ok := bars[a][s.date]
 				if !want || !ok {
@@ -304,7 +355,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 				if held == nil {
 					held = new(big.Rat)
 				}
-				target := quantize(new(big.Rat).Quo(new(big.Rat).Mul(w, open), b.open))
+				target := truncateShares(new(big.Rat).Quo(new(big.Rat).Mul(w, open), b.open))
 				delta := new(big.Rat).Sub(target, held)
 				if delta.Sign() == 0 {
 					continue
@@ -316,10 +367,15 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 				} else {
 					price.Sub(price, move)
 				}
-				notional := quantize(new(big.Rat).Mul(delta, price))
+				notional := new(big.Rat).Mul(delta, price)
 				cost := quantize(new(big.Rat).Mul(new(big.Rat).Abs(notional), fee))
-				cash.Sub(cash, notional)
-				cash.Sub(cash, cost)
+				positions := markedPositions(assets, shares, last, bars, s.date)
+				trade := account.Trade{Asset: a, Quantity: delta, Price: price, Fee: cost}
+				if code := funds.Execute(positions, trade, account.Overnight, s.day, settlesOn); code != "" {
+					out.Refusals = append(out.Refusals, Refusal{Date: s.date, DecidedOn: decidedOn, Asset: a, Shares: render(delta), Code: code})
+					continue
+				}
+				cash = funds.Cash()
 				shares[a] = target
 				out.Fills = append(out.Fills, Fill{Date: s.date, DecidedOn: decidedOn, Asset: a, Shares: render(delta), Open: render(b.open), Price: render(price), Fee: render(cost)})
 				book.Fills = append(book.Fills, strategy.Fill{Asset: a, Time: openTime(s.day), Quantity: render(delta), Price: render(price)})
@@ -355,6 +411,8 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		equity = next
 		twr := new(big.Rat).Sub(growth, big.NewRat(1, 1))
 		day := Day{Date: s.date, DecidedAt: s.at.UTC(), Cash: render(cash), Equity: render(equity), Deposited: render(deposited), Return: render(ret), TWR: render(twr), Positions: positions}
+		status := funds.Status(markedPositions(assets, shares, last, nil, ""))
+		day.Account = AccountStatus{EffectiveType: status.EffectiveType, SettledCash: render(funds.Settled()), UnsettledCash: render(new(big.Rat).Sub(cash, funds.Settled())), OvernightBuyingPower: render(status.OvernightBuyingPower), Maintenance: render(status.Maintenance), MarginExcess: render(status.Excess), MaintenanceShortfall: render(status.Shortfall)}
 
 		// Decide for the next session, once the warm-up is covered.
 		book.Positions = book.Positions[:0]
@@ -395,6 +453,39 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		}
 	}
 	return out, nil
+}
+
+func markedPositions(assets []string, shares, last map[string]*big.Rat, bars map[string]map[string]bar, date string) []account.Position {
+	positions := make([]account.Position, 0, len(assets))
+	for _, a := range assets {
+		q, p := shares[a], last[a]
+		if q == nil {
+			q = new(big.Rat)
+		}
+		if b, ok := bars[a][date]; ok {
+			p = b.open
+		}
+		// A never-held asset without a bar has no value or requirement.
+		if p == nil {
+			p = big.NewRat(1, 1)
+		}
+		positions = append(positions, account.Position{Asset: a, Quantity: q, Price: p})
+	}
+	return positions
+}
+
+func reductionOrder(a string, pending, shares map[string]*big.Rat, bars map[string]map[string]bar, date string, equity *big.Rat) int {
+	w, want := pending[a]
+	b, available := bars[a][date]
+	held := shares[a]
+	if !want || !available || held == nil || held.Sign() == 0 {
+		return 1
+	}
+	target := truncateShares(new(big.Rat).Quo(new(big.Rat).Mul(w, equity), b.open))
+	if target.Sign()*held.Sign() >= 0 && new(big.Rat).Abs(target).Cmp(new(big.Rat).Abs(held)) < 0 {
+		return 0
+	}
+	return 1
 }
 
 // warm reports whether every asset has at least the warm-up number of bars.
@@ -496,4 +587,11 @@ func render(r *big.Rat) string {
 		return "0"
 	}
 	return s
+}
+
+// Truncate order quantities toward zero so rounding cannot create a cash debit
+// on an otherwise fully funded, zero-cost buy.
+func truncateShares(r *big.Rat) *big.Rat {
+	n := new(big.Int).Mul(r.Num(), stateScale)
+	return new(big.Rat).SetFrac(n.Quo(n, r.Denom()), stateScale)
 }

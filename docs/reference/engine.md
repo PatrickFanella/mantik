@@ -16,6 +16,8 @@ trading later.
 | `InitialCash` | Starting cash, as a plain decimal. |
 | `Cost` | The cost model. |
 | `Deposits` | Optional deposit schedule. The book opens at `Start`. |
+| `Account` | `cash` (the default) or `margin`; see [account rules](account-rules.md). |
+| `SettlementDate` | Optional calendar override returning the later UTC settlement date for a trade date. |
 
 The engine reads each asset as of `End` to lay out sessions, raw prices and
 corporate actions. A session is a bar date. Its decision time is fixed at
@@ -32,12 +34,19 @@ and every fill happens after the decision it carries out.
    dividend is earned on the shares held before its ex-date, including any
    earlier split between the two sessions.
 2. **Dividends** whose pay date has arrived are added to cash.
-3. **Deposits** scheduled at or before this session's open are added to cash.
+3. **Settlement and deposits.** Sale proceeds due by this session settle.
+   Deposits scheduled at or before this session's open are added as settled cash.
 4. **Fills.** The previous session's decision fills at this session's raw
    open. Each asset's target shares are its weight times the equity at the
    open, divided by the open. An asset without a bar this session keeps its
    order for the next one. No fill ever uses a price from the session that
-   made the decision.
+   made the decision. Reductions of existing positions run first, then other
+   orders, with assets sorted within each group. Every fill must pass the
+   account rules, including its fees and slippage. A refusal consumes the
+   target and records its date, decision date, asset, shares and reason code in
+   `Result.Refusals`; the strategy must decide again to retry. Orders are
+   accepted or refused in full. A 100% cash target with nonzero costs can be
+   refused, so a strategy must leave room for costs.
 5. **Mark.** Equity is cash plus shares at the close, or at the last close for
    an asset without a bar. The daily return is time-weighted (see below).
 6. **Decision.** Once every asset has at least `Warmup` bars (at least one),
@@ -85,18 +94,28 @@ basis points of slippage each way.
 
 ## Results
 
-The engine keeps cash, shares, split-adjusted prices and the chained return at
-a fixed 18 decimal places, rounded half away from zero after every step. Exact
+The engine keeps shares, split-adjusted prices and the chained return at
+a fixed 18 decimal places, rounded half away from zero after every step except
+order quantities, which truncate toward zero to avoid a rounding overdraft.
+Cash arithmetic is exact; fill fees round to 18 places. Exact
 fractions would grow without bound over a long run. Results are rendered to
 12 decimal places. Assets and dates are processed in sorted order. The same
 inputs therefore give byte-identical JSON. An 11-year daily run of one asset
 with rebalancing every session takes about 45 seconds.
 
+Each day includes the effective account type, settled and unsettled cash,
+total overnight buying power, maintenance requirement, margin excess and
+maintenance shortfall. Buying power is total permitted exposure, not unused
+order capacity. Market losses are reported without forcing liquidation.
+
 ## Limits
 
-- One strategy per run, with no sleeves or account rules. Cash can go slightly
-  negative by the fees of a full-weight buy. Cash and margin rules (#66) and
-  the capital distributor (#73) come later.
+- One strategy per run, with no sleeves. The capital distributor (#73) comes
+  later. Strategy weights still sum to at most 100% gross; the account module
+  separately supports the 2x overnight and intraday limits.
+- Ordinary equities only for margin calculations. Instrument-specific house
+  requirements, non-marginable securities, borrow availability and costs,
+  financing interest, and option collateral need their own policy before use.
 - Fractional shares, with no minimum order size.
 - Fills use the latest stored revision of each bar and the corporate actions
   known at `End`.
