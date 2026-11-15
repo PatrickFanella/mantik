@@ -18,12 +18,15 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/marketdata"
+	"git.subcult.tv/subculture-collective/mantik/internal/options"
 )
 
 // KindDailyBars is daily bars adjusted for splits and dividends, read as of
-// the decision time. It is the only data kind so far; quotes, option chains,
-// fundamentals and Kalshi books will add their own.
+// the decision time.
 const KindDailyBars = "daily_bars_adjusted"
+
+// KindOptionChains supplies indicative option chains for the view's underlyings.
+const KindOptionChains = "option_chains_indicative"
 
 const (
 	// MaxStateBytes bounds the state a strategy carries between decisions.
@@ -41,7 +44,7 @@ var (
 	paramPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	assetPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:._-]{0,63}$`)
 	weightText   = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]{1,12})?$`)
-	kinds        = []string{KindDailyBars}
+	kinds        = []string{KindDailyBars, KindOptionChains}
 )
 
 // Strategy is one version of a strategy. Decide must depend only on the view:
@@ -138,6 +141,7 @@ type View struct {
 	at        time.Time
 	assets    []string
 	bars      map[string][]marketdata.AdjustedBar
+	chains    map[string]options.Chain
 	positions []Position
 	fills     []Fill
 	state     []byte
@@ -154,6 +158,14 @@ func (v View) Assets() []string { return slices.Clone(v.assets) }
 // first. It is empty unless the spec declares KindDailyBars.
 func (v View) Bars(asset string) []marketdata.AdjustedBar { return slices.Clone(v.bars[asset]) }
 
+// OptionChain returns the underlying asset's indicative chain and whether it
+// was declared and loaded. Its entries are copied; estimates expose their status.
+func (v View) OptionChain(asset string) (options.Chain, bool) {
+	c, ok := v.chains[asset]
+	c.Entries = slices.Clone(c.Entries)
+	return c, ok
+}
+
 func (v View) Positions() []Position { return slices.Clone(v.positions) }
 func (v View) Fills() []Fill         { return slices.Clone(v.fills) }
 
@@ -164,6 +176,13 @@ func (v View) State() []byte { return slices.Clone(v.state) }
 // over marketdata.Read with that asset's corporate actions.
 type BarSource interface {
 	AdjustedBars(ctx context.Context, assetID string, asOf time.Time) (marketdata.Series, error)
+}
+
+// ChainSource is the additional capability a source must implement when a spec
+// declares KindOptionChains. The source binds stable asset IDs to underlying
+// symbols and calls options.Read with explicit same-session spot and assumptions.
+type ChainSource interface {
+	OptionChain(ctx context.Context, assetID string, asOf time.Time) (options.Chain, error)
 }
 
 // Build reads the view for one decision. It loads only the data kinds the
@@ -184,7 +203,7 @@ func Build(ctx context.Context, spec Spec, src BarSource, at time.Time, assets [
 	if len(book.State) > MaxStateBytes {
 		return View{}, errors.New("strategy state is too large")
 	}
-	v := View{at: at.UTC(), assets: assets, bars: map[string][]marketdata.AdjustedBar{}, state: slices.Clone(book.State)}
+	v := View{at: at.UTC(), assets: assets, bars: map[string][]marketdata.AdjustedBar{}, chains: map[string]options.Chain{}, state: slices.Clone(book.State)}
 	for _, f := range book.Fills {
 		if f.Time.After(at) {
 			return View{}, fmt.Errorf("%w: fill at %s", ErrFutureData, f.Time.Format(time.RFC3339Nano))
@@ -193,6 +212,9 @@ func Build(ctx context.Context, spec Spec, src BarSource, at time.Time, assets [
 	v.fills = slices.Clone(book.Fills)
 	v.positions = slices.Clone(book.Positions)
 	if slices.Contains(spec.Data, KindDailyBars) {
+		if src == nil {
+			return View{}, errors.New("daily bars require a source")
+		}
 		for _, a := range assets {
 			s, err := src.AdjustedBars(ctx, a, at)
 			if err != nil {
@@ -213,6 +235,23 @@ func Build(ctx context.Context, spec Spec, src BarSource, at time.Time, assets [
 			}
 			// The source may reuse its slice, so the view keeps its own copy.
 			v.bars[a] = slices.Clone(s.Bars)
+		}
+	}
+	if slices.Contains(spec.Data, KindOptionChains) {
+		chains, ok := src.(ChainSource)
+		if !ok {
+			return View{}, errors.New("option chains require a chain-capable source")
+		}
+		for _, asset := range assets {
+			c, err := chains.OptionChain(ctx, asset, at)
+			if err != nil {
+				return View{}, fmt.Errorf("chain for %s: %w", asset, err)
+			}
+			if err := c.Validate(at, asset); err != nil {
+				return View{}, fmt.Errorf("%w: chain for %s: %v", ErrFutureData, asset, err)
+			}
+			c.Entries = slices.Clone(c.Entries)
+			v.chains[asset] = c
 		}
 	}
 	return v, nil

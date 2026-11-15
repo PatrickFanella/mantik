@@ -16,6 +16,7 @@ import (
 var AllowedImports = []string{
 	"cmp", "errors", "fmt", "math", "math/big", "slices", "sort", "strconv", "strings", "time",
 	"git.subcult.tv/subculture-collective/mantik/internal/marketdata",
+	"git.subcult.tv/subculture-collective/mantik/internal/indicators",
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy",
 }
 

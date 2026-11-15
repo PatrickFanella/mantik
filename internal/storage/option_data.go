@@ -199,3 +199,77 @@ func (p *Postgres) OptionDataAsOf(ctx context.Context, symbol string, at time.Ti
 	}
 	return out, rows.Err()
 }
+
+// OptionChainAsOf discovers an underlying's known contracts and latest daily
+// closes. Availability is filtered before selecting revisions or market dates,
+// so a later correction cannot withdraw an earlier point-in-time observation.
+// Trades are excluded: the chain pairs daily closes with a same-session spot.
+func (m *Memory) OptionChainAsOf(ctx context.Context, underlying string, at time.Time) ([]OptionRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !dailyBarSymbol.MatchString(underlying) || at.IsZero() {
+		return nil, ErrOptionData
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	latest := map[string]OptionRecord{}
+	for _, r := range m.optionData {
+		if r.Underlying != underlying || r.AvailableAt.After(at) || (r.Kind != "contract" && r.Kind != "bar") {
+			continue
+		}
+		key := r.Symbol + "/" + r.Kind
+		old, ok := latest[key]
+		if !ok || newerChainRecord(r, old) {
+			latest[key] = r
+		}
+	}
+	out := make([]OptionRecord, 0, len(latest))
+	for _, r := range latest {
+		r.Data = bytes.Clone(r.Data)
+		out = append(out, r)
+	}
+	slices.SortFunc(out, func(a, b OptionRecord) int { return strings.Compare(a.Symbol+"/"+a.Kind, b.Symbol+"/"+b.Kind) })
+	return out, nil
+}
+
+func newerChainRecord(a, b OptionRecord) bool {
+	// Reference chronology follows availability, price chronology follows the
+	// market date first. A late old-session correction is not today's close.
+	if a.Kind == "bar" && !a.OccurredAt.Equal(b.OccurredAt) {
+		return a.OccurredAt.After(b.OccurredAt)
+	}
+	if !a.AvailableAt.Equal(b.AvailableAt) {
+		return a.AvailableAt.After(b.AvailableAt)
+	}
+	return a.Key > b.Key
+}
+
+// OptionChainAsOf is the PostgreSQL equivalent of Memory.OptionChainAsOf.
+func (p *Postgres) OptionChainAsOf(ctx context.Context, underlying string, at time.Time) ([]OptionRecord, error) {
+	if !dailyBarSymbol.MatchString(underlying) || at.IsZero() {
+		return nil, ErrOptionData
+	}
+	rows, err := p.pool.Query(ctx, `SELECT DISTINCT ON(symbol,kind) record
+		FROM mantik_option_data WHERE convert_from(record,'UTF8')::jsonb->>'underlying'=$1 AND available_at<=$2 AND kind IN ('contract','bar')
+		ORDER BY symbol,kind,
+		CASE WHEN kind='bar' THEN (convert_from(record,'UTF8')::jsonb->>'occurred_at')::timestamptz END DESC,
+		available_at DESC,source_key DESC`, underlying, at)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []OptionRecord{}
+	for rows.Next() {
+		var raw []byte
+		var r OptionRecord
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(raw, &r); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

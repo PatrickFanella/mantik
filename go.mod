@@ -2,7 +2,10 @@ module git.subcult.tv/subculture-collective/mantik
 
 go 1.26.9
 
-require github.com/jackc/pgx/v5 v5.9.2
+require (
+	github.com/jackc/pgx/v5 v5.9.2
+	github.com/markcheno/go-talib v0.0.0-20260617004048-4ff5e103edd9
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect

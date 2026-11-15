@@ -184,4 +184,9 @@ The [`stock-assets` and `stock-universe` commands](docs/reference/stock-universe
 
 [`options-backfill`](docs/reference/option-data.md) retains resumable contract listings and explicitly indicative daily option bars and trades in an isolated, append-only store.
 
+Strategies can read [point-in-time indicative option chains](docs/reference/option-chains.md)
+with explicit same-session spot inputs and reference-tested European-model IV and Greeks.
+The pure [indicator adapter](docs/reference/indicators.md) provides SMA, EMA, RSI,
+Wilder ATR, Bollinger bands and rolling return volatility with maintained TA-Lib parity tests.
+
 Daily stock history can be collected by the opt-in [`serve` daily-bar worker](docs/reference/daily-bars-worker.md), with missing-session catch-up and its own readiness scope. The [independent SPY comparison](docs/reference/spy-comparison.md) checks the retained history against another source; its explicit primary-close check passes at the unchanged 5 bps tolerance, with the original raw-SIP and Yahoo-only failures retained as diagnostics.

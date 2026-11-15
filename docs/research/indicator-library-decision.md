@@ -3,6 +3,11 @@
 **Decision date:** 2026-11-15
 **Decision:** use [`github.com/markcheno/go-talib`](https://github.com/markcheno/go-talib) at commit [`4ff5e103edd951315cf0e1bafd8602cb20eb247f`](https://github.com/markcheno/go-talib/tree/4ff5e103edd951315cf0e1bafd8602cb20eb247f) for #76. Do not add it to `go.mod` until that issue implements the adapter and parity tests.
 
+**Wave 6 implementation:** the [maintained adapter](../reference/indicators.md)
+now pins this revision and retains the adjusted-SPY parity fixture and reference
+generator required below. The spike observations in this note remain dated
+evidence of the original selection.
+
 ## Why
 
 Mantik's daily strategy view supplies an ordered in-memory bar series. `go-talib` takes `[]float64` series directly, returns full-size `[]float64` outputs, and exposes the required functions: `Sma`, `Ema`, `Rsi`, `Atr`, `BBands`, and `StdDev`. That is a direct fit for a deterministic strategy helper that materializes the already point-in-time-filtered bars from `strategy.View`.

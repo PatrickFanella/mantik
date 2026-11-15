@@ -14,6 +14,7 @@ import (
 type optionBackend interface {
 	RecordOptionData(context.Context, []OptionRecord) (OptionReceipt, error)
 	OptionDataAsOf(context.Context, string, time.Time) ([]OptionRecord, error)
+	OptionChainAsOf(context.Context, string, time.Time) ([]OptionRecord, error)
 }
 
 func TestMemoryOptionData(t *testing.T) { optionContracts(t, NewMemory()) }
@@ -95,5 +96,48 @@ func optionContracts(t *testing.T, s optionBackend) {
 	latest, err = s.OptionDataAsOf(ctx, r.Symbol, changed.AvailableAt)
 	if err != nil || len(latest) != 2 {
 		t.Fatal("concurrent replay duplicated", latest, err)
+	}
+	// Discovery must choose price chronology before correction chronology and
+	// filter availability before selecting a reference or market revision.
+	chain, err := s.OptionChainAsOf(ctx, "SPY", at.Add(-time.Microsecond))
+	if err != nil || len(chain) != 0 {
+		t.Fatal("future chain", chain, err)
+	}
+	chain, err = s.OptionChainAsOf(ctx, "SPY", changed.AvailableAt)
+	if err != nil || len(chain) != 1 || string(chain[0].Data) != `{"c":1.5}` {
+		t.Fatal("chain correction", chain, err)
+	}
+	next := r
+	next.Key = "2024-02-03"
+	next.OccurredAt = r.OccurredAt.Add(24 * time.Hour)
+	next.Data = json.RawMessage(`{"c":3}`)
+	if _, err := s.RecordOptionData(ctx, []OptionRecord{next}); err != nil {
+		t.Fatal(err)
+	}
+	lateOld := changed
+	lateOld.AvailableAt = at.Add(2 * time.Hour)
+	lateOld.ObservedAt = lateOld.AvailableAt
+	lateOld.Data = json.RawMessage(`{"c":99}`)
+	ref := r
+	ref.Kind = "contract"
+	ref.Feed = "reference"
+	ref.FeedSelection = ""
+	ref.Key = "id"
+	ref.OccurredAt = at
+	ref.Data = json.RawMessage(`{"id":"id"}`)
+	other := r
+	other.Symbol = "QQQ240202C00490000"
+	other.Underlying = "QQQ"
+	if _, err := s.RecordOptionData(ctx, []OptionRecord{lateOld, ref, other}); err != nil {
+		t.Fatal(err)
+	}
+	chain, err = s.OptionChainAsOf(ctx, "SPY", lateOld.AvailableAt)
+	if err != nil || len(chain) != 2 || chain[0].Kind != "bar" || string(chain[0].Data) != `{"c":3}` || chain[1].Kind != "contract" {
+		t.Fatal("chain chronology", chain, err)
+	}
+	chain[0].Data[0] = 'x'
+	again, err := s.OptionChainAsOf(ctx, "SPY", lateOld.AvailableAt)
+	if err != nil || string(again[0].Data) != `{"c":3}` {
+		t.Fatal("mutable chain storage", again, err)
 	}
 }

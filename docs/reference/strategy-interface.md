@@ -21,7 +21,7 @@ type Strategy interface {
 | `Name` | Lower-case name, for example `equal-weight`. |
 | `Version` | The strategy code's version. Bump it whenever the code's behaviour changes. |
 | `Params` | Parameters as text, keyed by lower-case names. |
-| `Data` | The data kinds the strategy reads. Only `daily_bars_adjusted` exists so far. |
+| `Data` | The data kinds the strategy reads: `daily_bars_adjusted` and `option_chains_indicative`. |
 | `Warmup` | Bars needed before the first decision. The engine (#65) waits for them. |
 
 `Spec.ID()` is `strategy-` followed by the SHA-256 of the name, version,
@@ -37,6 +37,10 @@ kinds always give the same ID. Any change to one of them gives a new ID.
   when the spec declares `daily_bars_adjusted`. The source is typically
   [`marketdata.Read`](adjusted-bars.md) with that asset's corporate actions.
 - **Book:** the strategy's own positions, fills and state, kept by the engine.
+- **Option chains:** for declared `option_chains_indicative`, the source must
+  also implement `ChainSource`. `View.OptionChain(assetID)` returns a copied
+  [indicative chain](option-chains.md), including pricing assumptions, source
+  clocks and explicit estimate availability. Asset IDs still name underlyings.
 
 Build fails with `ErrFutureData` when the source returns a bar available after
 `at`, a corporate action known after `at`, or a series read for another clock,
@@ -66,7 +70,7 @@ also checks the source of a strategy package:
 
 - imports must come from `AllowedImports`: `cmp`, `errors`, `fmt`, `math`,
   `math/big`, `slices`, `sort`, `strconv`, `strings`, `time`, and Mantik's
-  `marketdata` and `strategy` packages;
+  `marketdata`, `indicators` and `strategy` packages;
 - the time package's clock functions (`Now`, `Since`, `Until`, `Sleep`,
   `After`, `AfterFunc`, `Tick`, `NewTicker`, `NewTimer`) are refused, under any
   import name, and `time` cannot be dot-imported.
@@ -75,9 +79,12 @@ So a strategy cannot reach the network, files, processes or randomness, place
 orders, or read the clock. A test runs the audit over every package under
 `internal/strategy/`, so a new strategy that breaks a rule fails `make verify`.
 
+The pure [indicator adapter](indicators.md) computes only from supplied adjusted
+series. Its dependency is not directly allowed in strategy packages.
+
 ## Limits
 
-- Only stock targets and daily bars. Option structures, Kalshi orders and
-  other data kinds come with their epics.
+- Targets remain stock weights. Indicative option chains supply research data;
+  option structures, execution and Greek risk limits come with later issues.
 - `Version` is declared by hand; the audit does not detect a behaviour change
   without a version bump.
