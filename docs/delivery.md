@@ -74,4 +74,4 @@ paper-only implementation. Alpaca real-money execution is a planned stage after
 paper profitability qualification and an explicit bounded live-admission review.
 Recording this direction does not activate a live account or authorize orders;
 existing paper issue acceptance gates remain unchanged. See
-[the planned live stage](roadmap.md#planned-m8-alpaca-live-admission-and-bounded-rollout).
+[the planned live stage](roadmap.md#after-10).

@@ -1,8 +1,8 @@
 # Mantik trading system design
 
 Status: approved by the owner on 2026-11-13. This document
-replaces the direction of the
-[2026-11-13 next steps](../roadmap.md#next-steps-2026-11-13). The
+sets the direction followed by the
+[current roadmap](../roadmap.md#next-steps). The
 [workflow review](https://claude.ai/artifact/TSXsuuFA5WPgSBAQMb3dJ1) has the
 diagrams, the verdict on every Augr workflow and the strategy catalogue this
 design draws on.

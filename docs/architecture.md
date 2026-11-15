@@ -354,7 +354,7 @@ and a separate live-admission review. Current operations remain paper-only. A
 live adapter must preserve allocator ownership, finalized-decision safety,
 environment/account isolation, and reconciliation of unknown or partial effects.
 Paper decisions and fixture effect records cannot authorize live orders. See
-[the planned live stage](roadmap.md#planned-m8-alpaca-live-admission-and-bounded-rollout).
+[the planned live stage](roadmap.md#after-10).
 A healthy service or successful fixture creates no real-market qualification
 evidence.
 
