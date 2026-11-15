@@ -117,6 +117,9 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Owned paper evaluation declarations](paper-evaluation-declarations.md) — immutable future windows, strategy/model pins and intended checks; no evaluation or admission result.
 
 - [Daily bar store](daily-bars.md) — raw daily bars per asset and date with published, observed and available times; idempotent writes, corrections as revisions and reads as of a clock.
+- [Alpaca paper orders](alpaca-paper.md) — durable one-submit intents, client-ID recovery, raw fills and position reconciliation against the fixed paper endpoint.
+- [Kalshi public data](kalshi-data.md) — weather markets, resolution rules and point-in-time order books without credentials.
+- [Subscription model calls](subscription-models.md) — bounded host-login research calls, daily budget, backoff and hash-only call records.
 - [Adjusted daily bars](adjusted-bars.md) — split and dividend adjustment applied on read with only the actions known at the clock, and a total-return series paid on dividend pay dates.
 - [Strategy interface](strategy-interface.md) — one interface for every strategy: a point-in-time view in, sleeve weights out, a content-hash identity, and an import audit that keeps the network and clock out.
 - [Daily engine](engine.md) — steps sessions, fills each decision at the next open with a versioned cost model, applies splits, dividends and scheduled deposits, and reports time-weighted returns with byte-identical results.

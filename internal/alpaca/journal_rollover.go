@@ -14,7 +14,7 @@ import (
 
 const rolloverPending = "rollover-pending.json"
 
-var rolloverKeep = []string{"journal.json", "binding.json", "lock", rolloverPending}
+var rolloverKeep = []string{"journal.json", "binding.json", "paper-account.json", "lock", rolloverPending}
 
 // JournalRollover records one verified export of a journal's working files.
 // Records chain by hash and stay in the journal, so a later archive or audit
@@ -79,6 +79,8 @@ func rolloverCanonical(r JournalRollover) string {
 
 // finishRollover removes exported working files once a rollover is recorded.
 // It runs again on open, so a crash partway through completes on the next use.
+// Paper account/intent fences remain live: exporting them never authorizes
+// submitting that client ID again or rebinding the journal to another account.
 func (j *Journal) finishRollover() error {
 	if _, err := j.read(rolloverPending, 4096); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -90,7 +92,7 @@ func (j *Journal) finishRollover() error {
 		return err
 	}
 	for _, name := range names {
-		if slices.Contains(rolloverKeep, name) || strings.HasPrefix(name, "rollover-") {
+		if slices.Contains(rolloverKeep, name) || strings.HasPrefix(name, "rollover-") || strings.HasPrefix(name, "paper-intent-") {
 			continue
 		}
 		if err := j.root.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {

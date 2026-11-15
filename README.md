@@ -46,6 +46,15 @@ quotes and zero fees or slippage.
 - **Recorded strategy trials**: the [trial registry](docs/reference/strategy-trials.md)
   saves attempts before execution, retains daily returns and outcomes, and
   counts failed and unfinished attempts in each strategy family's search total.
+- **Paper stock orders**: the separate [Alpaca paper adapter](docs/reference/alpaca-paper.md)
+  submits once per durable client ID, recovers ambiguous submissions, retains
+  raw fills and reports account-position differences. It is not yet wired to
+  the capped strategy book.
+- **Kalshi data**: [public collection](docs/reference/kalshi-data.md) retains
+  weather-market rules and order-book observations for point-in-time reads.
+- **Subscription research calls**: the [model adapter](docs/reference/subscription-models.md)
+  runs bounded Claude and Codex prompts using host logins, with a durable daily
+  call budget and hash records, independently of trading.
 - **Paper accounts and allocation**: operator-declared paper capital, immutable
   strategy definitions and allocation policies, a synthetic reservation ledger,
   and paged decision, outcome and allocation history.

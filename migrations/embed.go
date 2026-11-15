@@ -366,3 +366,6 @@ var DailyBars string
 //
 //go:embed 0117_strategy_trials.sql
 var StrategyTrials string
+
+//go:embed 0118_kalshi_data.sql
+var KalshiData string
