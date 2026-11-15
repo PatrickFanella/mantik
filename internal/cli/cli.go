@@ -28,6 +28,9 @@ import (
 const defaultURL = "http://127.0.0.1:40880"
 
 func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
+	if len(args) > 0 && (args[0] == "stock-assets" || args[0] == "stock-universe") {
+		return runStockUniverse(ctx, args[0], args[1:], out, errOut)
+	}
 	if len(args) > 0 && args[0] == "bars-backfill" {
 		return runBarsBackfill(ctx, args[1:], out, errOut)
 	}

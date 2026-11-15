@@ -23,6 +23,7 @@ type Query struct {
 	Symbols    []string
 	Start      string
 	End        string
+	Status     string `json:"status,omitempty"`
 }
 type Response struct {
 	Original   string
@@ -67,6 +68,11 @@ func wait(ctx context.Context, d time.Duration) error {
 
 func (c *Client) target(q Query, now time.Time) (string, error) {
 	switch q.Capability {
+	case "stock_assets":
+		if len(q.Symbols) != 0 || q.Start != "" || q.End != "" || q.PageToken != "" || !slices.Contains([]string{"active", "inactive"}, q.Status) {
+			return "", errors.New("invalid asset list query")
+		}
+		return c.calendarOrigin + "/v2/assets?" + url.Values{"asset_class": {"us_equity"}, "status": {q.Status}}.Encode(), nil
 	case "daily_bars":
 		return c.barsTarget(q, now)
 	case "latest_quotes":
@@ -183,20 +189,24 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 			}
 			continue
 		}
-		raw, readErr := io.ReadAll(io.LimitReader(res.Body, MaxBytes+1))
+		limit := MaxBytes
+		if q.Capability == "stock_assets" {
+			limit = 16 << 20
+		}
+		raw, readErr := io.ReadAll(io.LimitReader(res.Body, int64(limit)+1))
 		_ = res.Body.Close()
 		receivedAt := now().UTC()
 		if observe != nil {
 			bounded := raw
-			if len(bounded) > MaxBytes {
-				bounded = bounded[:MaxBytes]
+			if len(bounded) > limit {
+				bounded = bounded[:limit]
 			}
-			if err := observe(ReadAttempt{Number: attempt, State: "response", At: receivedAt, HTTPStatus: res.StatusCode, Raw: bounded, Partial: readErr != nil || len(raw) > MaxBytes}); err != nil {
+			if err := observe(ReadAttempt{Number: attempt, State: "response", At: receivedAt, HTTPStatus: res.StatusCode, Raw: bounded, Partial: readErr != nil || len(raw) > limit}); err != nil {
 				return Response{}, err
 			}
 		}
-		if len(raw) > MaxBytes {
-			return Response{}, errors.New("alpaca response exceeds 1 MiB")
+		if len(raw) > limit {
+			return Response{}, errors.New("alpaca response exceeds capability byte bound")
 		}
 		if res.StatusCode == 200 && readErr == nil {
 			return Response{Original: string(raw), SHA256: Digest(string(raw)), ReceivedAt: receivedAt, Attempts: attempt}, nil
