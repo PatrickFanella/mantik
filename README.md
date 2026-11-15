@@ -52,6 +52,8 @@ quotes and zero fees or slippage.
   the capped strategy book.
 - **Kalshi data**: [public collection](docs/reference/kalshi-data.md) retains
   weather-market rules and order-book observations for point-in-time reads.
+  [Weather probabilities](docs/reference/kalshi-weather.md) retain pre-close
+  next-day forecasts and report Brier scores and buckets after final settlement.
 - **Subscription research calls**: the [model adapter](docs/reference/subscription-models.md)
   runs bounded Claude and Codex prompts using host logins, with a durable daily
   call budget and hash records, independently of trading.

@@ -53,8 +53,10 @@ container, then read back both counts. The disposable storage contract
 detection. The container was removed afterwards; public raw captures and the
 receipt remain outside Git at `/tmp/mantik-wave1-kalshi-evidence/`.
 Full collection and storage contracts are checked
-with loopback fakes and disposable PostgreSQL. Weather probability calibration,
-trading authority and a separate notional fill simulator remain later work.
+with loopback fakes and disposable PostgreSQL.
+[Weather probability and calibration](kalshi-weather.md) is a separate opt-in
+research path. Trading authority and a separate notional fill simulator remain
+later work.
 
 Provider contracts: [public market-data quick start](https://docs.kalshi.com/getting_started/quick_start_market_data)
 and [market order book](https://docs.kalshi.com/api-reference/market/get-market-orderbook).

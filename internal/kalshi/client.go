@@ -195,11 +195,19 @@ func (c *Client) fetch(ctx context.Context, path string) ([]byte, time.Time, err
 	if err := ctx.Err(); err != nil {
 		return nil, time.Time{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.origin, "/")+path, nil)
+	return c.fetchURL(ctx, strings.TrimRight(c.origin, "/")+path)
+}
+
+func (c *Client) fetchURL(ctx context.Context, target string) ([]byte, time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, time.Time{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "Go-http-client/1.1 Mantik-weather-research/1.0 (https://github.com/subculture-collective/mantik)")
 	res, err := c.http.Do(req)
 	if err != nil {
 		return nil, time.Time{}, fmt.Errorf("Kalshi public read: %w", err)
@@ -211,7 +219,7 @@ func (c *Client) fetch(ctx context.Context, path string) ([]byte, time.Time, err
 	if len(raw) > 1<<20 {
 		raw = raw[:1<<20]
 	}
-	if captureErr := c.capture(path, res.StatusCode, raw, at, partial); captureErr != nil {
+	if captureErr := c.capture(target, res.StatusCode, raw, at, partial); captureErr != nil {
 		return nil, time.Time{}, captureErr
 	}
 	if partial {

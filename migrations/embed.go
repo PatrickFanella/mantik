@@ -369,3 +369,6 @@ var StrategyTrials string
 
 //go:embed 0118_kalshi_data.sql
 var KalshiData string
+
+//go:embed 0119_kalshi_weather.sql
+var KalshiWeather string
