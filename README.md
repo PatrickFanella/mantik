@@ -189,4 +189,11 @@ with explicit same-session spot inputs and reference-tested European-model IV an
 The pure [indicator adapter](docs/reference/indicators.md) provides SMA, EMA, RSI,
 Wilder ATR, Bollinger bands and rolling return volatility with maintained TA-Lib parity tests.
 
+The [stock strategy library](docs/reference/stock-library.md) adds reviewed trend,
+rotation, reversal and low-volatility recipes with pinned upstream replication
+tests. [Typed strategy specs](docs/reference/strategy-specs.md) compile bounded
+expressions or library recipes into the same engine. The [Kalshi notional
+simulator](docs/reference/kalshi-simulation.md) consumes recorded depth and fee
+evidence in a separate book, excluded from the portfolio's SPY measure.
+
 Daily stock history can be collected by the opt-in [`serve` daily-bar worker](docs/reference/daily-bars-worker.md), with missing-session catch-up and its own readiness scope. The [independent SPY comparison](docs/reference/spy-comparison.md) checks the retained history against another source; its explicit primary-close check passes at the unchanged 5 bps tolerance, with the original raw-SIP and Yahoo-only failures retained as diagnostics.

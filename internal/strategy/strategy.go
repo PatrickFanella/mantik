@@ -28,6 +28,9 @@ const KindDailyBars = "daily_bars_adjusted"
 // KindOptionChains supplies indicative option chains for the view's underlyings.
 const KindOptionChains = "option_chains_indicative"
 
+// KindStockUniverse supplies screened membership known at the decision time.
+const KindStockUniverse = "stock_universe"
+
 const (
 	// MaxStateBytes bounds the state a strategy carries between decisions.
 	MaxStateBytes = 64 << 10
@@ -44,7 +47,7 @@ var (
 	paramPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	assetPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:._-]{0,63}$`)
 	weightText   = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]{1,12})?$`)
-	kinds        = []string{KindDailyBars, KindOptionChains}
+	kinds        = []string{KindDailyBars, KindOptionChains, KindStockUniverse}
 )
 
 // Strategy is one version of a strategy. Decide must depend only on the view:
@@ -142,6 +145,7 @@ type View struct {
 	assets    []string
 	bars      map[string][]marketdata.AdjustedBar
 	chains    map[string]options.Chain
+	universe  []string
 	positions []Position
 	fills     []Fill
 	state     []byte
@@ -154,9 +158,23 @@ func (v View) At() time.Time { return v.at }
 // Assets lists the assets in the view, sorted.
 func (v View) Assets() []string { return slices.Clone(v.assets) }
 
+// Universe lists eligible configured asset IDs from the point-in-time source.
+// It is empty unless the strategy declares KindStockUniverse.
+func (v View) Universe() []string { return slices.Clone(v.universe) }
+
 // Bars returns an asset's adjusted daily bars as of the decision time, oldest
 // first. It is empty unless the spec declares KindDailyBars.
 func (v View) Bars(asset string) []marketdata.AdjustedBar { return slices.Clone(v.bars[asset]) }
+
+// RecentBars returns at most count latest adjusted bars without copying the
+// entire retained history. A nonpositive count returns no bars.
+func (v View) RecentBars(asset string, count int) []marketdata.AdjustedBar {
+	if count <= 0 {
+		return nil
+	}
+	bars := v.bars[asset]
+	return slices.Clone(bars[max(0, len(bars)-count):])
+}
 
 // OptionChain returns the underlying asset's indicative chain and whether it
 // was declared and loaded. Its entries are copied; estimates expose their status.
@@ -185,6 +203,12 @@ type ChainSource interface {
 	OptionChain(ctx context.Context, assetID string, asOf time.Time) (options.Chain, error)
 }
 
+// UniverseSource supplies the screened universe at the decision clock. Sources
+// must use known reference observations; backdated current listings are refused.
+type UniverseSource interface {
+	StockUniverse(ctx context.Context, asOf time.Time) (marketdata.UniverseReport, error)
+}
+
 // Build reads the view for one decision. It loads only the data kinds the
 // spec declares, and fails with ErrFutureData if the source returns a bar
 // available after at, or the book holds a fill after at.
@@ -211,6 +235,33 @@ func Build(ctx context.Context, spec Spec, src BarSource, at time.Time, assets [
 	}
 	v.fills = slices.Clone(book.Fills)
 	v.positions = slices.Clone(book.Positions)
+	if slices.Contains(spec.Data, KindStockUniverse) {
+		u, ok := src.(UniverseSource)
+		if !ok {
+			return View{}, errors.New("stock universe requires a universe-capable source")
+		}
+		r, err := u.StockUniverse(ctx, at)
+		if err != nil {
+			return View{}, fmt.Errorf("stock universe: %w", err)
+		}
+		if !r.AsOf.Equal(at) || r.ReferenceObservedAt.IsZero() || r.ReferenceObservedAt.After(at) {
+			return View{}, fmt.Errorf("%w: universe reference/clock", ErrFutureData)
+		}
+		seen := map[string]bool{}
+		for _, m := range r.Members {
+			if !assetPattern.MatchString(m.AssetID) || seen[m.AssetID] || m.LastSession >= at.UTC().Format(time.DateOnly) {
+				return View{}, errors.New("invalid universe member")
+			}
+			if _, err := time.Parse(time.DateOnly, m.LastSession); err != nil {
+				return View{}, err
+			}
+			seen[m.AssetID] = true
+			if _, ok := slices.BinarySearch(assets, m.AssetID); ok {
+				v.universe = append(v.universe, m.AssetID)
+			}
+		}
+		slices.Sort(v.universe)
+	}
 	if slices.Contains(spec.Data, KindDailyBars) {
 		if src == nil {
 			return View{}, errors.New("daily bars require a source")
@@ -270,6 +321,9 @@ type Target struct {
 type Decision struct {
 	Targets []Target `json:"targets"`
 	State   []byte   `json:"state,omitempty"`
+	// KeepPositions issues no replacement targets on this decision. It avoids
+	// daily rebalancing between a strategy's scheduled rebalances.
+	KeepPositions bool `json:"keep_positions,omitempty"`
 }
 
 // Decide asks the strategy for a decision and checks it: every target names a
@@ -287,6 +341,9 @@ func Decide(s Strategy, v View) (d Decision, err error) {
 	}
 	if len(d.State) > MaxStateBytes {
 		return Decision{}, fmt.Errorf("%w: state is too large", ErrInvalidDecision)
+	}
+	if d.KeepPositions && len(d.Targets) > 0 {
+		return Decision{}, fmt.Errorf("%w: hold cannot include targets", ErrInvalidDecision)
 	}
 	d.Targets = slices.Clone(d.Targets)
 	slices.SortFunc(d.Targets, func(a, b Target) int { return cmp.Compare(a.Asset, b.Asset) })

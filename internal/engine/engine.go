@@ -438,6 +438,14 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 			if err != nil {
 				return Result{}, fmt.Errorf("decision for %s: %w", s.date, err)
 			}
+			if d.KeepPositions {
+				book.State = d.State
+				day.Decided = true
+				out.Days = append(out.Days, day)
+				p := s.day
+				prior = &p
+				continue
+			}
 			// A decision is the complete target set: held assets it leaves out
 			// go to zero.
 			pending = map[string]*big.Rat{}

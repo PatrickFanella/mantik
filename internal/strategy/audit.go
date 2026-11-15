@@ -15,9 +15,11 @@ import (
 // them reach the network, files, processes, randomness or orders.
 var AllowedImports = []string{
 	"cmp", "errors", "fmt", "math", "math/big", "slices", "sort", "strconv", "strings", "time",
+	"crypto/sha256", "encoding/hex", "encoding/json", "io",
 	"git.subcult.tv/subculture-collective/mantik/internal/marketdata",
 	"git.subcult.tv/subculture-collective/mantik/internal/indicators",
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy",
+	"git.subcult.tv/subculture-collective/mantik/internal/strategy/library",
 }
 
 // clockFuncs read or wait on the wall clock. Strategies use View.At instead.
