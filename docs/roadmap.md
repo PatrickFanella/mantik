@@ -27,10 +27,12 @@ These implementations do not establish release or strategy qualification.
 Wave 5 adds the opt-in [daily-bar worker](reference/daily-bars-worker.md) for
 #95 and the [independent SPY comparison](reference/spy-comparison.md) for #94
 in one reviewable change. The connected collector check uses disposable storage.
-The independent check covers all 2,733 sessions but fails the declared price
-tolerance on 81 dates; #94 and the data epic's price-accuracy exit remain open.
-The comparison report is attached to
-[#94](https://github.com/subculture-collective/mantik/issues/94#issuecomment-6899255393).
+The follow-up independent check resolves the close-convention mismatch with
+retained primary-exchange prices and an independent free reference. All 2,733
+sessions pass at the unchanged 5 bps tolerance (one explained SIP gap uses a
+separately verified Nasdaq close). The original raw-SIP failure remains a
+diagnostic; this is not a silent change to strategy-engine prices. The complete
+report and merge state are tracked in [#94](https://github.com/subculture-collective/mantik/issues/94).
 
 Wave 1 now supplies a separate stock-paper adapter (#59), the indicator
 library decision (#60), public Kalshi collection (#80), and bounded

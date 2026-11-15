@@ -11,14 +11,20 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
+from close_basis import auction_closes
+from reference import lean_closes, stitched_reference, nasdaq_gap
+
 
 def prepare(args):
     sources = []
 
-    def load(path):
+    def source_bytes(path):
         raw = path.read_bytes()
         sources.append({"file": str(path), "sha256": hashlib.sha256(raw).hexdigest()})
-        return json.loads(raw)
+        return raw
+
+    def load(path):
+        return json.loads(source_bytes(path))
 
     bars = {}
     for path in sorted(args.journal.glob("history-*.json")):
@@ -81,11 +87,21 @@ def prepare(args):
                 shares+=cash/close
                 pending.remove((pay,cash))
     pay_return=shares*raw_reference[max(raw_reference)]/raw_reference[min(raw_reference)]
-    calendar = [d["date"] for d in load(args.calendar) if args.start <= d["date"] <= args.end]
+    calendar_days = [d for d in load(args.calendar) if args.start <= d["date"] <= args.end]
+    calendar = [d["date"] for d in calendar_days]
+    gap = None
+    if getattr(args, "nasdaq", None):
+        original = source_bytes(args.nasdaq)
+        gap = dict(price=nasdaq_gap(json.loads(original)), source_sha256=hashlib.sha256(original).hexdigest(), observed_at=now)
+    closes = auction_closes(args.auction_pages, calendar_days, load, gap) if getattr(args, "auction_pages", None) else []
+    primary_refs, primary_return, cutoff = [], "", ""
+    if getattr(args, "lean_sample", None):
+        primary_refs, primary_return, cutoff = stitched_reference(lean_closes(source_bytes(args.lean_sample)), raw_reference, calendar, dividends)
+
     if not bars or not refs or not dividends or not calendar:
         raise ValueError("comparison requires all four source sets")
     args.output.write_text(json.dumps(dict(asset_id=args.asset_id, as_of=now,
-        raw=[bars[d] for d in sorted(bars)], actions=dividends, calendar=calendar, reference=refs, reference_pay_date_return_multiple=f"{pay_return:.12f}")))
+        raw=[bars[d] for d in sorted(bars)], actions=dividends, calendar=calendar, reference=refs, reference_pay_date_return_multiple=f"{pay_return:.12f}", session_closes=closes, primary_reference=primary_refs, primary_reference_pay_date_return=primary_return, reference_sample_end=cutoff)))
     manifest = dict(start=args.start, end=args.end, acquired_normalization_at=now,
                     input_sha256=hashlib.sha256(args.output.read_bytes()).hexdigest(), sources=sources)
     args.output.with_suffix(".manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
@@ -100,5 +116,8 @@ if __name__ == "__main__":
     parser.add_argument("--asset-id", required=True)
     parser.add_argument("--start", default="2016-01-01")
     parser.add_argument("--end", required=True)
+    parser.add_argument("--auction-pages", type=Path, help="complete retained SIP closing-auction windows for every calendar session")
+    parser.add_argument("--lean-sample", type=Path, help="pinned public LEAN raw daily SPY zip; use its complete coverage before Yahoo")
+    parser.add_argument("--nasdaq", type=Path, help="complete free Nasdaq history for the documented SIP gap")
     parser.add_argument("--output", type=Path, required=True)
     prepare(parser.parse_args())
