@@ -28,8 +28,12 @@ import (
 const defaultURL = "http://127.0.0.1:40880"
 
 func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
+	if len(args) > 0 && args[0] == "bars-backfill" {
+		return runBarsBackfill(ctx, args[1:], out, errOut)
+	}
 	if len(args) > 0 && (args[0] == "kalshi-weather-predict" || args[0] == "kalshi-weather-settle" || args[0] == "kalshi-weather-calibration") {
 		return runKalshiWeather(ctx, args[0], args[1:], out, errOut)
+
 	}
 	if len(args) > 0 && args[0] == "kalshi-collect" {
 		return runKalshiCollect(ctx, args[1:], out, errOut)

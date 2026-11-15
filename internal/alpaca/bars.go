@@ -72,6 +72,12 @@ func (c *Client) FetchDailyBars(ctx context.Context, symbols []string, start, en
 }
 
 func (c *Client) fetchDailyBars(ctx context.Context, symbols []string, start, end time.Time, now func() time.Time) (DailyBars, error) {
+	return c.readDailyBars(ctx, symbols, start, end, now, func(ctx context.Context, q Query) (Response, error) {
+		return c.fetch(ctx, q, nil, now)
+	})
+}
+
+func (c *Client) readDailyBars(ctx context.Context, symbols []string, start, end time.Time, now func() time.Time, read func(context.Context, Query) (Response, error)) (DailyBars, error) {
 	symbols, err := barSymbols(symbols)
 	if err != nil {
 		return DailyBars{}, err
@@ -91,7 +97,7 @@ func (c *Client) fetchDailyBars(ctx context.Context, symbols []string, start, en
 		if page > MaxBarPages {
 			return DailyBars{}, errors.New("daily bars exceeded the page bound")
 		}
-		res, err := c.fetch(ctx, q, nil, now)
+		res, err := read(ctx, q)
 		if err != nil {
 			return DailyBars{}, err
 		}

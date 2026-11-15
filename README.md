@@ -177,3 +177,5 @@ PostgreSQL integration tests on every pull request.
 
 GNU General Public License, version 3 only (`GPL-3.0-only`). See
 [LICENSE](LICENSE).
+
+Historical stock bars can be collected with [`bars-backfill`](docs/reference/daily-backfill.md), using a private resumable journal and an explicitly selected database.

@@ -33,6 +33,7 @@ type Response struct {
 
 type Client struct {
 	key, secret, feed          string
+	oauthToken                 string
 	http                       *http.Client
 	gate                       chan struct{}
 	last                       time.Time
@@ -160,8 +161,12 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 		if err != nil {
 			return Response{}, errors.New("invalid Alpaca read request")
 		}
-		req.Header.Set("APCA-API-KEY-ID", c.key)
-		req.Header.Set("APCA-API-SECRET-KEY", c.secret)
+		if c.oauthToken != "" {
+			req.Header.Set("Authorization", "Bearer "+c.oauthToken)
+		} else {
+			req.Header.Set("APCA-API-KEY-ID", c.key)
+			req.Header.Set("APCA-API-SECRET-KEY", c.secret)
+		}
 		c.last = time.Now()
 		res, err := c.http.Do(req)
 		if err != nil {
@@ -234,4 +239,20 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 		}
 	}
 	return Response{}, errors.New("alpaca retry limit exhausted")
+}
+
+// NewReadClient accepts exactly one credential mode for the GET-only data client.
+func NewReadClient(credentials PaperCredentials, feed string) (*Client, error) {
+	if credentials.OAuthToken == "" {
+		return NewClient(credentials.Key, credentials.Secret, feed)
+	}
+	if credentials.Key != "" || credentials.Secret != "" || len(credentials.OAuthToken) > 4096 || strings.ContainsFunc(credentials.OAuthToken, unicode.IsSpace) || strings.ContainsFunc(credentials.OAuthToken, unicode.IsControl) {
+		return nil, errors.New("read client requires exactly one valid credential mode")
+	}
+	c, err := NewClient("oauth", "oauth", feed)
+	if err != nil {
+		return nil, err
+	}
+	c.key, c.secret, c.oauthToken = "", "", credentials.OAuthToken
+	return c, nil
 }
