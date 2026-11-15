@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/account"
 	"git.subcult.tv/subculture-collective/mantik/internal/marketdata"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy"
@@ -67,7 +68,9 @@ func config(src source, s strategy.Strategy, cost CostModel) Config {
 func TestFillsUseTheNextSessionsOpenWithCosts(t *testing.T) {
 	src := newSource(t, prices)
 	cost := CostModel{Version: "test-v1", FeeBps: "10", SlippageBps: "5"}
-	r, err := Run(context.Background(), config(src, allIn{}, cost))
+	cfg := config(src, allIn{}, cost)
+	cfg.Account, cfg.InitialCash = account.Margin, "3000"
+	r, err := Run(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +80,7 @@ func TestFillsUseTheNextSessionsOpenWithCosts(t *testing.T) {
 	// Decided at the January 5 close, filled at the January 6 open of 102,
 	// five basis points worse, with a ten basis point fee.
 	f := r.Fills[0]
-	if f.Date != "2026-01-06" || f.DecidedOn != "2026-01-05" || f.Open != "102" || f.Price != "102.051" || f.Fee != "1.0005" {
+	if f.Date != "2026-01-06" || f.DecidedOn != "2026-01-05" || f.Open != "102" || f.Price != "102.051" || f.Fee != "3.0015" {
 		t.Fatalf("first fill %+v", f)
 	}
 	opens := map[string]string{}
@@ -93,7 +96,7 @@ func TestFillsUseTheNextSessionsOpenWithCosts(t *testing.T) {
 	if len(r.Pending) != 1 || r.Pending[0].Weight != "1" {
 		t.Fatal("pending", r.Pending)
 	}
-	if r.Days[1].Cash != "-1.5005" {
+	if r.Days[1].Cash != "-4.5015" {
 		t.Fatal("cash after the first fill", r.Days[1].Cash)
 	}
 }
@@ -102,9 +105,14 @@ func TestRunsAreByteIdentical(t *testing.T) {
 	cost := CostModel{Version: "test-v1", FeeBps: "3", SlippageBps: "7"}
 	var first []byte
 	for i := 0; i < 3; i++ {
-		r, err := Run(context.Background(), config(newSource(t, prices), allIn{}, cost))
+		cfg := config(newSource(t, prices), allIn{}, cost)
+		cfg.Account, cfg.InitialCash = account.Margin, "3000"
+		r, err := Run(context.Background(), cfg)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if len(r.Fills) == 0 {
+			t.Fatal("no executed trades to compare")
 		}
 		raw, err := json.Marshal(r)
 		if err != nil {
@@ -143,7 +151,7 @@ func TestSplitsAndDividendsReachTheBook(t *testing.T) {
 }
 
 func TestWarmupDelaysTheFirstDecision(t *testing.T) {
-	r, err := Run(context.Background(), config(newSource(t, prices), allIn{warmup: 3}, DefaultCost))
+	r, err := Run(context.Background(), config(newSource(t, prices), allIn{warmup: 3}, CostModel{Version: "free", FeeBps: "0", SlippageBps: "0"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +195,7 @@ func TestCorrectionsDoNotMoveDecisionTimes(t *testing.T) {
 		t.Fatal(err)
 	}
 	closes := []string{}
-	r, err := Run(context.Background(), config(src, seen{&closes}, DefaultCost))
+	r, err := Run(context.Background(), config(src, seen{&closes}, CostModel{Version: "free", FeeBps: "0", SlippageBps: "0"}))
 	if err != nil {
 		t.Fatal(err)
 	}

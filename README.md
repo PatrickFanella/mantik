@@ -39,6 +39,10 @@ quotes and zero fees or slippage.
 - **Candidate strategies**: seal candidate source with pinned datasets, compile
   and run it in credential-free containers, and compare its outputs with
   declared expectations.
+- **Daily strategy engine**: next-session fills with costs, corporate actions,
+  deposits and time-weighted returns. The [account rules](docs/reference/account-rules.md)
+  enforce settled-cash spending, margin limits and coded refusals on this
+  simulated book.
 - **Paper accounts and allocation**: operator-declared paper capital, immutable
   strategy definitions and allocation policies, a synthetic reservation ledger,
   and paged decision, outcome and allocation history.
