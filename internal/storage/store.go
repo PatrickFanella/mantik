@@ -26,6 +26,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
+	"git.subcult.tv/subculture-collective/mantik/internal/strategytrial"
 	"git.subcult.tv/subculture-collective/mantik/internal/trial"
 	"git.subcult.tv/subculture-collective/mantik/internal/workertrial"
 	"git.subcult.tv/subculture-collective/mantik/internal/workflow"
@@ -109,6 +110,7 @@ type Memory struct {
 	externalOutputs             map[string]map[string]string
 	externalJobs                map[string]workertrial.Record
 	externalInputs              map[string]map[string][]byte
+	strategyTrials              map[string]strategytrial.Record
 	trialRuns                   map[string]trial.Run
 	trialInputs                 map[string]string
 	trialResults                map[string]string

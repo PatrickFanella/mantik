@@ -361,3 +361,8 @@ var RetiredReviewSourceGroups string
 
 //go:embed 0116_daily_bars.sql
 var DailyBars string
+
+// StrategyTrials records daily-engine attempts and append-only returns.
+//
+//go:embed 0117_strategy_trials.sql
+var StrategyTrials string

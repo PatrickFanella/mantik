@@ -5,6 +5,11 @@ days. `engine.Run(ctx, config)` returns every session's book, every fill and
 the decision left unfilled at the end. The same code is meant to drive paper
 trading later.
 
+Use [`engine.RunTrial`](strategy-trials.md) for research attempts that must
+count toward the statistical gates. It retains a start before execution,
+daily returns as the engine runs, and the final outcome, including failures.
+`Run` remains the low-level simulator without registry writes.
+
 ## A run
 
 | Field | Meaning |

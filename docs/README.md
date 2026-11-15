@@ -16,6 +16,8 @@
   cutoffs, and quality admission.
 - [Experiment contracts](reference/experiments.md): baseline methods, controls,
   declared recipes, metrics, and retained attempts.
+- [Daily strategy trials](reference/strategy-trials.md): append-only attempts,
+  daily returns, interruption recovery and search totals for the new engine.
 - [Trigger contracts](reference/triggers.md): persistent conditions, evidence
   windows, case routing, retries, and finalized protection.
 - [Timer contracts](reference/timers.md): independent deadlines, missing events,

@@ -43,6 +43,9 @@ quotes and zero fees or slippage.
   deposits and time-weighted returns. The [account rules](docs/reference/account-rules.md)
   enforce settled-cash spending, margin limits and coded refusals on this
   simulated book.
+- **Recorded strategy trials**: the [trial registry](docs/reference/strategy-trials.md)
+  saves attempts before execution, retains daily returns and outcomes, and
+  counts failed and unfinished attempts in each strategy family's search total.
 - **Paper accounts and allocation**: operator-declared paper capital, immutable
   strategy definitions and allocation policies, a synthetic reservation ledger,
   and paged decision, outcome and allocation history.

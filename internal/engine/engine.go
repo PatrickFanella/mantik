@@ -181,6 +181,10 @@ type owed struct {
 // the strategy for its next decision. No fill uses a price from the session
 // whose decision it carries out.
 func Run(ctx context.Context, cfg Config) (Result, error) {
+	return run(ctx, cfg, nil)
+}
+
+func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error) {
 	spec := cfg.Strategy.Spec()
 	id, err := spec.ID()
 	if err != nil {
@@ -413,6 +417,12 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		day := Day{Date: s.date, DecidedAt: s.at.UTC(), Cash: render(cash), Equity: render(equity), Deposited: render(deposited), Return: render(ret), TWR: render(twr), Positions: positions}
 		status := funds.Status(markedPositions(assets, shares, last, nil, ""))
 		day.Account = AccountStatus{EffectiveType: status.EffectiveType, SettledCash: render(funds.Settled()), UnsettledCash: render(new(big.Rat).Sub(cash, funds.Settled())), OvernightBuyingPower: render(status.OvernightBuyingPower), Maintenance: render(status.Maintenance), MarginExcess: render(status.Excess), MaintenanceShortfall: render(status.Shortfall)}
+
+		if record != nil {
+			if err := record(day); err != nil {
+				return Result{}, err
+			}
+		}
 
 		// Decide for the next session, once the warm-up is covered.
 		book.Positions = book.Positions[:0]
