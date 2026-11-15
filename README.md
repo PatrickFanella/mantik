@@ -183,3 +183,5 @@ Historical stock bars can be collected with [`bars-backfill`](docs/reference/dai
 The [`stock-assets` and `stock-universe` commands](docs/reference/stock-universe.md) retain active/inactive references and screen stored bars by asset identity with explicit survivorship limits.
 
 [`options-backfill`](docs/reference/option-data.md) retains resumable contract listings and explicitly indicative daily option bars and trades in an isolated, append-only store.
+
+Daily stock history can be collected by the opt-in [`serve` daily-bar worker](docs/reference/daily-bars-worker.md), with missing-session catch-up and its own readiness scope. The [independent SPY comparison](docs/reference/spy-comparison.md) checks the retained history against another source; its current price-agreement result is failed, so it grants no data qualification.

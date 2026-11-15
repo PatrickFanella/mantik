@@ -9,7 +9,7 @@ import (
 )
 
 // Scopes are independently inspectable; fixture readiness excludes real feeds.
-var Scopes = []string{"process", "storage", "feed_coverage", "action_delivery", "protective_monitoring", "paper_outcome_collection", "paper_evaluation_assessment", "social_research_dispatch", "paper_execution", "paper_decision", "paper_retention", "fixture_operation"}
+var Scopes = []string{"process", "daily_bars", "storage", "feed_coverage", "action_delivery", "protective_monitoring", "paper_outcome_collection", "paper_evaluation_assessment", "social_research_dispatch", "paper_execution", "paper_decision", "paper_retention", "fixture_operation"}
 
 // Readiness derives current availability without mutating persisted evidence.
 func Readiness(state domain.State, now time.Time, storageOK bool, scope string) domain.ReadinessReport {

@@ -24,6 +24,14 @@ Their current merge and check state is tracked in
 [roadmap #47](https://github.com/subculture-collective/mantik/issues/47).
 These implementations do not establish release or strategy qualification.
 
+Wave 5 adds the opt-in [daily-bar worker](reference/daily-bars-worker.md) for
+#95 and the [independent SPY comparison](reference/spy-comparison.md) for #94
+in one reviewable change. The connected collector check uses disposable storage.
+The independent check covers all 2,733 sessions but fails the declared price
+tolerance on 81 dates; #94 and the data epic's price-accuracy exit remain open.
+The comparison report is attached to
+[#94](https://github.com/subculture-collective/mantik/issues/94#issuecomment-6899255393).
+
 Wave 1 now supplies a separate stock-paper adapter (#59), the indicator
 library decision (#60), public Kalshi collection (#80), and bounded
 subscription research calls (#82). [The adapter references](reference/README.md)

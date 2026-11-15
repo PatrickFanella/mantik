@@ -7,11 +7,12 @@ import (
 	"slices"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/domain"
 	"git.subcult.tv/subculture-collective/mantik/internal/operational"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 )
 
-func readinessResponse(w http.ResponseWriter, r *http.Request, store storage.Store, clock Clock, policy *FeedReadinessPolicy, scope string, enforce bool) {
+func readinessResponse(w http.ResponseWriter, r *http.Request, store storage.Store, clock Clock, policy *FeedReadinessPolicy, bars *DailyBarWorker, scope string, enforce bool) {
 	if !slices.Contains(operational.Scopes, scope) {
 		write(w, 400, map[string]string{"error": "unknown readiness scope"})
 		return
@@ -22,6 +23,7 @@ func readinessResponse(w http.ResponseWriter, r *http.Request, store storage.Sto
 	at := clock.Now()
 	report := operational.Readiness(snapshot.State, at, err == nil, scope)
 	applyFeedReadiness(ctx, store, at, policy, err == nil, &report)
+	applyDailyBarReadiness(bars, at, err == nil, &report)
 	status := 200
 	if enforce && !report.Ready {
 		status = 503
@@ -29,9 +31,9 @@ func readinessResponse(w http.ResponseWriter, r *http.Request, store storage.Sto
 	write(w, status, report)
 }
 
-func operationalRoutes(mux *http.ServeMux, store storage.Store, clock Clock, policy *FeedReadinessPolicy) {
+func operationalRoutes(mux *http.ServeMux, store storage.Store, clock Clock, policy *FeedReadinessPolicy, bars *DailyBarWorker) {
 	mux.HandleFunc("GET /v1/readiness/{scope}", func(w http.ResponseWriter, r *http.Request) {
-		readinessResponse(w, r, store, clock, policy, r.PathValue("scope"), false)
+		readinessResponse(w, r, store, clock, policy, bars, r.PathValue("scope"), false)
 	})
 	mux.HandleFunc("GET /v1/operations", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -44,6 +46,7 @@ func operationalRoutes(mux *http.ServeMux, store storage.Store, clock Clock, pol
 		at := clock.Now()
 		report := operational.Inspect(snapshot.State, at)
 		applyFeedReadiness(ctx, store, at, policy, true, &report.Readiness)
+		applyDailyBarReadiness(bars, at, true, &report.Readiness)
 		write(w, 200, report)
 	})
 	backend, ok := store.(storage.OperationalStore)
@@ -76,4 +79,21 @@ func operationalRoutes(mux *http.ServeMux, store storage.Store, clock Clock, pol
 		}
 		write(w, 200, receipt)
 	})
+}
+
+func applyDailyBarReadiness(bars *DailyBarWorker, at time.Time, storageOK bool, report *domain.ReadinessReport) {
+	cap := bars.Readiness(at)
+	if !storageOK {
+		cap.Ready = false
+		cap.Status = "unavailable"
+		cap.Code = "storage_unavailable"
+	}
+	report.Capabilities["daily_bars"] = cap
+	if report.Scope == "daily_bars" {
+		report.Ready = cap.Ready
+		report.Status = "not_ready"
+		if cap.Ready {
+			report.Status = "ready"
+		}
+	}
 }

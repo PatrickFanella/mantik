@@ -307,9 +307,14 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs.SetOutput(errOut)
 	var apiURL, format, listen, datasetPath, cutoffText, datasetDigest, feedPolicyPath, corporateJournalPath, corporateJournalID string
 	var references referenceJournals
+	var daily dailyBarFlags
 	var exportDataset, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions, automaticRetention bool
 	switch args[0] {
 	case "serve":
+		fs.StringVar(&daily.universe, "daily-bars-universe", "", "opt-in reviewed stock-universe JSON for daily collection")
+		fs.StringVar(&daily.credentials, "daily-bars-credentials-file", "", "mode-0600 Alpaca credentials JSON")
+		fs.StringVar(&daily.journal, "daily-bars-journal", "", "dedicated absolute private daily collection journal")
+		fs.StringVar(&daily.start, "daily-bars-start", "", "inclusive UTC date for missing-session catch-up")
 		fs.StringVar(&corporateJournalPath, "corporate-source-journal", "", "optional existing private journal for verified corporate acquisition reads")
 		fs.StringVar(&corporateJournalID, "corporate-source-journal-id", "", "expected identity of the configured corporate acquisition journal")
 		fs.StringVar(&references.polygonPath, "polygon-reference-journal", "", "optional existing private Polygon reference journal for custody imports")
@@ -348,7 +353,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	if args[0] == "serve" {
-		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions, automaticRetention, corporateJournalPath, corporateJournalID, references)
+		return serve(ctx, listen, feedPolicyPath, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions, automaticRetention, corporateJournalPath, corporateJournalID, references, daily)
 	}
 	if args[0] == "replay" {
 		if exportDataset {
@@ -472,7 +477,14 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 
 type referenceJournals struct{ polygonPath, polygonID, issuerPath, issuerID string }
 
-func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions, automaticRetention bool, corporateJournalPath, corporateJournalID string, references referenceJournals) error {
+func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, automaticEvaluations, automaticSocialResearch, automaticDecisions, automaticRetention bool, corporateJournalPath, corporateJournalID string, references referenceJournals, daily dailyBarFlags) error {
+	bars, dailyJournal, err := openDailyBars(daily)
+	if err != nil {
+		return err
+	}
+	if dailyJournal != nil {
+		defer func() { _ = dailyJournal.Close() }()
+	}
 	var acquisitions *service.CorporateAcquisitionReader
 	if corporateJournalPath != "" || corporateJournalID != "" {
 		var err error
@@ -554,7 +566,7 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 	default:
 		return errors.New("MANTIK_PAPER_EXECUTION must be empty or on")
 	}
-	handler, err := service.HandlerWithJournalReaders(store, token, service.WallClock{}, policy, acquisitions, referenceReader)
+	handler, err := service.HandlerWithJournalReaders(store, token, service.WallClock{}, policy, acquisitions, referenceReader, bars)
 	if err != nil {
 		return err
 	}
@@ -618,6 +630,12 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 	} else {
 		close(executionDone)
 	}
+	dailyDone := make(chan struct{})
+	if bars != nil {
+		go func() { defer close(dailyDone); bars.Run(workerCtx, store, service.WallClock{}) }()
+	} else {
+		close(dailyDone)
+	}
 	retentionDone := make(chan struct{})
 	if automaticRetention {
 		go func() {
@@ -629,6 +647,7 @@ func serve(ctx context.Context, listen, policyPath string, automaticOutcomes, au
 	}
 	defer func() {
 		stopWorker()
+		<-dailyDone
 		<-retentionDone
 		<-workerDone
 		<-actionDone

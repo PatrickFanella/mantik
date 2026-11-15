@@ -127,3 +127,8 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Resumable daily stock backfills](daily-backfill.md)
 - [Point-in-time stock universe](stock-universe.md)
 - [Indicative option data](option-data.md)
+
+- [Automatic daily bars](daily-bars-worker.md): reviewed universe collection,
+  session catch-up, correction refresh and readiness.
+- [Independent SPY comparison](spy-comparison.md): retained-input reproduction,
+  declared tolerances, source discrepancies and qualification limits.

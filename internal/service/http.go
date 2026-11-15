@@ -29,7 +29,11 @@ func handlerWithPolicy(store storage.Store, token string, clock Clock, policy *F
 	return handlerWithAcquisitions(store, token, clock, policy, nil, nil)
 }
 
-func handlerWithAcquisitions(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy, acquisitions *CorporateAcquisitionReader, references *CorporateReferenceReader) http.Handler {
+func handlerWithAcquisitions(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy, acquisitions *CorporateAcquisitionReader, references *CorporateReferenceReader, daily ...*DailyBarWorker) http.Handler {
+	var bars *DailyBarWorker
+	if len(daily) > 0 {
+		bars = daily[0]
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/feed-readiness-policy", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, struct {
@@ -99,7 +103,7 @@ func handlerWithAcquisitions(store storage.Store, token string, clock Clock, pol
 	corporateActionSourceRoutes(mux, store, clock)
 	corporateAcquisitionRoutes(mux, acquisitions, store, clock)
 	corporateReferenceRoutes(mux, references, store, clock)
-	operationalRoutes(mux, store, clock, policy)
+	operationalRoutes(mux, store, clock, policy, bars)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]string{"status": "up", "mode": "paper_fixture"})
 	})
@@ -108,7 +112,7 @@ func handlerWithAcquisitions(store storage.Store, token string, clock Clock, pol
 		if scope == "" {
 			scope = "storage"
 		}
-		readinessResponse(w, r, store, clock, policy, scope, true)
+		readinessResponse(w, r, store, clock, policy, bars, scope, true)
 	})
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)

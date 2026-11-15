@@ -16,6 +16,10 @@
   cutoffs, and quality admission.
 - [Experiment contracts](reference/experiments.md): baseline methods, controls,
   declared recipes, metrics, and retained attempts.
+- [Daily-bar collection](reference/daily-bars-worker.md): opt-in service worker,
+  exchange-close embargo, gap recovery and scoped readiness.
+- [Independent SPY comparison](reference/spy-comparison.md): reproducible
+  calendar, adjusted-close and pay-date-return checks; current source-price blocker.
 - [Daily strategy trials](reference/strategy-trials.md): append-only attempts,
   daily returns, interruption recovery and search totals for the new engine.
 - [Trigger contracts](reference/triggers.md): persistent conditions, evidence

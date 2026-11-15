@@ -75,9 +75,9 @@ func HandlerWithCorporateAcquisitions(store storage.Store, token string, clock C
 
 // HandlerWithJournalReaders adds an optional corporate reference reader; the
 // caller owns both readers' lifetimes.
-func HandlerWithJournalReaders(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy, acquisitions *CorporateAcquisitionReader, references *CorporateReferenceReader) (http.Handler, error) {
+func HandlerWithJournalReaders(store storage.Store, token string, clock Clock, policy *FeedReadinessPolicy, acquisitions *CorporateAcquisitionReader, references *CorporateReferenceReader, daily ...*DailyBarWorker) (http.Handler, error) {
 	if policy == nil {
-		return handlerWithAcquisitions(store, token, clock, nil, acquisitions, references), nil
+		return handlerWithAcquisitions(store, token, clock, nil, acquisitions, references, daily...), nil
 	}
 	if err := policy.validate(); err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func HandlerWithJournalReaders(store storage.Store, token string, clock Clock, p
 	frozen := *policy
 	frozen.RequiredRegistrations = slices.Clone(policy.RequiredRegistrations)
 	slices.Sort(frozen.RequiredRegistrations)
-	return handlerWithAcquisitions(store, token, clock, &frozen, acquisitions, references), nil
+	return handlerWithAcquisitions(store, token, clock, &frozen, acquisitions, references, daily...), nil
 }
 
 func feedReadiness(ctx context.Context, store storage.Store, at time.Time, policy *FeedReadinessPolicy, storageOK bool) domain.CapabilityReadiness {
