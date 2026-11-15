@@ -15,13 +15,14 @@ The approved design is [the trading system design](plans/trading-system.md).
 The work is tracked in
 [roadmap #47](https://github.com/subculture-collective/mantik/issues/47).
 
-**Implementation status, 2026-11-15, America/Chicago** (schema 118).
-The nine previously merged work issues include the daily trial registry
-([PR #117](https://github.com/subculture-collective/mantik/pull/117), main
-`de62500`). The remaining four Wave 1 items are delivered together in one
-reviewable branch to share one CI cycle. Current PR and issue state is tracked
-in [roadmap #47](https://github.com/subculture-collective/mantik/issues/47);
-this implementation count does not assert a merge or release.
+**Implementation status, 2026-11-15, America/Chicago** (schema 120; merge state is tracked in #47).
+Wave 1 merged in [PR #118](https://github.com/subculture-collective/mantik/pull/118)
+at schema 118. Wave 4 adds [resumable stock backfills](reference/daily-backfill.md),
+the [asset-identity universe](reference/stock-universe.md), and
+[indicative option observations](reference/option-data.md), in one PR per issue.
+Their current merge and check state is tracked in
+[roadmap #47](https://github.com/subculture-collective/mantik/issues/47).
+These implementations do not establish release or strategy qualification.
 
 Wave 1 now supplies a separate stock-paper adapter (#59), the indicator
 library decision (#60), public Kalshi collection (#80), and bounded
@@ -35,7 +36,7 @@ The new strategy core now has:
 | Delivered | Issues and evidence | Boundary |
 | --- | --- | --- |
 | Free-data coverage assessment | [A1 #58](https://github.com/subculture-collective/mantik/issues/58#issuecomment-6870787280) | Recorded read-only provider observations; no order-enforcement proof. |
-| Historical daily-bar client, point-in-time store and adjusted reads | A2–A4, #61–#63; merged PRs #109–#111 | Exact decimal prices and asset identity; the backfill and independent SPY check remain open. |
+| Historical daily-bar client, point-in-time store and adjusted reads | A2–A4, #61–#63; merged PRs #109–#111 | Exact decimal prices and asset identity; the independent SPY check remains #94. |
 | Strategy interface and daily engine | B1–B2, #64–#65; merged PRs #112–#113 | Point-in-time decisions, next-session fills, costs and corporate actions; one stock strategy per simulated run. |
 | Deposits and time-weighted returns | B4 #67; merged PR #114 | Scheduled capital flows are separate from profit in the simulated book. |
 | Daily trial registry | D1 #68; merged PR #117 | Append-only attempts, daily returns, lineage and search totals; statistical gates remain open. |

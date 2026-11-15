@@ -372,3 +372,6 @@ var KalshiData string
 
 //go:embed 0119_kalshi_weather.sql
 var KalshiWeather string
+
+//go:embed 0120_option_data.sql
+var OptionData string

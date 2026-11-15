@@ -21,7 +21,7 @@ func (j *Journal) RetainedRead(ctx context.Context, c *Client, q Query) (Respons
 	if err := ctx.Err(); err != nil {
 		return Response{}, err
 	}
-	if q.Capability != "daily_bars" {
+	if q.Capability != "daily_bars" && q.Capability != "option_contracts" && q.Capability != "option_bars" && q.Capability != "option_trades" {
 		return Response{}, errors.New("unsupported historical read")
 	}
 	if _, err := c.target(q, time.Now().UTC()); err != nil {

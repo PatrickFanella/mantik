@@ -181,3 +181,5 @@ GNU General Public License, version 3 only (`GPL-3.0-only`). See
 Historical stock bars can be collected with [`bars-backfill`](docs/reference/daily-backfill.md), using a private resumable journal and an explicitly selected database.
 
 The [`stock-assets` and `stock-universe` commands](docs/reference/stock-universe.md) retain active/inactive references and screen stored bars by asset identity with explicit survivorship limits.
+
+[`options-backfill`](docs/reference/option-data.md) retains resumable contract listings and explicitly indicative daily option bars and trades in an isolated, append-only store.

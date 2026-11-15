@@ -5,8 +5,8 @@ the times needed to read them as of a past clock. PostgreSQL keeps them in
 `mantik_daily_bars` (schema 116). Both pass the same contract tests in
 `internal/storage/daily_bars_test.go`.
 
-The store only keeps and serves bars. The [backfill command](daily-backfill.md) populates it; the stock universe
-is separate work (#89). Split and dividend adjustment happens on
+The store only keeps and serves bars. The [backfill command](daily-backfill.md) populates it; the
+[stock universe](stock-universe.md) screens prior available bars by asset identity. Split and dividend adjustment happens on
 [read](adjusted-bars.md).
 
 ## A bar

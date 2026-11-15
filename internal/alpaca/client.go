@@ -18,6 +18,8 @@ var ErrBackpressure = errors.New("alpaca request already in flight")
 
 // Query is restricted to market reads. No account/order path can be requested.
 type Query struct {
+	MinStrike  string `json:"min_strike,omitempty"`
+	MaxStrike  string `json:"max_strike,omitempty"`
 	PageToken  string
 	Capability string
 	Symbols    []string
@@ -68,6 +70,8 @@ func wait(ctx context.Context, d time.Duration) error {
 
 func (c *Client) target(q Query, now time.Time) (string, error) {
 	switch q.Capability {
+	case "option_contracts", "option_bars", "option_trades":
+		return c.optionsTarget(q, now)
 	case "stock_assets":
 		if len(q.Symbols) != 0 || q.Start != "" || q.End != "" || q.PageToken != "" || !slices.Contains([]string{"active", "inactive"}, q.Status) {
 			return "", errors.New("invalid asset list query")
@@ -151,7 +155,7 @@ func (c *Client) fetch(ctx context.Context, q Query, observe func(ReadAttempt) e
 		return Response{}, ErrBackpressure
 	}
 	interval := c.interval
-	if q.Capability == "daily_bars" {
+	if q.Capability == "daily_bars" || strings.HasPrefix(q.Capability, "option_") {
 		interval = c.barInterval
 	}
 	for attempt := 1; attempt <= 3; attempt++ {
