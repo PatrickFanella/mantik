@@ -54,5 +54,6 @@ sequence guards reject gaps, updates, deletes and truncation. Memory and SQL
 stores expose the same command contract. Events are bounded at 4,096 per book;
 capacity or storage errors stop publication and require retained-history review.
 The book reports cash, settled cash, marked equity, owned positions and pending
-orders, its retained distribution and the persistent risk-brake view. It does
-not start incubation workers or establish protected real-quote positions.
+orders, its retained distribution and the persistent risk-brake view. It supports
+the opt-in [incubation runner](incubation.md), which retains decisions and both
+fill results in this journal. It does not establish protected real-quote positions.

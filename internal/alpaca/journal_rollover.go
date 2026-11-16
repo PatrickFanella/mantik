@@ -79,7 +79,7 @@ func rolloverCanonical(r JournalRollover) string {
 
 // finishRollover removes exported working files once a rollover is recorded.
 // It runs again on open, so a crash partway through completes on the next use.
-// Paper account/intent fences remain live: exporting them never authorizes
+// Paper account/intent/abort fences remain live: exporting them never authorizes
 // submitting that client ID again or rebinding the journal to another account.
 func (j *Journal) finishRollover() error {
 	if _, err := j.read(rolloverPending, 4096); errors.Is(err, os.ErrNotExist) {
@@ -92,7 +92,7 @@ func (j *Journal) finishRollover() error {
 		return err
 	}
 	for _, name := range names {
-		if slices.Contains(rolloverKeep, name) || strings.HasPrefix(name, "rollover-") || strings.HasPrefix(name, "paper-intent-") {
+		if slices.Contains(rolloverKeep, name) || strings.HasPrefix(name, "rollover-") || strings.HasPrefix(name, "paper-intent-") || strings.HasPrefix(name, "paper-abort-") {
 			continue
 		}
 		if err := j.root.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {

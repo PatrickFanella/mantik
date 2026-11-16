@@ -83,6 +83,11 @@ func (p *PaperTrader) Order(ctx context.Context, clientID string) (PaperOrder, e
 	if err := p.bind(ctx); err != nil {
 		return PaperOrder{}, err
 	}
+	if _, err := p.journal.read("paper-abort-"+clientID+".json", MaxBytes); err == nil {
+		return PaperOrder{}, ErrPaperNotSubmitted
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return PaperOrder{}, err
+	}
 	raw, err := p.journal.read("paper-intent-"+clientID+".json", MaxBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return PaperOrder{}, ErrPaperNotSubmitted
@@ -201,6 +206,13 @@ func (p *PaperTrader) enter() error {
 // Submit commits an intent before the sole POST. Any later call for that ID
 // performs only GET, including after process death or a 404 on recovery.
 func (p *PaperTrader) Submit(ctx context.Context, o StockOrder) (PaperOrder, error) {
+	return p.SubmitChecked(ctx, o, nil)
+}
+
+// SubmitChecked checks initial submission authority after preparatory reads and
+// durable intent retention, immediately before POST. A refusal durably aborts
+// that ID. Retained intents recover by GET only, without calling beforePost.
+func (p *PaperTrader) SubmitChecked(ctx context.Context, o StockOrder, beforePost func() error) (PaperOrder, error) {
 	if err := o.validate(); err != nil {
 		return PaperOrder{}, err
 	}
@@ -243,6 +255,13 @@ func (p *PaperTrader) Submit(ctx context.Context, o StockOrder) (PaperOrder, err
 	}
 	if err = p.journal.writeOnce(name, intent); err != nil {
 		return PaperOrder{}, err
+	}
+	if beforePost != nil {
+		if err = beforePost(); err != nil {
+			// The adapter gate proves no POST started. Preserve both the intent
+			// fence and a durable abort so the capped reservation can be released.
+			return PaperOrder{}, errors.Join(err, p.writeAbort(o.ClientOrderID))
+		}
 	}
 	raw, status, err = p.request(ctx, http.MethodPost, "/v2/orders", intent)
 	if err == nil && status >= 200 && status < 300 {
@@ -452,11 +471,21 @@ func (p *PaperTrader) AbortUnsubmitted(ctx context.Context, clientID string) err
 		return err
 	}
 	defer func() { <-p.gate }()
+	if _, err := p.journal.read("paper-abort-"+clientID+".json", MaxBytes); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	if _, err := p.journal.read("paper-intent-"+clientID+".json", MaxBytes); err == nil {
 		return ErrSubmissionUnknown
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	return p.writeAbort(clientID)
+}
+
+// writeAbort requires the adapter gate and proof that no POST began for this ID.
+func (p *PaperTrader) writeAbort(clientID string) error {
 	raw, err := json.Marshal(struct{ AccountID, ClientID string }{p.account, clientID})
 	if err != nil {
 		return err

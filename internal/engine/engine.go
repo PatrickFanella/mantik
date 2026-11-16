@@ -18,6 +18,7 @@ import (
 	_ "time/tzdata"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/account"
+	"git.subcult.tv/subculture-collective/mantik/internal/executioncost"
 	"git.subcult.tv/subculture-collective/mantik/internal/marketdata"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy"
 )
@@ -34,8 +35,6 @@ var (
 
 	newYork      = mustZone("America/New_York")
 	plainDecimal = regexp.MustCompile(`^(0|[1-9][0-9]{0,11})(\.[0-9]{1,12})?$`)
-	versionText  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
-	tenThousand  = big.NewRat(10000, 1)
 )
 
 func mustZone(name string) *time.Location {
@@ -49,24 +48,11 @@ func mustZone(name string) *time.Location {
 // CostModel prices a fill. Slippage moves the fill price against the trade by
 // SlippageBps of the open; the fee is FeeBps of the fill's notional. Version
 // names the model, so a result records which costs produced it.
-type CostModel struct {
-	Version     string `json:"version"`
-	FeeBps      string `json:"fee_bps"`
-	SlippageBps string `json:"slippage_bps"`
-}
+type CostModel = executioncost.Model
 
 // DefaultCost is the first cost model: no commission, as on Alpaca, and five
 // basis points of slippage each way.
-var DefaultCost = CostModel{Version: "next-open-bps-v1", FeeBps: "0", SlippageBps: "5"}
-
-func (c CostModel) parse() (fee, slip *big.Rat, err error) {
-	fee, ok1 := decimal(c.FeeBps)
-	slip, ok2 := decimal(c.SlippageBps)
-	if !versionText.MatchString(c.Version) || !ok1 || !ok2 || fee.Cmp(tenThousand) >= 0 || slip.Cmp(tenThousand) >= 0 {
-		return nil, nil, fmt.Errorf("%w: cost model", ErrInvalidConfig)
-	}
-	return fee.Quo(fee, tenThousand), slip.Quo(slip, tenThousand), nil
-}
+var DefaultCost = executioncost.Default()
 
 // Config is one run. The engine reads bars through Source; the strategy sees
 // only the views the engine builds. Sessions are the bar dates of Assets whose
@@ -200,9 +186,9 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 	if err != nil {
 		return Result{}, err
 	}
-	fee, slip, err := cfg.Cost.parse()
+	fee, slip, err := cfg.Cost.Parse()
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("%w: cost model: %w", ErrInvalidConfig, err)
 	}
 	cash, ok := decimal(cfg.InitialCash)
 	if !ok || cash.Sign() <= 0 || cfg.Start.IsZero() || cfg.End.Before(cfg.Start) || len(cfg.Assets) == 0 || !cfg.Account.Valid() {
@@ -383,13 +369,7 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 				if delta.Sign() == 0 {
 					continue
 				}
-				move := new(big.Rat).Mul(b.open, slip)
-				price := new(big.Rat).Set(b.open)
-				if delta.Sign() > 0 {
-					price.Add(price, move)
-				} else {
-					price.Sub(price, move)
-				}
+				price := executioncost.Price(b.open, slip, delta.Sign() > 0)
 				notional := new(big.Rat).Mul(delta, price)
 				if cfg.Unlevered && delta.Sign() > 0 {
 					available := funds.Settled()

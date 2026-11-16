@@ -385,3 +385,8 @@ var CappedBooks string
 //
 //go:embed 0122_strategy_gates.sql
 var StrategyGates string
+
+// ResearchDeskEvents retains bounded research sessions without trading authority.
+//
+//go:embed 0123_research_desk_events.sql
+var ResearchDeskEvents string

@@ -459,7 +459,11 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 			}
 			continue
 		}
-		s, e = c.append(ctx, account.BookCommand{ID: f.ID, Kind: "fill", At: at, Fill: &f, Marks: marks})
+		model, modelErr := account.ModelIncubationFill(s, f)
+		if modelErr != nil {
+			return fail(modelErr)
+		}
+		s, e = c.append(ctx, account.BookCommand{ID: f.ID, Kind: "fill", At: at, Fill: &f, ModelFill: model, Marks: marks})
 		if e != nil {
 			return fail(e)
 		}

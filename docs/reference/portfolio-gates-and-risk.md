@@ -1,7 +1,8 @@
 # Strategy gates, sizing and order risk
 
 Wave 9 (#72–#74) joins retained research decisions to the capped paper-book
-order path. It does not start an incubation worker or grant qualification.
+order path. The opt-in [incubation runner](incubation.md) uses this admission
+and execution path; neither component grants qualification.
 
 ## Recorded gate decisions
 
@@ -156,7 +157,8 @@ the public strategy submission path. Existing unassigned holdings require
 operator reconciliation rather than invented strategy attribution. The older
 threshold-specific allocation system and the manual paper-adapter diagnostics
 retain their own ownership contracts. New strategy workers must use the capped
-client; real-quote incubation and that running integration remain #77.
+client; the opt-in [real-quote incubation runner](incubation.md) now provides
+that integration. The first protected real-quote position remains #107.
 
 ## Real-price gate check and limits
 

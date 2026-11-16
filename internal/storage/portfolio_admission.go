@@ -7,11 +7,18 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/account"
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
+	"git.subcult.tv/subculture-collective/mantik/internal/executioncost"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategygate"
 	"github.com/jackc/pgx/v5"
 )
 
 func admissionRequest(s account.CappedState, c account.BookCommand) (*allocation.RebalanceRequest, error) {
+	if c.Kind == "incubation_plan" {
+		if c.Incubation == nil {
+			return nil, errors.New("missing incubation plan")
+		}
+		return &c.Incubation.Rebalance, nil
+	}
 	if c.Kind == "rebalance" {
 		if c.Rebalance == nil {
 			return nil, errors.New("missing distributor request")
@@ -74,6 +81,15 @@ func checkPortfolioAdmissions(s account.CappedState, c account.BookCommand, read
 		}
 		if !g.Decision.AdmitsIncubation() {
 			return errors.New("gate_evidence_ineligible")
+		}
+		if c.Kind == "incubation_plan" {
+			cost, err := executioncost.FromDeclaration(g.Declaration.BaseCost, g.Decision.Status == "forward_only")
+			if err != nil {
+				return err
+			}
+			if c.Incubation.Costs[v.ID] != cost {
+				return errors.New("incubation cost model differs from gate")
+			}
 		}
 		expected := "incubation"
 		model := false

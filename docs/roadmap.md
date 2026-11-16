@@ -15,7 +15,7 @@ The approved design is [the trading system design](plans/trading-system.md).
 The work is tracked in
 [roadmap #47](https://github.com/subculture-collective/mantik/issues/47).
 
-**Implementation status, 2026-11-15, America/Chicago** (schema 122 on this branch; merge state is tracked in #47).
+**Implementation status, 2026-11-16, America/Chicago** (schema 123 on this branch; merge state is tracked in #47).
 Wave 1 merged in [PR #118](https://github.com/subculture-collective/mantik/pull/118)
 at schema 118. Wave 4 adds [resumable stock backfills](reference/daily-backfill.md),
 the [asset-identity universe](reference/stock-universe.md), and
@@ -25,6 +25,16 @@ Their current merge and check state is tracked in
 These implementations do not establish release or strategy qualification.
 
 Wave 9 adds [recorded gate decisions, sleeve sizing and persistent order risk](reference/portfolio-gates-and-risk.md) for #72–#74 in one combined PR. Gates retain every failed check and skip historical testing for model-driven versions. The distributor sizes from local equity, and the capped order path enforces fixed limits and operator controls. The base-library check records four rejections on retained real SPY prices; synthetic historical clocks and one-ETF coverage earn no admission. Current merge and epic state remain in #47.
+
+Wave 10 joins [incubation decisions, capped sizing and paper reconciliation](reference/incubation.md),
+adds [indicative option structures with reserves and Greek limits](reference/option-structures.md),
+and runs the [bounded advisory research desk](reference/research-desk.md) for
+#77, #84 and #86 in one combined PR. The retained real desk session used eight
+subscription calls and recorded four trials; its backtest had no eligible
+historical observations and stayed in cash. That exercise proves the tool and
+retention path, with no strategy performance or qualification credit. The four
+failed base gates remain rejected, and first protected paper positions remain
+#107.
 
 Wave 5 adds the opt-in [daily-bar worker](reference/daily-bars-worker.md) for
 #95 and the [independent SPY comparison](reference/spy-comparison.md) for #94
@@ -119,11 +129,11 @@ the full order, waves and critical path. Its epics:
 | [A #48](https://github.com/subculture-collective/mantik/issues/48) Free point-in-time market data | 10/10 | Closed after the explicit primary-close SPY reconciliation; delisted-stock and indicative-option limits remain |
 | [B #49](https://github.com/subculture-collective/mantik/issues/49) One strategy interface and engine | 5/5 | Closed after the real-price SPY accounting check in both account types with deposits (#105) |
 | [C #50](https://github.com/subculture-collective/mantik/issues/50) Base strategy library for stocks | 6/6 | Closed under the owner-approved recipe ports and pinned reference tests |
-| [D #51](https://github.com/subculture-collective/mantik/issues/51) Trial registry and backtest gate | 4/4 on this branch | Four recorded base-library decisions with reasons and declared trade-plan minimums; source gaps remain failed checks |
-| [E #52](https://github.com/subculture-collective/mantik/issues/52) Real-quote paper trading on the capped book | 4/6 on this branch | Incubation worker and first protected real-quote positions (#77, #107) |
+| [D #51](https://github.com/subculture-collective/mantik/issues/51) Trial registry and backtest gate | 4/4 | Four base decisions are recorded; strategy-specific minimum capital across each full eligible universe remains required. The one-share SPY fixture minimum does not meet that epic exit |
+| [E #52](https://github.com/subculture-collective/mantik/issues/52) Real-quote paper trading on the capped book | 5/6 on this branch | First protected real-quote positions (#107); the runner alone does not complete that exit |
 | [F #53](https://github.com/subculture-collective/mantik/issues/53) Overseer and daily brief | 0/4 | Health admission, daily review and resizing, owner brief and controls |
-| [G #54](https://github.com/subculture-collective/mantik/issues/54) Options and multi-leg strategies | 1/5 | Structures with reserves and Greek caps, Alpaca multi-leg orders and strategy recipes |
-| [H #55](https://github.com/subculture-collective/mantik/issues/55) Model research desk | 2/5 | Research desk, evolution and model analyst |
+| [G #54](https://github.com/subculture-collective/mantik/issues/54) Options and multi-leg strategies | 2/5 on this branch | Alpaca multi-leg orders and strategy recipes, including real paper open/close evidence |
+| [H #55](https://github.com/subculture-collective/mantik/issues/55) Model research desk | 3/5 on this branch | Evolution and model analyst |
 | [I #56](https://github.com/subculture-collective/mantik/issues/56) Kalshi decision engine | 3/3 | Calibrated paper trades must settle and feed calibration records; maker intents alone do not meet that exit |
 | [J #57](https://github.com/subculture-collective/mantik/issues/57) Forward qualification and promotion | 0/3 | Generalised prospective rules, automatic promotion and demotion, and a recorded forward assessment |
 
@@ -151,19 +161,22 @@ complete the replacement epics or their acceptance checks.
 
 ## Next steps
 
-After Wave 9 merges, these are the next work units. This describes dependencies,
+After Wave 10 merges, these are the next work units. This describes dependencies,
 not pickup approval, deployment or provider access. Check #47 and each issue's
 current blockers before starting work.
 
 | Work | Prerequisites and remaining outcome |
 | --- | --- |
-| [E5 #77](https://github.com/subculture-collective/mantik/issues/77) Real-quote incubation | After #72, #73 and #74: join the strategy view, gate, sizing and risk path to the running paper worker. |
-| [G2 #84](https://github.com/subculture-collective/mantik/issues/84) Multi-leg structures | #81 and #66 are merged; #74 supplies the order-risk boundary. Add reserves and Greek limits for option structures. |
-| [H3 #86](https://github.com/subculture-collective/mantik/issues/86) Research desk | #82 and #79 are merged; #72 supplies recorded gate feedback. |
+| [J1 #78](https://github.com/subculture-collective/mantik/issues/78) Prospective declarations | After #77: pin a strategy version, benchmark, window and search bound; support multi-week holds while preserving threshold replay. |
+| [G3 #85](https://github.com/subculture-collective/mantik/issues/85) Multi-leg paper orders | After #84: durable open/close and safe fallback; record an actual paper iron-condor open and close. |
+| [F1 #83](https://github.com/subculture-collective/mantik/issues/83), [F2 #90](https://github.com/subculture-collective/mantik/issues/90) Oversight and health | Review daily evidence, retain decisions for the next rebalance, and stop stale-data entries while preserving exits and reconciliation. |
+| [H4 #103](https://github.com/subculture-collective/mantik/issues/103), [H5 #93](https://github.com/subculture-collective/mantik/issues/93) Evolution and model analyst | After #86: retain every mutated/recombined attempt; keep model targets forward-only and under coded sizing and risk authority. |
+| [G4 #101](https://github.com/subculture-collective/mantik/issues/101), [G5 #102](https://github.com/subculture-collective/mantik/issues/102) Option recipes | After #84 and #85: reviewed provenance, cash/margin permissions and tested strategy behavior. |
+| [E6 #107](https://github.com/subculture-collective/mantik/issues/107) Protected paper positions | Requires eligible strategies, fresh regular-session quotes, protected execution and owned-fill reconciliation. |
 
-Wave 9 completes the ninth issue on the original thirteen-issue critical path.
-The remaining chain is #77 → #78 → #92 → #108. The capital branch now reaches
-#77 through the capped book, distributor and risk checks. The separate SPY data
+Wave 10 implements the tenth issue on the original thirteen-issue critical path.
+The remaining chain is #78 → #92 → #108. The capital branch reaches
+the incubation runner through the capped book, distributor and risk checks. The separate SPY data
 and engine exits (#94 and #105) are recorded; they do not establish real-quote
 execution or forward qualification.
 

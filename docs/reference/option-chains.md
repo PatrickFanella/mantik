@@ -12,7 +12,9 @@ then requires its bar source to also implement `strategy.ChainSource` and calls
 `OptionChain(ctx, assetID, asOf)` for each underlying asset. The source must
 bind the stable underlying ID to its symbol and call `options.Read`. A
 stock-only spec does not load chains. `View.OptionChain(assetID)` returns a
-copy and a presence flag. This adds research data, not option order targets.
+copy and a presence flag. This adds research data. The separate
+[option order simulator](option-structures.md) uses these chains to admit
+structures, reserve collateral and check Greek limits.
 
 ## Clocks and missing data
 

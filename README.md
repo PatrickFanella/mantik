@@ -58,12 +58,20 @@ quotes and zero fees or slippage.
   capital before submission and reconciles its own fills and scheduled funding.
   Strategy orders must match a retained distributor plan and pass the fixed
   exposure, cash, loss and emergency-control checks before submission.
+  The opt-in [incubation runner](docs/reference/incubation.md) runs eligible
+  strategies on retained prospective quotes and reports the worse venue/model
+  fill result, with no qualification credit. It preserves explicit flat exits
+  for retained owners with stale research and rechecks quote expiry immediately
+  before the paper adapter's order POST.
 - **Kalshi data**: [public collection](docs/reference/kalshi-data.md) retains
   weather-market rules and order-book observations for point-in-time reads.
   [Weather probabilities](docs/reference/kalshi-weather.md) retain pre-close
   next-day forecasts and report Brier scores and buckets after final settlement.
   [Calibrated maker decisions](docs/reference/kalshi-maker.md) place fee-aware,
   quarter-Kelly post-only intents within the separate notional book.
+- **Advisory research desk**: [bounded model tools](docs/reference/research-desk.md)
+  compose inactive typed ideas, retain rejected replies and every attempted
+  spec, and run post-cutoff simulations without gate or trading authority.
 - **Subscription research calls**: the [model adapter](docs/reference/subscription-models.md)
   runs bounded Claude and Codex prompts using host logins, with a durable daily
   call budget and hash records, independently of trading.
@@ -196,6 +204,10 @@ The [`stock-assets` and `stock-universe` commands](docs/reference/stock-universe
 
 Strategies can read [point-in-time indicative option chains](docs/reference/option-chains.md)
 with explicit same-session spot inputs and reference-tested European-model IV and Greeks.
+The [indicative option order simulator](docs/reference/option-structures.md) admits
+up-to-four-leg structures, holds maximum-loss and partial-fill reserves, enforces
+cash-book permissions and fixed Greek caps, and records conservative bar fills.
+It grants no qualified or broker submission authority.
 The pure [indicator adapter](docs/reference/indicators.md) provides SMA, EMA, RSI,
 Wilder ATR, Bollinger bands and rolling return volatility with maintained TA-Lib parity tests.
 

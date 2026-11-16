@@ -1,5 +1,6 @@
 // Package options reads indicative option chains and computes European-model
-// estimates. It supplies no execution quotes, exercise or order authority.
+// estimates, validates structures and bounds their simulated loss reserves.
+// It supplies no execution quotes, exercise or broker order authority.
 package options
 
 import (

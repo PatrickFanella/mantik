@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -32,13 +33,18 @@ const (
 
 type Call struct {
 	Provider Provider
-	Prompt   string
-	Timeout  time.Duration
+	Model    string
+	// RestrictedTools removes native host tools; callers dispatch typed replies.
+	RestrictedTools bool
+	Prompt          string
+	Timeout         time.Duration
 }
 type Record struct {
-	// Response is available only to the immediate caller, never JSON or journal output.
+	// Response is bounded stdout available only to the immediate caller, never
+	// JSON or journal output. A failed call's bytes are evidence, not usable output.
 	Response       string    `json:"-"`
 	Provider       Provider  `json:"provider"`
+	Model          string    `json:"model,omitempty"`
 	StartedAt      time.Time `json:"started_at"`
 	FinishedAt     time.Time `json:"finished_at,omitempty"`
 	PromptSHA256   string    `json:"prompt_sha256"`
@@ -144,6 +150,9 @@ func cleanEnv(env []string) []string {
 func digest(value string) string { h := sha256.Sum256([]byte(value)); return hex.EncodeToString(h[:]) }
 
 func (j *Journal) Call(ctx context.Context, call Call, dailyBudget int) (Record, error) {
+	if call.Model != "" && !regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$`).MatchString(call.Model) {
+		return Record{}, errors.New("invalid subscription model identity")
+	}
 	if dailyBudget < 1 || (call.Provider != Claude && call.Provider != Codex) || strings.TrimSpace(call.Prompt) == "" || len(call.Prompt) > 32768 {
 		return Record{}, errors.New("invalid subscription model call")
 	}
@@ -183,24 +192,37 @@ func (j *Journal) Call(ctx context.Context, call Call, dailyBudget int) (Record,
 	if err = j.saveBudget(state); err != nil {
 		return Record{}, err
 	}
-	record := Record{Provider: call.Provider, StartedAt: now, PromptSHA256: digest(call.Prompt), Status: "started"}
+	record := Record{Provider: call.Provider, Model: call.Model, StartedAt: now, PromptSHA256: digest(call.Prompt), Status: "started"}
 	if err = j.append(record); err != nil {
 		return Record{}, err
 	}
 	bounded, cancel := context.WithTimeout(ctx, call.Timeout)
 	defer cancel()
 	var output []byte
+	var modelArgs []string
+	if call.Model != "" {
+		modelArgs = []string{"--model", call.Model}
+	}
 	if call.Provider == Claude {
-		output, err = j.run(bounded, "claude", call.Prompt, "-p", "--restricted", "--safe-mode", "--strict-mcp-config", "--no-session-persistence", "--tools", "")
+		args := append([]string{"-p", "--restricted", "--safe-mode", "--strict-mcp-config", "--no-session-persistence", "--tools", ""}, modelArgs...)
+		output, err = j.run(bounded, "claude", call.Prompt, args...)
 	} else {
-		output, err = j.run(bounded, "codex", call.Prompt, "exec", "--sandbox", "read-only", "--ephemeral", "--ignore-rules", "--ignore-user-config", "--skip-git-repo-check", "-")
+		args := append([]string{"exec", "--sandbox", "read-only", "--ephemeral", "--ignore-rules", "--ignore-user-config", "--skip-git-repo-check"}, modelArgs...)
+		if call.RestrictedTools {
+			args = append(args, "-c", `web_search="disabled"`, "-c", "mcp_servers={}")
+			for _, feature := range []string{"shell_tool", "unified_exec", "code_mode", "code_mode_host", "js_repl", "multi_agent", "multi_agent_v2", "apps", "browser_use", "computer_use", "image_generation", "skill_search", "remote_plugin", "view_image", "tool_suggest", "skill_mcp_dependency_install"} {
+				args = append(args, "--disable", feature)
+			}
+			args = append(args, "--enable", "skip_host_skill_discovery")
+		}
+		output, err = j.run(bounded, "codex", call.Prompt, append(args, "-")...)
 	}
 	record.FinishedAt = j.now().UTC()
 	record.ResponseSHA256 = digest(string(output))
+	record.Response = string(output)
 	record.Status = "failed"
 	if err == nil {
 		record.Status = "completed"
-		record.Response = string(output)
 	} else if strings.Contains(strings.ToLower(err.Error()), "rate limit") || strings.Contains(strings.ToLower(err.Error()), "429") {
 		record.Status = "rate_limited"
 		state.RetryAfter = record.FinishedAt.Add(5 * time.Minute)
