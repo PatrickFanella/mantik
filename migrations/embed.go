@@ -390,3 +390,13 @@ var StrategyGates string
 //
 //go:embed 0123_research_desk_events.sql
 var ResearchDeskEvents string
+
+// ForwardDeclarations freezes prospective windows for canonical strategies.
+//
+//go:embed 0124_forward_declarations.sql
+var ForwardDeclarations string
+
+// StrategyTrialBatches fences retained replies until all attempts are registered.
+//
+//go:embed 0125_strategy_trial_batches.sql
+var StrategyTrialBatches string

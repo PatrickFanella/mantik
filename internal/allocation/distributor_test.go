@@ -1,6 +1,7 @@
 package allocation
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
@@ -91,5 +92,35 @@ func TestUnderfundedAndInsolventSleevesCanStillFlatten(t *testing.T) {
 		if e != nil || len(d.Orders) != 1 || d.Orders[0].Side != "sell" || d.Orders[0].Quantity != "1.000000000" {
 			t.Fatal("underfunding trapped exit", equity, d, e)
 		}
+	}
+}
+
+func TestForwardExposureHoldDoesNotResizeAfterDeposit(t *testing.T) {
+	req, snap := sizedFixture()
+	snap.PreviousTargets = map[string]TargetDecision{"trend": req.Targets[0].Decision}
+	snap.Positions = []SizingPosition{{SleeveID: "trend", Symbol: "SPY", Quantity: "0.1"}}
+	snap.Equity = "3000"
+	req.Targets[0].Decision = TargetDecision{HoldExposure: true}
+	held, e := Distribute(req, snap)
+	if e != nil || len(held.Orders) != 0 || FlatTarget(req.Targets[0].Decision) {
+		t.Fatal(held, e)
+	}
+	req.Targets[0].Decision = TargetDecision{KeepPositions: true}
+	legacy, e := Distribute(req, snap)
+	if e != nil || len(legacy.Orders) != 1 {
+		t.Fatal("legacy weight reuse changed", legacy, e)
+	}
+	for _, bad := range []TargetDecision{{HoldExposure: true, KeepPositions: true}, {HoldExposure: true, Targets: []WeightTarget{{Asset: "SPY", Weight: "1"}}}} {
+		req.Targets[0].Decision = bad
+		if _, e = Distribute(req, snap); e == nil {
+			t.Fatal("ambiguous exposure hold accepted", bad)
+		}
+	}
+}
+
+func TestLegacyTargetJSONRetainsHashInput(t *testing.T) {
+	raw, e := json.Marshal(TargetDecision{})
+	if e != nil || string(raw) != `{"Targets":null,"KeepPositions":false}` {
+		t.Fatal(string(raw), e)
 	}
 }

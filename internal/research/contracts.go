@@ -251,6 +251,7 @@ func (m Manifest) AdjustedBars(ctx context.Context, asset string, at time.Time) 
 
 // Trials contains only research history writes. It has no promotion interface.
 type Trials interface {
+	strategytrial.BatchStore
 	strategytrial.Store
 }
 

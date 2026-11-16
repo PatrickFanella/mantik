@@ -485,8 +485,9 @@ func TestDeskRejectsFutureParentWithoutLosingAttempt(t *testing.T) {
 	if e != nil || r.Outcome == nil || r.Outcome.Status != "failed" || len(r.Start.Parents) != 0 || len(r.Returns) != 0 || !strings.Contains(string(r.Start.Spec), parent) {
 		t.Fatal("invalid chronology suppressed or executed attempt", r, e)
 	}
-	if n, e := s.StrategyTrialSearchTotal(context.Background(), d.Family); e != nil || n != 2 {
-		t.Fatal(n, e)
+	// The deliberately unfinished future reply remains fenced until recovered.
+	if _, e := s.StrategyTrialSearchTotal(context.Background(), d.Family); !errors.Is(e, strategytrial.ErrFamilyPending) {
+		t.Fatal(e)
 	}
 }
 

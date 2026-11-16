@@ -192,13 +192,7 @@ func (m *Memory) StrategyTrialSearchTotal(ctx context.Context, family string) (i
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var total int64
-	for _, r := range m.strategyTrials {
-		if r.Start.Family == family {
-			total++
-		}
-	}
-	return total, nil
+	return m.strategySearchTotalLocked(family)
 }
 
 // StartStrategyTrial retains a declaration atomically with its lineage checks.
@@ -395,9 +389,7 @@ func (p *Postgres) StrategyTrialSearchTotal(ctx context.Context, family string) 
 	if !strategytrial.ValidFamily(family) {
 		return 0, strategytrial.ErrInvalid
 	}
-	var total int64
-	err := p.pool.QueryRow(ctx, "SELECT count(*) FROM mantik_strategy_trials WHERE family=$1", family).Scan(&total)
-	return total, err
+	return strategySearchTotal(ctx, p.pool, family)
 }
 
 // StrategyTrials returns the complete search family, including failed starts.
@@ -410,6 +402,9 @@ func (m *Memory) StrategyTrials(ctx context.Context, family string) ([]strategyt
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if e := m.strategyFamilyReadyLocked(family); e != nil {
+		return nil, e
+	}
 	out := []strategytrial.Record{}
 	for _, r := range m.strategyTrials {
 		if r.Start.Family == family {
@@ -438,6 +433,9 @@ func (p *Postgres) StrategyTrials(ctx context.Context, family string) ([]strateg
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
+	if e := strategyFamilyReady(ctx, tx, family); e != nil {
+		return nil, e
+	}
 	rows, err := tx.Query(ctx, `SELECT id,payload FROM mantik_strategy_trials WHERE family=$1 ORDER BY id`, family)
 	if err != nil {
 		return nil, err

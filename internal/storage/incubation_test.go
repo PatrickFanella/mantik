@@ -13,6 +13,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/executioncost"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategygate"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategytrial"
+	"git.subcult.tv/subculture-collective/mantik/internal/workhealth"
 )
 
 func incubationJournalContract(t *testing.T, s CappedBookStore) {
@@ -32,6 +33,7 @@ func incubationJournalContract(t *testing.T, s CappedBookStore) {
 	sid := gate.Declaration.StrategyID
 	req := allocation.RebalanceRequest{ID: "inc-cycle", At: execution, Sleeves: []allocation.Sleeve{{ID: "model", StrategyID: sid, GateID: "retained-gate", Stage: "forward_only", ModelDriven: true, Risk: "1", Minimum: "1"}}, Targets: []allocation.SleeveTarget{{SleeveID: "model", Decision: allocation.TargetDecision{Targets: []allocation.WeightTarget{{Asset: "SPY", Weight: "1"}}}}}, Limits: map[string]string{"SPY": "101"}, Fees: map[string]string{"SPY": "1"}}
 	plan := account.IncubationPlan{InputSHA256: strings.Repeat("c", 64), DecidedAt: decision, Rebalance: req, Costs: map[string]executioncost.Model{"model": executioncost.Default()}, Decisions: []account.IncubationDecision{{SleeveID: "model", StrategyID: sid, State: []byte("retained")}}, Quotes: map[string]account.IncubationQuote{"SPY": {Symbol: "SPY", Bid: "99.99", Ask: "100.01", BidQuantity: "100", AskQuantity: "100", OccurredAt: execution, ReceivedAt: execution, EvidenceClass: "prospective_market_unqualified", SourceSHA256: strings.Repeat("d", 64)}}}
+	plan.Health = &workhealth.Report{At: execution, Checks: map[string]workhealth.Check{"data_freshness": {Ready: false, Status: "unavailable", Code: "fixture_stale_bars", At: execution, EvidenceRefs: []string{"input:" + plan.InputSHA256}}}, Work: map[string]workhealth.Check{"entry": {Ready: false, Status: "blocked", Code: "new_risk_not_admitted", At: execution}, "exit": {Ready: true, Status: "ready", Code: "health_independent_safety_work", At: execution}}}
 	// Contract-only admission fixture, never real observation/qualification proof.
 	command := account.BookCommand{ID: "cycle", Kind: "incubation_plan", At: execution, Incubation: &plan}
 	for _, c := range []account.BookCommand{
@@ -162,6 +164,9 @@ func TestPostgresContractsIncubationJournal(t *testing.T) {
 	state, e := reopened.CappedBook(context.Background(), "incubation")
 	if e != nil {
 		t.Fatal(e)
+	}
+	if state.Events[0].Incubation.Health == nil || state.Events[0].Incubation.Health.Checks["data_freshness"].Code != "fixture_stale_bars" || !state.Events[0].Incubation.Health.Work["exit"].Ready || !state.Events[0].Incubation.Health.At.Equal(state.Events[0].At) {
+		t.Fatal("SQL restart lost health evidence", state)
 	}
 	if len(state.Events) != 5 || state.Events[4].ModelFill == nil || state.Events[0].Incubation.Decisions[0].State[0] != 'r' {
 		t.Fatal("SQL restart lost plan/model", state)

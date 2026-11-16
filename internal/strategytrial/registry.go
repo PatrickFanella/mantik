@@ -109,7 +109,9 @@ type Record struct {
 
 // Store is the append-only daily-engine registry. StartStrategyTrial returns
 // true only for a new attempt. Exact write retries are idempotent; changed
-// retries conflict. Every start counts, including unfinished attempts.
+// retries conflict. Every start counts, including unfinished attempts. Family
+// totals are unavailable with ErrFamilyPending while retained proposals await
+// reconciliation; callers must never substitute a partial or claimed N.
 type Store interface {
 	StartStrategyTrial(context.Context, Start) (bool, error)
 	AppendStrategyTrialReturn(context.Context, string, DailyReturn) error
@@ -120,6 +122,7 @@ type Store interface {
 
 // FamilyReader enumerates every retained start in stable ID order. Statistical
 // assessments use this authoritative set rather than caller-selected winners.
+// An unreconciled family returns ErrFamilyPending instead of a partial set.
 type FamilyReader interface {
 	StrategyTrials(context.Context, string) ([]Record, error)
 }

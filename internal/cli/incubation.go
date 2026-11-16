@@ -22,6 +22,8 @@ import (
 // authority. Bars/actions keep their original knowledge and observation clocks.
 type incubationInput struct {
 	Config               *account.CappedConfig
+	Calendar             *service.IncubationCalendar `json:",omitempty"`
+	Protective           bool                        `json:",omitempty"`
 	ID                   string
 	DecidedAt, ExecuteAt time.Time
 	At                   time.Time
@@ -31,6 +33,7 @@ type incubationInput struct {
 }
 type incubationStrategyInput struct {
 	SleeveID, GateID, Risk string
+	ForwardDeclarationID   string `json:",omitempty"`
 	Library                *library.Config
 	Expression             *strategyspec.Definition
 	Assets                 []string
@@ -71,7 +74,10 @@ func incubationRequest(in incubationInput) (service.IncubationRequest, error) {
 	if e != nil {
 		return service.IncubationRequest{}, e
 	}
-	req := service.IncubationRequest{ID: in.ID, InputSHA256: hash, DecidedAt: in.DecidedAt, ExecuteAt: in.ExecuteAt, Quotes: in.Quotes, Limits: in.Limits, Fees: in.Fees}
+	req := service.IncubationRequest{ID: in.ID, InputSHA256: hash, DecidedAt: in.DecidedAt, ExecuteAt: in.ExecuteAt, Quotes: in.Quotes, Limits: in.Limits, Fees: in.Fees, Calendar: in.Calendar, Protective: in.Protective}
+	if in.Protective {
+		return req, nil
+	}
 	for _, entry := range in.Strategies {
 		if (entry.Library == nil) == (entry.Expression == nil) {
 			return req, errors.New("choose exactly one compiled library or expression strategy")
@@ -85,18 +91,19 @@ func incubationRequest(in incubationInput) (service.IncubationRequest, error) {
 		if e != nil {
 			return req, e
 		}
-		req.Strategies = append(req.Strategies, service.IncubatingStrategy{SleeveID: entry.SleeveID, GateID: entry.GateID, Risk: entry.Risk, Strategy: s, Source: incubationSource{entry}, Assets: entry.Assets})
+		req.Strategies = append(req.Strategies, service.IncubatingStrategy{SleeveID: entry.SleeveID, ForwardDeclarationID: entry.ForwardDeclarationID, GateID: entry.GateID, Risk: entry.Risk, Strategy: s, Source: incubationSource{entry}, Assets: entry.Assets})
 	}
 	return req, nil
 }
 
 func runIncubation(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs, db, id := gateFlags("incubation", errOut)
-	action := fs.String("action", "show", "init, run, sync or show (paper only)")
+	action := fs.String("action", "show", "init, run, supervise, sync or show (paper only)")
 	input := fs.String("input", "", "reviewed incubation input JSON")
 	journal := fs.String("journal", "", "absolute private paper adapter journal directory")
 	credentials := fs.String("credentials-file", "", "mode-0600 paper credentials JSON")
 	brokerID := fs.String("account-id", "", "expected paper account ID")
+	safetyConfig := fs.String("safety-config", "", "separate owner safety policy and quote-file configuration for supervise")
 	if e := fs.Parse(args); e != nil {
 		if errors.Is(e, flag.ErrHelp) {
 			return nil
@@ -106,7 +113,7 @@ func runIncubation(ctx context.Context, args []string, out, errOut io.Writer) er
 	if fs.NArg() != 0 || *id == "" || os.Getenv(*db) == "" {
 		return errors.New("incubation requires id and explicit database-env")
 	}
-	if *action != "init" && *action != "run" && *action != "sync" && *action != "show" {
+	if *action != "init" && *action != "run" && *action != "sync" && *action != "show" && *action != "supervise" {
 		return errors.New("unknown incubation action")
 	}
 	var in incubationInput
@@ -116,6 +123,9 @@ func runIncubation(ctx context.Context, args []string, out, errOut io.Writer) er
 		}
 	}
 	var req service.IncubationRequest
+	if *action == "supervise" && (*safetyConfig == "" || *safetyConfig == *input) {
+		return errors.New("supervise requires a separate owner safety-config")
+	}
 	if *action == "run" {
 		var e error
 		req, e = incubationRequest(in)
@@ -165,10 +175,13 @@ func runIncubation(ctx context.Context, args []string, out, errOut io.Writer) er
 		return e
 	}
 	runner := service.IncubationRunner{Store: s, Broker: broker, BookID: *id}
+	if *action == "supervise" {
+		return runIncubationSupervision(ctx, runner, *input, *safetyConfig, out)
+	}
 	if *action == "run" {
 		result, e := runner.Run(ctx, req)
 		if e != nil {
-			return e
+			return errors.Join(e, emit(out, result))
 		}
 		return emit(out, result)
 	}

@@ -108,6 +108,10 @@ func (m *Memory) RecordStrategyGate(ctx context.Context, d strategygate.Decision
 		}
 		return copyGate(r)
 	}
+	if e := m.strategyFamilyReadyLocked(r.Declaration.Family); e != nil {
+		detached, copyErr := copyGate(r)
+		return detached, errors.Join(e, copyErr)
+	}
 	r.Decision = &d
 	detached, e := copyGate(r)
 	if e != nil {
@@ -188,6 +192,12 @@ func (p *Postgres) RecordStrategyGate(ctx context.Context, d strategygate.Decisi
 			return r, strategygate.ErrConflict
 		}
 	} else {
+		if e = lockStrategyFamily(ctx, tx, r.Declaration.Family); e != nil {
+			return r, e
+		}
+		if e = strategyFamilyReady(ctx, tx, r.Declaration.Family); e != nil {
+			return r, e
+		}
 		raw, e := json.Marshal(d)
 		if e != nil {
 			return r, e

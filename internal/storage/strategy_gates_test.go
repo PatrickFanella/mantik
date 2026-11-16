@@ -220,7 +220,7 @@ func portfolioJournalContracts(t *testing.T, s CappedBookStore) {
 				}
 				return g, err
 			}
-			if err := checkPortfolioAdmissions(state, cmd, read, func(string) (int64, error) { return 0, nil }); err == nil || !strings.Contains(err.Error(), "gate_evidence_ineligible") {
+			if err := checkPortfolioAdmissions(state, cmd, read, func(string) (int64, error) { return 0, nil }, nil); err == nil || !strings.Contains(err.Error(), "gate_evidence_ineligible") {
 				t.Fatal("transactional admission accepted ineligible evidence", class, cmd.Kind, err)
 			}
 		}

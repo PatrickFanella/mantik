@@ -523,3 +523,5 @@ carried since v1 but no earlier recipe decided. See
 [maximum drawdown](paper-evaluation-assessments.md#maximum-drawdown). Earlier
 recipes reject the field, it requires a `statistical_tests` plan, and a
 downgrade to v12 fails.
+
+Canonical strategy forward windows use the separate [forward declaration contract](forward-declarations.md). It binds prospective clocks, its own benchmark, minimums and actual trial-family search bound to the capped-book runner, with multiweek holds and no qualification credit. Legacy threshold replay retains its original rules.

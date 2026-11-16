@@ -72,7 +72,8 @@ The storage API also provides:
 - `StrategyTrial`: read the declaration, ordered returns and optional outcome
   from a consistent snapshot.
 - `StrategyTrialSearchTotal`: count every start in a named family, including
-  completed, failed, crashed, abandoned and unfinished attempts.
+  completed, failed, crashed, abandoned and unfinished attempts; return
+  `strategytrial.ErrFamilyPending` while retained proposals are unreconciled.
 
 Exact write retries are idempotent. A changed declaration, daily return or
 outcome under an existing identity conflicts. Parents must already exist and
@@ -80,6 +81,18 @@ cannot have a later start time. Parameter and code variants belong to the same
 stable family when they are part of the same search; making a new family for
 every candidate would understate multiplicity. Counts include synthetic trials
 and do not constitute a sample of independent or successful strategies.
+
+Schema 125 adds append-only family call intents, exact reply receipts and
+reconciliation receipts for the [research desk](research-desk.md). The desk
+fences before a model call and retains the scanner-derived attempt IDs before
+reply append. Until all starts are reconciled, both `StrategyTrialSearchTotal`
+and `StrategyTrials` return `ErrFamilyPending`; no finite partial N is exposed.
+Backtest assessment, gate snapshots and decision writes, forward declarations,
+forward eligibility/bindings, and incubation admission use that boundary.
+Existing immutable reports remain readable. Resolution requires every declared
+ID to exist in the family, under the same lock as manual starts and admission.
+Interrupted legacy journal calls/replies also fence PostgreSQL family readers.
+Unknown output remains unavailable rather than being assigned an invented N.
 
 The new tables must travel together in a backup. Migration is additive and
 leaves historical trial records unchanged. An older binary refuses the newer

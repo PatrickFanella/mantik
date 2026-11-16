@@ -41,6 +41,8 @@ A run input has these fields (Go JSON field names are accepted):
 | `ExecuteAt` | Later execution clock. A new submission must still be within 60 seconds of this clock and of the execution quote. |
 | `Strategies` | Complete active roster. Each entry binds `SleeveID`, `GateID`, positive daily-volatility `Risk`, `Assets`, and exactly one `Library` configuration or `Expression` definition. |
 | `Bars`, `Actions`, `Universe` within each strategy | Retained source material with original knowledge clocks. Bars bind the executable symbol as both `AssetID` and `Symbol`; a stable-ID-to-symbol resolver is not included here. Supply a reviewed universe when the recipe declares it. Option-chain strategies need a chain-capable application source and are outside this stock CLI adapter. |
+| `Calendar` | Retained exchange-calendar coverage: `From`, `Through`, `SourceSHA256`, `ObservedAt`, `Sessions` with `Date`, `OpenAt`, `CloseAt`. Coverage must include every required warmup session through the current New York date. Observation must precede the decision and be at most 24 hours old. Keep original response bytes in private custody. |
+| `Protective` | Optional `true` requests a flat target for every retained sleeve owner. It cannot add risk or change ownership, skips recipe compilation and strategy data/builds, and uses retained costs and state. Fresh executable quotes and limits remain required. |
 | `Quotes` | Map from executable symbol to `account.IncubationQuote`: `Symbol`, decimal `Bid`, `Ask`, `BidQuantity`, `AskQuantity`, original `SourceSHA256`, `EvidenceClass`, `OccurredAt`, `ReceivedAt`. Sizes are shares, not unverified provider-native units. |
 | `Limits`, `Fees` | Explicit symbol-to-decimal day-limit prices and conservative total venue-fee bounds. These are reviewed execution inputs, never strategy or model output. |
 
@@ -89,9 +91,148 @@ the market clock must be strictly later than the decision, and receipt must be
 between market time and execution time. Current observations cannot be reused as
 historical knowledge.
 
-The real paper adapter repeats the execution-clock and quote-age checks after
-its account/asset reads and durable intent retention, immediately before the
-order POST. A quote that expires during this preparation cannot be submitted.
+### Health admission per cycle
+
+New risk requires all four service checks to be known and healthy:
+
+- Daily data: every declared asset must have the latest eligible exchange
+  session and the complete declared warmup. Eligibility follows retained session
+  closes plus the daily collector's SIP embargo. A Friday close can remain
+  current through a weekend or holiday; daily bars do not use the quote's
+  60-second age limit. Original publication, observation and availability clocks
+  must be ordered and known before the decision. Every trading asset also needs
+  a current execution quote, even when it did not become a target.
+- Owned-ledger reconciliation: the runner performs the existing GET-only fill
+  and order reconciliation before building decisions. Its in-memory proof lasts
+  at most 60 seconds and is not restored from an old plan. `SyncState` returns
+  the exact reconciled journal prefix. Its writes use that prefix's version;
+  intervening commands during order/fill GETs produce a version conflict and
+  require a complete new reconciliation. A later store reload cannot extend
+  this baseline. Other economic receipts or another allocation invalidate the
+  retained proof at submission. This includes idempotent command retries: their
+  returned version must match the expected prefix result, even though the
+  ordinary store permits an identical retry with a stale expected version.
+- Worker liveness: new risk requires a running `IncubationSafetyWorker` bound
+  to the exact book configuration and expected paper account. Only its executed
+  safety cycles can create live coverage; generic `RunTimerWorker` and
+  `RunActionWorker` successes cover the demo workflow and cannot authorize a
+  capped book. The worker evidence names the book, account, reconciled version
+  and immutable policy hash. It applies to every sleeve within its configured
+  symbol universe and continuous holding deadline. Uncovered assets or due
+  holding/review protection fail closed. Shared capability readiness remains
+  an additional veto, not a replacement for book coverage. Missing, failed,
+  stopped, future or expired evidence is unavailable. There is no health
+  override in cycle or model input.
+- Risk brake: the service replays the owned book and observes its marked equity
+  and configured deposits. A missing risk observation is unavailable until the
+  runner initializes it through the existing journal command. Owner controls,
+  loss brakes and hard caps apply independently. Health recovery never clears
+  pause, reduce-only, strategy breaker, kill or hard halt state.
+
+A service embeds this path by constructing `NewIncubationSafetyWorker` with an
+independent `IncubationSafetySource`, fixed symbols, maximum holding duration,
+protective fee reserves and a poll interval of 100 milliseconds to 60 seconds.
+It attaches that same object to `IncubationRunner.Safety`, runs `worker.Run`
+with a service-owned context and clock, and cancels and joins it at shutdown.
+Constructing an object or calling readiness creates no coverage. The one-shot
+`run` action can perform protective work and GET-only recovery. New entries use
+the supervised action below or a service embedding a running worker. A restart
+needs a new successful safety cycle; retained plan health is inspection evidence
+only. No schema change or persisted worker grant is involved.
+
+Each worker cycle collects quotes independently of entry requests, reconciles
+owned orders/fills, observes the existing book risk brake and evaluates holding,
+review and forward-outcome deadlines. When protection is due, it conservatively
+flattens retained sleeves through the existing reduce-only runner without
+calling strategy/model code. Protective limits include the most adverse retained
+cost model and round down to ledger precision. Missing observations keep the
+cycle unsuccessful. Protective work freezes its decision clock and waits up to
+ten seconds, with cancellation, for a genuinely newer execution observation. A
+collector may refresh the same quote file during that wait; rereading an older
+snapshot cannot execute an exit or silently move the decision clock.
+When protection is due, unresolved opening orders or pending
+exits also prevent success; an accepted exit is not fulfillment. This broker contract cannot cancel outstanding opening
+orders. It retains their reservations and continues reconciliation rather than
+claiming protection or releasing capital. Successful evidence expires after the
+existing heartbeat grace (10 seconds plus three poll intervals), becomes
+unavailable while the next cycle is in progress, and is withdrawn on failure or
+cancellation. These are service contract tests, not real-paper protection or
+qualification evidence.
+
+The final adapter check reloads live worker coverage after blocking reads.
+It then checks current owner controls, the exact retained reservation and family
+admission together under the book/family storage fence. No further database read
+follows that snapshot; the live worker and execution clocks are checked again.
+Cancellation or a failed cycle withdraws that coverage immediately. Coverage
+also checks every retained exposed sleeve's forward holding and outcome clocks,
+including sleeves unrelated to the proposed order, and expires at the earliest
+protection deadline. A pending trial family denies new exposure but cannot stop
+the worker from delivering retained-owner protective exits.
+
+### Supervised terminal operation
+
+`incubation --action supervise` uses the same explicit database, book, journal,
+credentials and expected-account flags as `run`. Supply `--input` for the cycle
+manifest and a separate `--safety-config` for the operator's fixed worker policy.
+The supervisor keeps the worker running and watches the cycle file for changed
+inputs. It executes each unchanged input once; the journal remains authoritative
+for retries and changed IDs. Entry refusals or invalid cycle files do not stop
+safety work. A fresh cycle needs a new ID and current decision/execution clocks.
+
+The safety configuration contains `QuotesFile` (an absolute path), `Symbols`,
+`Fees`, `MaximumHoldingSeconds` (1 second through 90 days), and `IntervalSeconds`
+(1–60 seconds). It is read once when supervision starts. `QuotesFile` must differ
+from both configuration and cycle paths. The configuration and quote file must
+be regular files owned by the invoking user with mode 0600; symlinks are refused.
+They are service configuration, never strategy or model output.
+
+The independent quote file is a JSON map from each configured symbol to its
+`IncubationQuote`. A trusted collector or operator must refresh it, preserve the
+original source/receipt clocks and hash, and retain the source material outside
+Git. Selecting this file does not attest its provenance. The supervisor does not
+fetch, invent, backdate or approve quotes. Missing, stale, future or misbound
+observations leave new entries unavailable. The cycle's own quotes cannot renew
+worker evidence.
+
+Output is a JSON stream of safety transitions, cycle results/refusals and a final
+`supervision_stopped` event. Status inspection grants no entry authority; the
+runner repeats all checks at execution. Cancellation stops and joins the worker.
+It does not claim to flatten remaining venue positions. Keep supervision running
+while exposure requires protection, and use the retained ledger and original
+adapter IDs for restart reconciliation. No host timer or unattended deployment is
+installed by this command.
+
+The paper adapter must implement `SubmitChecked`. The service repeats admission,
+owner controls, exact distributor-order checks, forward clocks and quote age
+**after** account/asset reads and durable intent retention, immediately before
+POST. Slow preparation cannot extend a health, quote or holding-window clock.
+Reservations and ambiguous orders are recovered by GET only, without renewed
+entry permission. A blocked entry does not prevent later protective reductions
+in the same distribution. A missing strategy build holds existing exposure;
+explicit `Protective: true` can flatten retained sleeves without compiling or
+calling a strategy. `HoldExposure` and forward-window expiry retain their
+separate meaning.
+
+Results include `Admission`, with separate `entry`, `reduce`, `exit`, `reconcile`
+and `settle` classes, exact check codes, observation clocks and evidence refs.
+The initial cycle report is retained in `Plan.Health` beside its input hash,
+quotes, decisions and costs. It is evidence, never a permission token. The CLI
+also emits the result when a run fails, then returns the error.
+
+`GET /v1/incubation/{id}/readiness` uses the normal bearer-token authentication.
+It reports current admission per work class and exposes the last retained cycle
+report separately as `retained_cycle_evidence`. A read-only GET or a service
+restart cannot renew cycle data or reconciliation: without a current cycle those
+checks say unavailable and entry is blocked. Safety-work readiness means health
+permits that class; its own quote, ledger and reduce-only checks still apply.
+It does not claim an exit, reconciliation or settlement actually completed.
+
+`sync` remains independent of strategy compilation, market-bar availability,
+liveness admission and model availability. Owned fills and unsettled sale credits
+can still reconcile and settle while entry admission is blocked. Its existing
+fresh quote/mark contract remains in force. Health snapshots do not change
+lifecycle policy, promotion, daily reviews, family search accounting or capital
+ownership. No SQL migration or option-paper implementation is required.
 
 ## Fill comparison and returns
 
@@ -151,3 +292,14 @@ broker. The disposable SQL contract checks plan/model persistence, replay and
 stale-search rejection. These tests exercise the running path; they establish no
 real market observation, broker connectivity, protected position, performance or
 qualification result. No external order is part of this implementation proof.
+
+Canonical strategy forward windows use the separate [forward declaration contract](forward-declarations.md). It binds prospective clocks, its own benchmark, minimums and actual trial-family search bound to the capped-book runner, with multiweek holds and no qualification credit. Legacy threshold replay retains its original rules.
+
+## Daily oversight
+
+[Daily strategy review](daily-strategy-review.md) retains evidence-bound budget
+transitions in the same capped-book journal. The runner uses the strictly later
+decision clock, makes retired strategies explicitly flat without calling Decide,
+and retains pending ownership and all existing admissions. Whole-book
+`IncubationReturns` is not used as strategy forward performance. Owner retirement
+is permanent and distinct from the resumable strategy breaker.

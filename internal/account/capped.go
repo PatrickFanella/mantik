@@ -58,8 +58,10 @@ type BookCommand struct {
 	Marks                                   map[string]string
 	Rebalance                               *allocation.RebalanceRequest
 	RiskControl                             *risk.Control
-	Incubation                              *IncubationPlan `json:",omitempty"`
-	ModelFill                               *IncubationFill `json:",omitempty"`
+	Incubation                              *IncubationPlan    `json:",omitempty"`
+	ReviewDeclaration                       *ReviewDeclaration `json:",omitempty"`
+	Review                                  *StrategyReview    `json:",omitempty"`
+	ModelFill                               *IncubationFill    `json:",omitempty"`
 }
 
 // CappedState is an append-only replayable ledger. Version is its event count.
@@ -87,6 +89,8 @@ type openOrder struct {
 	released    bool
 }
 type bookReplay struct {
+	reviews      map[string]reviewLifecycle
+	reviewScales map[string]string
 	sleeves      map[string]allocation.Sleeve
 	targets      map[string]allocation.TargetDecision
 	funds        *Book
@@ -298,8 +302,8 @@ func replay(s CappedState) (*bookReplay, error) {
 	last := s.Config.OpenedAt
 	financialEvents := []BookCommand{}
 	for _, c := range s.Events {
-		if c.Incubation != nil && c.Kind != "incubation_plan" || c.ModelFill != nil && c.Kind != "fill" {
-			return nil, errors.New("incubation payload differs from event kind")
+		if c.ReviewDeclaration != nil && c.Kind != "review_declare" || c.Review != nil && c.Kind != "strategy_review" || c.Incubation != nil && c.Kind != "incubation_plan" || c.ModelFill != nil && c.Kind != "fill" {
+			return nil, errors.New("book payload differs from event kind")
 		}
 		if c.ID == "" || len(c.ID) > 128 || ids[c.ID] || c.At.Before(last) || c.At.IsZero() {
 			return nil, ErrBookConflict
@@ -348,6 +352,14 @@ func replay(s CappedState) (*bookReplay, error) {
 			if c.RiskControl.Action == "owner_clear_halt" {
 				r.halted = false
 			}
+		case "review_declare":
+			if e := validateReviewDeclaration(s, c); e != nil {
+				return nil, e
+			}
+		case "strategy_review":
+			if e := replayStrategyReview(s, c, r); e != nil {
+				return nil, e
+			}
 		case "incubation_plan":
 			if e := validateIncubationPlan(s, c); e != nil {
 				return nil, e
@@ -365,16 +377,18 @@ func replay(s CappedState) (*bookReplay, error) {
 			if e := retainPortfolioRoster(r, *c.Rebalance); e != nil {
 				return nil, e
 			}
-			v, e := allocation.Distribute(*c.Rebalance, sizingSnapshot(r, c.Marks))
+			request, snapshot := reviewSizing(s, c, r)
+			v, e := allocation.Distribute(request, snapshot)
 			if e != nil {
 				return nil, e
 			}
 			r.distribution = &v
+			r.reviewScales = snapshot.BudgetScales
 			if r.targets == nil {
 				r.targets = map[string]allocation.TargetDecision{}
 			}
 			for _, t := range c.Rebalance.Targets {
-				if !t.Decision.KeepPositions {
+				if !t.Decision.KeepPositions && !t.Decision.HoldExposure {
 					r.targets[t.SleeveID] = t.Decision
 				}
 			}
@@ -474,8 +488,8 @@ var hashText = regexp.MustCompile(`^[a-f0-9]{64}$`)
 // ApplyCappedCommand returns a detached state. Exact event retries are idempotent;
 // changed retries conflict. A failed command never changes the previous state.
 func ApplyCappedCommand(s CappedState, c BookCommand) (CappedState, error) {
-	if c.Incubation != nil && c.Kind != "incubation_plan" || c.ModelFill != nil && c.Kind != "fill" {
-		return s, errors.New("incubation payload differs from event kind")
+	if c.ReviewDeclaration != nil && c.Kind != "review_declare" || c.Review != nil && c.Kind != "strategy_review" || c.Incubation != nil && c.Kind != "incubation_plan" || c.ModelFill != nil && c.Kind != "fill" {
+		return s, errors.New("book payload differs from event kind")
 	}
 	raw, e := json.Marshal(s)
 	if e != nil {

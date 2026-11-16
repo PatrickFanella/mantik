@@ -38,6 +38,7 @@ type State struct {
 	Warn, Paused, Halted, Kill, ReduceOnly      bool
 	PauseReason                                 string
 	Breakers                                    map[string]bool
+	Retired                                     map[string]bool `json:",omitempty"`
 }
 
 // Observe advances a unitized marked return, removing recorded external flows.
@@ -143,6 +144,16 @@ func ApplyControl(s State, c Control) (State, error) {
 		// Clearing is an explicit owner loss-baseline reset. Ordinary resume,
 		// deposits and a new day never perform this reset.
 		s.NAV, s.HighNAV, s.DayNAV = "1", "1", "1"
+	case "retire_strategy":
+		if c.StrategyID == "" || len(c.StrategyID) > 128 {
+			return s, errors.New("invalid strategy retirement")
+		}
+		r := map[string]bool{}
+		for id, v := range s.Retired {
+			r[id] = v
+		}
+		r[c.StrategyID] = true
+		s.Retired = r
 	case "pause_strategy", "resume_strategy":
 		if c.StrategyID == "" || len(c.StrategyID) > 128 {
 			return s, errors.New("invalid strategy breaker")
@@ -202,6 +213,9 @@ func Check(s State, v OrderView) ([]string, error) {
 	}
 	if s.Paused {
 		reasons = append(reasons, s.PauseReason)
+	}
+	if s.Retired[v.StrategyID] {
+		reasons = append(reasons, "risk_strategy_retired")
 	}
 	if s.Breakers[v.StrategyID] {
 		reasons = append(reasons, "risk_strategy_breaker")

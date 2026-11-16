@@ -40,6 +40,9 @@ type SleeveTarget struct {
 type TargetDecision struct {
 	Targets       []WeightTarget
 	KeepPositions bool
+	// HoldExposure leaves actual quantities unchanged instead of reusing weights.
+	// It creates no orders and cannot be combined with targets or KeepPositions.
+	HoldExposure bool `json:",omitempty"`
 }
 
 // WeightTarget expresses a sleeve-relative signed asset weight.
@@ -61,6 +64,10 @@ type SizingPosition struct{ SleeveID, Symbol, Quantity string }
 // SizingSnapshot comes from the local capped book. Pending sleeves wait for
 // reconciliation instead of repeatedly issuing a replacement target.
 type SizingSnapshot struct {
+	// BudgetScales are retained oversight reductions, each in [0,1].
+	// Missing entries use the admitted stage budget. Freed capacity stays cash.
+	BudgetScales    map[string]string `json:",omitempty"`
+	BudgetCeilings  map[string]string `json:",omitempty"`
 	PreviousTargets map[string]TargetDecision
 	Equity          string
 	Positions       []SizingPosition
@@ -78,7 +85,7 @@ type SizedOrder struct {
 // FlatTarget is a complete, explicit exit target. A hold may later resize from
 // retained weights, so it cannot bypass an admission check as a no-op.
 func FlatTarget(d TargetDecision) bool {
-	if d.KeepPositions {
+	if d.KeepPositions || d.HoldExposure {
 		return false
 	}
 	for _, t := range d.Targets {
@@ -113,6 +120,10 @@ func Distribute(req RebalanceRequest, snap SizingSnapshot) (Distribution, error)
 	}
 	req.Targets = slices.Clone(req.Targets)
 	for i, t := range req.Targets {
+		if t.Decision.HoldExposure && (t.Decision.KeepPositions || len(t.Decision.Targets) > 0) {
+			return out, errors.New("exposure hold cannot include targets or weight reuse")
+		}
+
 		if t.Decision.KeepPositions && len(t.Decision.Targets) == 0 {
 			if prior, ok := snap.PreviousTargets[t.SleeveID]; ok {
 				req.Targets[i].Decision = prior
@@ -135,7 +146,7 @@ func Distribute(req RebalanceRequest, snap SizingSnapshot) (Distribution, error)
 				assets[p.Symbol] = true
 			}
 		}
-		if t.Decision.KeepPositions {
+		if t.Decision.KeepPositions || t.Decision.HoldExposure {
 			continue
 		}
 		for asset := range assets {
@@ -231,6 +242,22 @@ func Distribute(req RebalanceRequest, snap SizingSnapshot) (Distribution, error)
 		if budget.Cmp(cap) > 0 {
 			budget.Set(cap)
 		}
+		if scale, ok := snap.BudgetScales[s.ID]; ok {
+			v, err := sizingRat(scale)
+			if err != nil || v.Sign() < 0 || v.Cmp(big.NewRat(1, 1)) > 0 {
+				return out, errors.New("invalid review budget scale")
+			}
+			budget.Mul(budget, v)
+		}
+		if ceiling, ok := snap.BudgetCeilings[s.ID]; ok {
+			v, err := sizingRat(ceiling)
+			if err != nil || v.Sign() < 0 {
+				return out, errors.New("invalid review budget ceiling")
+			}
+			if budget.Cmp(v) > 0 {
+				budget.Set(v)
+			}
+		}
 		a := SleeveAllocation{SleeveID: s.ID, StrategyID: s.StrategyID, Budget: budget.FloatString(9), Status: "ready"}
 		minimum, _ := sizingRat(s.Minimum)
 		if budget.Cmp(minimum) < 0 {
@@ -247,7 +274,7 @@ func Distribute(req RebalanceRequest, snap SizingSnapshot) (Distribution, error)
 		if a.Reason == "minimum_balance" || budget.Sign() == 0 {
 			d = TargetDecision{}
 		}
-		if d.KeepPositions {
+		if d.KeepPositions || d.HoldExposure {
 			if len(d.Targets) > 0 {
 				return out, errors.New("hold cannot include targets")
 			}

@@ -58,11 +58,19 @@ quotes and zero fees or slippage.
   capital before submission and reconciles its own fills and scheduled funding.
   Strategy orders must match a retained distributor plan and pass the fixed
   exposure, cash, loss and emergency-control checks before submission.
-  The opt-in [incubation runner](docs/reference/incubation.md) runs eligible
+  The opt-in [incubation runner](docs/reference/incubation.md), including a
+  supervised terminal mode with a separate owner-configured safety source, runs eligible
   strategies on retained prospective quotes and reports the worse venue/model
   fill result, with no qualification credit. It preserves explicit flat exits
   for retained owners with stale research and rechecks quote expiry immediately
-  before the paper adapter's order POST.
+  before the paper adapter's order POST. Cycle health blocks new risk on stale
+  daily data or unknown reconciliation, worker liveness or risk evidence, while
+  protective flattening, fill reconciliation and settlement remain independent.
+  New risk also requires an active service safety worker bound to that book,
+  paper account and protection policy; generic demo worker success and a
+  standalone cycle invocation cannot supply this authority. Reconciliation
+  retains its exact journal version and refuses concurrent economic changes.
+  Authenticated per-book readiness reports admission for each work class.
 - **Kalshi data**: [public collection](docs/reference/kalshi-data.md) retains
   weather-market rules and order-book observations for point-in-time reads.
   [Weather probabilities](docs/reference/kalshi-weather.md) retain pre-close
@@ -70,8 +78,10 @@ quotes and zero fees or slippage.
   [Calibrated maker decisions](docs/reference/kalshi-maker.md) place fee-aware,
   quarter-Kelly post-only intents within the separate notional book.
 - **Advisory research desk**: [bounded model tools](docs/reference/research-desk.md)
-  compose inactive typed ideas, retain rejected replies and every attempted
-  spec, and run post-cutoff simulations without gate or trading authority.
+  compose inactive typed ideas, evolve and select variants using retained
+  complexity/library-similarity penalties and count every proposal. Durable
+  family fences block statistical and admission readers during interrupted
+  batches. Post-cutoff simulations confer no gate or trading authority.
 - **Subscription research calls**: the [model adapter](docs/reference/subscription-models.md)
   runs bounded Claude and Codex prompts using host logins, with a durable daily
   call budget and hash records, independently of trading.
@@ -223,3 +233,7 @@ Daily stock history can be collected by the opt-in [`serve` daily-bar worker](do
 The [SPY engine check](docs/reference/spy-engine-check.md) compares cash/margin
 accounting with scheduled deposits against an independent reference on the
 manifest-verified 2016-to-date history.
+
+[Daily strategy oversight](docs/reference/daily-strategy-review.md) adds authenticated, retained evidence reviews and owner retirement. Review reductions take effect on a strictly later decision/rebalance; growth stays inside the existing admitted stage and grants no qualification. Missing comparisons hold or request inactive investigation.
+
+Canonical strategy forward windows use the separate [forward declaration contract](docs/reference/forward-declarations.md). It binds prospective clocks, its own benchmark, minimums and actual trial-family search bound to the capped-book runner, with multiweek holds and no qualification credit. Legacy threshold replay retains its original rules.

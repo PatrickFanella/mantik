@@ -55,3 +55,31 @@ func TestIncubationSourceCannotBackdateObservedBars(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestIncubationInputRetainsLegacyHashAndPinsForwardBinding(t *testing.T) {
+	cfg := library.Default(library.Trend)
+	in := incubationInput{ID: "legacy-cycle", Strategies: []incubationStrategyInput{{SleeveID: "trend", GateID: "legacy-gate", Risk: "0.02", Library: &cfg, Assets: []string{"SPY"}}}}
+	legacy, e := incubationRequest(in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	const hash = "a97776ecb526db1001163e1594db34dfcd498aa07175cdb4fded9f55ae1f07c6"
+	if legacy.InputSHA256 != hash {
+		t.Fatal("legacy retry hash changed", legacy.InputSHA256)
+	}
+	in.Strategies[0].ForwardDeclarationID = "forward-one"
+	bound, e := incubationRequest(in)
+	if e != nil || bound.InputSHA256 == hash || bound.Strategies[0].ForwardDeclarationID != "forward-one" {
+		t.Fatal("binding not pinned", bound, e)
+	}
+	in.Strategies[0].ForwardDeclarationID = "forward-two"
+	changed, e := incubationRequest(in)
+	if e != nil || changed.InputSHA256 == bound.InputSHA256 {
+		t.Fatal("changed binding not pinned", e)
+	}
+	in.Strategies[0].ForwardDeclarationID = ""
+	retry, e := incubationRequest(in)
+	if e != nil || retry.InputSHA256 != hash {
+		t.Fatal("empty binding changed retry", retry, e)
+	}
+}

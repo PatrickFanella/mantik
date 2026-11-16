@@ -19,6 +19,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/extraction"
 	"git.subcult.tv/subculture-collective/mantik/internal/feedcollector"
 	"git.subcult.tv/subculture-collective/mantik/internal/fixturecapital"
+	"git.subcult.tv/subculture-collective/mantik/internal/forward"
 	"git.subcult.tv/subculture-collective/mantik/internal/generatedcandidate"
 	"git.subcult.tv/subculture-collective/mantik/internal/hypothesis"
 	"git.subcult.tv/subculture-collective/mantik/internal/newscase"
@@ -116,7 +117,11 @@ type Memory struct {
 	externalOutputs             map[string]map[string]string
 	externalJobs                map[string]workertrial.Record
 	externalInputs              map[string]map[string][]byte
+	forwardDeclarations         map[string]forward.Record
 	strategyTrials              map[string]strategytrial.Record
+	strategyBatches             map[string]strategytrial.Batch
+	strategyBatchIntents        map[string]string
+	resolvedStrategyBatches     map[string]bool
 	trialRuns                   map[string]trial.Run
 	trialInputs                 map[string]string
 	trialResults                map[string]string

@@ -191,3 +191,12 @@ delete or rewrite admissions, reservations, fills, controls or halt history.
 Older binaries do not understand the new journal command kinds, so do not run
 one against a book that has received these commands. Restore the tested binary
 or reconcile with the current reader; a failed downgrade must not invent cash.
+
+## Daily review and owner retirement
+
+[Daily oversight](daily-strategy-review.md) scales an admitted sleeve on a strictly
+later rebalance decision, without changing its immutable version or qualification.
+The distributor leaves released capacity in cash and retains pending exposure.
+Owner `retire_strategy` is a durable terminal risk control, separate from
+`pause_strategy`; resume and loss-baseline reset cannot clear it. Existing
+submission checks reject new risk while allowing protective reductions.

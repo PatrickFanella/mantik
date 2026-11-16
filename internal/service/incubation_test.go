@@ -44,7 +44,10 @@ func (s *incubationTestStrategy) Decide(v strategy.View) (strategy.Decision, err
 type incubationTestSource struct{ future bool }
 
 func (s incubationTestSource) AdjustedBars(_ context.Context, a string, at time.Time) (marketdata.Series, error) {
-	out := marketdata.Series{AssetID: a, AsOf: at}
+	day := at.UTC().AddDate(0, 0, -1)
+	published := time.Date(day.Year(), day.Month(), day.Day(), 21, 15, 0, 0, time.UTC)
+	raw := storage.DailyBar{AssetID: a, Symbol: a, Date: day.Format(time.DateOnly), Open: "100", High: "101", Low: "99", Close: "100", VWAP: "100", Volume: 100, ObservedAt: published, PublishedAt: published, AvailableAt: published}
+	out, _ := marketdata.Adjust(a, []storage.DailyBar{raw}, nil, at)
 	if s.future {
 		out.Bars = []marketdata.AdjustedBar{{Raw: storage.DailyBar{AvailableAt: at.Add(time.Second)}}}
 	}
@@ -148,6 +151,8 @@ func incubationFixture(t *testing.T, model bool) (IncubationRunner, IncubationRe
 	b := &incubationTestBroker{orders: map[string]alpaca.PaperOrder{}}
 	r := IncubationRunner{Store: m, Broker: b, BookID: "incubation-book", now: func() time.Time { return execution }}
 	req := IncubationRequest{ID: "cycle-one", InputSHA256: strings.Repeat("c", 64), DecidedAt: decision, ExecuteAt: execution, Strategies: []IncubatingStrategy{{SleeveID: "trend", GateID: d.ID, Risk: "0.02", Strategy: s, Source: incubationTestSource{}, Assets: []string{"SPY"}}}, Quotes: map[string]account.IncubationQuote{"SPY": {Symbol: "SPY", Bid: "99.99", Ask: "100.01", BidQuantity: "100", AskQuantity: "100", SourceSHA256: strings.Repeat("d", 64), EvidenceClass: "prospective_market_unqualified", OccurredAt: execution, ReceivedAt: execution}}, Limits: map[string]string{"SPY": "101"}, Fees: map[string]string{"SPY": "1"}}
+	req.Calendar = incubationTestCalendar(decision)
+	r.Safety = startIncubationTestSafety(t, r, execution.Add(-time.Second))
 	return r, req, s, b
 }
 func TestIncubationRunAndConservativeReturns(t *testing.T) {
@@ -374,8 +379,10 @@ func TestIncubationAtomicSearchFreshness(t *testing.T) {
 		t.Fatal("stale search admitted", e, b.posts)
 	}
 	state, _ := m.CappedBook(context.Background(), r.BookID)
-	if state.Version != 0 {
-		t.Fatal("stale plan retained", state)
+	for _, event := range state.Events {
+		if event.Kind != "risk_observe" {
+			t.Fatal("stale plan retained", state)
+		}
 	}
 }
 
@@ -404,4 +411,27 @@ func TestIncubationFinalSubmissionClockIsChecked(t *testing.T) {
 	if _, e = r.Run(context.Background(), req); e != nil || b.posts != 0 {
 		t.Fatal("rejected ID reopened", e, b.posts)
 	}
+}
+
+func incubationTestCalendar(at time.Time) *IncubationCalendar {
+	day := at.UTC().AddDate(0, 0, -1)
+	open := time.Date(day.Year(), day.Month(), day.Day(), 14, 30, 0, 0, time.UTC)
+	return &IncubationCalendar{From: day.Format(time.DateOnly), Through: at.Add(24 * time.Hour).Format(time.DateOnly), SourceSHA256: strings.Repeat("e", 64), ObservedAt: at.Add(-time.Second), Sessions: []alpaca.Session{{Date: day.Format(time.DateOnly), OpenAt: open, CloseAt: open.Add(6*time.Hour + 30*time.Minute)}}}
+}
+
+func healthyIncubationWorkers(t *testing.T, r IncubationRunner, at time.Time) {
+	t.Helper()
+	// Advance the same running worker so runner copies share evidence from
+	// a newly executed service cycle.
+	if r.Safety == nil {
+		t.Fatal("fixture safety worker missing")
+	}
+	advanceIncubationTestSafety(t, r.Safety, at.Add(-time.Second))
+}
+
+func (b *incubationTestBroker) SubmitChecked(ctx context.Context, o alpaca.StockOrder, check func() error) (alpaca.PaperOrder, error) {
+	if e := check(); e != nil {
+		return alpaca.PaperOrder{}, e
+	}
+	return b.Submit(ctx, o)
 }

@@ -8,6 +8,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/account"
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/executioncost"
+	"git.subcult.tv/subculture-collective/mantik/internal/forward"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategygate"
 	"github.com/jackc/pgx/v5"
 )
@@ -66,7 +67,10 @@ func neededAdmissions(s account.CappedState, c account.BookCommand) ([]allocatio
 	return needed, nil
 }
 
-func checkPortfolioAdmissions(s account.CappedState, c account.BookCommand, read func(string) (strategygate.Record, error), total func(string) (int64, error)) error {
+func checkPortfolioAdmissions(s account.CappedState, c account.BookCommand, read func(string) (strategygate.Record, error), total func(string) (int64, error), readForward func(string) (forward.Record, error)) error {
+	if e := checkForwardBindings(s, c, readForward, total); e != nil {
+		return e
+	}
 	needed, e := neededAdmissions(s, c)
 	if e != nil {
 		return e
@@ -120,13 +124,13 @@ func (m *Memory) checkPortfolioAdmissionsLocked(s account.CappedState, c account
 		}
 		return g, nil
 	}, func(family string) (int64, error) {
-		var n int64
-		for _, r := range m.strategyTrials {
-			if r.Start.Family == family {
-				n++
-			}
+		return m.strategySearchTotalLocked(family)
+	}, func(id string) (forward.Record, error) {
+		r, ok := m.forwardDeclarations[id]
+		if !ok {
+			return r, forward.ErrNotFound
 		}
-		return n, nil
+		return r, m.validateForwardLocked(r)
 	})
 }
 
@@ -158,8 +162,6 @@ func checkPortfolioAdmissionsTx(ctx context.Context, tx pgx.Tx, s account.Capped
 		}
 	}
 	return checkPortfolioAdmissions(s, c, func(id string) (strategygate.Record, error) { return loadGate(ctx, tx, id) }, func(family string) (int64, error) {
-		var n int64
-		e := tx.QueryRow(ctx, `SELECT count(*) FROM mantik_strategy_trials WHERE family=$1`, family).Scan(&n)
-		return n, e
-	})
+		return strategySearchTotal(ctx, tx, family)
+	}, func(id string) (forward.Record, error) { return loadForward(ctx, tx, id) })
 }

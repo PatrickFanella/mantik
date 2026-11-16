@@ -324,16 +324,50 @@ func sameDecimal(a, b string) bool {
 // incomplete terminal reconciliation. Any such discrepancy halts new admission;
 // raw venue responses remain in the broker journal for inspection.
 func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string) (account.CappedSnapshot, error) {
-	s, e := c.load(ctx)
-	if e != nil {
-		return account.CappedSnapshot{}, e
-	}
-	if _, err := account.SnapshotCapped(s, marks, at); err != nil {
+	s, err := c.SyncState(ctx, at, marks)
+	if err != nil {
 		return account.CappedSnapshot{}, err
 	}
-	fail := func(err error) (account.CappedSnapshot, error) {
+	return account.SnapshotCapped(s, marks, at)
+}
+
+// SyncState returns the exact journal prefix reconciled against order and fill
+// GETs. Intervening commands cause ErrBookConflict; callers must retry a complete
+// reconciliation rather than promote a later reload to a reconciled baseline.
+func (c Client) SyncState(ctx context.Context, at time.Time, marks map[string]string) (account.CappedState, error) {
+	s, e := c.load(ctx)
+	if e != nil {
+		return account.CappedState{}, e
+	}
+	if _, err := account.SnapshotCapped(s, marks, at); err != nil {
+		return account.CappedState{}, err
+	}
+	// Every write is fenced to the precise state whose orders were read. A
+	// concurrent allocation must get its own reconciliation, never be absorbed
+	// by append's ordinary conflict/reload retry.
+	appendReconciled := func(cmd account.BookCommand) (account.CappedState, error) {
+		expected, err := account.ApplyCappedCommand(s, cmd)
+		if err != nil {
+			return account.CappedState{}, err
+		}
+		next, err := c.Store.ApplyCappedBook(ctx, c.BookID, s.Version, cmd)
+		if err != nil {
+			return account.CappedState{}, err
+		}
+		// Store retries intentionally accept an identical command even with a
+		// stale expected version. That idempotency contract must not promote
+		// unrelated receipts to reconciliation authority either.
+		if next.Version != expected.Version {
+			return account.CappedState{}, account.ErrBookConflict
+		}
+		return next, nil
+	}
+	fail := func(err error) (account.CappedState, error) {
+		if errors.Is(err, account.ErrBookConflict) {
+			return account.CappedState{}, err
+		}
 		_, haltErr := c.halt(ctx, "reconciliation", at, marks)
-		return account.CappedSnapshot{}, errors.Join(err, haltErr)
+		return account.CappedState{}, errors.Join(err, haltErr)
 	}
 	orders := map[string]account.BookOrder{}
 	rejected := map[string]bool{}
@@ -362,16 +396,16 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 		v, err := c.Broker.Order(ctx, id)
 		if errors.Is(err, alpaca.ErrPaperNotSubmitted) {
 			if err = c.Broker.AbortUnsubmitted(ctx, id); err != nil {
-				return account.CappedSnapshot{}, err
+				return account.CappedState{}, err
 			}
-			s, err = c.append(ctx, account.BookCommand{ID: "reject-" + id, Kind: "reject", At: at, OrderID: id})
+			s, err = appendReconciled(account.BookCommand{ID: "reject-" + id, Kind: "reject", At: at, OrderID: id})
 			if err != nil {
-				return account.CappedSnapshot{}, err
+				return account.CappedState{}, err
 			}
 			continue
 		}
 		if err != nil {
-			return account.CappedSnapshot{}, err
+			return account.CappedState{}, err
 		}
 		if !matchesOrder(v, orders[id]) {
 			return fail(errors.New("paper order differs from reservation"))
@@ -394,7 +428,7 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 			}
 		}
 		if !exists {
-			s, e = c.append(ctx, account.BookCommand{ID: "bind-" + id, Kind: "bind", At: at, OrderID: id, VenueOrderID: v.ID})
+			s, e = appendReconciled(account.BookCommand{ID: "bind-" + id, Kind: "bind", At: at, OrderID: id, VenueOrderID: v.ID})
 			if e != nil {
 				return fail(e)
 			}
@@ -402,7 +436,7 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 	}
 	raws, e := c.Broker.Fills(ctx, s.Config.OpenedAt.Add(-time.Nanosecond))
 	if e != nil {
-		return account.CappedSnapshot{}, e
+		return account.CappedState{}, e
 	}
 	fills := []account.BookFill{}
 	for _, raw := range raws {
@@ -463,7 +497,7 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 		if modelErr != nil {
 			return fail(modelErr)
 		}
-		s, e = c.append(ctx, account.BookCommand{ID: f.ID, Kind: "fill", At: at, Fill: &f, ModelFill: model, Marks: marks})
+		s, e = appendReconciled(account.BookCommand{ID: f.ID, Kind: "fill", At: at, Fill: &f, ModelFill: model, Marks: marks})
 		if e != nil {
 			return fail(e)
 		}
@@ -494,7 +528,7 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 			return fail(errors.New("terminal order does not reconcile with owned fill activities"))
 		}
 		if !released {
-			s, e = c.append(ctx, account.BookCommand{ID: "release-" + id, Kind: "release", At: at, OrderID: id, VenueOrderID: v.ID})
+			s, e = appendReconciled(account.BookCommand{ID: "release-" + id, Kind: "release", At: at, OrderID: id, VenueOrderID: v.ID})
 			if e != nil {
 				return fail(e)
 			}
@@ -503,7 +537,7 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 	if len(s.Events) > 0 && !s.Events[len(s.Events)-1].At.After(at) {
 		snap, err := account.SnapshotCapped(s, marks, at)
 		if err != nil {
-			return snap, err
+			return account.CappedState{}, err
 		}
 		if snap.Distribution != nil {
 			raw, err := json.Marshal(struct {
@@ -511,14 +545,21 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 				Marks map[string]string
 			}{at, marks})
 			if err != nil {
-				return snap, err
+				return account.CappedState{}, err
 			}
 			h := sha256.Sum256(raw)
-			s, err = c.append(ctx, account.BookCommand{ID: "observe-sync-" + hex.EncodeToString(h[:16]), Kind: "risk_observe", At: at, Marks: marks})
+			s, err = appendReconciled(account.BookCommand{ID: "observe-sync-" + hex.EncodeToString(h[:16]), Kind: "risk_observe", At: at, Marks: marks})
 			if err != nil {
-				return snap, err
+				return account.CappedState{}, err
 			}
 		}
 	}
-	return account.SnapshotCapped(s, marks, at)
+	current, err := c.load(ctx)
+	if err != nil {
+		return account.CappedState{}, err
+	}
+	if current.Version != s.Version {
+		return account.CappedState{}, account.ErrBookConflict
+	}
+	return s, nil
 }
