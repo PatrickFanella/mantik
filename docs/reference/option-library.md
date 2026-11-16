@@ -6,7 +6,7 @@ calls, cash-secured puts, put verticals, iron condors or iron butterflies.
 [OptionBook](option-structures.md), including actual simulated admission,
 protected opening fills, cash settlement, holding and closing. This is a
 callable Go path, separate from equity-weight decisions, service activation
-and the [multi-leg paper execution work](https://github.com/subculture-collective/mantik/issues/85). It has no provider, model or
+and the [multi-leg paper execution route](alpaca-mleg-paper.md). It has no provider, model or
 broker submission authority.
 
 ## Policy and identity

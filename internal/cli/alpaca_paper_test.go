@@ -6,10 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 )
 
 func TestPaperCLIRequiresExplicitPrivateInputs(t *testing.T) {
-	for _, args := range [][]string{{"alpaca-paper"}, {"alpaca-paper", "--action", "submit"}, {"alpaca-paper", "--help"}} {
+	for _, args := range [][]string{{"alpaca-paper"}, {"alpaca-paper", "--action", "submit"}, {"alpaca-paper", "--action", "mleg-open"}, {"alpaca-paper", "--action", "mleg-close"}, {"alpaca-paper", "--help"}} {
 		var out, errs bytes.Buffer
 		err := Run(context.Background(), args, &out, &errs)
 		if args[len(args)-1] == "--help" {
@@ -41,5 +43,18 @@ func TestPaperCLIRequiresExplicitPrivateInputs(t *testing.T) {
 	}
 	if readPaperJSON(path, &credentials, true) == nil {
 		t.Fatal("trailing object accepted")
+	}
+}
+
+func TestMLegCLIRejectsExtraBrokerAuthorityFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "open.json")
+	for _, extra := range []string{`"symbol":"TST"`, `"side":"sell"`, `"notional":"1"`, `"extended_hours":true`} {
+		if err := os.WriteFile(path, []byte(`{"Order":{`+extra+`}}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+		var input alpaca.MLegOpen
+		if readPaperJSON(path, &input, false) == nil {
+			t.Fatal("unsupported wire authority accepted", extra)
+		}
 	}
 }

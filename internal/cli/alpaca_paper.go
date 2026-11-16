@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
+	"git.subcult.tv/subculture-collective/mantik/internal/mlegpaper"
 )
 
 func readPaperJSON(path string, target any, private bool) error {
@@ -45,7 +46,7 @@ func runAlpacaPaper(ctx context.Context, args []string, out, errOut io.Writer) e
 	fs.StringVar(&root, "journal", "", "absolute private paper journal directory")
 	fs.StringVar(&credentials, "credentials-file", "", "mode-0600 JSON with key/secret or oauth_token")
 	fs.StringVar(&account, "account-id", "", "expected paper account ID")
-	fs.StringVar(&action, "action", "", "submit, cancel, reconcile or fills")
+	fs.StringVar(&action, "action", "", "submit, mleg-open, mleg-close, cancel, reconcile or fills")
 	fs.StringVar(&input, "input", "", "order JSON or complete expected asset-ID/quantity map")
 	fs.StringVar(&clientID, "client-order-id", "", "original client ID for cancellation")
 	fs.StringVar(&after, "after", "", "RFC3339 lower bound for fills")
@@ -72,6 +73,26 @@ func runAlpacaPaper(ctx context.Context, args []string, out, errOut io.Writer) e
 		return err
 	}
 	switch action {
+	case "mleg-open":
+		var o alpaca.MLegOpen
+		if err := readPaperJSON(input, &o, false); err != nil {
+			return err
+		}
+		result, err := mlegpaper.Open(ctx, p, o)
+		if err != nil {
+			return err
+		}
+		return emit(out, result)
+	case "mleg-close":
+		var plan alpaca.MLegClose
+		if err := readPaperJSON(input, &plan, false); err != nil {
+			return err
+		}
+		result, operationErr := p.CloseMLeg(ctx, plan)
+		if err := emit(out, result); err != nil {
+			return err
+		}
+		return operationErr
 	case "submit":
 		var o alpaca.StockOrder
 		if err := readPaperJSON(input, &o, false); err != nil {
@@ -111,6 +132,6 @@ func runAlpacaPaper(ctx context.Context, args []string, out, errOut io.Writer) e
 		}
 		return emit(out, result)
 	default:
-		return errors.New("alpaca-paper action must be submit, cancel, reconcile or fills")
+		return errors.New("alpaca-paper action must be submit, mleg-open, mleg-close, cancel, reconcile or fills")
 	}
 }

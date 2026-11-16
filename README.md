@@ -51,6 +51,17 @@ quotes and zero fees or slippage.
   [Recorded gates and portfolio risk](docs/reference/portfolio-gates-and-risk.md)
   preserve pass/fail reasons, forward-only model admission, sleeve sizing and
   persistent order brakes.
+- **Multi-leg paper orders**: the [durable options lifecycle](docs/reference/alpaca-mleg-paper.md)
+  requires an explicit versioned paper atomic-net-premium contract, admits up to
+  four protected option legs against dedicated local funding, and reconciles
+  whole closes before a shorts-first fallback. Package limits and fixed modeled
+  fees bound the paper budget; separate orders cannot spend package credits.
+  Legacy policy inputs remain inspection-only and contradictory fill evidence
+  stays quarantined across restart. Interrupted reply classification also blocks
+  mutations until inspected; a later GET cannot clear that fence.
+  New opening IDs reserve the internal `mleg-` prefix to avoid custody collisions.
+  Synthetic tests cover recovery and protection; real-paper acceptance evidence
+  remains a separate regular-session check.
 - **Paper stock orders**: the separate [Alpaca paper adapter](docs/reference/alpaca-paper.md)
   submits once per durable client ID, recovers ambiguous submissions, retains
   raw fills and reports account-position differences. The

@@ -148,8 +148,11 @@ one owner per book. Source errors are returned, and business refusals carry
 reasons. Closed IDs cannot be reused. There is no recovery, expiry settlement,
 assignment, exercise, American-option qualification, volume participation or
 broker reconciliation here. Expired/missing contracts stop this simulator;
-they never become zero liabilities. Issue #85 owns paper-broker submission;
-qualification and promotion remain separate work.
+they never become zero liabilities. The separate [multi-leg paper route](alpaca-mleg-paper.md)
+for #85 binds `OptionBook.Submit` admission to `alpaca-paper --action mleg-open`
+and reconciles closes through `--action mleg-close`. Its synthetic transport
+tests do not satisfy the real paper open/close requirement. Qualification and
+promotion remain separate work.
 
 The unit tests use synthetic chains and retained in-memory indicative records.
 They check worked payoff losses, all supported shapes, partial-fill bounds,

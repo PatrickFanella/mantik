@@ -1,4 +1,4 @@
-# Alpaca stock paper adapter
+# Alpaca paper adapters
 
 `mantik alpaca-paper` provides a separate, fixed-paper-endpoint adapter for
 simple stock day orders. The existing `alpaca.Client` remains market-read only.
@@ -11,6 +11,11 @@ and `secret`, or `oauth_token`. The command requires the expected paper
 checks `/v2/account` against that account and the journal's immutable binding.
 Blocked or inactive accounts fail closed. Redirects are refused. No live
 origin or endpoint override is exposed.
+
+The separate [multi-leg lifecycle](alpaca-mleg-paper.md) adds `mleg-open` and
+`mleg-close` actions with local OptionBook admission, one dedicated funding
+snapshot and reconciled protection-preserving closes. Its signed option limits
+do not change the stock order grammar.
 
 ## Submit and recover
 

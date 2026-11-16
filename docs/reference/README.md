@@ -15,6 +15,9 @@
 - [Attributed market research inputs](market-inputs.md)
 - [Alpaca quote and calendar adapter](alpaca.md)
 - [Durable Alpaca capture journal](alpaca-journal.md)
+- [Alpaca paper adapters](alpaca-paper.md)
+- [Multi-leg paper lifecycle](alpaca-mleg-paper.md) — dedicated OptionBook admission,
+  immutable intents and shorts-first fallback; real paper acceptance remains open.
 - [Independent deadlines and missing events](timers.md)
 - [Durable fixture actions](actions.md)
 - [Operational inspection and recovery](operations.md)

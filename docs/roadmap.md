@@ -41,10 +41,11 @@ prospective declarations (#78), daily evidence reviews (#83), book-specific
 health admission and protective supervision (#90), and bounded spec evolution
 with durable family accounting (#103). The source and merge trees match, and
 all five hosted checks passed. The journal-capacity and recursive review
-findings on that merged PR are repaired in this follow-up; final verification
-and merge state remain in #47.
+findings were repaired in [PR #131](https://github.com/subculture-collective/mantik/pull/131),
+merged as `4d48a75` after all five hosted checks and code/security reviews
+passed on exact, tree-matching head `36fc91b`.
 
-This follow-up also adds the [forward-only analyst](reference/model-analyst.md)
+PR #131 also adds the [forward-only analyst](reference/model-analyst.md)
 for #93, [option strategy recipes](reference/option-library.md) for #101/#102,
 and [compiled prospective assessment](reference/forward-assessments.md) for #92.
 The analyst cannot choose quantities, stops or orders. Qualification uses a
@@ -53,6 +54,12 @@ for qualification credit. The option recipes run through the indicative
 OptionBook lifecycle with reserves and holding-time Greek checks. Their
 synthetic lifecycle tests do not satisfy #101's historical 2024-onward data
 requirement or #85's real paper open/close requirement.
+
+The [multi-leg paper source integration](reference/alpaca-mleg-paper.md) for #85
+adds callable `alpaca-paper --action mleg-open` and `--action mleg-close` routes,
+with dedicated OptionBook admission, immutable lifecycle custody and a
+shorts-first fallback. Only synthetic transport checks accompany this source;
+the actual paper iron-condor open and close remain unperformed, so #85 remains open.
 
 The [daily brief](reference/daily-brief.md) for #99 derives its numbers from
 finalized records and retains notification retry receipts. The
@@ -190,21 +197,21 @@ complete the replacement epics or their acceptance checks.
 
 ## Next steps
 
-After the Wave 11 core merge, these are the remaining work units. This describes
+After PR #131, 46 of 51 work issues are closed. Epics A, B, C and H meet their
+stated exits. These are the five remaining work units. This describes
 dependencies, not pickup approval, deployment or provider access. Check #47 and each issue's
 current blockers before starting work.
 
 | Work | Prerequisites and remaining outcome |
 | --- | --- |
-| [J2 #92](https://github.com/subculture-collective/mantik/issues/92) Prospective assessments | Declarations and review prerequisites are merged; verify compiled collection, automatic promotion/demotion and legacy replay in the combined journal. |
-| [G3 #85](https://github.com/subculture-collective/mantik/issues/85) Multi-leg paper orders | After #84: durable open/close and safe fallback; record an actual paper iron-condor open and close. |
-| [F3 #99](https://github.com/subculture-collective/mantik/issues/99), [F4 #100](https://github.com/subculture-collective/mantik/issues/100) Brief and owner controls | Verify finalized reporting, bounded source reads and confirmed controls in the combined journal; retain the actual terminal walkthrough checkpoint. |
-| [H4 #93](https://github.com/subculture-collective/mantik/issues/93) Model analyst | Evolution is merged. Finish exact-head verification of the analyst and retained receipt bridge, keeping model choices under coded sizing and risk authority. |
-| [G4 #101](https://github.com/subculture-collective/mantik/issues/101), [G5 #102](https://github.com/subculture-collective/mantik/issues/102) Option recipes | After #84: reviewed provenance, cash/margin permissions and tested strategy behavior; #101 also requires its historical indicative-data backtest. |
+| [G3 #85](https://github.com/subculture-collective/mantik/issues/85) Multi-leg paper orders | Source integration adds [durable open/close and safe fallback](reference/alpaca-mleg-paper.md); actual paper iron-condor open/close evidence remains outstanding. |
+| [F4 #100](https://github.com/subculture-collective/mantik/issues/100) Owner controls | Code and checkpoint-aware verification are merged; the actual human terminal walkthrough remains unperformed. |
+| [G4 #101](https://github.com/subculture-collective/mantik/issues/101) Income option recipes | Code, provenance and cash-book checks are merged; the required 2024-onward indicative-data backtest remains unmet. |
 | [E6 #107](https://github.com/subculture-collective/mantik/issues/107) Protected paper positions | Requires eligible strategies, fresh regular-session quotes, protected execution and owned-fill reconciliation. |
+| [J3 #108](https://github.com/subculture-collective/mantik/issues/108) Natural forward assessment | Run a declared incubating base-strategy window to its actual end and record an evidence-backed promotion or rejection. |
 
-Wave 11 core implements the eleventh issue on the original thirteen-issue
-critical path. The remaining chain is #92 → #108. The capital branch reaches
+PR #131 completes #92 on the original thirteen-issue critical path. Its
+remaining issue is #108. The capital branch reaches
 the incubation runner through the capped book, distributor and risk checks. The separate SPY data
 and engine exits (#94 and #105) are recorded; they do not establish real-quote
 execution or forward qualification.
@@ -214,8 +221,9 @@ execution or forward qualification.
 - **Alpaca access:** the separate paper-order adapter supports the existing
   OAuth profile. On 2026-11-15 it placed and canceled one nonmarketable SPY
   paper limit order and reported zero position differences against its
-  preflight snapshot. The market-read client still uses API-key headers;
-  OAuth market-data backfill support remains to be joined to that client.
+  preflight snapshot. `alpaca.NewReadClient` supports OAuth or key/secret
+  credentials for market-data reads. Fresh account, permission, source and
+  quote observations remain necessary before any new paper execution.
 - **Data coverage:** [the #58 observations](https://github.com/subculture-collective/mantik/issues/58#issuecomment-6870787280)
   found delisted-symbol bars but incomplete discovery of delisted companies,
   reused tickers and indicative-only option snapshots. #89 must retain those

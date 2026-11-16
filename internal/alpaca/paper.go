@@ -65,6 +65,7 @@ type PaperTrader struct {
 	http        *http.Client
 	origin      string
 	gate        chan struct{}
+	optionReply *optionPendingReply
 }
 
 // PaperAccountID reports the explicitly bound expected paper account identity.
@@ -147,9 +148,13 @@ func (p *PaperTrader) request(ctx context.Context, method, path string, body []b
 		req.Header.Set("APCA-API-SECRET-KEY", p.credentials.Secret)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	pending, err := p.startOptionReply(method, path, body)
+	if err != nil {
+		return nil, 0, err
+	}
 	res, err := p.http.Do(req)
 	if err != nil {
-		return nil, 0, errors.New("paper transport failed")
+		return nil, 0, errors.Join(errors.New("paper transport failed"), p.finishOptionReply(pending))
 	}
 	raw, readErr := io.ReadAll(io.LimitReader(res.Body, MaxBytes+1))
 	_ = res.Body.Close()
@@ -172,7 +177,14 @@ func (p *PaperTrader) request(ctx context.Context, method, path string, body []b
 		return nil, res.StatusCode, err
 	}
 	if partial {
-		return nil, res.StatusCode, errors.New("paper response incomplete or oversized")
+		return nil, res.StatusCode, errors.Join(errors.New("paper response incomplete or oversized"), p.finishOptionReply(pending))
+	}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		if err := p.finishOptionReply(pending); err != nil {
+			return nil, res.StatusCode, err
+		}
+	} else if pending != nil {
+		pending.ResponseSHA256 = Digest(string(raw))
 	}
 	return raw, res.StatusCode, nil
 }
@@ -221,6 +233,9 @@ func (p *PaperTrader) SubmitChecked(ctx context.Context, o StockOrder, beforePos
 	}
 	defer func() { <-p.gate }()
 	if err := p.bind(ctx); err != nil {
+		return PaperOrder{}, err
+	}
+	if err := p.requireStockJournal(); err != nil {
 		return PaperOrder{}, err
 	}
 	if _, err := p.journal.read("paper-abort-"+o.ClientOrderID+".json", MaxBytes); err == nil {
@@ -309,6 +324,9 @@ func (p *PaperTrader) Cancel(ctx context.Context, clientID string) error {
 	}
 	defer func() { <-p.gate }()
 	if err := p.bind(ctx); err != nil {
+		return err
+	}
+	if err := p.requireStockJournal(); err != nil {
 		return err
 	}
 	raw, err := p.journal.read("paper-intent-"+clientID+".json", MaxBytes)
