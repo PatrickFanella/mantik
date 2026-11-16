@@ -179,6 +179,9 @@ func (w *IncubationSafetyWorker) coverageWithClock(ctx context.Context, store In
 		return healthCheck(false, "book_safety_state_unavailable", at)
 	}
 	for sleeve, id := range bindings {
+		if account.Qualification(state, sleeve) != nil {
+			continue
+		}
 		opened, err := account.ForwardHoldingOpened(state, sleeve, at)
 		if err != nil {
 			return healthCheck(false, "book_safety_state_unavailable", at)
@@ -358,6 +361,12 @@ func (w *IncubationSafetyWorker) cycle(ctx context.Context, clock Clock) (accoun
 			}
 			if err != nil {
 				return state, err
+			}
+			if q := account.Qualification(state, sleeve); q != nil {
+				if n != q.SearchTotal {
+					flatten = true
+				}
+				continue
 			}
 			clocks := record.Clocks(at, n, opened)
 			if !clocks.OutcomeOpen || clocks.HoldExpired {

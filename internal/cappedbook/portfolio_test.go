@@ -21,9 +21,9 @@ import (
 
 // portfolioFixture supplies a trusted fixture admission to isolate the order
 // boundary. Backtest evidence/decision validation has its own gate tests.
-func portfolioFixture(t *testing.T) (Client, *fakePaper, allocation.RebalanceRequest, map[string]string) {
+func portfolioFixture(t *testing.T, mode ...string) (Client, *fakePaper, allocation.RebalanceRequest, map[string]string) {
 	t.Helper()
-	c, b, at := paperFixture(t)
+	c, b, at := paperFixture(t, mode...)
 	spec := strategy.Spec{Name: "fixture", Version: "1", Data: []string{strategy.KindDailyBars}}
 	sid, e := spec.ID()
 	if e != nil {

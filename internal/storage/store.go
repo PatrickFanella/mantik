@@ -56,6 +56,8 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 type Memory struct {
 	strategyGates              map[string]strategygate.Record
 	cappedBooks                map[string]account.CappedState
+	cappedHistory              map[string]map[string]CappedHistoryRecord
+	cappedHistoryOrder         map[string][]string
 	optionData                 map[string]OptionRecord
 	kalshi                     kalshiStore
 	dailyBars                  map[string]map[string][]DailyBar
@@ -77,6 +79,7 @@ type Memory struct {
 	feedArchiveRecords          map[string]feedArchiveSourceRef
 	feedArchivePrefixPoints     map[string]feedArchivePrefixRef
 	feedArchivePrefixOrder      map[string][]feedArchivePrefixRef
+	qualificationEvaluator      QualificationEvaluator
 	portfolioEvaluator          PaperPortfolioEvaluator
 	executionQuotes             PaperExecutionQuoteSource
 	corporateActionSources      []CorporateActionSourceRecord
@@ -117,6 +120,7 @@ type Memory struct {
 	externalOutputs             map[string]map[string]string
 	externalJobs                map[string]workertrial.Record
 	externalInputs              map[string]map[string][]byte
+	forwardAssessmentPlans      map[string]forward.AssessmentPlanRecord
 	forwardDeclarations         map[string]forward.Record
 	strategyTrials              map[string]strategytrial.Record
 	strategyBatches             map[string]strategytrial.Batch

@@ -140,8 +140,11 @@ sets a persistent halt while preserving the ability to size flattening exits.
 Only an explicit `owner_clear_halt` control clears a hard halt. It requires
 positive observed equity and resets the recorded loss baseline. Ordinary
 resume, deposits, price recovery, a new day and process restart do not reset it.
-Controls are operator commands, separate from the strategy interface. The
-local CLI caller must already have owner access to the selected database.
+Controls are owner commands, separate from the strategy interface. The
+[`book` terminal command](owner-book-controls.md) requires the configured owner
+service bearer session, an explicit journal version and a concrete confirmation
+pin. Direct database possession does not authenticate an owner. `capped-risk`
+allows inspection and protective `observe` only; it refuses owner mutations.
 Reconciliation and bad-submission halts use distinct journal identities after
 an owner clear; an old halt ID cannot prevent a later discrepancy from halting
 the book again. Public portfolio reservations use the same owned-fill recovery,
@@ -149,7 +152,7 @@ partial-fill reconciliation and terminal release path as earlier ledger orders.
 
 ```sh
 mise exec -- go run ./cmd/mantik capped-risk --id book --at 2026-11-16T15:00:00Z --marks /tmp/mantik-current-marks.json --database-env MANTIK_GATECHECK_DATABASE_URL
-mise exec -- go run ./cmd/mantik capped-risk --id book --at 2026-11-16T15:00:00Z --marks /tmp/mantik-current-marks.json --action kill --command-id owner-kill-20261116 --database-env MANTIK_GATECHECK_DATABASE_URL
+mise exec -- go run ./cmd/mantik book --id book
 ```
 
 Schema 121's older low-level accounting commands stay replayable. They are not

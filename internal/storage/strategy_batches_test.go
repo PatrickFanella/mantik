@@ -182,7 +182,7 @@ func TestPostgresContractsStrategyBatchUpgradeFrom124(t *testing.T) {
 	}
 	// Remove only this disposable database's new schema to exercise a genuine
 	// sequential installation over retained 124 history, rather than DDL replay.
-	if _, e := p.pool.Exec(ctx, `DROP TABLE mantik_strategy_trial_batch_resolutions, mantik_strategy_trial_batches, mantik_strategy_trial_batch_intents; DELETE FROM mantik_schema WHERE version=125`); e != nil {
+	if _, e := p.pool.Exec(ctx, `DROP TABLE mantik_forward_assessment_plans; DROP TABLE mantik_strategy_trial_batch_resolutions, mantik_strategy_trial_batches, mantik_strategy_trial_batch_intents; DELETE FROM mantik_schema WHERE version>=125`); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := p.pool.Exec(ctx, `INSERT INTO mantik_research_desk_events VALUES ('legacy-call',0,'start',now(),'{"family":"unknown-legacy"}'),('legacy-call',1,'call',now(),'{}')`); e != nil {
@@ -202,7 +202,7 @@ func TestPostgresContractsStrategyBatchUpgradeFrom124(t *testing.T) {
 		t.Fatal("ordinary trial bytes changed", e)
 	}
 	var maximum int
-	if e = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); e != nil || maximum != 125 {
+	if e = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); e != nil || maximum != expectedSchemaVersion {
 		t.Fatal(maximum, e)
 	}
 }

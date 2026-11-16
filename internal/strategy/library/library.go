@@ -1,5 +1,6 @@
-// Package library implements reviewed stock strategy recipes from pinned bt/ffn
-// building blocks. Strategies return targets only; the engine owns execution.
+// Package library implements reviewed stock recipes from pinned bt/ffn building
+// blocks and original option recipes with explicit literature provenance. Recipes
+// return targets or candidate structures; the engine owns admission and execution.
 package library
 
 import (

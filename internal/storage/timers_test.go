@@ -18,6 +18,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// expectedSchemaVersion tracks the complete registered migration chain.
+const expectedSchemaVersion = 127
+
 type timerBackend interface {
 	Store
 	RoutingStore

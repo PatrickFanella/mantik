@@ -53,12 +53,16 @@ func (b *fakePaper) Fills(context.Context, time.Time) ([]json.RawMessage, error)
 	defer b.mu.Unlock()
 	return b.fills, nil
 }
-func paperFixture(t *testing.T) (Client, *fakePaper, time.Time) {
+func paperFixture(t *testing.T, mode ...string) (Client, *fakePaper, time.Time) {
 	t.Helper()
 	at := time.Date(2026, 11, 2, 15, 0, 0, 0, time.UTC)
 	s := storage.NewMemory()
 	b := &fakePaper{orders: map[string]alpaca.PaperOrder{}}
-	_, e := s.CreateCappedBook(context.Background(), account.CappedConfig{ID: "book", BrokerAccountID: "paper-account", Type: account.Cash, OpenedAt: at, OpeningCash: "2000", DepositAmount: "500", EveryWeeks: 2})
+	cfg := account.DefaultCappedConfig("book", "paper-account", account.Cash, at)
+	if len(mode) > 0 {
+		cfg.FundingMode = mode[0]
+	}
+	_, e := s.CreateCappedBook(context.Background(), cfg)
 	if e != nil {
 		t.Fatal(e)
 	}

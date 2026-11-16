@@ -17,6 +17,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
 	"git.subcult.tv/subculture-collective/mantik/internal/executioncost"
+	"git.subcult.tv/subculture-collective/mantik/internal/forward"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy/library"
@@ -82,7 +83,7 @@ func TestIncubationSupervisionKeepsSafetyRunningAfterCycleRefusal(t *testing.T) 
 			ctx, cancel := context.WithTimeout(context.Background(), 2200*time.Millisecond)
 			defer cancel()
 			var out bytes.Buffer
-			err := runIncubationSupervision(ctx, runner, cyclePath, configPath, &out)
+			err := runIncubationSupervision(ctx, runner, cyclePath, configPath, &out, nil)
 			if !errors.Is(err, context.DeadlineExceeded) {
 				t.Fatal(err)
 			}
@@ -287,5 +288,41 @@ func TestIncubationActualFileWaitsForPostDecisionProtectionQuote(t *testing.T) {
 	cancel()
 	if broker.posts.Load() != 1 {
 		t.Fatal("protective delivery did not retain exactly one POST", broker.posts.Load())
+	}
+}
+
+func TestIncubationSupervisedQualificationDecoderHashAndRetry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "qualification-cycle.json")
+	cfg := library.Default(library.Trend)
+	in := incubationInput{ID: "qualification-cycle", Qualification: &forward.Collection{PlanID: "predeclared"}, Strategies: []incubationStrategyInput{{Library: &cfg, Assets: []string{"SPY"}}}}
+	privateSupervisionJSON(t, path, in)
+	first, e := readIncubationCycle(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	retry, e := readIncubationCycle(path)
+	if e != nil || first.InputSHA256 != retry.InputSHA256 || !bytes.Equal(first.QualificationInput, retry.QualificationInput) || retry.Qualification.PlanID != "predeclared" {
+		t.Fatal("supervised retry lost qualification", e)
+	}
+	in.Qualification.PlanID = "different-plan"
+	privateSupervisionJSON(t, path, in)
+	changed, e := readIncubationCycle(path)
+	if e != nil || changed.InputSHA256 == first.InputSHA256 {
+		t.Fatal("qualification not bound into supervised hash", e)
+	}
+	for _, field := range []string{"DecisionSources", "Input", "Approval"} {
+		var raw map[string]any
+		data, e := json.Marshal(in)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = json.Unmarshal(data, &raw); e != nil {
+			t.Fatal(e)
+		}
+		raw["Qualification"].(map[string]any)[field] = true
+		privateSupervisionJSON(t, path, raw)
+		if _, e = readIncubationCycle(path); e == nil {
+			t.Fatal("supervised caller supplied collection authority", field)
+		}
 	}
 }

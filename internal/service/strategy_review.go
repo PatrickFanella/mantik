@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/account"
-	"git.subcult.tv/subculture-collective/mantik/internal/risk"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategygate"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
@@ -166,47 +165,7 @@ func strategyReviewRoutes(mux *http.ServeMux, store storage.Store, clock Clock, 
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/capped-books/{book}/owner-controls/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if !auth(w, r) {
-			return
-		}
-		var input struct{ Control risk.Control }
-		if !read(w, r, &input) {
-			return
-		}
-		// The existing CLI retains the broader controls, including loss-baseline
-		// resets. This narrow endpoint cannot clear a global brake or retirement.
-		if input.Control.Action != "pause_strategy" && input.Control.Action != "resume_strategy" && input.Control.Action != "retire_strategy" {
-			write(w, 422, map[string]string{"error": "unsupported owner strategy control"})
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), raceDeadlineScale*5*time.Second)
-		defer cancel()
-		for attempt := 0; attempt < 4; attempt++ {
-			b, e := s.CappedBook(ctx, r.PathValue("book"))
-			if e != nil {
-				fail(w, e)
-				return
-			}
-			at := clock.Now().UTC().Truncate(time.Microsecond)
-			for _, v := range b.Events {
-				if v.ID == r.PathValue("id") {
-					at = v.At
-				}
-			}
-			b, e = s.ApplyCappedBook(ctx, b.Config.ID, b.Version, account.BookCommand{ID: r.PathValue("id"), Kind: "risk_control", At: at, RiskControl: &input.Control})
-			if errors.Is(e, account.ErrBookConflict) {
-				continue
-			}
-			if e != nil {
-				fail(w, e)
-				return
-			}
-			write(w, 200, b)
-			return
-		}
-		fail(w, account.ErrBookConflict)
-	})
+	ownerBookRoutes(mux, s, clock, token)
 	mux.HandleFunc("GET /v1/capped-books/{book}/reviews", func(w http.ResponseWriter, r *http.Request) {
 		if !auth(w, r) {
 			return

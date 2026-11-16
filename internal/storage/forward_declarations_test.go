@@ -173,7 +173,7 @@ func TestPostgresContractsForwardDeclarations(t *testing.T) {
 		t.Fatal("legacy changed", e)
 	}
 	var maximum int
-	if e = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); e != nil || maximum != 125 {
+	if e = p.pool.QueryRow(ctx, "SELECT max(version) FROM mantik_schema").Scan(&maximum); e != nil || maximum != expectedSchemaVersion {
 		t.Fatal(maximum, e)
 	}
 	for _, sql := range []string{"UPDATE mantik_forward_declarations SET family=family", "DELETE FROM mantik_forward_declarations", "TRUNCATE mantik_forward_declarations"} {
@@ -395,7 +395,7 @@ func TestPostgresContractsForwardUpgradeFrom123(t *testing.T) {
 	p := timerPostgres(t, "forward_upgrade")
 	ctx := context.Background()
 	// Seed real legacy declaration/assessment contracts under the pre-124 schema.
-	if _, e := p.pool.Exec(ctx, "DROP TABLE mantik_forward_declarations; DELETE FROM mantik_schema WHERE version>=124"); e != nil {
+	if _, e := p.pool.Exec(ctx, "DROP TABLE mantik_forward_assessment_plans; DROP TABLE mantik_forward_declarations; DELETE FROM mantik_schema WHERE version>=124"); e != nil {
 		t.Fatal(e)
 	}
 	evaluationAssessmentContracts(t, p)

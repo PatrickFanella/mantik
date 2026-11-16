@@ -6,81 +6,99 @@ import (
 	"flag"
 	"io"
 	"os"
-	"time"
+	"slices"
 
-	"git.subcult.tv/subculture-collective/mantik/internal/account"
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
-	"git.subcult.tv/subculture-collective/mantik/internal/marketdata"
+	"git.subcult.tv/subculture-collective/mantik/internal/analyst"
+	"git.subcult.tv/subculture-collective/mantik/internal/forward"
+	"git.subcult.tv/subculture-collective/mantik/internal/research"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy"
+	analyststrategy "git.subcult.tv/subculture-collective/mantik/internal/strategy/analyst"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy/library"
 	strategyspec "git.subcult.tv/subculture-collective/mantik/internal/strategy/spec"
 )
 
-// incubationInput is a reviewed, bounded input manifest, never generated model
-// authority. Bars/actions keep their original knowledge and observation clocks.
-type incubationInput struct {
-	Config               *account.CappedConfig
-	Calendar             *service.IncubationCalendar `json:",omitempty"`
-	Protective           bool                        `json:",omitempty"`
-	ID                   string
-	DecidedAt, ExecuteAt time.Time
-	At                   time.Time
-	Quotes               map[string]account.IncubationQuote
-	Limits, Fees         map[string]string
-	Strategies           []incubationStrategyInput
-}
-type incubationStrategyInput struct {
-	SleeveID, GateID, Risk string
-	ForwardDeclarationID   string `json:",omitempty"`
-	Library                *library.Config
-	Expression             *strategyspec.Definition
-	Assets                 []string
-	Bars                   map[string][]storage.DailyBar
-	Actions                map[string][]marketdata.CorporateAction
-	Universe               *marketdata.UniverseReport
-}
-type incubationSource struct{ in incubationStrategyInput }
+type incubationInput = service.IncubationInput
+type incubationStrategyInput = service.IncubationStrategyInput
+type incubationSource = service.IncubationSource
 
-func (s incubationSource) AdjustedBars(ctx context.Context, asset string, at time.Time) (marketdata.Series, error) {
-	if e := ctx.Err(); e != nil {
-		return marketdata.Series{}, e
-	}
-	bars, ok := s.in.Bars[asset]
-	if !ok {
-		return marketdata.Series{}, errors.New("retained bars missing")
-	}
-	// Never relabel a current fetch as historical knowledge, including a raw bar
-	// whose AvailableAt was backdated relative to observation/publication.
-	for _, b := range bars {
-		if b.AvailableAt.IsZero() || b.ObservedAt.IsZero() || b.PublishedAt.IsZero() || b.AvailableAt.Before(b.ObservedAt) || b.AvailableAt.Before(b.PublishedAt) || b.AvailableAt.After(at) || b.Symbol != asset || b.AssetID != asset {
-			return marketdata.Series{}, errors.New("incubation bars require original as-of clocks and symbol binding")
+func incubationRequest(in incubationInput) (service.IncubationRequest, error) {
+	return incubationRequestFromJournal(context.Background(), in, nil, nil)
+}
+func incubationHasAnalyst(in incubationInput) bool {
+	for _, entry := range in.Strategies {
+		if entry.AnalystCycleID != "" {
+			return true
 		}
 	}
-	return marketdata.Adjust(asset, bars, s.in.Actions[asset], at)
+	return false
 }
-func (s incubationSource) StockUniverse(ctx context.Context, at time.Time) (marketdata.UniverseReport, error) {
-	if e := ctx.Err(); e != nil {
-		return marketdata.UniverseReport{}, e
+func incubationRequestFromJournal(ctx context.Context, in incubationInput, journal analyst.EvidenceReader, fs forward.Store) (service.IncubationRequest, error) {
+	if in.Qualification != nil {
+		return service.IncubationRequestFromInput(in)
 	}
-	if s.in.Universe == nil || !s.in.Universe.AsOf.Equal(at) {
-		return marketdata.UniverseReport{}, errors.New("reviewed point-in-time universe required")
-	}
-	return *s.in.Universe, nil
-}
-func incubationRequest(in incubationInput) (service.IncubationRequest, error) {
 	hash, e := service.IncubationInputHash(in)
 	if e != nil {
 		return service.IncubationRequest{}, e
 	}
-	req := service.IncubationRequest{ID: in.ID, InputSHA256: hash, DecidedAt: in.DecidedAt, ExecuteAt: in.ExecuteAt, Quotes: in.Quotes, Limits: in.Limits, Fees: in.Fees, Calendar: in.Calendar, Protective: in.Protective}
+	req := service.IncubationRequest{Qualification: in.Qualification, ID: in.ID, InputSHA256: hash, DecidedAt: in.DecidedAt, ExecuteAt: in.ExecuteAt, Quotes: in.Quotes, Limits: in.Limits, Fees: in.Fees, Calendar: in.Calendar, Protective: in.Protective}
 	if in.Protective {
 		return req, nil
 	}
 	for _, entry := range in.Strategies {
-		if (entry.Library == nil) == (entry.Expression == nil) {
-			return req, errors.New("choose exactly one compiled library or expression strategy")
+		choices := 0
+		if entry.Library != nil {
+			choices++
+		}
+		if entry.Expression != nil {
+			choices++
+		}
+		if entry.AnalystCycleID != "" {
+			choices++
+		}
+		if choices != 1 {
+			return req, errors.New("choose exactly one compiled library, expression or retained analyst cycle")
+		}
+		if entry.AnalystCycleID != "" {
+			if journal == nil || fs == nil {
+				return req, errors.New("retained analyst registry required")
+			}
+			if len(entry.Bars) != 0 || len(entry.Actions) != 0 || entry.Universe != nil {
+				return req, errors.New("analyst source must come from its retained request")
+			}
+			original, result, err := analyst.Retained(ctx, journal, entry.AnalystCycleID)
+			if err != nil {
+				return req, err
+			}
+			if result.EvidenceClass != "prospective_market_unqualified" || in.DecidedAt.Before(result.Receipt.At) {
+				return req, errors.New("analyst requires prospective evidence known before the decision")
+			}
+			record, err := fs.ForwardDeclaration(ctx, original.ForwardDeclarationID)
+			if err != nil {
+				return req, err
+			}
+			if entry.GateID != "" && entry.GateID != record.Declaration.GateID || entry.ForwardDeclarationID != "" && entry.ForwardDeclarationID != record.Declaration.ID || entry.SleeveID != record.Declaration.SleeveID {
+				return req, forward.ErrConflict
+			}
+			assets := slices.Clone(entry.Assets)
+			slices.Sort(assets)
+			expected := slices.Clone(original.Config.Assets)
+			slices.Sort(expected)
+			if len(assets) > 0 && !slices.Equal(assets, expected) {
+				return req, errors.New("analyst assets differ from retained configuration")
+			}
+			compiled, err := analyststrategy.New(original.Config, result.Receipt)
+			if err != nil {
+				return req, err
+			}
+			risk := entry.Risk
+			if risk == "" {
+				risk = "1"
+			}
+			req.Strategies = append(req.Strategies, service.IncubatingStrategy{SleeveID: entry.SleeveID, GateID: record.Declaration.GateID, ForwardDeclarationID: record.Declaration.ID, Risk: risk, Strategy: compiled, Source: original.Data, Assets: expected})
+			continue
 		}
 		var s strategy.Strategy
 		if entry.Library != nil {
@@ -91,7 +109,7 @@ func incubationRequest(in incubationInput) (service.IncubationRequest, error) {
 		if e != nil {
 			return req, e
 		}
-		req.Strategies = append(req.Strategies, service.IncubatingStrategy{SleeveID: entry.SleeveID, ForwardDeclarationID: entry.ForwardDeclarationID, GateID: entry.GateID, Risk: entry.Risk, Strategy: s, Source: incubationSource{entry}, Assets: entry.Assets})
+		req.Strategies = append(req.Strategies, service.IncubatingStrategy{SleeveID: entry.SleeveID, ForwardDeclarationID: entry.ForwardDeclarationID, GateID: entry.GateID, Risk: entry.Risk, Strategy: s, Source: incubationSource{Input: entry}, Assets: entry.Assets})
 	}
 	return req, nil
 }
@@ -126,14 +144,14 @@ func runIncubation(ctx context.Context, args []string, out, errOut io.Writer) er
 	if *action == "supervise" && (*safetyConfig == "" || *safetyConfig == *input) {
 		return errors.New("supervise requires a separate owner safety-config")
 	}
-	if *action == "run" {
+	if *action == "run" && !incubationHasAnalyst(in) {
 		var e error
 		req, e = incubationRequest(in)
 		if e != nil {
 			return e
 		}
 	}
-	s, e := storage.OpenPostgres(ctx, os.Getenv(*db))
+	s, e := storage.OpenPostgresWithQualificationEvaluator(ctx, os.Getenv(*db), service.EvaluateQualificationCollection)
 	if e != nil {
 		return e
 	}
@@ -158,6 +176,14 @@ func runIncubation(ctx context.Context, args []string, out, errOut io.Writer) er
 		}
 		return emit(out, state)
 	}
+	analystJournal := incubationAnalystJournal{database: os.Getenv(*db)}
+	if *action == "run" && incubationHasAnalyst(in) {
+		req, e = incubationRequestFromJournal(ctx, in, analystJournal, s)
+		if e != nil {
+			return e
+		}
+	}
+
 	if *journal == "" || *credentials == "" || *brokerID == "" {
 		return errors.New("incubation run/sync require journal, credentials-file and account-id")
 	}
@@ -176,7 +202,7 @@ func runIncubation(ctx context.Context, args []string, out, errOut io.Writer) er
 	}
 	runner := service.IncubationRunner{Store: s, Broker: broker, BookID: *id}
 	if *action == "supervise" {
-		return runIncubationSupervision(ctx, runner, *input, *safetyConfig, out)
+		return runIncubationSupervision(ctx, runner, *input, *safetyConfig, out, analystJournal)
 	}
 	if *action == "run" {
 		result, e := runner.Run(ctx, req)
@@ -190,4 +216,17 @@ func runIncubation(ctx context.Context, args []string, out, errOut io.Writer) er
 		return e
 	}
 	return emit(out, result)
+}
+
+// Open the model evidence reader only when a changed cycle actually selects an
+// analyst. Missing model evidence cannot prevent the safety worker from starting.
+type incubationAnalystJournal struct{ database string }
+
+func (j incubationAnalystJournal) Events(ctx context.Context, id string) ([]research.Event, error) {
+	records, err := research.OpenPostgresJournal(ctx, j.database)
+	if err != nil {
+		return nil, err
+	}
+	defer records.Close()
+	return records.Events(ctx, id)
 }

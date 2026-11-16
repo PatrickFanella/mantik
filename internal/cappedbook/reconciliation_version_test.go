@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -122,6 +123,52 @@ func TestSyncStateIdempotentBindCannotPromoteLaterVersion(t *testing.T) {
 	}}
 	if _, err := outer.SyncState(ctx, at, marks); !errors.Is(err, account.ErrBookConflict) {
 		t.Fatal("idempotent bind absorbed a later allocation", err)
+	}
+	if broker.posts != 2 {
+		t.Fatal("reconciliation submitted work", broker.posts)
+	}
+}
+
+func TestSyncStateArchivedObservationsCannotPromoteConcurrentVersion(t *testing.T) {
+	ctx := context.Background()
+	client, broker, at := paperFixture(t)
+	state, err := client.load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marks := map[string]string{"SPY": "100"}
+	for i := range 4100 {
+		state, err = client.Store.ApplyCappedBook(ctx, client.BookID, state.Version, account.BookCommand{ID: fmt.Sprintf("archived-%d", i), Kind: "risk_observe", At: at, Marks: marks})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(state.Events) != 2 || state.Version != 4100 {
+		t.Fatal("journal not compacted", len(state.Events), state.Version)
+	}
+	order := account.BookOrder{ID: "first-owned", Symbol: "SPY", Quantity: "1", Limit: "100", Side: "buy", Fee: "0", At: at}
+	if _, err = client.submitLedgerTest(ctx, order, marks); err != nil {
+		t.Fatal(err)
+	}
+	injected := false
+	outer := client
+	outer.Broker = interleavedFillsBroker{broker, func() {
+		if injected {
+			return
+		}
+		injected = true
+		second := order
+		second.ID = "concurrent-after-archive"
+		second.At = at.Add(time.Second)
+		if _, err := client.submitLedgerTest(ctx, second, marks); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	if _, err = outer.SyncState(ctx, at.Add(2*time.Second), marks); !errors.Is(err, account.ErrBookConflict) {
+		t.Fatal("archived prefix promoted concurrent reservation", err)
+	}
+	if _, err = outer.SyncState(ctx, at.Add(3*time.Second), marks); err != nil {
+		t.Fatal(err)
 	}
 	if broker.posts != 2 {
 		t.Fatal("reconciliation submitted work", broker.posts)

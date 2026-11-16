@@ -328,7 +328,7 @@ func (r IncubationRunner) checkHealthSubmission(ctx context.Context, o alpaca.St
 		}
 	}
 	var forwardClock func(time.Time) bool
-	if !order.ReduceOnly && plan.ForwardDeclarations[order.SleeveID] != "" {
+	if !order.ReduceOnly && account.Qualification(state, order.SleeveID) == nil && plan.ForwardDeclarations[order.SleeveID] != "" {
 		fs, ok := r.Store.(forward.Store)
 		if !ok {
 			return fmt.Errorf("forward declaration storage unavailable")
@@ -457,10 +457,15 @@ func reconciliationUnchanged(state account.CappedState, rec *incubationReconcili
 	if rec == nil || rec.version < 0 || rec.version > state.Version {
 		return false
 	}
-	for _, event := range state.Events[rec.version:] {
+	version := int64(0)
+	for _, event := range state.Events {
+		version += account.CappedCommandCount(event)
+		if version <= rec.version {
+			continue
+		}
 		switch event.Kind {
-		case "risk_observe", "risk_control", "deposit", "review_declare", "strategy_review":
-		case "incubation_plan":
+		case "risk_checkpoint", "risk_observe", "risk_control", "deposit", "review_declare", "strategy_review":
+		case "incubation_plan", "qualification_plan":
 			if event.Incubation == nil || event.Incubation.Rebalance.ID != allocationID {
 				return false
 			}
@@ -486,5 +491,5 @@ func reconciliationUnchanged(state account.CappedState, rec *incubationReconcili
 			return false
 		}
 	}
-	return true
+	return version == state.Version
 }

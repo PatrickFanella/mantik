@@ -120,8 +120,8 @@ def test_scope(argv):
     if args.shard == 2 and args.package != "storage":
         parser.error("the dedicated capacity group requires --package storage")
     packages = (["./internal/storage"] if args.package == "storage" else
-                ["./internal/cli", "./internal/research"] if args.package == "cli" else
-                ["./internal/storage", "./internal/cli", "./internal/research"])
+                ["./internal/cli", "./internal/research", "./internal/service"] if args.package == "cli" else
+                ["./internal/storage", "./internal/cli", "./internal/research", "./internal/service"])
     storage = "./internal/storage" in packages
     producer = storage and args.shard in (None, 0)
     command = ["go", "run", "./testshard", "-race", "-parts=2", "-run=^TestPostgresContracts"]

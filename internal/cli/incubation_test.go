@@ -3,12 +3,36 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"git.subcult.tv/subculture-collective/mantik/internal/forward"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy/library"
 )
+
+func TestIncubationQualificationInputUsesCompiledCustody(t *testing.T) {
+	cfg := library.Default(library.Trend)
+	in := incubationInput{ID: "qualification-cycle", Qualification: &forward.Collection{PlanID: "plan"}, Strategies: []incubationStrategyInput{{SleeveID: "trend", Library: &cfg, Assets: []string{"SPY"}}}}
+	req, err := incubationRequest(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(in)
+	if err != nil || !bytes.Equal(req.QualificationInput, raw) {
+		t.Fatal("CLI qualification lost its canonical compiled input", err)
+	}
+	in.Strategies[0].AnalystCycleID = "other-authority"
+	if _, err = incubationRequest(in); err == nil {
+		t.Fatal("qualification accepted an analyst/library authority combination")
+	}
+	in.Strategies[0].AnalystCycleID = ""
+	in.Qualification.DecisionSources = []json.RawMessage{json.RawMessage(`null`)}
+	if _, err = incubationRequest(in); err == nil {
+		t.Fatal("CLI qualification accepted caller decision evidence")
+	}
+}
 
 func TestIncubationCLIExplicitBoundary(t *testing.T) {
 	var out, errOut bytes.Buffer
@@ -45,12 +69,12 @@ func TestIncubationInputPinsRecipeAndSource(t *testing.T) {
 func TestIncubationSourceCannotBackdateObservedBars(t *testing.T) {
 	at := time.Now().UTC()
 	b := storage.DailyBar{AssetID: "SPY", Symbol: "SPY", Date: at.AddDate(0, 0, -1).Format(time.DateOnly), Open: "100", High: "101", Low: "99", Close: "100", VWAP: "100", Volume: 1, PublishedAt: at.Add(-time.Hour), ObservedAt: at, AvailableAt: at.Add(-time.Second)}
-	src := incubationSource{incubationStrategyInput{Bars: map[string][]storage.DailyBar{"SPY": {b}}}}
+	src := incubationSource{Input: incubationStrategyInput{Bars: map[string][]storage.DailyBar{"SPY": {b}}}}
 	if _, e := src.AdjustedBars(context.Background(), "SPY", at); e == nil {
 		t.Fatal("backdated observed bar accepted")
 	}
 	b.AvailableAt = at
-	src.in.Bars["SPY"] = []storage.DailyBar{b}
+	src.Input.Bars["SPY"] = []storage.DailyBar{b}
 	if _, e := src.AdjustedBars(context.Background(), "SPY", at); e != nil {
 		t.Fatal(e)
 	}

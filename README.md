@@ -70,6 +70,10 @@ quotes and zero fees or slippage.
   paper account and protection policy; generic demo worker success and a
   standalone cycle invocation cannot supply this authority. Reconciliation
   retains its exact journal version and refuses concurrent economic changes.
+  Continuous risk observations retain immutable originals behind a bounded
+  replay checkpoint, preserving observed peaks and brakes across restarts.
+  SQL reads verify replay transitions before trusting a head; a private cache
+  bounds later verification to the unseen command suffix.
   Authenticated per-book readiness reports admission for each work class.
 - **Kalshi data**: [public collection](docs/reference/kalshi-data.md) retains
   weather-market rules and order-book observations for point-in-time reads.
@@ -82,6 +86,13 @@ quotes and zero fees or slippage.
   complexity/library-similarity penalties and count every proposal. Durable
   family fences block statistical and admission readers during interrupted
   batches. Post-cutoff simulations confer no gate or trading authority.
+- **Callable model analyst**: the [four-stage analyst](docs/reference/model-analyst.md)
+  uses subscription analysts, debate and trader views to select a constrained
+  target that code sizes. Failed calls produce exposure holds; explicit flat
+  remains a separate exit. Current budget previews include complete book marks,
+  filled/pending commitments and review caps while model inputs stay frozen.
+  Incubation resolves retained cycles by `AnalystCycleID`, retains provenance,
+  and requires the existing supervised safety and final submission fences.
 - **Subscription research calls**: the [model adapter](docs/reference/subscription-models.md)
   runs bounded Claude and Codex prompts using host logins, with a durable daily
   call budget and hash records, independently of trading.
@@ -218,6 +229,11 @@ The [indicative option order simulator](docs/reference/option-structures.md) adm
 up-to-four-leg structures, holds maximum-loss and partial-fill reserves, enforces
 cash-book permissions and fixed Greek caps, and records conservative bar fills.
 It grants no qualified or broker submission authority.
+The [reviewed option recipes](docs/reference/option-library.md) select and size
+covered calls, cash-secured puts and margin-only spreads, then run through that
+simulator's admission, protected fills and closing. Their retained-data adapter
+preserves acquisition clocks; the available local archive does not establish a
+2024-onward historical backtest.
 The pure [indicator adapter](docs/reference/indicators.md) provides SMA, EMA, RSI,
 Wilder ATR, Bollinger bands and rolling return volatility with maintained TA-Lib parity tests.
 
@@ -236,4 +252,22 @@ manifest-verified 2016-to-date history.
 
 [Daily strategy oversight](docs/reference/daily-strategy-review.md) adds authenticated, retained evidence reviews and owner retirement. Review reductions take effect on a strictly later decision/rebalance; growth stays inside the existing admitted stage and grants no qualification. Missing comparisons hold or request inactive investigation.
 
+[Owner daily briefs](docs/reference/daily-brief.md) freeze a finalized book prefix for terminal output and an explicitly configured notification outbox. Deposit-adjusted TWR needs exact flow-boundary valuations; SPY needs comparable sourced total-return evidence. Missing evidence remains unavailable. Delivery retries retain one payload and idempotency key; no model, host timer or trading authority is added.
+
 Canonical strategy forward windows use the separate [forward declaration contract](docs/reference/forward-declarations.md). It binds prospective clocks, its own benchmark, minimums and actual trial-family search bound to the capped-book runner, with multiweek holds and no qualification credit. Legacy threshold replay retains its original rules.
+
+Prospective strategy qualification uses [predeclared assessments](docs/reference/forward-assessments.md), distinct execution evidence, and automatic paper sleeve admission. Incubation and synthetic fixtures earn no qualification credit.
+
+Qualification collection is accepted only by the compiled durable collection
+path, which recomputes pinned inputs and decisions. Ordinary journal commands
+cannot supply collection authority; see [forward assessments](docs/reference/forward-assessments.md#durable-collection-authority).
+
+The [`book` terminal controls](docs/reference/owner-book-controls.md) show capped
+paper equity, sleeves, lifecycle and retained refusal reasons. The configured
+owner service session can confirm pause, permanent retirement, one real cash
+receipt or hard-halt clear with immutable action IDs and version fences. Real
+receipts require a new immutable `owner_receipts` funding mode; legacy synthetic
+books cannot mix in real receipts, and receipt-mode workers never auto-credit
+missed schedule slots. Missing
+owner authentication refuses mutations even in development. The isolated
+walkthrough is automated evidence; the owner's terminal checkpoint is outstanding.

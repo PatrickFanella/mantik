@@ -23,7 +23,7 @@ class OwnerReplayProofTests(unittest.TestCase):
         scope = MODULE['test_scope']
         command, producer = scope([])
         self.assertTrue(producer)
-        self.assertEqual(command[-3:], ['./internal/storage', './internal/cli', './internal/research'])
+        self.assertEqual(command[-4:], ['./internal/storage', './internal/cli', './internal/research', './internal/service'])
         self.assertIn('-first-only=TestPostgresContractsRecoverySeed', command)
         dedicated = '-dedicated=TestPostgresContractsFeedRotationCrossesActiveCapacity'
         self.assertIn(dedicated, command)
@@ -32,7 +32,7 @@ class OwnerReplayProofTests(unittest.TestCase):
             for shard in range(3 if package == 'storage' else 2):
                 command, producer = scope(['--package', package, '--shard', str(shard)])
                 packages = (['./internal/storage'] if package == 'storage' else
-                            ['./internal/cli', './internal/research'])
+                            ['./internal/cli', './internal/research', './internal/service'])
                 self.assertEqual(command[-len(packages):], packages)
                 self.assertIn('-index=' + str(shard), command)
                 self.assertIn('-race', command)

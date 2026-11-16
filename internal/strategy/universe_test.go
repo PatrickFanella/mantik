@@ -35,6 +35,16 @@ func TestUniverseIsDeclaredPointInTimeAndBoundedByConfiguredAssets(t *testing.T)
 	if v.Universe()[0] != "asset-spy" {
 		t.Fatal("mutable universe")
 	}
+	original := v.UniverseReport()
+	if original == nil || original.ReferenceObservedAt != r.ReferenceObservedAt || len(original.Members) != 2 {
+		t.Fatal("original universe source lost")
+	}
+	original.Members[0].AssetID = "changed-accessor"
+	src.report.Members[0].AssetID = "changed-source"
+	if v.UniverseReport().Members[0].AssetID != "asset-spy" {
+		t.Fatal("universe report aliases source or accessor")
+	}
+	src.report.Members[0].AssetID = "asset-spy"
 	stockOnly, e := Build(context.Background(), spec, src, at, []string{"asset-spy"}, Book{})
 	if e != nil || len(stockOnly.Universe()) != 0 {
 		t.Fatal("undeclared universe", e)

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/account"
+	"git.subcult.tv/subculture-collective/mantik/internal/workhealth"
 )
 
 // This clock pauses a real service worker after its actual cycle. Test entry
@@ -23,6 +24,7 @@ type incubationSafetyFixture struct {
 	waiting chan struct{}
 	step    time.Duration
 	fail    bool
+	stop    func()
 }
 
 func (f *incubationSafetyFixture) Now() time.Time { f.mu.Lock(); defer f.mu.Unlock(); return f.at }
@@ -71,13 +73,14 @@ func startIncubationTestSafetyWithPolicy(t *testing.T, r IncubationRunner, at ti
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); _ = worker.Run(ctx, clock) }()
-	t.Cleanup(func() { cancel(); <-done })
+	clock.stop = sync.OnceFunc(func() { cancel(); <-done })
+	t.Cleanup(clock.stop)
 	<-clock.waiting
 	state, err := r.Store.CappedBook(context.Background(), r.BookID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c := worker.coverage(r.Store, state, at, map[string]string{"SPY": "100"}); !c.Ready {
+	if c := incubationFixtureCoverage(worker, r.Store, state, at); !c.Ready {
 		t.Fatal(c)
 	}
 	return worker
@@ -91,9 +94,20 @@ func advanceIncubationTestSafety(t *testing.T, w *IncubationSafetyWorker, at tim
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c := w.coverage(w.runner.Store, state, at, map[string]string{"SPY": "100"}); !c.Ready {
+	if c := incubationFixtureCoverage(w, w.runner.Store, state, at); !c.Ready {
 		t.Fatal(c)
 	}
+}
+
+// Fixture setup can replay a full qualification journal under race instrumentation.
+// Use the repository's race allowance here, without changing production deadlines.
+func incubationFixtureCoverage(w *IncubationSafetyWorker, store IncubationStore, state account.CappedState, at time.Time) workhealth.Check {
+	ctx, cancel := context.WithTimeout(context.Background(), raceDeadlineScale*2*time.Second)
+	defer cancel()
+	return w.coverageWithClock(ctx, store, state, func() time.Time { return at }, map[string]string{"SPY": "100"})
+}
+func stopIncubationTestSafety(w *IncubationSafetyWorker) {
+	w.source.(*incubationSafetyFixture).stop()
 }
 
 func TestIncubationSafetyCoverageAssociationAndLifecycle(t *testing.T) {

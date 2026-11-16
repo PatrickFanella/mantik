@@ -218,9 +218,6 @@ func Distribute(req RebalanceRequest, snap SizingSnapshot) (Distribution, error)
 			return out, errors.New("missing complete target")
 		}
 		if s.Stage == "qualified" {
-			if s.ModelDriven {
-				return out, errors.New("model-driven version requires forward qualification")
-			}
 			weights[s.ID] = new(big.Rat).Inv(v)
 			total.Add(total, weights[s.ID])
 		} else {

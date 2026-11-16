@@ -120,7 +120,10 @@ func (b *incubationTestBroker) fill(t *testing.T, id, activity, qty, price, fee 
 func incubationFixture(t *testing.T, model bool) (IncubationRunner, IncubationRequest, *incubationTestStrategy, *incubationTestBroker) {
 	t.Helper()
 	ctx := context.Background()
-	m := storage.NewMemory()
+	m, err := storage.NewMemoryWithQualificationEvaluator(EvaluateQualificationCollection)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s := &incubationTestStrategy{model: model}
 	sid, e := s.Spec().ID()
 	if e != nil {

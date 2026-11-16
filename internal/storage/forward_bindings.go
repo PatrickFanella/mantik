@@ -47,6 +47,9 @@ func checkForwardBindings(s account.CappedState, c account.BookCommand, read fun
 		if d.BookID != s.Config.ID || d.SleeveID != v.ID || d.StrategyID != v.StrategyID || d.GateID != v.GateID {
 			return forward.ErrConflict
 		}
+		if v.Stage == "qualified" {
+			continue
+		}
 		// Actual reduce-only reservations remain available after expiry/search growth.
 		if c.Kind == "portfolio_reserve" && c.Order.ReduceOnly {
 			continue

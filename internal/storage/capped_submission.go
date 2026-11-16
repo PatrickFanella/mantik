@@ -54,6 +54,9 @@ func (m *Memory) CheckCappedSubmission(ctx context.Context, id string, o account
 }
 
 func (p *Postgres) CheckCappedSubmission(ctx context.Context, id string, o account.BookOrder, marks map[string]string) (account.CappedState, error) {
+	if _, err := p.CappedBook(ctx, id); err != nil {
+		return account.CappedState{}, err
+	}
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return account.CappedState{}, err
@@ -67,7 +70,7 @@ func (p *Postgres) CheckCappedSubmission(ctx context.Context, id string, o accou
 	if err != nil {
 		return account.CappedState{}, err
 	}
-	s, err := loadCapped(ctx, tx, id)
+	s, err := p.loadCapped(ctx, tx, id)
 	if err != nil {
 		return account.CappedState{}, err
 	}
@@ -76,7 +79,7 @@ func (p *Postgres) CheckCappedSubmission(ctx context.Context, id string, o accou
 		return account.CappedState{}, err
 	}
 	if !o.ReduceOnly {
-		if err = checkPortfolioAdmissionsTx(ctx, tx, s, cmd); err != nil {
+		if err = p.checkPortfolioAdmissionsTx(ctx, tx, s, cmd); err != nil {
 			return account.CappedState{}, err
 		}
 	}

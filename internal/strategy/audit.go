@@ -18,6 +18,7 @@ var AllowedImports = []string{
 	"crypto/sha256", "encoding/hex", "encoding/json", "io",
 	"git.subcult.tv/subculture-collective/mantik/internal/marketdata",
 	"git.subcult.tv/subculture-collective/mantik/internal/indicators",
+	"git.subcult.tv/subculture-collective/mantik/internal/options",
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy",
 	"git.subcult.tv/subculture-collective/mantik/internal/strategy/library",
 }

@@ -9,6 +9,7 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/executioncost"
+	"git.subcult.tv/subculture-collective/mantik/internal/forward"
 	"git.subcult.tv/subculture-collective/mantik/internal/workhealth"
 )
 
@@ -29,6 +30,7 @@ type IncubationDecision struct {
 // IncubationPlan is recorded before sizing or submitting. Quotes model immediate
 // execution at Rebalance.At, independently of the venue's later fill clock.
 type IncubationPlan struct {
+	Qualification *forward.Collection `json:",omitempty"`
 	// Health is retained observation evidence, never renewed submission authority.
 	Health *workhealth.Report `json:",omitempty"`
 	// ForwardDeclarations binds optional prospective evidence clocks by sleeve.
@@ -56,6 +58,9 @@ func ValidateIncubationQuote(q IncubationQuote, decision, execution time.Time) e
 
 func validateIncubationPlan(s CappedState, c BookCommand) error {
 	p := c.Incubation
+	if p != nil && ((c.Kind == "qualification_plan") != (p.Qualification != nil)) {
+		return errors.New("qualification collection kind differs")
+	}
 	if p == nil || !incubationPlanJSONSize(*p) || !hashText.MatchString(p.InputSHA256) || p.DecidedAt.IsZero() || !p.Rebalance.At.Equal(c.At) || !p.DecidedAt.Before(c.At) || p.DecidedAt.Before(s.Config.OpenedAt) || len(p.Decisions) != len(p.Rebalance.Sleeves) || len(p.Decisions) == 0 || len(p.Decisions) > 64 || len(p.Quotes) == 0 || len(p.Quotes) > 256 {
 		return errors.New("invalid incubation plan")
 	}
@@ -67,7 +72,7 @@ func validateIncubationPlan(s CappedState, c BookCommand) error {
 		if e.ID == p.Rebalance.ID || e.Order != nil && e.Order.AllocationID == p.Rebalance.ID {
 			return errors.New("incubation allocation already exists before plan")
 		}
-		if e.Kind == "incubation_plan" && e.Incubation != nil && e.Incubation.Rebalance.ID == p.Rebalance.ID {
+		if IsStrategyPlan(e) && e.Incubation != nil && e.Incubation.Rebalance.ID == p.Rebalance.ID {
 			return errors.New("incubation allocation already owned")
 		}
 		if e.At.After(p.DecidedAt) {
@@ -93,7 +98,7 @@ func validateIncubationPlan(s CappedState, c BookCommand) error {
 		seen[d.SleeveID] = true
 		found := false
 		for _, sleeve := range p.Rebalance.Sleeves {
-			if sleeve.ID == d.SleeveID && sleeve.StrategyID == d.StrategyID && (sleeve.Stage == "incubation" || sleeve.Stage == "forward_only") {
+			if sleeve.ID == d.SleeveID && sleeve.StrategyID == d.StrategyID && (sleeve.Stage == "incubation" || sleeve.Stage == "forward_only" || sleeve.Stage == "qualified") {
 				found = true
 			}
 		}
@@ -121,7 +126,7 @@ func ModelIncubationFill(s CappedState, f BookFill) (*IncubationFill, error) {
 	plans := map[string]*IncubationPlan{}
 	orders := map[string]*BookOrder{}
 	for _, event := range s.Events {
-		if event.Kind == "incubation_plan" && event.Incubation != nil {
+		if IsStrategyPlan(event) && event.Incubation != nil {
 			plans[event.Incubation.Rebalance.ID] = event.Incubation
 		}
 		if event.Kind == "portfolio_reserve" && event.Order != nil {
@@ -212,8 +217,7 @@ func validateIncubationFill(s CappedState, c BookCommand) error {
 	prefix := s
 	for i, e := range s.Events {
 		if e.ID == c.ID {
-			prefix.Events = s.Events[:i]
-			prefix.Version = int64(i)
+			prefix = CappedPrefix(s, i)
 			break
 		}
 	}
@@ -281,8 +285,7 @@ func incubationPlanJSONSize(p IncubationPlan) bool {
 func checkIncubationOrder(s CappedState, c BookCommand) error {
 	for i, e := range s.Events {
 		if e.ID == c.ID {
-			s.Events = s.Events[:i+1]
-			s.Version = int64(i + 1)
+			s = CappedPrefix(s, i+1)
 			break
 		}
 	}
@@ -296,11 +299,16 @@ func checkIncubationRebalance(s CappedState, c BookCommand) error {
 		if event.ID == c.ID {
 			break
 		}
-		if event.Kind == "incubation_plan" && event.Incubation != nil && event.Incubation.Rebalance.ID == c.ID {
+		if IsStrategyPlan(event) && event.Incubation != nil && event.Incubation.Rebalance.ID == c.ID {
 			if !reflect.DeepEqual(event.Incubation.Rebalance, *c.Rebalance) {
 				return errors.New("rebalance differs from retained incubation decisions")
 			}
 		}
 	}
 	return nil
+}
+
+// IsStrategyPlan recognizes distinct execution modes without retagging history.
+func IsStrategyPlan(c BookCommand) bool {
+	return c.Kind == "incubation_plan" || c.Kind == "qualification_plan"
 }

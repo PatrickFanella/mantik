@@ -90,7 +90,9 @@ The fixed thresholds are a conservative operational policy, not a statistical
 qualification or a profitability claim. Grow restores previously cut capacity;
 its maximum is the existing admitted-stage budget. Quarantine demotion leaves
 the immutable admitted stage and ownership intact and reduces its capacity.
-Automatic qualification assessment and promotion remain issue #92.
+The [prospective assessor](forward-assessments.md) implements automatic paper
+qualification. A later overseer demotion invalidates that grant and gives its
+subsequent allocations a zero budget until a separate qualification window.
 `ResearchRequested` records an inactive request to inspect the cited evidence.
 It does not invoke the research desk, activate a model, or grant sizing,
 execution or owner-control authority.
@@ -133,3 +135,5 @@ callback. Protective reductions and reconciliation remain possible.
 Review never clears an owner pause, kill, retirement, reduce-only or hard halt.
 An already pending opening order is not automatically cancelled by review;
 reconciliation must resolve it before retirement can flatten the final holding.
+
+The [owner daily brief](daily-brief.md) reports retained actions and budgets separately. Its book TWR requires exact cash-flow-boundary valuations; review returns are never relabeled as TWR.

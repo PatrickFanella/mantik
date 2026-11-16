@@ -55,13 +55,16 @@ func NewMemoryWithPortfolioEvaluator(eval PaperPortfolioEvaluator) (*Memory, err
 	return m, nil
 }
 
-func OpenPostgresWithPortfolioEvaluator(ctx context.Context, url string, eval PaperPortfolioEvaluator) (*Postgres, error) {
+func OpenPostgresWithPortfolioEvaluator(ctx context.Context, url string, eval PaperPortfolioEvaluator, qualification ...QualificationEvaluator) (*Postgres, error) {
 	if eval == nil {
 		return nil, ErrPaperEvaluationAssessmentInvalid
 	}
 	p, err := OpenPostgres(ctx, url)
 	if err == nil {
 		p.portfolioEvaluator = memoizePortfolio(eval)
+		if len(qualification) > 0 {
+			p.qualificationEvaluator = qualification[0]
+		}
 	}
 	return p, err
 }

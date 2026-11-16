@@ -12,7 +12,7 @@ import (
 func ForwardBindings(s CappedState) map[string]string {
 	out := map[string]string{}
 	for _, e := range s.Events {
-		if e.Kind == "incubation_plan" && e.Incubation != nil {
+		if IsStrategyPlan(e) && e.Incubation != nil {
 			for sleeve, id := range e.Incubation.ForwardDeclarations {
 				if out[sleeve] == "" {
 					out[sleeve] = id

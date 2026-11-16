@@ -1,6 +1,7 @@
 package account
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
@@ -10,6 +11,49 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/risk"
 )
+
+func TestReviewDeclarationsReplayFullRoster(t *testing.T) {
+	at := time.Date(2026, 11, 16, 14, 0, 0, 0, time.UTC)
+	s, err := NewCappedState(DefaultCappedConfig("review-book", "paper", Cash, at))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := allocation.RebalanceRequest{ID: "roster", At: at}
+	for i := range 64 {
+		id := fmt.Sprintf("sleeve-%d", i)
+		req.Sleeves = append(req.Sleeves, allocation.Sleeve{ID: id, StrategyID: fmt.Sprintf("strategy-%064x", i), GateID: "gate-" + id, Stage: "incubation", Risk: "1", Minimum: "0"})
+		req.Targets = append(req.Targets, allocation.SleeveTarget{SleeveID: id, Decision: allocation.TargetDecision{HoldExposure: true}})
+	}
+	s, err = ApplyCappedCommand(s, BookCommand{ID: req.ID, Kind: "rebalance", At: at, Rebalance: &req})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Build a retained history directly so the assertion exercises a single
+	// normal snapshot/restart replay of the supported roster size.
+	for i, owner := range req.Sleeves {
+		d := ReviewDeclaration{ID: fmt.Sprintf("comparison-%d", i), SleeveID: owner.ID, StrategyID: owner.StrategyID, GateID: owner.GateID, Policy: ReviewPolicy, Benchmark: "cash", BacktestUnavailable: "no retained comparison", DrawdownBudget: "0.1"}
+		s.Events = append(s.Events, BookCommand{ID: "review-declare-" + d.ID, Kind: "review_declare", At: at.Add(time.Second), ReviewDeclaration: &d})
+	}
+	s.Version = int64(len(s.Events))
+	raw, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored CappedState
+	if err = json.Unmarshal(raw, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = SnapshotCapped(restored, nil, at.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	// Ownership must still be checked at each declaration's original prefix.
+	changed := *restored.Events[len(restored.Events)-1].ReviewDeclaration
+	changed.StrategyID = req.Sleeves[0].StrategyID
+	restored.Events[len(restored.Events)-1].ReviewDeclaration = &changed
+	if _, err = SnapshotCapped(restored, nil, at.Add(2*time.Second)); err == nil {
+		t.Fatal("mismatched declaration owner accepted")
+	}
+}
 
 func TestReviewSizingUsesStrictDecisionClockAndOwnerControls(t *testing.T) {
 	at := time.Date(2026, 11, 16, 20, 0, 0, 0, time.UTC)

@@ -461,7 +461,8 @@ func TestStrategyReviewSleeveBudgetsAndOwnerHTTP(t *testing.T) {
 	if code := post("/v1/capped-books/"+r.BookID+"/review-declaration", modified, "owner-token"); code != 422 {
 		t.Fatal("source substitution", code)
 	}
-	body := map[string]any{"Control": risk.Control{Action: "retire_strategy", StrategyID: sid}}
+	body := account.OwnerBookAction{ExpectedVersion: state.Version, Action: "retire_strategy", StrategyID: sid}
+	body.Confirmation = body.ConfirmationPin(r.BookID, "retire-http")
 	path := "/v1/capped-books/" + r.BookID + "/owner-controls/retire-http"
 	for _, tc := range []struct {
 		token  string

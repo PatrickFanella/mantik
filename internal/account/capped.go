@@ -3,6 +3,7 @@ package account
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"math/big"
 	"regexp"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	_ "time/tzdata"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
+	"git.subcult.tv/subculture-collective/mantik/internal/forward"
 	"git.subcult.tv/subculture-collective/mantik/internal/risk"
 )
 
@@ -30,6 +32,7 @@ type CappedConfig struct {
 	OpenedAt                   time.Time
 	OpeningCash, DepositAmount string
 	EveryWeeks                 int
+	FundingMode                string `json:",omitempty"`
 }
 
 // BookOrder reserves a simple day limit order before any broker POST. Fee is
@@ -51,6 +54,7 @@ type BookFill struct {
 // BookCommand is one ordered journal event. At is the local application clock;
 // fills and deposits keep their original economic clocks in separate fields.
 type BookCommand struct {
+	Qualification                           *forward.Assessment `json:",omitempty"`
 	ID, Kind, OrderID, VenueOrderID, Amount string
 	At, EffectiveAt                         time.Time
 	Order                                   *BookOrder
@@ -62,9 +66,12 @@ type BookCommand struct {
 	ReviewDeclaration                       *ReviewDeclaration `json:",omitempty"`
 	Review                                  *StrategyReview    `json:",omitempty"`
 	ModelFill                               *IncubationFill    `json:",omitempty"`
+	RiskCheckpoint                          *RiskCheckpoint    `json:",omitempty"`
+	OwnerAction                             *OwnerBookAction   `json:",omitempty"`
 }
 
-// CappedState is an append-only replayable ledger. Version is its event count.
+// CappedState is a bounded replay projection of the immutable command history.
+// Version counts original commands, including archived risk observations.
 type CappedState struct {
 	Config  CappedConfig
 	Version int64
@@ -112,7 +119,22 @@ func bookRat(s string) (*big.Rat, error) {
 	}
 	return r, nil
 }
+
+// SyntheticSchedule is simulated scheduled funding. Empty legacy configs retain
+// this behavior and their original JSON bytes; do not normalize them on read.
+const SyntheticSchedule = "synthetic_schedule"
+
+// OwnerReceipts accepts only confirmed, owner-recorded cash receipts. It is an
+// immutable creation-time choice, never a relabelling of a synthetic book.
+const OwnerReceipts = "owner_receipts"
+
 func (c CappedConfig) validate() error {
+	if c.FundingMode != "" && c.FundingMode != SyntheticSchedule && c.FundingMode != OwnerReceipts {
+		return errors.New("invalid capped book funding mode")
+	}
+	if c.FundingMode == OwnerReceipts && (c.OpeningCash != "2000" || c.DepositAmount != "500" || c.EveryWeeks != 2) {
+		return errors.New("owner receipt book requires fixed 2000 opening cash and 500 biweekly terms")
+	}
 	a, e := bookRat(c.OpeningCash)
 	d, de := bookRat(c.DepositAmount)
 	if !bookID.MatchString(c.ID) || !bookID.MatchString(c.BrokerAccountID) || !c.Type.Valid() || c.Type == "" || c.OpenedAt.IsZero() || c.OpenedAt.Year() < 1900 || e != nil || de != nil || a.Sign() <= 0 || d.Sign() <= 0 || c.EveryWeeks < 1 || c.EveryWeeks > 52 {
@@ -293,7 +315,7 @@ func replay(s CappedState) (*bookReplay, error) {
 	if e := s.Config.validate(); e != nil {
 		return nil, e
 	}
-	if s.Version != int64(len(s.Events)) || len(s.Events) > 4096 {
+	if s.Version != CappedPrefix(s, len(s.Events)).Version || len(s.Events) > 4096 {
 		return nil, errors.New("invalid book history size")
 	}
 	cash, _ := bookRat(s.Config.OpeningCash)
@@ -301,25 +323,42 @@ func replay(s CappedState) (*bookReplay, error) {
 	ids := map[string]bool{}
 	last := s.Config.OpenedAt
 	financialEvents := []BookCommand{}
+	var version int64
 	for _, c := range s.Events {
-		if c.ReviewDeclaration != nil && c.Kind != "review_declare" || c.Review != nil && c.Kind != "strategy_review" || c.Incubation != nil && c.Kind != "incubation_plan" || c.ModelFill != nil && c.Kind != "fill" {
+		if c.RiskCheckpoint != nil && c.Kind != "risk_checkpoint" || c.Qualification != nil && c.Kind != "qualification" || c.ReviewDeclaration != nil && c.Kind != "review_declare" || c.Review != nil && c.Kind != "strategy_review" || c.Incubation != nil && !IsStrategyPlan(c) || c.ModelFill != nil && c.Kind != "fill" {
 			return nil, errors.New("book payload differs from event kind")
 		}
 		if c.ID == "" || len(c.ID) > 128 || ids[c.ID] || c.At.Before(last) || c.At.IsZero() {
 			return nil, ErrBookConflict
 		}
+		if c.OwnerAction != nil {
+			if e := validateOwnerEvent(s.Config, c, version); e != nil {
+				return nil, e
+			}
+		}
+		version += CappedCommandCount(c)
 		ids[c.ID] = true
 		last = c.At
 		r.funds.Advance(civil(c.At))
 		switch c.Kind {
 		case "deposit":
+			if s.Config.FundingMode == OwnerReceipts && c.OwnerAction == nil {
+				return nil, errors.New("owner receipt book refuses unconfirmed scheduled funding")
+			}
+			if c.OwnerAction != nil {
+				for _, prior := range financialEvents {
+					if prior.Kind == "deposit" && prior.OwnerAction != nil && prior.OwnerAction.Source == c.OwnerAction.Source {
+						return nil, ErrBookConflict
+					}
+				}
+			}
 			due, e := s.Config.DueDeposits(c.At)
 			if e != nil {
 				return nil, e
 			}
 			match := false
 			for _, d := range due {
-				if d.ID == c.ID && d.Amount == c.Amount && d.EffectiveAt.Equal(c.EffectiveAt) {
+				if d.ID == c.ID && d.Amount == c.Amount && (d.EffectiveAt.Equal(c.EffectiveAt) || c.OwnerAction != nil && !c.EffectiveAt.Before(d.EffectiveAt) && !c.EffectiveAt.After(c.At)) {
 					match = true
 				}
 			}
@@ -331,6 +370,13 @@ func replay(s CappedState) (*bookReplay, error) {
 				return nil, err
 			}
 			r.deposits++
+		case "risk_checkpoint":
+			if err := validateRiskCheckpoint(c); err != nil {
+				return nil, err
+			}
+			r.risk = c.RiskCheckpoint.State
+			r.risk.Breakers = maps.Clone(r.risk.Breakers)
+			r.risk.Retired = maps.Clone(r.risk.Retired)
 		case "risk_observe":
 			if e := observePortfolio(s.Config, r, c.Marks, c.At); e != nil {
 				return nil, e
@@ -353,14 +399,18 @@ func replay(s CappedState) (*bookReplay, error) {
 				r.halted = false
 			}
 		case "review_declare":
-			if e := validateReviewDeclaration(s, c); e != nil {
+			if e := validateReviewDeclaration(s, c, r.sleeves); e != nil {
 				return nil, e
 			}
 		case "strategy_review":
 			if e := replayStrategyReview(s, c, r); e != nil {
 				return nil, e
 			}
-		case "incubation_plan":
+		case "qualification":
+			if e := replayQualification(s, c, r); e != nil {
+				return nil, e
+			}
+		case "incubation_plan", "qualification_plan":
 			if e := validateIncubationPlan(s, c); e != nil {
 				return nil, e
 			}
@@ -485,10 +535,15 @@ var bookSymbol = regexp.MustCompile(`^[A-Z][A-Z0-9.-]{0,19}$`)
 
 var hashText = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
-// ApplyCappedCommand returns a detached state. Exact event retries are idempotent;
-// changed retries conflict. A failed command never changes the previous state.
+// ApplyCappedCommand returns a detached replay projection. Retries retained in
+// that projection are idempotent; the durable store checks archived originals
+// before calling this function. A failed command never changes the input.
 func ApplyCappedCommand(s CappedState, c BookCommand) (CappedState, error) {
-	if c.ReviewDeclaration != nil && c.Kind != "review_declare" || c.Review != nil && c.Kind != "strategy_review" || c.Incubation != nil && c.Kind != "incubation_plan" || c.ModelFill != nil && c.Kind != "fill" {
+	// A checkpoint is a replay artifact, never a caller-supplied risk grant.
+	if c.Kind == "risk_checkpoint" || c.RiskCheckpoint != nil {
+		return s, errors.New("risk checkpoint is not a command")
+	}
+	if c.Qualification != nil && c.Kind != "qualification" || c.ReviewDeclaration != nil && c.Kind != "review_declare" || c.Review != nil && c.Kind != "strategy_review" || c.Incubation != nil && !IsStrategyPlan(c) || c.ModelFill != nil && c.Kind != "fill" {
 		return s, errors.New("book payload differs from event kind")
 	}
 	raw, e := json.Marshal(s)
@@ -501,6 +556,9 @@ func ApplyCappedCommand(s CappedState, c BookCommand) (CappedState, error) {
 	}
 	for _, old := range out.Events {
 		if old.ID == c.ID {
+			if old.RiskCheckpoint != nil {
+				old = old.RiskCheckpoint.Last
+			}
 			a, e := json.Marshal(old)
 			if e != nil {
 				return s, e
@@ -522,6 +580,16 @@ func ApplyCappedCommand(s CappedState, c BookCommand) (CappedState, error) {
 	var copied BookCommand
 	if e = json.Unmarshal(raw, &copied); e != nil {
 		return s, e
+	}
+	// Reconciliation discovers fills before it appends its next observation.
+	// Free an exhausted legacy observation tail for financial/protective writes,
+	// but never rewrite the prefix hash supplied by a review or qualification.
+	protectiveWrite := slices.Contains([]string{"fill", "bind", "reject", "release", "halt", "risk_control", "deposit"}, c.Kind)
+	if c.Kind == "risk_observe" || len(out.Events) == 4096 && protectiveWrite {
+		out, e = compactTrailingRisk(out)
+		if e != nil {
+			return s, e
+		}
 	}
 	out.Events = append(out.Events, copied)
 	out.Version++
@@ -567,6 +635,8 @@ func SnapshotCapped(s CappedState, prices map[string]string, at time.Time) (Capp
 }
 
 // DueDeposits uses the same Friday 06:00 Chicago schedule as daily replay.
+// These are schedule slots, not evidence of actual cash. In OwnerReceipts mode
+// each slot needs its own confirmed receipt before it can become a deposit.
 // The application event retains its effective time even when applied late.
 func (c CappedConfig) DueDeposits(through time.Time) ([]BookCommand, error) {
 	if e := c.validate(); e != nil {

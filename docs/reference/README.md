@@ -127,6 +127,8 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Resumable daily stock backfills](daily-backfill.md)
 - [Point-in-time stock universe](stock-universe.md)
 - [Indicative option data](option-data.md)
+- [Reviewed option recipes](option-library.md) — cash income and margin-only
+  spread recipes, callable OptionBook backtests and explicit retained-data limits.
 
 - [Automatic daily bars](daily-bars-worker.md): reviewed universe collection,
   session catch-up, correction refresh and readiness.
@@ -134,3 +136,5 @@ Keep exploratory notes in `docs/research/` until they become stable references.
   declared tolerances, source discrepancies and qualification limits.
 - [Portfolio gates and risk](portfolio-gates-and-risk.md): immutable gate
   decisions, one sleeve-sizing authority and persistent capped-book risk checks.
+
+- [Owner daily brief](daily-brief.md) — finalized paper-book equity, evidence-bounded TWR, strategy actions, cash reasons, health and an explicit notification outbox.

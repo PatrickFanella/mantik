@@ -130,6 +130,6 @@ journal and sizing hashes keep their original representation.
 Incubation plans, modeled fills, real quote assertions, synthetic fixtures and
 forward eligibility remain distinct from qualification. No incubation return,
 trial status, declaration or eligibility flag earns qualification credit. The
-future assessor must derive independent samples, benchmark observations, costs,
-minimums and provenance from retained sources; this change does not implement
-that assessor.
+[prospective assessor](forward-assessments.md) uses a separate immutable
+pre-window policy and distinct qualification execution events; v1 declarations
+and incubation plans retain their original hashes and qualification boundary.

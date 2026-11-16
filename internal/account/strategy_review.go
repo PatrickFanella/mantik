@@ -72,7 +72,7 @@ type reviewLifecycle struct {
 func reviewPrefix(s CappedState, id string) CappedState {
 	for i, e := range s.Events {
 		if e.ID == id {
-			s.Events, s.Version = s.Events[:i], int64(i)
+			s = CappedPrefix(s, i)
 			break
 		}
 	}
@@ -88,16 +88,14 @@ func reviewDeclaration(s CappedState, id string) (*ReviewDeclaration, time.Time)
 	return nil, time.Time{}
 }
 
-func validateReviewDeclaration(s CappedState, c BookCommand) error {
+func validateReviewDeclaration(s CappedState, c BookCommand, roster map[string]allocation.Sleeve) error {
 	s = reviewPrefix(s, c.ID)
 	d := c.ReviewDeclaration
 	if d == nil || !bookID.MatchString(d.ID) || c.ID != "review-declare-"+d.ID || d.Policy != ReviewPolicy || !slices.Contains([]string{"cash", "spy"}, d.Benchmark) || len(d.Backtest) > 2520 {
 		return errors.New("invalid review declaration")
 	}
-	roster, err := PortfolioRoster(s)
-	if err != nil {
-		return err
-	}
+	// Use ownership already computed at this replay position. Replaying the
+	// prefix here would recursively validate every preceding declaration again.
 	owner, ok := roster[d.SleeveID]
 	if !ok || owner.StrategyID != d.StrategyID || owner.GateID != d.GateID {
 		return errors.New("review declaration owner differs")
@@ -563,6 +561,14 @@ func reviewSizing(s CappedState, c BookCommand, r *bookReplay) (allocation.Rebal
 			}
 		}
 	}
+	for _, e := range s.Events {
+		if e.ID == c.ID {
+			break
+		}
+		if e.Qualification != nil && e.Qualification.Status == "passed" && accountQualificationDemoted(s, e.Qualification.SleeveID, cutoff) {
+			snap.BudgetScales[e.Qualification.SleeveID] = "0"
+		}
+	}
 	// A retained review declaration enables this policy for its sleeve. Legacy
 	// journals have no declaration and must keep their original pause sizing.
 	managed := map[string]bool{}
@@ -597,11 +603,30 @@ func reviewSizing(s CappedState, c BookCommand, r *bookReplay) (allocation.Rebal
 // ReviewExitRequired lets the runner make an explicit same-owner flat decision
 // before evaluating a retired strategy, preserving stale-gate exit admission.
 func ReviewExitRequired(s CappedState, sleeve, sid string, decidedAt time.Time) bool {
+	if accountQualificationDemoted(s, sleeve, decidedAt) {
+		return true
+	}
 	for _, e := range s.Events {
 		if e.RiskControl != nil && e.RiskControl.Action == "retire_strategy" && e.RiskControl.StrategyID == sid {
 			return true
 		}
 		if e.Review != nil && e.Review.SleeveID == sleeve && e.Review.StrategyID == sid && e.Review.Action == "retire" && e.At.Before(decidedAt) {
+			return true
+		}
+	}
+	return false
+}
+
+func accountQualificationDemoted(s CappedState, sleeve string, at time.Time) bool {
+	promoted := false
+	for _, e := range s.Events {
+		if !e.At.Before(at) {
+			continue
+		}
+		if e.Qualification != nil && e.Qualification.SleeveID == sleeve && e.Qualification.Status == "passed" {
+			promoted = true
+		}
+		if promoted && e.Review != nil && e.Review.SleeveID == sleeve && (e.Review.Action == "demote" || e.Review.Action == "retire") {
 			return true
 		}
 	}

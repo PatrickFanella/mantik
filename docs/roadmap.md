@@ -15,7 +15,7 @@ The approved design is [the trading system design](plans/trading-system.md).
 The work is tracked in
 [roadmap #47](https://github.com/subculture-collective/mantik/issues/47).
 
-**Implementation status, 2026-11-16, America/Chicago** (schema 123 on this branch; merge state is tracked in #47).
+**Implementation status, 2026-11-16, America/Chicago** (schema 127 on this branch; merge state is tracked in #47).
 Wave 1 merged in [PR #118](https://github.com/subculture-collective/mantik/pull/118)
 at schema 118. Wave 4 adds [resumable stock backfills](reference/daily-backfill.md),
 the [asset-identity universe](reference/stock-universe.md), and
@@ -35,6 +35,33 @@ historical observations and stayed in cash. That exercise proves the tool and
 retention path, with no strategy performance or qualification credit. The four
 failed base gates remain rejected, and first protected paper positions remain
 #107.
+
+Wave 11 core merged in [PR #130](https://github.com/subculture-collective/mantik/pull/130):
+prospective declarations (#78), daily evidence reviews (#83), book-specific
+health admission and protective supervision (#90), and bounded spec evolution
+with durable family accounting (#103). The source and merge trees match, and
+all five hosted checks passed. The journal-capacity and recursive review
+findings on that merged PR are repaired in this follow-up; final verification
+and merge state remain in #47.
+
+This follow-up also adds the [forward-only analyst](reference/model-analyst.md)
+for #93, [option strategy recipes](reference/option-library.md) for #101/#102,
+and [compiled prospective assessment](reference/forward-assessments.md) for #92.
+The analyst cannot choose quantities, stops or orders. Qualification uses a
+separate compiled collection boundary; ordinary incubation remains ineligible
+for qualification credit. The option recipes run through the indicative
+OptionBook lifecycle with reserves and holding-time Greek checks. Their
+synthetic lifecycle tests do not satisfy #101's historical 2024-onward data
+requirement or #85's real paper open/close requirement.
+
+The [daily brief](reference/daily-brief.md) for #99 derives its numbers from
+finalized records and retains notification retry receipts. The
+[owner terminal controls](reference/owner-book-controls.md) for #100 require
+authenticated confirmation and report the original action receipt alongside
+current state. Both paths preserve logical journal versions after checkpoints
+and use verified original-command replay for SQL views. Receipt-mode books
+require an owner attestation for each deposit and receive no automatic credit
+for elapsed schedule dates. The actual owner walkthrough remains unperformed.
 
 Wave 5 adds the opt-in [daily-bar worker](reference/daily-bars-worker.md) for
 #95 and the [independent SPY comparison](reference/spy-comparison.md) for #94
@@ -66,9 +93,11 @@ The new strategy core now has:
 
 The paper ledger, execution worker, protective exits, feed custody, archives,
 retention, prospective evaluation rules and terminal supervision remain as
-earlier foundations. Their threshold-specific contracts have not yet been
-joined to the new core in a running strategy portfolio. Merged implementation
-and fixture tests do not establish real-quote execution or qualification.
+earlier foundations. The prospective declaration and compiled assessment paths
+now join these contracts to the strategy core, with legacy threshold replay
+retained. Merged
+implementation and fixture tests do not establish real-quote execution or
+qualification.
 
 The provider assessment, indicator comparison, and connected adapter checks
 are real observations with the scope documented in their references. The new
@@ -131,11 +160,11 @@ the full order, waves and critical path. Its epics:
 | [C #50](https://github.com/subculture-collective/mantik/issues/50) Base strategy library for stocks | 6/6 | Closed under the owner-approved recipe ports and pinned reference tests |
 | [D #51](https://github.com/subculture-collective/mantik/issues/51) Trial registry and backtest gate | 4/4 | Four base decisions are recorded; strategy-specific minimum capital across each full eligible universe remains required. The one-share SPY fixture minimum does not meet that epic exit |
 | [E #52](https://github.com/subculture-collective/mantik/issues/52) Real-quote paper trading on the capped book | 5/6 on this branch | First protected real-quote positions (#107); the runner alone does not complete that exit |
-| [F #53](https://github.com/subculture-collective/mantik/issues/53) Overseer and daily brief | 0/4 | Health admission, daily review and resizing, owner brief and controls |
+| [F #53](https://github.com/subculture-collective/mantik/issues/53) Overseer and daily brief | 2/4 merged | Daily review and health admission merged; the daily brief and authenticated owner controls are in progress, with an actual owner walkthrough still required |
 | [G #54](https://github.com/subculture-collective/mantik/issues/54) Options and multi-leg strategies | 2/5 on this branch | Alpaca multi-leg orders and strategy recipes, including real paper open/close evidence |
-| [H #55](https://github.com/subculture-collective/mantik/issues/55) Model research desk | 3/5 on this branch | Evolution and model analyst |
+| [H #55](https://github.com/subculture-collective/mantik/issues/55) Model research desk | 4/5 merged | Research desk and evolution merged; the forward-only analyst is in this follow-up |
 | [I #56](https://github.com/subculture-collective/mantik/issues/56) Kalshi decision engine | 3/3 | Calibrated paper trades must settle and feed calibration records; maker intents alone do not meet that exit |
-| [J #57](https://github.com/subculture-collective/mantik/issues/57) Forward qualification and promotion | 0/3 | Generalised prospective rules, automatic promotion and demotion, and a recorded forward assessment |
+| [J #57](https://github.com/subculture-collective/mantik/issues/57) Forward qualification and promotion | 1/3 merged | Declarations merged; compiled automatic assessment is in this follow-up, and the natural forward assessment remains #108 |
 
 After the epics, the remaining acceptance issues close in this order:
 
@@ -161,21 +190,21 @@ complete the replacement epics or their acceptance checks.
 
 ## Next steps
 
-After Wave 10 merges, these are the next work units. This describes dependencies,
-not pickup approval, deployment or provider access. Check #47 and each issue's
+After the Wave 11 core merge, these are the remaining work units. This describes
+dependencies, not pickup approval, deployment or provider access. Check #47 and each issue's
 current blockers before starting work.
 
 | Work | Prerequisites and remaining outcome |
 | --- | --- |
-| [J1 #78](https://github.com/subculture-collective/mantik/issues/78) Prospective declarations | After #77: pin a strategy version, benchmark, window and search bound; support multi-week holds while preserving threshold replay. |
+| [J2 #92](https://github.com/subculture-collective/mantik/issues/92) Prospective assessments | Declarations and review prerequisites are merged; verify compiled collection, automatic promotion/demotion and legacy replay in the combined journal. |
 | [G3 #85](https://github.com/subculture-collective/mantik/issues/85) Multi-leg paper orders | After #84: durable open/close and safe fallback; record an actual paper iron-condor open and close. |
-| [F1 #83](https://github.com/subculture-collective/mantik/issues/83), [F2 #90](https://github.com/subculture-collective/mantik/issues/90) Oversight and health | Review daily evidence, retain decisions for the next rebalance, and stop stale-data entries while preserving exits and reconciliation. |
-| [H4 #103](https://github.com/subculture-collective/mantik/issues/103), [H5 #93](https://github.com/subculture-collective/mantik/issues/93) Evolution and model analyst | After #86: retain every mutated/recombined attempt; keep model targets forward-only and under coded sizing and risk authority. |
-| [G4 #101](https://github.com/subculture-collective/mantik/issues/101), [G5 #102](https://github.com/subculture-collective/mantik/issues/102) Option recipes | After #84 and #85: reviewed provenance, cash/margin permissions and tested strategy behavior. |
+| [F3 #99](https://github.com/subculture-collective/mantik/issues/99), [F4 #100](https://github.com/subculture-collective/mantik/issues/100) Brief and owner controls | Verify finalized reporting, bounded source reads and confirmed controls in the combined journal; retain the actual terminal walkthrough checkpoint. |
+| [H4 #93](https://github.com/subculture-collective/mantik/issues/93) Model analyst | Evolution is merged. Finish exact-head verification of the analyst and retained receipt bridge, keeping model choices under coded sizing and risk authority. |
+| [G4 #101](https://github.com/subculture-collective/mantik/issues/101), [G5 #102](https://github.com/subculture-collective/mantik/issues/102) Option recipes | After #84: reviewed provenance, cash/margin permissions and tested strategy behavior; #101 also requires its historical indicative-data backtest. |
 | [E6 #107](https://github.com/subculture-collective/mantik/issues/107) Protected paper positions | Requires eligible strategies, fresh regular-session quotes, protected execution and owned-fill reconciliation. |
 
-Wave 10 implements the tenth issue on the original thirteen-issue critical path.
-The remaining chain is #78 → #92 → #108. The capital branch reaches
+Wave 11 core implements the eleventh issue on the original thirteen-issue
+critical path. The remaining chain is #92 → #108. The capital branch reaches
 the incubation runner through the capped book, distributor and risk checks. The separate SPY data
 and engine exits (#94 and #105) are recorded; they do not establish real-quote
 execution or forward qualification.

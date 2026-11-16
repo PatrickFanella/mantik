@@ -11,7 +11,6 @@ import (
 
 	"git.subcult.tv/subculture-collective/mantik/internal/account"
 	"git.subcult.tv/subculture-collective/mantik/internal/backtest"
-	"git.subcult.tv/subculture-collective/mantik/internal/risk"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategygate"
 )
@@ -92,9 +91,9 @@ func readGateJSON(path string, v any, limit int64) (err error) {
 
 func runCappedRisk(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs, db, id := gateFlags("capped-risk", errOut)
-	action := fs.String("action", "show", "show or an explicit owner risk control")
-	command := fs.String("command-id", "", "idempotent owner command ID")
-	strategy := fs.String("strategy-id", "", "content-addressed strategy for breaker controls")
+	action := fs.String("action", "show", "show or protective observe; owner controls require authenticated book")
+	command := fs.String("command-id", "", "immutable protective observation ID (observe only)")
+	_ = fs.String("strategy-id", "", "legacy flag; owner strategy controls now require book")
 	clock := fs.String("at", "", "RFC3339 observation/control clock")
 	marksFile := fs.String("marks", "", "reviewed current mark JSON, symbol to price")
 	if e := fs.Parse(args); e != nil {
@@ -102,6 +101,9 @@ func runCappedRisk(ctx context.Context, args []string, out, errOut io.Writer) er
 			return nil
 		}
 		return e
+	}
+	if *action != "show" && *action != "observe" {
+		return errors.New("capped-risk refuses direct-database owner controls; use book with the configured owner MANTIK_API_TOKEN, explicit version and confirmation")
 	}
 	at, e := time.Parse(time.RFC3339, *clock)
 	if e != nil || *id == "" || fs.NArg() != 0 || os.Getenv(*db) == "" {
@@ -125,16 +127,12 @@ func runCappedRisk(ctx context.Context, args []string, out, errOut io.Writer) er
 	if _, e = account.SnapshotCapped(state, marks, at); e != nil {
 		return e
 	}
-	if *action != "show" {
+
+	if *action == "observe" {
 		if *command == "" {
-			return errors.New("owner risk control requires command-id")
+			return errors.New("protective observation requires command-id")
 		}
-		control := risk.Control{Action: *action, StrategyID: *strategy}
-		cmd := account.BookCommand{ID: *command, Kind: "risk_control", At: at, RiskControl: &control, Marks: marks}
-		if *action == "observe" {
-			cmd.Kind, cmd.RiskControl = "risk_observe", nil
-		}
-		state, e = s.ApplyCappedBook(ctx, *id, state.Version, cmd)
+		state, e = s.ApplyCappedBook(ctx, *id, state.Version, account.BookCommand{ID: *command, Kind: "risk_observe", At: at, Marks: marks})
 		if e != nil {
 			return e
 		}

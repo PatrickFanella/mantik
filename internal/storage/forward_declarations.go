@@ -174,7 +174,7 @@ func (m *Memory) ForwardEligibility(ctx context.Context, id string, at time.Time
 	return r.Clocks(at, n, opened), nil
 }
 
-func loadForward(ctx context.Context, q cappedQuery, id string) (forward.Record, error) {
+func (p *Postgres) loadForward(ctx context.Context, q cappedQuery, id string) (forward.Record, error) {
 	var raw []byte
 	e := q.QueryRow(ctx, "SELECT payload FROM mantik_forward_declarations WHERE id=$1", id).Scan(&raw)
 	if errors.Is(e, pgx.ErrNoRows) {
@@ -191,7 +191,7 @@ func loadForward(ctx context.Context, q cappedQuery, id string) (forward.Record,
 	if e != nil {
 		return r, e
 	}
-	b, e := loadCapped(ctx, q, r.Declaration.BookID)
+	b, e := p.loadCapped(ctx, q, r.Declaration.BookID)
 	if e != nil {
 		return r, e
 	}
@@ -204,6 +204,9 @@ func (p *Postgres) DeclareForward(ctx context.Context, d forward.Declaration, no
 	if d.Validate() != nil {
 		return forward.Record{}, forward.ErrInvalid
 	}
+	if _, err := p.CappedBook(ctx, d.BookID); err != nil {
+		return forward.Record{}, err
+	}
 	tx, e := p.pool.Begin(ctx)
 	if e != nil {
 		return forward.Record{}, e
@@ -215,7 +218,7 @@ func (p *Postgres) DeclareForward(ctx context.Context, d forward.Declaration, no
 	if _, e = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('mantik_forward:'||$1,0))", d.ID); e != nil {
 		return forward.Record{}, e
 	}
-	old, e := loadForward(ctx, tx, d.ID)
+	old, e := p.loadForward(ctx, tx, d.ID)
 	if e == nil {
 		if !sameGate(old.Declaration, d) {
 			return forward.Record{}, forward.ErrConflict
@@ -229,7 +232,7 @@ func (p *Postgres) DeclareForward(ctx context.Context, d forward.Declaration, no
 	if e != nil {
 		return forward.Record{}, e
 	}
-	b, e := loadCapped(ctx, tx, d.BookID)
+	b, e := p.loadCapped(ctx, tx, d.BookID)
 	if e != nil {
 		return forward.Record{}, e
 	}
@@ -280,24 +283,27 @@ func (p *Postgres) DeclareForward(ctx context.Context, d forward.Declaration, no
 
 // ForwardDeclaration validates retained source and hashes without rewriting bytes.
 func (p *Postgres) ForwardDeclaration(ctx context.Context, id string) (forward.Record, error) {
-	return loadForward(ctx, p.pool, id)
+	return p.loadForward(ctx, p.pool, id)
 }
 
 // ForwardEligibility fences the live registry count against concurrent starts.
 func (p *Postgres) ForwardEligibility(ctx context.Context, id string, at time.Time) (forward.Eligibility, error) {
+	if _, err := p.ForwardDeclaration(ctx, id); err != nil {
+		return forward.Eligibility{}, err
+	}
 	tx, e := p.pool.Begin(ctx)
 	if e != nil {
 		return forward.Eligibility{}, e
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	r, e := loadForward(ctx, tx, id)
+	r, e := p.loadForward(ctx, tx, id)
 	if e != nil {
 		return forward.Eligibility{}, e
 	}
 	if e = lockStrategyFamily(ctx, tx, r.Declaration.Family); e != nil {
 		return forward.Eligibility{}, e
 	}
-	b, e := loadCapped(ctx, tx, r.Declaration.BookID)
+	b, e := p.loadCapped(ctx, tx, r.Declaration.BookID)
 	if e != nil {
 		return forward.Eligibility{}, e
 	}

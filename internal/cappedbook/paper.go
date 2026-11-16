@@ -63,8 +63,9 @@ func (c Client) append(ctx context.Context, cmd account.BookCommand) (account.Ca
 	return account.CappedState{}, account.ErrBookConflict
 }
 
-// Fund applies only configured due deposits, with scheduled IDs. Repeating a
-// later invocation skips existing flows without changing their original clocks.
+// Fund applies automatic schedule slots only to synthetic books. Owner-receipt
+// books require confirmed receipts and never acquire cash from elapsed time.
+// Repeating a legacy invocation retains the original scheduled-flow clocks.
 func (c Client) Fund(ctx context.Context, at time.Time) (account.CappedState, error) {
 	s, e := c.load(ctx)
 	if e != nil {
@@ -72,6 +73,13 @@ func (c Client) Fund(ctx context.Context, at time.Time) (account.CappedState, er
 	}
 	due, e := s.Config.DueDeposits(at)
 	if e != nil {
+		return s, e
+	}
+	if s.Config.FundingMode == account.OwnerReceipts {
+		// Validate retained receipts without requiring live valuation marks. This
+		// also refuses malformed or mixed journals instead of returning them as
+		// spendable funding. No broker/model request is involved.
+		_, e = account.PortfolioRoster(s)
 		return s, e
 	}
 	for _, d := range due {
@@ -155,7 +163,7 @@ func (c Client) submit(ctx context.Context, o account.BookOrder, marks map[strin
 	return response, err
 }
 
-// Rebalance retains sizing on current local equity after applying due deposits.
+// Rebalance retains sizing on current local equity after synthetic-only funding.
 // Lifecycle admissions come from stored gates; strategies provide weights only.
 // Qualified sleeves require the later forward-qualification owner (#92).
 func (c Client) Rebalance(ctx context.Context, req allocation.RebalanceRequest, marks map[string]string) (allocation.Distribution, error) {
@@ -188,7 +196,11 @@ func (c Client) Rebalance(ctx context.Context, req allocation.RebalanceRequest, 
 			continue
 		}
 		if s.Stage == "qualified" {
-			return allocation.Distribution{}, errors.New("forward_qualification_required")
+			q := account.Qualification(book, s.ID)
+			if q == nil || q.StrategyID != s.StrategyID {
+				return allocation.Distribution{}, errors.New("forward_qualification_required")
+			}
+			continue
 		}
 		g, e := reader.StrategyGate(ctx, s.GateID)
 		if e != nil {
@@ -233,8 +245,7 @@ func retainedRebalance(book account.CappedState, req allocation.RebalanceRequest
 		if event.Kind != "rebalance" || event.Rebalance == nil || len(req.Sleeves) != len(event.Rebalance.Sleeves) {
 			return allocation.Distribution{}, true, account.ErrBookConflict
 		}
-		prefix := book
-		prefix.Events, prefix.Version = book.Events[:i], int64(i)
+		prefix := account.CappedPrefix(book, i)
 		roster, e := account.PortfolioRoster(prefix)
 		if e != nil {
 			return allocation.Distribution{}, true, e
@@ -250,7 +261,7 @@ func retainedRebalance(book account.CappedState, req allocation.RebalanceRequest
 				continue
 			}
 			old := event.Rebalance.Sleeves[j]
-			if s.ID != old.ID || s.StrategyID != old.StrategyID || s.GateID != old.GateID || s.Stage == "qualified" {
+			if s.ID != old.ID || s.StrategyID != old.StrategyID || s.GateID != old.GateID || s.Stage == "qualified" && old.Stage != "qualified" {
 				return allocation.Distribution{}, true, account.ErrBookConflict
 			}
 			s.Minimum, s.Stage, s.ModelDriven = old.Minimum, old.Stage, old.ModelDriven
@@ -269,8 +280,7 @@ func rebalanceDistribution(s account.CappedState, id string) (allocation.Distrib
 	for i, event := range s.Events {
 		if event.ID == id && event.Kind == "rebalance" {
 			// Exact retries return the original sizing even after later commands.
-			s.Events = s.Events[:i+1]
-			s.Version = int64(i + 1)
+			s = account.CappedPrefix(s, i+1)
 			snap, e := account.SnapshotCapped(s, event.Marks, event.At)
 			if e != nil {
 				return allocation.Distribution{}, e
@@ -458,6 +468,9 @@ func (c Client) SyncState(ctx context.Context, at time.Time, marks map[string]st
 			continue
 		}
 		if v.Fee == "" {
+			if qualificationOrder(s, id) {
+				return fail(errors.New("qualification venue activity has no observed commission"))
+			}
 			v.Fee = "0"
 		}
 		sum := sha256.Sum256(raw)
@@ -562,4 +575,19 @@ func (c Client) SyncState(ctx context.Context, at time.Time, marks map[string]st
 		return account.CappedState{}, account.ErrBookConflict
 	}
 	return s, nil
+}
+
+func qualificationOrder(s account.CappedState, id string) bool {
+	allocationID := ""
+	for _, e := range s.Events {
+		if e.Order != nil && e.Order.ID == id {
+			allocationID = e.Order.AllocationID
+		}
+	}
+	for _, e := range s.Events {
+		if e.Kind == "qualification_plan" && e.Incubation != nil && e.Incubation.Rebalance.ID == allocationID {
+			return true
+		}
+	}
+	return false
 }

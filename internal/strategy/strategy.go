@@ -80,14 +80,15 @@ type Book struct {
 // View is everything a strategy may see at its decision time. Its fields are
 // unexported and its methods return copies, so a strategy cannot change it.
 type View struct {
-	at        time.Time
-	assets    []string
-	bars      map[string][]marketdata.AdjustedBar
-	chains    map[string]options.Chain
-	universe  []string
-	positions []Position
-	fills     []Fill
-	state     []byte
+	at             time.Time
+	assets         []string
+	bars           map[string][]marketdata.AdjustedBar
+	chains         map[string]options.Chain
+	universe       []string
+	universeReport *marketdata.UniverseReport
+	positions      []Position
+	fills          []Fill
+	state          []byte
 }
 
 // At is the decision time. It is the time the view was built for, not the
@@ -100,6 +101,16 @@ func (v View) Assets() []string { return slices.Clone(v.assets) }
 // Universe lists eligible configured asset IDs from the point-in-time source.
 // It is empty unless the strategy declares KindStockUniverse.
 func (v View) Universe() []string { return slices.Clone(v.universe) }
+
+// UniverseReport returns the original report, including reference clocks and screening metadata.
+func (v View) UniverseReport() *marketdata.UniverseReport {
+	if v.universeReport == nil {
+		return nil
+	}
+	r := *v.universeReport
+	r.Members = slices.Clone(r.Members)
+	return &r
+}
 
 // Bars returns an asset's adjusted daily bars as of the decision time, oldest
 // first. It is empty unless the spec declares KindDailyBars.
@@ -200,6 +211,8 @@ func Build(ctx context.Context, spec Spec, src BarSource, at time.Time, assets [
 			}
 		}
 		slices.Sort(v.universe)
+		r.Members = slices.Clone(r.Members)
+		v.universeReport = &r
 	}
 	if slices.Contains(spec.Data, KindDailyBars) {
 		if src == nil {

@@ -2,12 +2,15 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"path/filepath"
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/account"
+	"git.subcult.tv/subculture-collective/mantik/internal/analyst"
+	"git.subcult.tv/subculture-collective/mantik/internal/forward"
 	"git.subcult.tv/subculture-collective/mantik/internal/service"
 	"git.subcult.tv/subculture-collective/mantik/internal/workhealth"
 )
@@ -55,7 +58,7 @@ type incubationSupervisionEvent struct {
 	Error   string                    `json:",omitempty"`
 }
 
-func runIncubationSupervision(ctx context.Context, runner service.IncubationRunner, cyclePath, configPath string, out io.Writer) error {
+func runIncubationSupervision(ctx context.Context, runner service.IncubationRunner, cyclePath, configPath string, out io.Writer, journal analyst.EvidenceReader) error {
 	var cfg incubationSafetyInput
 	if err := readPaperJSON(configPath, &cfg, true); err != nil {
 		return err
@@ -106,7 +109,13 @@ func runIncubationSupervision(ctx context.Context, runner service.IncubationRunn
 			err := readGateJSON(cyclePath, &input, 32<<20)
 			var req service.IncubationRequest
 			if err == nil {
-				req, err = incubationRequest(input)
+				var h string
+				h, err = service.IncubationInputHash(input)
+				req.InputSHA256 = h
+				if err == nil && h != lastInput {
+					fs, _ := runner.Store.(forward.Store)
+					req, err = incubationRequestFromJournal(ctx, input, journal, fs)
+				}
 			}
 			if err != nil {
 				key := "invalid:" + err.Error()
@@ -141,4 +150,13 @@ func runIncubationSupervision(ctx context.Context, runner service.IncubationRunn
 		return err
 	}
 	return ctx.Err()
+}
+
+// The supervised path uses the same strict shape and full-input hash as run.
+func readIncubationCycle(path string) (service.IncubationRequest, error) {
+	var raw json.RawMessage
+	if err := readGateJSON(path, &raw, 32<<20); err != nil {
+		return service.IncubationRequest{}, err
+	}
+	return service.DecodeIncubationInput(raw)
 }
