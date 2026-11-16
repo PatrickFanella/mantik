@@ -16,7 +16,7 @@ import (
 )
 
 // SimulationVersion names whole-contract, recorded-depth, taker-only simulation.
-const SimulationVersion = "kalshi-notional-depth-fees-v2"
+const SimulationVersion = "kalshi-notional-depth-fees-v3"
 const dollarMicros int64 = 1000000
 
 // SimulationStore reads recorded markets and books without venue order access.
@@ -45,6 +45,8 @@ type SimFill struct {
 // NotionalReport deliberately has no engine.Result/portfolio return field.
 // Cash excludes inventory value. Payout is official settlement cash only.
 type NotionalReport struct {
+	MakerOrders                          []MakerIntent
+	ReservedMicros                       int64
 	Kind                                 string
 	IncludedInSPY                        bool
 	Version                              string
@@ -62,6 +64,7 @@ type executed struct {
 // NotionalBook is a sequential offline simulator. It owns no broker credentials,
 // SQL write authority or Alpaca book. Create a separate instance per replay.
 type NotionalBook struct {
+	makers             map[string]MakerIntent
 	cash, fees, payout int64
 	last               time.Time
 	eventAt            time.Time // most recent applied fill or settlement cash event
@@ -185,46 +188,9 @@ func (b *NotionalBook) Execute(ctx context.Context, store SimulationStore, o Sim
 	if matches != 1 {
 		return nil, errors.New("market must occur exactly once in retained page")
 	}
-	if event.Ticker != market.EventTicker || event.ObservedAt.IsZero() || event.ObservedAt.After(at) || simHash(event.Original) != event.SHA256 {
-		return nil, errors.New("missing or future event fee evidence")
-	}
-	var ev struct {
-		Event struct {
-			Ticker     string       `json:"event_ticker"`
-			Series     string       `json:"series_ticker"`
-			FeeType    *string      `json:"fee_type_override"`
-			Multiplier *json.Number `json:"fee_multiplier_override"`
-		} `json:"event"`
-	}
-	if json.Unmarshal([]byte(event.Original), &ev) != nil || ev.Event.Ticker != market.EventTicker || ev.Event.Series != market.SeriesTicker {
-		return nil, errors.New("event identity does not match market/series")
-	}
-	deadline, e := time.Parse(time.RFC3339, market.CloseTime)
-	if e != nil || !deadline.After(at) {
-		return nil, errors.New("market is closed")
-	}
-	var series struct {
-		Series struct {
-			Ticker     string      `json:"ticker"`
-			FeeType    string      `json:"fee_type"`
-			Multiplier json.Number `json:"fee_multiplier"`
-		} `json:"series"`
-	}
-	if json.Unmarshal([]byte(market.SeriesOriginal), &series) != nil || series.Series.Ticker != market.SeriesTicker {
-		return nil, errors.New("invalid series fee evidence")
-	}
-	if ev.Event.FeeType != nil {
-		series.Series.FeeType = *ev.Event.FeeType
-	}
-	if ev.Event.Multiplier != nil {
-		series.Series.Multiplier = *ev.Event.Multiplier
-	}
-	if !slices.Contains([]string{"quadratic", "quadratic_with_maker_fees", "quadratic_with_combo_maker_fees"}, series.Series.FeeType) {
-		return nil, errors.New("unsupported or missing fee schedule")
-	}
-	multiplier, e := numberRat(series.Series.Multiplier.String())
-	if e != nil || multiplier.Cmp(big.NewRat(100, 1)) > 0 {
-		return nil, errors.New("invalid fee multiplier")
+	multiplier, e := simulationFee(*market, event, at)
+	if e != nil {
+		return nil, e
 	}
 	books, e := store.KalshiBooksAsOf(ctx, o.MarketTicker, at)
 	if e != nil {
@@ -351,7 +317,7 @@ func (b *NotionalBook) Execute(ctx context.Context, store SimulationStore, o Sim
 		used[l.key] += qty
 		fills = append(fills, SimFill{o.ID, o.MarketTicker, o.Side, o.Action, qty, l.price, fee, book.ObservedAt, book.SHA256, market.SeriesSHA256 + "/" + event.SHA256})
 	}
-	if b.cash+delta < 0 || b.cash+delta > 1000000000000000 {
+	if b.cash+delta < b.pendingMakerMicros() || b.cash+delta > 1000000000000000 {
 		return nil, errors.New("insufficient notional cash or balance bound")
 	}
 	b.cash += delta
@@ -409,16 +375,10 @@ func (b *NotionalBook) settle(r storage.KalshiWeatherSettlement, at time.Time) e
 	if at.Before(b.last) || r.ObservedAt.After(at) || r.SettledAt.After(r.ObservedAt) || r.SettledAt.IsZero() || simHash(r.Original) != r.SHA256 {
 		return errors.New("invalid or future settlement")
 	}
-	var raw struct {
-		Market struct {
-			Ticker, Status, Result string
-			Close                  time.Time `json:"close_time"`
-			Settled                time.Time `json:"settlement_ts"`
-		} `json:"market"`
+	if err := validateOfficialSettlement(r); err != nil {
+		return err
 	}
-	if json.Unmarshal([]byte(r.Original), &raw) != nil || raw.Market.Ticker != r.MarketTicker || raw.Market.Status != "finalized" || !slices.Contains([]string{"yes", "no"}, raw.Market.Result) || (raw.Market.Result == "yes") != r.Yes || !raw.Market.Settled.Equal(r.SettledAt) || raw.Market.Close.IsZero() || r.SettledAt.Before(raw.Market.Close) {
-		return errors.New("settlement must match official binary result")
-	}
+
 	if yes, done := b.settlements[r.MarketTicker]; done {
 		if yes != r.Yes {
 			return errors.New("conflicting official settlement")
@@ -439,6 +399,12 @@ func (b *NotionalBook) settle(r storage.KalshiWeatherSettlement, at time.Time) e
 	delete(b.positions, r.MarketTicker+"/yes")
 	delete(b.positions, r.MarketTicker+"/no")
 	b.settlements[r.MarketTicker] = r.Yes
+	for id, q := range b.makers {
+		if q.Order.MarketTicker == r.MarketTicker {
+			q.Active = false
+			b.makers[id] = q
+		}
+	}
 	b.eventAt = at
 	b.last = at
 	return nil
@@ -451,5 +417,73 @@ func (b *NotionalBook) Report() NotionalReport {
 	for k, v := range b.positions {
 		positions[k] = v
 	}
-	return NotionalReport{"kalshi_notional", false, SimulationVersion, b.cash, b.fees, b.payout, positions, slices.Clone(b.fills)}
+	quotes := []MakerIntent{}
+	for _, q := range b.makers {
+		quotes = append(quotes, q)
+	}
+	slices.SortFunc(quotes, func(a, c MakerIntent) int { return strings.Compare(a.Order.ID, c.Order.ID) })
+	return NotionalReport{Kind: "kalshi_notional", IncludedInSPY: false, Version: SimulationVersion, CashMicros: b.cash, FeesMicros: b.fees, PayoutMicros: b.payout, Positions: positions, Fills: slices.Clone(b.fills), MakerOrders: quotes, ReservedMicros: b.pendingMakerMicros()}
+}
+
+// simulationFee validates captured event/series fee evidence at the supplied clock.
+func simulationFee(market storage.KalshiMarket, event EventObservation, at time.Time) (*big.Rat, error) {
+	if event.Ticker != market.EventTicker || event.ObservedAt.IsZero() || event.ObservedAt.After(at) || simHash(event.Original) != event.SHA256 {
+		return nil, errors.New("missing or future event fee evidence")
+	}
+	var ev struct {
+		Event struct {
+			Ticker     string       `json:"event_ticker"`
+			Series     string       `json:"series_ticker"`
+			FeeType    *string      `json:"fee_type_override"`
+			Multiplier *json.Number `json:"fee_multiplier_override"`
+		} `json:"event"`
+	}
+	if json.Unmarshal([]byte(event.Original), &ev) != nil || ev.Event.Ticker != market.EventTicker || ev.Event.Series != market.SeriesTicker {
+		return nil, errors.New("event identity does not match market/series")
+	}
+	deadline, e := time.Parse(time.RFC3339, market.CloseTime)
+	if e != nil || !deadline.After(at) {
+		return nil, errors.New("market is closed")
+	}
+	var series struct {
+		Series struct {
+			Ticker     string      `json:"ticker"`
+			FeeType    string      `json:"fee_type"`
+			Multiplier json.Number `json:"fee_multiplier"`
+		} `json:"series"`
+	}
+	if json.Unmarshal([]byte(market.SeriesOriginal), &series) != nil || series.Series.Ticker != market.SeriesTicker {
+		return nil, errors.New("invalid series fee evidence")
+	}
+	if ev.Event.FeeType != nil {
+		series.Series.FeeType = *ev.Event.FeeType
+	}
+	if ev.Event.Multiplier != nil {
+		series.Series.Multiplier = *ev.Event.Multiplier
+	}
+	if !slices.Contains([]string{"quadratic", "quadratic_with_maker_fees", "quadratic_with_combo_maker_fees"}, series.Series.FeeType) {
+		return nil, errors.New("unsupported or missing fee schedule")
+	}
+	multiplier, e := numberRat(series.Series.Multiplier.String())
+	if e != nil || multiplier.Cmp(big.NewRat(100, 1)) > 0 {
+		return nil, errors.New("invalid fee multiplier")
+	}
+	return multiplier, nil
+}
+
+func validateOfficialSettlement(r storage.KalshiWeatherSettlement) error {
+	if r.ObservedAt.IsZero() || r.SettledAt.IsZero() || r.SettledAt.After(r.ObservedAt) || simHash(r.Original) != r.SHA256 {
+		return errors.New("invalid official settlement source")
+	}
+	var raw struct {
+		Market struct {
+			Ticker, Status, Result string
+			Close                  time.Time `json:"close_time"`
+			Settled                time.Time `json:"settlement_ts"`
+		} `json:"market"`
+	}
+	if json.Unmarshal([]byte(r.Original), &raw) != nil || raw.Market.Ticker != r.MarketTicker || raw.Market.Status != "finalized" || !slices.Contains([]string{"yes", "no"}, raw.Market.Result) || (raw.Market.Result == "yes") != r.Yes || !raw.Market.Settled.Equal(r.SettledAt) || raw.Market.Close.IsZero() || r.SettledAt.Before(raw.Market.Close) {
+		return errors.New("settlement must match official binary result")
+	}
+	return nil
 }

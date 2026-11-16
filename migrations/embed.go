@@ -375,3 +375,8 @@ var KalshiWeather string
 
 //go:embed 0120_option_data.sql
 var OptionData string
+
+// CappedBooks retains local paper funding, reservations and owned fill events.
+//
+//go:embed 0121_capped_books.sql
+var CappedBooks string

@@ -46,14 +46,19 @@ quotes and zero fees or slippage.
 - **Recorded strategy trials**: the [trial registry](docs/reference/strategy-trials.md)
   saves attempts before execution, retains daily returns and outcomes, and
   counts failed and unfinished attempts in each strategy family's search total.
+  [Walk-forward research](docs/reference/backtest-research.md) adds purged folds,
+  cost stress, declared neighbours, DSR/CSCV and per-strategy minimum capital.
 - **Paper stock orders**: the separate [Alpaca paper adapter](docs/reference/alpaca-paper.md)
   submits once per durable client ID, recovers ambiguous submissions, retains
-  raw fills and reports account-position differences. It is not yet wired to
-  the capped strategy book.
+  raw fills and reports account-position differences. The
+  [capped equity book](docs/reference/capped-equity-book.md) reserves local
+  capital before submission and reconciles its own fills and scheduled funding.
 - **Kalshi data**: [public collection](docs/reference/kalshi-data.md) retains
   weather-market rules and order-book observations for point-in-time reads.
   [Weather probabilities](docs/reference/kalshi-weather.md) retain pre-close
   next-day forecasts and report Brier scores and buckets after final settlement.
+  [Calibrated maker decisions](docs/reference/kalshi-maker.md) place fee-aware,
+  quarter-Kelly post-only intents within the separate notional book.
 - **Subscription research calls**: the [model adapter](docs/reference/subscription-models.md)
   runs bounded Claude and Codex prompts using host logins, with a durable daily
   call budget and hash records, independently of trading.
@@ -197,3 +202,7 @@ simulator](docs/reference/kalshi-simulation.md) consumes recorded depth and fee
 evidence in a separate book, excluded from the portfolio's SPY measure.
 
 Daily stock history can be collected by the opt-in [`serve` daily-bar worker](docs/reference/daily-bars-worker.md), with missing-session catch-up and its own readiness scope. The [independent SPY comparison](docs/reference/spy-comparison.md) checks the retained history against another source; its explicit primary-close check passes at the unchanged 5 bps tolerance, with the original raw-SIP and Yahoo-only failures retained as diagnostics.
+
+The [SPY engine check](docs/reference/spy-engine-check.md) compares cash/margin
+accounting with scheduled deposits against an independent reference on the
+manifest-verified 2016-to-date history.

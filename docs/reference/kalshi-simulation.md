@@ -11,7 +11,7 @@ reported as inventory, not marked at an invented fair value.
 
 ## Fill policy
 
-Version `kalshi-notional-depth-fees-v2` supports whole-contract limit buys and
+Version `kalshi-notional-depth-fees-v3` supports whole-contract limit buys and
 sales of owned contracts. The execution cutoff must be after the decision,
 and its selected recorded book must also be strictly later than the decision.
 Future/mismatched market and book reads are refused. Market and event-fee
@@ -87,3 +87,7 @@ inventory bounds, source/fee evidence, event overrides, future-data refusal,
 official YES/NO settlement and the separate report type. New HTTP fakes use
 the required `loopbacktest.GoClientOnly` wrapper. These tests establish
 simulation mechanics, not actual fills or strategy profitability.
+
+[Calibrated maker-first decisions](kalshi-maker.md) add separately pending
+post-only quotes and cash reservations. Depth execution remains taker-only;
+resting maker fills are never inferred from snapshots.

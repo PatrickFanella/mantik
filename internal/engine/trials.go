@@ -27,6 +27,8 @@ type Trial struct {
 	EvidenceClass string
 	Parents       []string
 	CalendarID    string
+	// Experiment binds fold boundaries, role and candidate to the retained run.
+	Experiment json.RawMessage
 }
 
 type trialStrategy struct {
@@ -47,6 +49,9 @@ func RunTrial(ctx context.Context, cfg Config, store strategytrial.Store, trial 
 
 func runTrial(ctx context.Context, cfg Config, store strategytrial.Store, trial Trial, now func() time.Time) (out Result, err error) {
 	if store == nil || cfg.Strategy == nil || cfg.Source == nil || cfg.SettlementDate != nil && trial.CalendarID == "" {
+		return out, ErrInvalidConfig
+	}
+	if len(trial.Experiment) > 16<<10 || len(trial.Experiment) > 0 && !json.Valid(trial.Experiment) {
 		return out, ErrInvalidConfig
 	}
 	spec := cfg.Strategy.Spec()
@@ -73,15 +78,18 @@ func runTrial(ctx context.Context, cfg Config, store strategytrial.Store, trial 
 		calendar = "us-equity-t1-v1"
 	}
 	settings, err := json.Marshal(struct {
-		Assets      []string         `json:"assets"`
-		Start       time.Time        `json:"start"`
-		End         time.Time        `json:"end"`
-		InitialCash string           `json:"initial_cash"`
-		Cost        CostModel        `json:"cost"`
-		Deposits    *DepositSchedule `json:"deposits"`
-		Account     string           `json:"account"`
-		Calendar    string           `json:"settlement_calendar"`
-	}{assets, cfg.Start, cfg.End, cfg.InitialCash, cfg.Cost, cfg.Deposits, string(cfg.Account), calendar})
+		Assets        []string         `json:"assets"`
+		Start         time.Time        `json:"start"`
+		End           time.Time        `json:"end"`
+		InitialCash   string           `json:"initial_cash"`
+		Cost          CostModel        `json:"cost"`
+		Deposits      *DepositSchedule `json:"deposits"`
+		Account       string           `json:"account"`
+		Calendar      string           `json:"settlement_calendar"`
+		Experiment    json.RawMessage  `json:"experiment,omitempty"`
+		Unlevered     bool             `json:"unlevered"`
+		EngineVersion string           `json:"engine_version"`
+	}{assets, cfg.Start, cfg.End, cfg.InitialCash, cfg.Cost, cfg.Deposits, string(cfg.Account), calendar, trial.Experiment, cfg.Unlevered, Version})
 	if err != nil {
 		return out, err
 	}

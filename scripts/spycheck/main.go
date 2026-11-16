@@ -30,6 +30,7 @@ type comparisonInput struct {
 }
 
 func run() error {
+	engineReference := flag.String("engine-reference", "", "independent next-open engine reference JSON; primary-close mode only")
 	input := flag.String("input", "", "private JSON input with raw bars, actions, calendar and reference")
 	basis := flag.String("close-basis", "raw-sip", "raw-sip or primary-close; auction mode requires complete source evidence")
 	manifest := flag.String("manifest", "", "normalization manifest required for primary-close")
@@ -108,6 +109,21 @@ func run() error {
 				combined.Reconciliations = append(combined.Reconciliations, closeReconciliation{Date: b.Date, RawClose: b.Close, SessionClose: in.SessionCloses[i].Price, SourceSHA256: in.SessionCloses[i].SourceSHA256})
 			}
 		}
+		if *engineReference != "" {
+			if !official.Passed {
+				return fmt.Errorf("SPY input projection has not passed its data check")
+			}
+			referenceRaw, e := boundedFile(*engineReference, 8<<20)
+			if e != nil {
+				return e
+			}
+			engineResult, e := compareEngine(in, rawInput, referenceRaw)
+			combined.Engine = &engineResult
+			if e != nil {
+				_ = json.NewEncoder(os.Stdout).Encode(combined)
+				return e
+			}
+		}
 		if err := json.NewEncoder(os.Stdout).Encode(combined); err != nil {
 			return err
 		}
@@ -115,6 +131,9 @@ func run() error {
 			return fmt.Errorf("SPY session-close comparison failed")
 		}
 		return nil
+	}
+	if *engineReference != "" {
+		return fmt.Errorf("engine reference requires manifest-verified primary-close basis")
 	}
 	if len(in.SessionCloses) > 0 {
 		return fmt.Errorf("session close evidence requires explicit -close-basis primary-close")

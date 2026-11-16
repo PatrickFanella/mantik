@@ -18,6 +18,9 @@ import (
 )
 
 // ErrSubmissionUnknown requires lookup by the original client ID, never a new POST.
+// ErrPaperNotSubmitted means no durable adapter intent exists for this ID.
+var ErrPaperNotSubmitted = errors.New("paper order was not submitted")
+
 var ErrSubmissionUnknown = errors.New("paper submission unresolved; recover with the same client order ID")
 
 // PaperCredentials selects either API keys or an OAuth bearer, never both.
@@ -64,6 +67,36 @@ type PaperTrader struct {
 	gate        chan struct{}
 }
 
+// PaperAccountID reports the explicitly bound expected paper account identity.
+func (p *PaperTrader) PaperAccountID() string { return p.account }
+
+// Order recovers an already-journaled intent by its original client ID. It
+// never POSTs, including when a capped reservation predates adapter submission.
+func (p *PaperTrader) Order(ctx context.Context, clientID string) (PaperOrder, error) {
+	if !paperID.MatchString(clientID) {
+		return PaperOrder{}, errors.New("invalid client order ID")
+	}
+	if err := p.enter(); err != nil {
+		return PaperOrder{}, err
+	}
+	defer func() { <-p.gate }()
+	if err := p.bind(ctx); err != nil {
+		return PaperOrder{}, err
+	}
+	raw, err := p.journal.read("paper-intent-"+clientID+".json", MaxBytes)
+	if errors.Is(err, os.ErrNotExist) {
+		return PaperOrder{}, ErrPaperNotSubmitted
+	}
+	if err != nil {
+		return PaperOrder{}, err
+	}
+	var intent StockOrder
+	if json.Unmarshal(raw, &intent) != nil || intent.ClientOrderID != clientID || intent.validate() != nil {
+		return PaperOrder{}, errors.New("invalid retained paper intent")
+	}
+	return p.lookup(ctx, intent)
+}
+
 // NewPaperTrader requires an explicitly expected paper account ID and durable journal.
 func NewPaperTrader(c PaperCredentials, account string, j *Journal) (*PaperTrader, error) {
 	keys := c.Key != "" && c.Secret != "" && c.OAuthToken == ""
@@ -84,6 +117,9 @@ func positivePaperDecimal(s string) bool {
 	r, ok := new(big.Rat).SetString(s)
 	return ok && r.Sign() > 0
 }
+
+// Validate checks the adapter order grammar before a local reservation is made.
+func (o StockOrder) Validate() error { return o.validate() }
 
 func (o StockOrder) validate() error {
 	if !paperID.MatchString(o.ClientOrderID) || !symbolPattern.MatchString(o.Symbol) || !positivePaperDecimal(o.Qty) || !slices.Contains([]string{"buy", "sell"}, o.Side) || o.TimeInForce != "day" || !slices.Contains([]string{"market", "limit"}, o.Type) || (o.Type == "limit" && !positivePaperDecimal(o.LimitPrice)) || (o.Type == "market" && o.LimitPrice != "") {
@@ -173,6 +209,11 @@ func (p *PaperTrader) Submit(ctx context.Context, o StockOrder) (PaperOrder, err
 	}
 	defer func() { <-p.gate }()
 	if err := p.bind(ctx); err != nil {
+		return PaperOrder{}, err
+	}
+	if _, err := p.journal.read("paper-abort-"+o.ClientOrderID+".json", MaxBytes); err == nil {
+		return PaperOrder{}, ErrPaperNotSubmitted
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return PaperOrder{}, err
 	}
 	intent, _ := json.Marshal(o)
@@ -395,4 +436,30 @@ func (p *PaperTrader) Fills(ctx context.Context, after time.Time) ([]json.RawMes
 		token = last.ID
 	}
 	return nil, errors.New("fill pagination limit exceeded; narrow the window")
+}
+
+// AbortUnsubmitted durably fences a client ID that has no submission intent.
+// If Submit won the adapter gate first, the existing intent prevents release.
+// If abort wins first, every later Submit for that ID is refused before POST.
+func (p *PaperTrader) AbortUnsubmitted(ctx context.Context, clientID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !paperID.MatchString(clientID) {
+		return errors.New("invalid client order ID")
+	}
+	if err := p.enter(); err != nil {
+		return err
+	}
+	defer func() { <-p.gate }()
+	if _, err := p.journal.read("paper-intent-"+clientID+".json", MaxBytes); err == nil {
+		return ErrSubmissionUnknown
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	raw, err := json.Marshal(struct{ AccountID, ClientID string }{p.account, clientID})
+	if err != nil {
+		return err
+	}
+	return p.journal.writeOnce("paper-abort-"+clientID+".json", raw)
 }

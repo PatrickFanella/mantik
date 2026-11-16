@@ -26,6 +26,9 @@ import (
 // Arithmetic is exact until then.
 const Scale = 12
 
+// Version binds the accounting convention independently of strategy identity.
+const Version = "daily-equity-receivables-v2"
+
 var (
 	ErrInvalidConfig = errors.New("invalid engine config")
 
@@ -78,6 +81,10 @@ type Config struct {
 	Cost        CostModel
 	Deposits    *DepositSchedule
 	Account     account.Type
+	// Unlevered restricts targets to long-only gross <=1 and clips buys to
+	// settled local cash including costs. Both account types then obey the same
+	// funding rule; a fully invested target cannot borrow merely to pay slippage.
+	Unlevered bool
 	// SettlementDate overrides the default US equity T+1 calendar, for
 	// exceptional clearing closures. It must return a later UTC civil date.
 	SettlementDate func(time.Time) time.Time
@@ -107,16 +114,17 @@ type Fill struct {
 // that value plus the deposits to the close. TWR chains the returns from the
 // start of the run, so deposits never count as profit.
 type Day struct {
-	Date      string        `json:"date"`
-	DecidedAt time.Time     `json:"decided_at"`
-	Cash      string        `json:"cash"`
-	Equity    string        `json:"equity"`
-	Deposited string        `json:"deposited"`
-	Return    string        `json:"return"`
-	TWR       string        `json:"twr"`
-	Positions []Position    `json:"positions"`
-	Decided   bool          `json:"decided"`
-	Account   AccountStatus `json:"account"`
+	Date       string        `json:"date"`
+	DecidedAt  time.Time     `json:"decided_at"`
+	Cash       string        `json:"cash"`
+	Receivable string        `json:"dividend_receivable"`
+	Equity     string        `json:"equity"`
+	Deposited  string        `json:"deposited"`
+	Return     string        `json:"return"`
+	TWR        string        `json:"twr"`
+	Positions  []Position    `json:"positions"`
+	Decided    bool          `json:"decided"`
+	Account    AccountStatus `json:"account"`
 }
 
 // AccountStatus is the capped book's cash and margin readback at the close.
@@ -143,6 +151,7 @@ type Refusal struct {
 // Result is a whole run. Pending holds the last decision's targets, which
 // have no later session to fill at.
 type Result struct {
+	Version     string            `json:"engine_version"`
 	StrategyID  string            `json:"strategy_id"`
 	Cost        CostModel         `json:"cost"`
 	Start       time.Time         `json:"start"`
@@ -153,6 +162,7 @@ type Result struct {
 	Deposits    []Deposit         `json:"deposits"`
 	Pending     []strategy.Target `json:"pending"`
 	Account     account.Type      `json:"account"`
+	Unlevered   bool              `json:"unlevered"`
 	Refusals    []Refusal         `json:"refusals"`
 }
 
@@ -255,6 +265,8 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 		settlementDate = account.SettlementDate
 	}
 	out := Result{StrategyID: id, Cost: cfg.Cost, Start: cfg.Start.UTC(), End: cfg.End.UTC(), InitialCash: render(cash), Days: []Day{}, Fills: []Fill{}, Deposits: []Deposit{}, Pending: []strategy.Target{}, Account: kind, Refusals: []Refusal{}}
+	out.Unlevered = cfg.Unlevered
+	out.Version = Version
 	growth := big.NewRat(1, 1) // chained time-weighted growth
 	shares := map[string]*big.Rat{}
 	last := map[string]*big.Rat{} // last raw close seen per asset
@@ -301,6 +313,10 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 			funds.AddCash(d.cash)
 		}
 		dividends = kept
+		receivable := new(big.Rat)
+		for _, d := range dividends {
+			receivable.Add(receivable, d.cash)
+		}
 		cash = funds.Cash()
 
 		// Deposits due by this session's open arrive first, as settled cash.
@@ -330,6 +346,9 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 		}
 		funds.AddCash(deposited)
 		cash = funds.Cash()
+		// Earned dividends are assets/liabilities from ex-date. They enter TWR
+		// valuation before a deposit, but cannot fund orders until payment.
+		valuationOpen := new(big.Rat).Add(atOpen, receivable)
 
 		// Fill the previous decision at this session's open, sized from the
 		// equity at the open including the deposits.
@@ -372,10 +391,32 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 					price.Sub(price, move)
 				}
 				notional := new(big.Rat).Mul(delta, price)
+				if cfg.Unlevered && delta.Sign() > 0 {
+					available := funds.Settled()
+					unitCost := new(big.Rat).Mul(price, new(big.Rat).Add(big.NewRat(1, 1), fee))
+					affordable := truncateShares(new(big.Rat).Quo(available, unitCost))
+					if affordable.Sign() <= 0 {
+						continue
+					}
+					if delta.Cmp(affordable) > 0 {
+						delta = affordable
+						target = new(big.Rat).Add(held, delta)
+						notional.Mul(delta, price)
+					}
+				}
 				cost := quantize(new(big.Rat).Mul(new(big.Rat).Abs(notional), fee))
 				positions := markedPositions(assets, shares, last, bars, s.date)
 				trade := account.Trade{Asset: a, Quantity: delta, Price: price, Fee: cost}
-				if code := funds.Execute(positions, trade, account.Overnight, s.day, settlesOn); code != "" {
+				// Reserve unpaid short-dividend liabilities during admission.
+				// Positive receivables never grant buying power before payment.
+				if receivable.Sign() < 0 {
+					funds.AddCash(receivable)
+				}
+				code := funds.Execute(positions, trade, account.Overnight, s.day, settlesOn)
+				if receivable.Sign() < 0 {
+					funds.AddCash(new(big.Rat).Neg(receivable))
+				}
+				if code != "" {
 					out.Refusals = append(out.Refusals, Refusal{Date: s.date, DecidedOn: decidedOn, Asset: a, Shares: render(delta), Code: code})
 					continue
 				}
@@ -393,6 +434,7 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 			}
 		}
 		next := new(big.Rat).Set(cash)
+		next.Add(next, receivable)
 		positions := []Position{}
 		for _, a := range assets {
 			if held := shares[a]; held != nil && held.Sign() != 0 {
@@ -405,9 +447,9 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 		// deposits, to the close.
 		growthToday := big.NewRat(1, 1)
 		if equity.Sign() > 0 {
-			growthToday.Quo(atOpen, equity)
+			growthToday.Quo(valuationOpen, equity)
 		}
-		if base := new(big.Rat).Add(atOpen, deposited); base.Sign() > 0 {
+		if base := new(big.Rat).Add(valuationOpen, deposited); base.Sign() > 0 {
 			growthToday.Mul(growthToday, new(big.Rat).Quo(next, base))
 		}
 		ret := quantize(growthToday.Sub(growthToday, big.NewRat(1, 1)))
@@ -415,7 +457,14 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 		equity = next
 		twr := new(big.Rat).Sub(growth, big.NewRat(1, 1))
 		day := Day{Date: s.date, DecidedAt: s.at.UTC(), Cash: render(cash), Equity: render(equity), Deposited: render(deposited), Return: render(ret), TWR: render(twr), Positions: positions}
+		day.Receivable = render(receivable)
+		if receivable.Sign() < 0 {
+			funds.AddCash(receivable)
+		}
 		status := funds.Status(markedPositions(assets, shares, last, nil, ""))
+		if receivable.Sign() < 0 {
+			funds.AddCash(new(big.Rat).Neg(receivable))
+		}
 		day.Account = AccountStatus{EffectiveType: status.EffectiveType, SettledCash: render(funds.Settled()), UnsettledCash: render(new(big.Rat).Sub(cash, funds.Settled())), OvernightBuyingPower: render(status.OvernightBuyingPower), Maintenance: render(status.Maintenance), MarginExcess: render(status.Excess), MaintenanceShortfall: render(status.Shortfall)}
 
 		if record != nil {
@@ -457,6 +506,18 @@ func run(ctx context.Context, cfg Config, record func(Day) error) (Result, error
 			for _, t := range d.Targets {
 				w, _ := new(big.Rat).SetString(t.Weight)
 				pending[t.Asset] = w
+			}
+			if cfg.Unlevered {
+				gross := new(big.Rat)
+				for _, w := range pending {
+					if w.Sign() < 0 {
+						return Result{}, fmt.Errorf("%w: unlevered short target", ErrInvalidConfig)
+					}
+					gross.Add(gross, w)
+				}
+				if gross.Cmp(big.NewRat(1, 1)) > 0 {
+					return Result{}, fmt.Errorf("%w: unlevered target gross exceeds one", ErrInvalidConfig)
+				}
 			}
 			book.State = d.State
 			decidedOn, decidedAt, day.Decided = s.date, s.at, true

@@ -22,6 +22,7 @@ daily returns as the engine runs, and the final outcome, including failures.
 | `Cost` | The cost model. |
 | `Deposits` | Optional deposit schedule. The book opens at `Start`. |
 | `Account` | `cash` (the default) or `margin`; see [account rules](account-rules.md). |
+| `Unlevered` | Long-only gross at most one, with buys clipped to settled cash including costs, identically for cash and margin. |
 | `SettlementDate` | Optional calendar override returning the later UTC settlement date for a trade date. |
 
 The engine reads each asset as of `End` to lay out sessions, raw prices and
@@ -38,7 +39,9 @@ and every fill happens after the decision it carries out.
    holdings in ex-date order, dividends before splits on a shared date. A
    dividend is earned on the shares held before its ex-date, including any
    earlier split between the two sessions.
-2. **Dividends** whose pay date has arrived are added to cash.
+2. **Dividends** become receivable assets (or short liabilities) when earned.
+   Those whose pay date has arrived move to cash; unpaid amounts remain
+   unavailable for orders.
 3. **Settlement and deposits.** Sale proceeds due by this session settle.
    Deposits scheduled at or before this session's open are added as settled cash.
 4. **Fills.** The previous session's decision fills at this session's raw
@@ -49,11 +52,11 @@ and every fill happens after the decision it carries out.
    orders, with assets sorted within each group. Every fill must pass the
    account rules, including its fees and slippage. A refusal consumes the
    target and records its date, decision date, asset, shares and reason code in
-   `Result.Refusals`; the strategy must decide again to retry. Orders are
-   accepted or refused in full. A 100% cash target with nonzero costs can be
-   refused, so a strategy must leave room for costs.
+   `Result.Refusals`; the strategy must decide again to retry. By default, orders are accepted or refused in full; a 100% cash target must
+   leave room for costs. With `Unlevered`, buys are clipped to settled-cash
+   affordability including costs, without borrowing on a margin account.
 5. **Mark.** Equity is cash plus shares at the close, or at the last close for
-   an asset without a bar. The daily return is time-weighted (see below).
+   an asset without a bar, plus earned unpaid dividends (negative for shorts). The daily return is time-weighted (see below).
 6. **Decision.** Once every asset has at least `Warmup` bars (at least one),
    the strategy decides. A decision is the complete target set: held assets
    it leaves out are sold.
@@ -86,8 +89,10 @@ close to that value is chained with the return from that value plus the
 deposits to the close. `TWR` chains the daily returns from the first session. A deposit
 therefore never counts as profit: on a day when prices do not move, the
 return is zero with or without one, and an overnight gap is not diluted by
-the deposit. Dividends are income, not deposits, and do
-count.
+the deposit. Earned unpaid dividends enter both open/close valuation, so a
+flow between ex-date and payment cannot distort TWR. They remain unspendable
+until payment. Results and registered settings bind engine version
+`daily-equity-receivables-v2`.
 
 ## Costs
 
@@ -126,3 +131,10 @@ order capacity. Market losses are reported without forcing liquidation.
   known at `End`.
 - Each decision rebuilds the view from the source, so run time grows with the
   square of the number of sessions.
+
+See the [SPY engine accounting check](spy-engine-check.md) for the retained
+real-price cash/margin comparison and independent reference.
+
+Unpaid short-dividend liabilities reduce account-rule equity and margin
+capacity during admission; positive receivables never grant buying power
+before payment.

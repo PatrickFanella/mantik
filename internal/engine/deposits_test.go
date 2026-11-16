@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"git.subcult.tv/subculture-collective/mantik/internal/marketdata"
 	"testing"
 	"time"
 )
@@ -163,5 +164,30 @@ func TestDepositDoesNotDiluteTheOvernightReturn(t *testing.T) {
 	w, o := with.Days[len(with.Days)-1], without.Days[len(without.Days)-1]
 	if w.Deposited != "500" || w.Return != "0.1" || o.Return != "0.1" || w.TWR != o.TWR {
 		t.Fatalf("with %+v without %+v", w, o)
+	}
+}
+
+func TestDepositBetweenDividendExAndPayDoesNotCreateReturn(t *testing.T) {
+	known := closeAt(1)
+	src := sourceOn(t, []int{5, 6, 7, 8, 9, 12, 13}, [][2]string{{"100", "100"}, {"100", "100"}, {"100", "100"}, {"99", "99"}, {"99", "99"}, {"99", "99"}, {"99", "99"}}, marketdata.CorporateAction{SourceID: "dividend", Kind: "cash_dividend", ExDate: "2026-01-08", PayDate: "2026-01-13", Amount: "1", KnownAt: known})
+	cfg := config(src, allIn{}, CostModel{Version: "zero", FeeBps: "0", SlippageBps: "0"})
+	cfg.Start = time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
+	cfg.End = closeAt(13).Add(time.Hour)
+	cfg.Unlevered = true
+	cfg.Deposits = &DepositSchedule{Amount: "500", EveryWeeks: 2}
+	r, e := Run(context.Background(), cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, d := range r.Days {
+		if d.Return != "0" || d.TWR != "0" {
+			t.Fatal("dividend receivable/deposit generated return", d)
+		}
+	}
+	if r.Days[3].Receivable != "10" || r.Days[3].Cash != "0" || r.Days[3].Equity != "1000" {
+		t.Fatal("earned dividend not valued independently of spendable cash", r.Days[3])
+	}
+	if r.Days[4].Deposited != "500" || r.Days[6].Receivable != "0" {
+		t.Fatal(r.Days)
 	}
 }

@@ -27,9 +27,15 @@ type WeatherCalibration struct {
 	Buckets                       []CalibrationBucket
 }
 
+// WeatherHistory grants only access to retained forecasts and final results.
+type WeatherHistory interface {
+	KalshiWeatherPredictions(context.Context, time.Time) ([]storage.KalshiWeatherPrediction, error)
+	KalshiWeatherSettlements(context.Context, time.Time) ([]storage.KalshiWeatherSettlement, error)
+}
+
 // CalibrateWeather is offline: it reads retained predictions and final results,
 // without fetching forecasts, changing the model or contacting any provider.
-func CalibrateWeather(ctx context.Context, store WeatherStore, version string, at time.Time) (WeatherCalibration, error) {
+func CalibrateWeather(ctx context.Context, store WeatherHistory, version string, at time.Time) (WeatherCalibration, error) {
 	if version == "" || at.IsZero() {
 		return WeatherCalibration{}, errors.New("calibration requires model version and cutoff")
 	}

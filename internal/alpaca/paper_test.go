@@ -273,3 +273,44 @@ func TestPaperSubmissionFencesSurviveRollover(t *testing.T) {
 		})
 	}
 }
+
+func TestPaperAbortFencesDelayedSubmissionAndNeverHidesAnIntent(t *testing.T) {
+	posts := 0
+	p, _ := paperFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2/account":
+			_, _ = w.Write([]byte(`{"id":"account-1","status":"ACTIVE"}`))
+		case "/v2/assets/SPY":
+			_, _ = w.Write([]byte(`{"symbol":"SPY","class":"us_equity","tradable":true}`))
+		case "/v2/orders":
+			posts++
+			_, _ = w.Write([]byte(testPaperResponse))
+		case "/v2/orders:by_client_order_id":
+			_, _ = w.Write([]byte(testPaperResponse))
+		default:
+			t.Errorf("unexpected request %s", r.URL.Path)
+		}
+	})
+	ctx := context.Background()
+	if _, e := p.Order(ctx, "never-started"); !errors.Is(e, ErrPaperNotSubmitted) {
+		t.Fatal(e)
+	}
+	if e := p.AbortUnsubmitted(ctx, testStockOrder().ClientOrderID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := p.Submit(ctx, testStockOrder()); !errors.Is(e, ErrPaperNotSubmitted) || posts != 0 {
+		t.Fatal("delayed POST escaped abort", e, posts)
+	}
+	o := testStockOrder()
+	o.ClientOrderID = "committed"
+	raw, e := json.Marshal(o)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = p.journal.writeOnce("paper-intent-committed.json", raw); e != nil {
+		t.Fatal(e)
+	}
+	if e = p.AbortUnsubmitted(ctx, "committed"); !errors.Is(e, ErrSubmissionUnknown) {
+		t.Fatal("existing ambiguous intent released", e)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"git.subcult.tv/subculture-collective/mantik/internal/account"
 	"sync"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
@@ -51,6 +52,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	cappedBooks                map[string]account.CappedState
 	optionData                 map[string]OptionRecord
 	kalshi                     kalshiStore
 	dailyBars                  map[string]map[string][]DailyBar

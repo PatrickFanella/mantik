@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"math/big"
 	"testing"
 	"time"
 
@@ -157,7 +158,7 @@ func TestShortCorporateActionsAndMaintenanceShortfall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Days[2].Positions[0].Shares != "-60" || r.Days[2].Equity != "3000" || r.Days[3].Cash != "-3030" || r.Days[3].Equity != "-3030" {
+	if r.Days[2].Positions[0].Shares != "-60" || r.Days[2].Equity != "2970" || r.Days[3].Cash != "-3030" || r.Days[3].Equity != "-3030" {
 		t.Fatalf("%+v", r)
 	}
 	// Losses are reported at the close, before a later liquidation.
@@ -183,5 +184,46 @@ func TestInvalidAccountAndSettlementCalendar(t *testing.T) {
 		if _, err := Run(context.Background(), c); !errors.Is(err, ErrInvalidConfig) {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestUnleveredFullTargetUsesSettledCashIncludingCostsForBothAccounts(t *testing.T) {
+	src := newSource(t, prices)
+	var previous Result
+	for _, kind := range []account.Type{account.Cash, account.Margin} {
+		cfg := config(src, allIn{}, DefaultCost)
+		cfg.InitialCash = "2000"
+		cfg.Account = kind
+		cfg.Unlevered = true
+		cfg.Deposits = &DepositSchedule{Amount: "500", EveryWeeks: 2}
+		r, e := Run(context.Background(), cfg)
+		if e != nil || len(r.Fills) == 0 || len(r.Refusals) != 0 {
+			t.Fatal(r, e)
+		}
+		for i, d := range r.Days {
+			cash, ok := new(big.Rat).SetString(d.Cash)
+			if !ok || cash.Sign() < 0 {
+				t.Fatal("unlevered cash borrowed", d)
+			}
+			if kind == account.Margin && previous.Days[i].TWR != d.TWR {
+				t.Fatal("account type changed unlevered return", d)
+			}
+		}
+		previous = r
+	}
+}
+
+func TestUnpaidShortDividendCannotFundNewMarginExposure(t *testing.T) {
+	s := newSource(t, [][2]string{{"100", "100"}, {"100", "100"}, {"100", "100"}, {"100", "100"}, {"100", "100"}}, marketdata.CorporateAction{SourceID: "short-dividend", Kind: "cash_dividend", ExDate: "2026-01-07", PayDate: "2026-01-13", Amount: "1", KnownAt: closeAt(1)})
+	p := planned{"2026-01-05": {{Asset: asset, Weight: "-0.95"}}, "2026-01-06": {{Asset: asset, Weight: "-1"}}}
+	cfg := config(s, p, free)
+	cfg.Account = account.Margin
+	cfg.InitialCash = "2000"
+	r, e := Run(context.Background(), cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(r.Refusals) == 0 || r.Refusals[0].Code != account.BelowMinimum || r.Days[2].Receivable != "-19" || r.Days[2].Account.OvernightBuyingPower != "1981" {
+		t.Fatal("unpaid dividend liability granted margin", r)
 	}
 }

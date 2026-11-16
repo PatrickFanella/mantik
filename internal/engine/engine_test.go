@@ -136,16 +136,17 @@ func TestSplitsAndDividendsReachTheBook(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Ten shares bought at 100 become twenty at 50. The ex-date drops the
-	// price to 49 before the $20 arrives; on the pay date it buys 0.4 shares.
+	// price to 49 while the $20 receivable offsets it in equity. Cash is still
+	// unavailable until payment, when it buys 0.4 shares.
 	d := r.Days
-	if d[2].Positions[0].Shares != "20" || d[2].Equity != "1000" || d[3].Equity != "980" || d[4].Cash != "0" || d[4].Equity != "1020" {
+	if d[2].Positions[0].Shares != "20" || d[2].Equity != "1000" || d[3].Equity != "1000" || d[4].Cash != "0" || d[4].Equity != "1020" {
 		t.Fatalf("%+v", d)
 	}
 	last := r.Fills[len(r.Fills)-1]
 	if last.Date != "2026-01-09" || last.Shares != "0.4" {
 		t.Fatalf("dividend not reinvested: %+v", last)
 	}
-	if d[4].Return != "0.040816326531" {
+	if d[4].Return != "0.02" {
 		t.Fatal("return", d[4].Return)
 	}
 }

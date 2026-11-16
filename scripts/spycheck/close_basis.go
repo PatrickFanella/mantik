@@ -38,6 +38,7 @@ type closeReconciliation struct {
 	SourceSHA256 string `json:"source_sha256"`
 }
 type basisComparison struct {
+	Engine             *engineComparison     `json:"engine,omitempty"`
 	YahooPrimary       marketdata.Comparison `json:"yahoo_primary_diagnostic"`
 	ReferenceSampleEnd string                `json:"reference_sample_end"`
 	Passed             bool                  `json:"passed"`

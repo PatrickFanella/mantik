@@ -117,3 +117,9 @@ type Store interface {
 	StrategyTrial(context.Context, string) (Record, error)
 	StrategyTrialSearchTotal(context.Context, string) (int64, error)
 }
+
+// FamilyReader enumerates every retained start in stable ID order. Statistical
+// assessments use this authoritative set rather than caller-selected winners.
+type FamilyReader interface {
+	StrategyTrials(context.Context, string) ([]Record, error)
+}

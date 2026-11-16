@@ -396,3 +396,95 @@ func (p *Postgres) StrategyTrialSearchTotal(ctx context.Context, family string) 
 	err := p.pool.QueryRow(ctx, "SELECT count(*) FROM mantik_strategy_trials WHERE family=$1", family).Scan(&total)
 	return total, err
 }
+
+// StrategyTrials returns the complete search family, including failed starts.
+func (m *Memory) StrategyTrials(ctx context.Context, family string) ([]strategytrial.Record, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !strategytrial.ValidFamily(family) {
+		return nil, strategytrial.ErrInvalid
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []strategytrial.Record{}
+	for _, r := range m.strategyTrials {
+		if r.Start.Family == family {
+			out = append(out, copyStrategyTrial(r))
+		}
+	}
+	slices.SortFunc(out, func(a, b strategytrial.Record) int {
+		if a.Start.ID < b.Start.ID {
+			return -1
+		}
+		if a.Start.ID > b.Start.ID {
+			return 1
+		}
+		return 0
+	})
+	return out, nil
+}
+
+// StrategyTrials reads one consistent family snapshot and its retained returns.
+func (p *Postgres) StrategyTrials(ctx context.Context, family string) ([]strategytrial.Record, error) {
+	if !strategytrial.ValidFamily(family) {
+		return nil, strategytrial.ErrInvalid
+	}
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	rows, err := tx.Query(ctx, `SELECT id,payload FROM mantik_strategy_trials WHERE family=$1 ORDER BY id`, family)
+	if err != nil {
+		return nil, err
+	}
+	out := []strategytrial.Record{}
+	for rows.Next() {
+		var id string
+		var raw []byte
+		if err = rows.Scan(&id, &raw); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		var s strategytrial.Start
+		if err = json.Unmarshal(raw, &s); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, strategytrial.Record{Start: s, Returns: []strategytrial.DailyReturn{}})
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		r := &out[i]
+		rows, err := tx.Query(ctx, `SELECT session_date::text,daily_return,equity FROM mantik_strategy_trial_returns WHERE trial_id=$1 ORDER BY session_date`, r.Start.ID)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var d strategytrial.DailyReturn
+			if err = rows.Scan(&d.Date, &d.Return, &d.Equity); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			r.Returns = append(r.Returns, d)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+		var o strategytrial.Outcome
+		err = tx.QueryRow(ctx, `SELECT status,finished_at FROM mantik_strategy_trial_outcomes WHERE trial_id=$1`, r.Start.ID).Scan(&o.Status, &o.FinishedAt)
+		if err == nil {
+			r.Outcome = &o
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+	}
+	return out, tx.Commit(ctx)
+}

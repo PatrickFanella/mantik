@@ -95,3 +95,9 @@ committing a start and one return, then checks that both remain and the search
 total includes the unfinished attempt. Engine tests cover success, failure,
 panic, cancellation and registry outages with synthetic data. These checks
 provide no real-market or forward qualification evidence.
+
+[Walk-forward research](backtest-research.md) retains compact fold/date manifests,
+role, neighbour identity and a predeclared minimum-capital plan in each trial
+configuration. Engine version and unlevered funding mode are also retained.
+`StrategyTrials(ctx, family)` reads the complete family; statistical callers do
+not supply a favourable subset of attempt IDs.

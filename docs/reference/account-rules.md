@@ -84,3 +84,7 @@ Tests cover coded refusals, fee-inclusive boundaries, T+1 and holidays,
 same-session cash rotation, current intraday exposure, maintenance shortfalls,
 cash fallback, short collateral, reductions, and split/dividend obligations.
 These use synthetic fixtures, not a connected paper account.
+
+The [capped equity paper book](capped-equity-book.md) now uses these rules before
+the existing Alpaca adapter can submit, retaining local funding, reservations
+and owned fills in its own append-only ledger.
