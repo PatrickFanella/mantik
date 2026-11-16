@@ -27,6 +27,7 @@ import (
 	"git.subcult.tv/subculture-collective/mantik/internal/paperstrategy"
 	"git.subcult.tv/subculture-collective/mantik/internal/review"
 	"git.subcult.tv/subculture-collective/mantik/internal/socialwatch"
+	"git.subcult.tv/subculture-collective/mantik/internal/strategygate"
 	"git.subcult.tv/subculture-collective/mantik/internal/strategytrial"
 	"git.subcult.tv/subculture-collective/mantik/internal/trial"
 	"git.subcult.tv/subculture-collective/mantik/internal/workertrial"
@@ -52,6 +53,7 @@ func canonical(o domain.Observation) (domain.Observation, []byte, error) {
 }
 
 type Memory struct {
+	strategyGates              map[string]strategygate.Record
 	cappedBooks                map[string]account.CappedState
 	optionData                 map[string]OptionRecord
 	kalshi                     kalshiStore

@@ -15,7 +15,7 @@ The approved design is [the trading system design](plans/trading-system.md).
 The work is tracked in
 [roadmap #47](https://github.com/subculture-collective/mantik/issues/47).
 
-**Implementation status, 2026-11-15, America/Chicago** (schema 120; merge state is tracked in #47).
+**Implementation status, 2026-11-15, America/Chicago** (schema 122 on this branch; merge state is tracked in #47).
 Wave 1 merged in [PR #118](https://github.com/subculture-collective/mantik/pull/118)
 at schema 118. Wave 4 adds [resumable stock backfills](reference/daily-backfill.md),
 the [asset-identity universe](reference/stock-universe.md), and
@@ -23,6 +23,8 @@ the [asset-identity universe](reference/stock-universe.md), and
 Their current merge and check state is tracked in
 [roadmap #47](https://github.com/subculture-collective/mantik/issues/47).
 These implementations do not establish release or strategy qualification.
+
+Wave 9 adds [recorded gate decisions, sleeve sizing and persistent order risk](reference/portfolio-gates-and-risk.md) for #72–#74 in one combined PR. Gates retain every failed check and skip historical testing for model-driven versions. The distributor sizes from local equity, and the capped order path enforces fixed limits and operator controls. The base-library check records four rejections on retained real SPY prices; synthetic historical clocks and one-ETF coverage earn no admission. Current merge and epic state remain in #47.
 
 Wave 5 adds the opt-in [daily-bar worker](reference/daily-bars-worker.md) for
 #95 and the [independent SPY comparison](reference/spy-comparison.md) for #94
@@ -39,7 +41,7 @@ library decision (#60), public Kalshi collection (#80), and bounded
 subscription research calls (#82). [The adapter references](reference/README.md)
 record their commands, evidence and limits. The indicator decision selects
 MIT-licensed `markcheno/go-talib` with real adjusted-SPY parity observations;
-adding the dependency and maintained parity tests remains #76.
+the pinned adapter and maintained parity tests were delivered in #76.
 
 The new strategy core now has:
 
@@ -49,7 +51,7 @@ The new strategy core now has:
 | Historical daily-bar client, point-in-time store and adjusted reads | A2–A4, #61–#63; merged PRs #109–#111 | Exact decimal prices and asset identity; the independent SPY check remains #94. |
 | Strategy interface and daily engine | B1–B2, #64–#65; merged PRs #112–#113 | Point-in-time decisions, next-session fills, costs and corporate actions; one stock strategy per simulated run. |
 | Deposits and time-weighted returns | B4 #67; merged PR #114 | Scheduled capital flows are separate from profit in the simulated book. |
-| Daily trial registry | D1 #68; merged PR #117 | Append-only attempts, daily returns, lineage and search totals; statistical gates remain open. |
+| Daily trial registry | D1 #68; merged PR #117 | Append-only attempts, daily returns, lineage and search totals; Wave 8 adds diagnostics and Wave 9 records gate decisions. |
 | Cash and margin account rules | [B3 #66](https://github.com/subculture-collective/mantik/issues/66); merged PR #115 | Settled cash, T+1, ordinary-equity margin and coded refusals in the simulator; broker enforcement remains untested. |
 
 The paper ledger, execution worker, protective exits, feed custody, archives,
@@ -60,9 +62,7 @@ and fixture tests do not establish real-quote execution or qualification.
 
 The provider assessment, indicator comparison, and connected adapter checks
 are real observations with the scope documented in their references. The new
-engine and account tests use synthetic fixtures. The real-data exit checks,
-first real-quote paper positions and natural qualification window remain open; no funded portfolio
-run is claimed here.
+engine and account tests use synthetic fixtures. The SPY historical-accounting exit is recorded in #105, with its synthetic availability-clock limitation. First real-quote paper positions and the natural qualification window remain open; no funded portfolio run is claimed here.
 
 On 2026-11-13 the owner changed direction: away from deepening threshold-specific
 contracts, toward a general strategy core on real data. Mantik replaces Augr.
@@ -116,15 +116,15 @@ the full order, waves and critical path. Its epics:
 
 | Epic | Implemented work issues | Result still required to close the epic |
 | --- | --- | --- |
-| [A #48](https://github.com/subculture-collective/mantik/issues/48) Free point-in-time market data | 5/10 | Universe backfill, options collection, automatic daily bars, and the independent SPY check |
-| [B #49](https://github.com/subculture-collective/mantik/issues/49) One strategy interface and engine | 4/5 | Reproduce SPY buy-and-hold on real backfilled data, in both account types with deposits (#105) |
-| [C #50](https://github.com/subculture-collective/mantik/issues/50) Base strategy library for stocks | 1/6 | Indicators and four ported strategies with replication tests |
-| [D #51](https://github.com/subculture-collective/mantik/issues/51) Trial registry and backtest gate | 1/4 | Walk-forward, stress, deflated Sharpe, overfitting probability |
-| [E #52](https://github.com/subculture-collective/mantik/issues/52) Real-quote paper trading on the capped book | 1/6 | $2,000 book, capital distributor, risk limits, incubation and first protected paper positions |
+| [A #48](https://github.com/subculture-collective/mantik/issues/48) Free point-in-time market data | 10/10 | Closed after the explicit primary-close SPY reconciliation; delisted-stock and indicative-option limits remain |
+| [B #49](https://github.com/subculture-collective/mantik/issues/49) One strategy interface and engine | 5/5 | Closed after the real-price SPY accounting check in both account types with deposits (#105) |
+| [C #50](https://github.com/subculture-collective/mantik/issues/50) Base strategy library for stocks | 6/6 | Closed under the owner-approved recipe ports and pinned reference tests |
+| [D #51](https://github.com/subculture-collective/mantik/issues/51) Trial registry and backtest gate | 4/4 on this branch | Four recorded base-library decisions with reasons and declared trade-plan minimums; source gaps remain failed checks |
+| [E #52](https://github.com/subculture-collective/mantik/issues/52) Real-quote paper trading on the capped book | 4/6 on this branch | Incubation worker and first protected real-quote positions (#77, #107) |
 | [F #53](https://github.com/subculture-collective/mantik/issues/53) Overseer and daily brief | 0/4 | Health admission, daily review and resizing, owner brief and controls |
-| [G #54](https://github.com/subculture-collective/mantik/issues/54) Options and multi-leg strategies | 0/5 | Chains, structures with reserves and Greek caps, Alpaca multi-leg orders |
-| [H #55](https://github.com/subculture-collective/mantik/issues/55) Model research desk | 1/5 | Typed specs, research desk, evolution, model analyst |
-| [I #56](https://github.com/subculture-collective/mantik/issues/56) Kalshi decision engine | 0/3 | Calibrated weather forecasts, fill simulator, maker-first strategy |
+| [G #54](https://github.com/subculture-collective/mantik/issues/54) Options and multi-leg strategies | 1/5 | Structures with reserves and Greek caps, Alpaca multi-leg orders and strategy recipes |
+| [H #55](https://github.com/subculture-collective/mantik/issues/55) Model research desk | 2/5 | Research desk, evolution and model analyst |
+| [I #56](https://github.com/subculture-collective/mantik/issues/56) Kalshi decision engine | 3/3 | Calibrated paper trades must settle and feed calibration records; maker intents alone do not meet that exit |
 | [J #57](https://github.com/subculture-collective/mantik/issues/57) Forward qualification and promotion | 0/3 | Generalised prospective rules, automatic promotion and demotion, and a recorded forward assessment |
 
 After the epics, the remaining acceptance issues close in this order:
@@ -151,30 +151,21 @@ complete the replacement epics or their acceptance checks.
 
 ## Next steps
 
-After Wave 1 and #68, these work items are next in dependency order.
-This describes implementation prerequisites, not agent pickup approval or
-provider access. Check roadmap #47 for current merge state.
+After Wave 9 merges, these are the next work units. This describes dependencies,
+not pickup approval, deployment or provider access. Check #47 and each issue's
+current blockers before starting work.
 
-| Work | Why it is next |
+| Work | Prerequisites and remaining outcome |
 | --- | --- |
-| [D2 #69](https://github.com/subculture-collective/mantik/issues/69) Walk-forward and stress | The trial registry is merged; reassess engine scale before repeated runs. |
-| [D3 #70](https://github.com/subculture-collective/mantik/issues/70) Gate statistics | Account rules and trial search totals are merged. |
-| [A7 #88](https://github.com/subculture-collective/mantik/issues/88) Backfill daily bars since 2016 | The store is merged. This unlocks independent SPY validation #94 and then engine reproduction #105. |
-| [C2 #76](https://github.com/subculture-collective/mantik/issues/76) Indicator adapter and parity | Implement the pinned [library decision](research/indicator-library-decision.md). |
-| [A8 #89](https://github.com/subculture-collective/mantik/issues/89) Define the point-in-time stock universe | The store is merged. Preserve asset identity across ticker reuse and label gaps in delisted-stock coverage. |
-| [E2 #71](https://github.com/subculture-collective/mantik/issues/71) Capped operational book | Join the paper adapter to deposits and account rules. |
-| [A5 #75](https://github.com/subculture-collective/mantik/issues/75) Collect option contracts and bars | The data spike and bar-store prerequisites are closed. |
-| [I1 #87](https://github.com/subculture-collective/mantik/issues/87) Calibrated weather forecasts | Uses retained Kalshi markets and settlement sources. |
+| [E5 #77](https://github.com/subculture-collective/mantik/issues/77) Real-quote incubation | After #72, #73 and #74: join the strategy view, gate, sizing and risk path to the running paper worker. |
+| [G2 #84](https://github.com/subculture-collective/mantik/issues/84) Multi-leg structures | #81 and #66 are merged; #74 supplies the order-risk boundary. Add reserves and Greek limits for option structures. |
+| [H3 #86](https://github.com/subculture-collective/mantik/issues/86) Research desk | #82 and #79 are merged; #72 supplies recorded gate feedback. |
 
-
-Seven of the 13 issues on the original critical path are closed. Its remaining
-chain is #70 → #72 → #77 → #78 → #92 → #108. The trial registry #68 is now
-merged, so #69 and #70 can proceed; both must complete before gate decisions
-#72.
-The execution branch must join that path before incubation:
-#59 → #71 → #73 and #74 → #77. Keep the real-data checks on their own path:
-#88 → #94 → #105. The engine epic stays open until #105's reproduction evidence
-is accepted, even though all four of its implementation issues are closed.
+Wave 9 completes the ninth issue on the original thirteen-issue critical path.
+The remaining chain is #77 → #78 → #92 → #108. The capital branch now reaches
+#77 through the capped book, distributor and risk checks. The separate SPY data
+and engine exits (#94 and #105) are recorded; they do not establish real-quote
+execution or forward qualification.
 
 ### Access and evidence still needed
 
@@ -189,14 +180,11 @@ is accepted, even though all four of its implementation issues are closed.
   universe limits; no survivor-bias-free stock history is claimed.
 - **Engine scale:** the [engine reference](reference/engine.md#limits) records
   per-decision view rebuilding and quadratic growth with session count. Its
-  documented 11-year single-asset run takes about 45 seconds. Reassess this
-  before repeated walk-forward runs (#69); this update did not benchmark it.
+  documented 11-year single-asset run takes about 45 seconds. The Wave 9 gate exercise is bounded to 520 sessions, two folds and two neighbours per recipe. Larger repeated searches still need profiling.
 - **Provider accounts:** social intake and copy-follow (#14, #15) still wait
   on the owner's accounts. They remain in the 1.0 scope.
 
-The next acceptance results are a validated real-data SPY run (#94, #105),
-the first protected real-quote paper positions (#107), and a recorded forward
-promotion or rejection (#108). None is complete. The six-month natural window
+The SPY data/accounting results (#94, #105) are recorded. The next acceptance results are protected real-quote paper positions (#107) and a recorded forward promotion or rejection (#108); both remain open. The six-month natural window
 (#28) follows the isolated release candidate (#27); it has not been credited by
 these implementation issues.
 

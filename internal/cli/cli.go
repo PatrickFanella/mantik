@@ -28,6 +28,12 @@ import (
 const defaultURL = "http://127.0.0.1:40880"
 
 func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
+	if len(args) > 0 && args[0] == "strategy-gate" {
+		return runStrategyGate(ctx, args[1:], out, errOut)
+	}
+	if len(args) > 0 && args[0] == "capped-risk" {
+		return runCappedRisk(ctx, args[1:], out, errOut)
+	}
 	if len(args) > 0 && args[0] == "options-backfill" {
 		return runOptionsBackfill(ctx, args[1:], out, errOut)
 	}

@@ -207,11 +207,14 @@ func (p *Postgres) StartStrategyTrial(ctx context.Context, s strategytrial.Start
 	if err != nil {
 		return false, err
 	}
-	tx, err := p.pool.Begin(ctx)
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return false, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err = lockStrategyFamily(ctx, tx, s.Family); err != nil {
+		return false, err
+	}
 	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('mantik_strategy_trial:'||$1,0))", s.ID); err != nil {
 		return false, err
 	}

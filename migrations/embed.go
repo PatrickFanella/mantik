@@ -380,3 +380,8 @@ var OptionData string
 //
 //go:embed 0121_capped_books.sql
 var CappedBooks string
+
+// StrategyGates freezes backtest declarations and final decisions.
+//
+//go:embed 0122_strategy_gates.sql
+var StrategyGates string

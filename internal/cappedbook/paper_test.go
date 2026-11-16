@@ -20,6 +20,7 @@ import (
 var _ Broker = (*alpaca.PaperTrader)(nil)
 
 type fakePaper struct {
+	mu        sync.Mutex
 	posts     int
 	orders    map[string]alpaca.PaperOrder
 	fills     []json.RawMessage
@@ -28,6 +29,8 @@ type fakePaper struct {
 
 func (b *fakePaper) PaperAccountID() string { return "paper-account" }
 func (b *fakePaper) Submit(_ context.Context, o alpaca.StockOrder) (alpaca.PaperOrder, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.posts++
 	v := alpaca.PaperOrder{ID: "venue-" + o.ClientOrderID, ClientOrderID: o.ClientOrderID, Symbol: o.Symbol, Qty: o.Qty, Side: o.Side, Type: o.Type, TimeInForce: o.TimeInForce, LimitPrice: o.LimitPrice, Status: "new", FilledQty: "0"}
 	b.orders[o.ClientOrderID] = v
@@ -37,13 +40,19 @@ func (b *fakePaper) Submit(_ context.Context, o alpaca.StockOrder) (alpaca.Paper
 	return v, nil
 }
 func (b *fakePaper) Order(_ context.Context, id string) (alpaca.PaperOrder, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	v, ok := b.orders[id]
 	if !ok {
 		return v, alpaca.ErrPaperNotSubmitted
 	}
 	return v, nil
 }
-func (b *fakePaper) Fills(context.Context, time.Time) ([]json.RawMessage, error) { return b.fills, nil }
+func (b *fakePaper) Fills(context.Context, time.Time) ([]json.RawMessage, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.fills, nil
+}
 func paperFixture(t *testing.T) (Client, *fakePaper, time.Time) {
 	t.Helper()
 	at := time.Date(2026, 11, 2, 15, 0, 0, 0, time.UTC)
@@ -58,17 +67,17 @@ func paperFixture(t *testing.T) (Client, *fakePaper, time.Time) {
 func TestOwnBuyingPowerAndPendingReservations(t *testing.T) {
 	c, b, at := paperFixture(t)
 	o := account.BookOrder{ID: "big", Symbol: "SPY", Quantity: "50", Limit: "100", Side: "buy", Fee: "0", At: at}
-	if _, e := c.Submit(context.Background(), o, map[string]string{"SPY": "100"}); e == nil || b.posts != 0 {
+	if _, e := c.submitLedgerTest(context.Background(), o, map[string]string{"SPY": "100"}); e == nil || b.posts != 0 {
 		t.Fatal("broker's larger account bypassed book", e, b.posts)
 	}
 	o.ID = "first"
 	o.Quantity = "16"
-	if _, e := c.Submit(context.Background(), o, map[string]string{"SPY": "100"}); e != nil {
+	if _, e := c.submitLedgerTest(context.Background(), o, map[string]string{"SPY": "100"}); e != nil {
 		t.Fatal(e)
 	}
 	o.ID = "second"
 	o.Quantity = "6"
-	if _, e := c.Submit(context.Background(), o, map[string]string{"SPY": "100"}); e == nil || b.posts != 1 {
+	if _, e := c.submitLedgerTest(context.Background(), o, map[string]string{"SPY": "100"}); e == nil || b.posts != 1 {
 		t.Fatal("pending reservation reused", e, b.posts)
 	}
 }
@@ -105,7 +114,7 @@ func TestPartialFillsReconcileOwnedShareAndDoNotResubmit(t *testing.T) {
 	c, b, at := paperFixture(t)
 	o := account.BookOrder{ID: "owned", Symbol: "SPY", Quantity: "10", Limit: "100", Side: "buy", Fee: "0", At: at}
 	b.ambiguous = true
-	if _, e := c.Submit(context.Background(), o, map[string]string{"SPY": "100"}); !errors.Is(e, alpaca.ErrSubmissionUnknown) {
+	if _, e := c.submitLedgerTest(context.Background(), o, map[string]string{"SPY": "100"}); !errors.Is(e, alpaca.ErrSubmissionUnknown) {
 		t.Fatal(e)
 	}
 	b.fills = []json.RawMessage{rawFill("fill1", "owned", "4", at.Add(time.Minute)), rawFill("foreign", "other", "50", at.Add(time.Minute))}
@@ -171,6 +180,8 @@ func TestConcurrentReservationsCannotOverspend(t *testing.T) {
 }
 
 func (b *fakePaper) AbortUnsubmitted(_ context.Context, id string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if _, ok := b.orders[id]; ok {
 		return alpaca.ErrSubmissionUnknown
 	}
@@ -200,7 +211,7 @@ func TestPreSubmissionCrashCanReleaseOnlyAfterAdapterAbort(t *testing.T) {
 func TestInvalidBrokerOrderFailsBeforeReservation(t *testing.T) {
 	c, b, at := paperFixture(t)
 	o := account.BookOrder{ID: "bad", Symbol: "abc_def", Quantity: "1", Limit: "100", Side: "buy", Fee: "0", At: at}
-	if _, e := c.Submit(context.Background(), o, nil); e == nil {
+	if _, e := c.submitLedgerTest(context.Background(), o, nil); e == nil {
 		t.Fatal("invalid adapter symbol accepted")
 	}
 	s, e := c.Store.CappedBook(context.Background(), "book")
@@ -212,7 +223,7 @@ func TestInvalidBrokerOrderFailsBeforeReservation(t *testing.T) {
 func TestDelayedOwnedFillIsReplayedBeforeLaterDeposit(t *testing.T) {
 	c, b, at := paperFixture(t)
 	o := account.BookOrder{ID: "late", Symbol: "SPY", Quantity: "10", Limit: "100", Side: "buy", Fee: "0", At: at}
-	if _, e := c.Submit(context.Background(), o, map[string]string{"SPY": "100"}); e != nil {
+	if _, e := c.submitLedgerTest(context.Background(), o, map[string]string{"SPY": "100"}); e != nil {
 		t.Fatal(e)
 	}
 	friday := time.Date(2026, 11, 6, 15, 0, 0, 0, time.UTC)
@@ -233,7 +244,7 @@ func TestDelayedOwnedFillIsReplayedBeforeLaterDeposit(t *testing.T) {
 func TestFirstInvalidOwnedFillDurablyHaltsAdmission(t *testing.T) {
 	c, b, at := paperFixture(t)
 	o := account.BookOrder{ID: "breach", Symbol: "SPY", Quantity: "1", Limit: "100", Side: "buy", Fee: "0", At: at}
-	if _, e := c.Submit(context.Background(), o, map[string]string{"SPY": "100"}); e != nil {
+	if _, e := c.submitLedgerTest(context.Background(), o, map[string]string{"SPY": "100"}); e != nil {
 		t.Fatal(e)
 	}
 	raw := rawFill("breach-fill", "breach", "1", at.Add(time.Minute))
@@ -251,7 +262,7 @@ func TestFirstInvalidOwnedFillDurablyHaltsAdmission(t *testing.T) {
 	}
 	o.ID = "after-breach"
 	o.At = at.Add(3 * time.Minute)
-	if _, e = c.Submit(context.Background(), o, map[string]string{"SPY": "100"}); e == nil || b.posts != 1 {
+	if _, e = c.submitLedgerTest(context.Background(), o, map[string]string{"SPY": "100"}); e == nil || b.posts != 1 {
 		t.Fatal("halted book submitted another order", e, b.posts)
 	}
 }
@@ -272,15 +283,15 @@ func TestIndependentPendingOrdersCannotNetMarginCapacity(t *testing.T) {
 			c, b, at := marginPaperFixture(t)
 			o := account.BookOrder{ID: names[0], Symbol: "SPY", Quantity: "40", Limit: "100", Side: "buy", Fee: "0", At: at}
 			marks := map[string]string{"SPY": "100"}
-			if _, err := c.Submit(context.Background(), o, marks); err != nil {
+			if _, err := c.submitLedgerTest(context.Background(), o, marks); err != nil {
 				t.Fatal(err)
 			}
 			o.ID = names[1]
 			o.Side = "sell"
-			_, _ = c.Submit(context.Background(), o, marks)
+			_, _ = c.submitLedgerTest(context.Background(), o, marks)
 			o.ID = names[2]
 			o.Side = "buy"
-			if _, err := c.Submit(context.Background(), o, marks); err == nil {
+			if _, err := c.submitLedgerTest(context.Background(), o, marks); err == nil {
 				t.Fatal("two independent buys can fill beyond the $4,000 margin limit while the offsetting sell remains unfilled")
 			}
 			if b.posts != 1 {
@@ -293,7 +304,7 @@ func TestPendingReductionDoesNotReleaseCapacityForAnotherOrder(t *testing.T) {
 	c, b, at := marginPaperFixture(t)
 	marks := map[string]string{"SPY": "100"}
 	o := account.BookOrder{ID: "holding", Symbol: "SPY", Quantity: "40", Limit: "100", Side: "buy", Fee: "0", At: at}
-	if _, err := c.Submit(context.Background(), o, marks); err != nil {
+	if _, err := c.submitLedgerTest(context.Background(), o, marks); err != nil {
 		t.Fatal(err)
 	}
 	b.fills = []json.RawMessage{rawFill("holding-fill", "holding", "40", at.Add(time.Minute))}
@@ -307,14 +318,14 @@ func TestPendingReductionDoesNotReleaseCapacityForAnotherOrder(t *testing.T) {
 	o.ID = "a-reduce"
 	o.Side = "sell"
 	o.At = at.Add(3 * time.Minute)
-	if _, err := c.Submit(context.Background(), o, marks); err != nil {
+	if _, err := c.submitLedgerTest(context.Background(), o, marks); err != nil {
 		t.Fatal("an independent reduction must remain possible", err)
 	}
 	o.ID = "b-new"
 	o.Side = "buy"
 	o.Quantity = "1"
 	o.At = at.Add(4 * time.Minute)
-	if _, err := c.Submit(context.Background(), o, marks); err == nil {
+	if _, err := c.submitLedgerTest(context.Background(), o, marks); err == nil {
 		t.Fatal("unfilled reduction released capacity for a new buy")
 	}
 	if b.posts != 2 {
@@ -347,7 +358,7 @@ func TestEverySubsetOfAdmittedPendingOrdersFitsMargin(t *testing.T) {
 			}
 			admitted := []account.BookOrder{}
 			for _, order := range candidates {
-				if _, err := c.Submit(context.Background(), order, map[string]string{"SPY": "100", "QQQ": "50"}); err == nil {
+				if _, err := c.submitLedgerTest(context.Background(), order, map[string]string{"SPY": "100", "QQQ": "50"}); err == nil {
 					admitted = append(admitted, order)
 				}
 			}
@@ -391,7 +402,7 @@ func TestPendingCoverReservesItsAdversePriceBeforeNewExposure(t *testing.T) {
 	c, b, at := marginPaperFixture(t)
 	marks := map[string]string{"SPY": "100", "QQQ": "100"}
 	order := account.BookOrder{ID: "short", Symbol: "SPY", Quantity: "10", Limit: "100", Side: "sell", Fee: "0", At: at}
-	if _, err := c.Submit(context.Background(), order, marks); err != nil {
+	if _, err := c.submitLedgerTest(context.Background(), order, marks); err != nil {
 		t.Fatal(err)
 	}
 	raw := rawFill("short-fill", "short", "10", at.Add(time.Minute))
@@ -407,7 +418,7 @@ func TestPendingCoverReservesItsAdversePriceBeforeNewExposure(t *testing.T) {
 	order.Side = "buy"
 	order.Limit = "150"
 	order.At = at.Add(3 * time.Minute)
-	if _, err := c.Submit(context.Background(), order, marks); err != nil {
+	if _, err := c.submitLedgerTest(context.Background(), order, marks); err != nil {
 		t.Fatal("a reduction must remain possible", err)
 	}
 	order.ID = "new-exposure"
@@ -415,10 +426,16 @@ func TestPendingCoverReservesItsAdversePriceBeforeNewExposure(t *testing.T) {
 	order.Quantity = "20"
 	order.Limit = "100"
 	order.At = at.Add(4 * time.Minute)
-	if _, err := c.Submit(context.Background(), order, marks); err == nil {
+	if _, err := c.submitLedgerTest(context.Background(), order, marks); err == nil {
 		t.Fatal("pending cover could consume $500 and put the book below margin minimum before this buy fills")
 	}
 	if b.posts != 2 {
 		t.Fatal("exposure reached the broker without reserving adverse cover price", b.posts)
 	}
+}
+
+// submitLedgerTest exercises the pre-distributor ledger contract. New public
+// admission/bypass tests use Submit and Rebalance in portfolio_test.go.
+func (c Client) submitLedgerTest(ctx context.Context, o account.BookOrder, marks map[string]string) (alpaca.PaperOrder, error) {
+	return c.submit(ctx, o, marks, "reserve")
 }

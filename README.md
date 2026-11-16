@@ -48,11 +48,16 @@ quotes and zero fees or slippage.
   counts failed and unfinished attempts in each strategy family's search total.
   [Walk-forward research](docs/reference/backtest-research.md) adds purged folds,
   cost stress, declared neighbours, DSR/CSCV and per-strategy minimum capital.
+  [Recorded gates and portfolio risk](docs/reference/portfolio-gates-and-risk.md)
+  preserve pass/fail reasons, forward-only model admission, sleeve sizing and
+  persistent order brakes.
 - **Paper stock orders**: the separate [Alpaca paper adapter](docs/reference/alpaca-paper.md)
   submits once per durable client ID, recovers ambiguous submissions, retains
   raw fills and reports account-position differences. The
   [capped equity book](docs/reference/capped-equity-book.md) reserves local
   capital before submission and reconciles its own fills and scheduled funding.
+  Strategy orders must match a retained distributor plan and pass the fixed
+  exposure, cash, loss and emergency-control checks before submission.
 - **Kalshi data**: [public collection](docs/reference/kalshi-data.md) retains
   weather-market rules and order-book observations for point-in-time reads.
   [Weather probabilities](docs/reference/kalshi-weather.md) retain pre-close

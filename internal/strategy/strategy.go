@@ -62,11 +62,12 @@ type Strategy interface {
 // parameters as text. Data lists the data kinds it reads, and Warmup the
 // number of bars it needs before its first decision.
 type Spec struct {
-	Name    string            `json:"name"`
-	Version string            `json:"version"`
-	Params  map[string]string `json:"params"`
-	Data    []string          `json:"data"`
-	Warmup  int               `json:"warmup"`
+	Name        string            `json:"name"`
+	Version     string            `json:"version"`
+	Params      map[string]string `json:"params"`
+	Data        []string          `json:"data"`
+	Warmup      int               `json:"warmup"`
+	ModelDriven bool              `json:"model_driven,omitempty"`
 }
 
 // Validate reports whether the spec is well formed.
@@ -103,12 +104,13 @@ func (s Spec) ID() (string, error) {
 	}
 	// encoding/json writes map keys in sorted order.
 	raw, err := json.Marshal(struct {
-		Name    string            `json:"name"`
-		Version string            `json:"version"`
-		Params  map[string]string `json:"params"`
-		Data    []string          `json:"data"`
-		Warmup  int               `json:"warmup"`
-	}{s.Name, s.Version, params, data, s.Warmup})
+		Name        string            `json:"name"`
+		Version     string            `json:"version"`
+		Params      map[string]string `json:"params"`
+		Data        []string          `json:"data"`
+		Warmup      int               `json:"warmup"`
+		ModelDriven bool              `json:"model_driven,omitempty"`
+	}{s.Name, s.Version, params, data, s.Warmup, s.ModelDriven})
 	if err != nil {
 		return "", err
 	}

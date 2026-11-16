@@ -91,6 +91,11 @@ func (m *Memory) ApplyCappedBook(ctx context.Context, id string, version int64, 
 	if next.Version != s.Version && version != s.Version {
 		return s, account.ErrBookConflict
 	}
+	if next.Version != s.Version {
+		if e = m.checkPortfolioAdmissionsLocked(s, next.Events[len(next.Events)-1]); e != nil {
+			return s, e
+		}
+	}
 	m.cappedBooks[id] = next
 	return copyCapped(next)
 }
@@ -169,7 +174,7 @@ func (p *Postgres) CappedBook(ctx context.Context, id string) (account.CappedSta
 // ApplyCappedBook locks one book for a command, so independent workers cannot
 // reserve the same local capital. The existing adapter still fences the POST.
 func (p *Postgres) ApplyCappedBook(ctx context.Context, id string, version int64, c account.BookCommand) (account.CappedState, error) {
-	tx, e := p.pool.Begin(ctx)
+	tx, e := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if e != nil {
 		return account.CappedState{}, e
 	}
@@ -194,11 +199,15 @@ func (p *Postgres) ApplyCappedBook(ctx context.Context, id string, version int64
 		if version != s.Version {
 			return s, account.ErrBookConflict
 		}
-		raw, e := json.Marshal(c)
+		command := next.Events[len(next.Events)-1]
+		if e = checkPortfolioAdmissionsTx(ctx, tx, s, command); e != nil {
+			return s, e
+		}
+		raw, e := json.Marshal(command)
 		if e != nil {
 			return s, e
 		}
-		if _, e = tx.Exec(ctx, `INSERT INTO mantik_capped_book_events(book_id,sequence,event_id,payload) VALUES($1,$2,$3,$4)`, id, next.Version, c.ID, string(raw)); e != nil {
+		if _, e = tx.Exec(ctx, `INSERT INTO mantik_capped_book_events(book_id,sequence,event_id,payload) VALUES($1,$2,$3,$4)`, id, next.Version, command.ID, string(raw)); e != nil {
 			return s, e
 		}
 	}

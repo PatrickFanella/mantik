@@ -14,8 +14,11 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/account"
+	"git.subcult.tv/subculture-collective/mantik/internal/allocation"
 	"git.subcult.tv/subculture-collective/mantik/internal/alpaca"
+	"git.subcult.tv/subculture-collective/mantik/internal/risk"
 	"git.subcult.tv/subculture-collective/mantik/internal/storage"
+	"git.subcult.tv/subculture-collective/mantik/internal/strategygate"
 )
 
 // Broker is deliberately paper-only, bound to an expected account. Order is a
@@ -93,6 +96,22 @@ func (c Client) Fund(ctx context.Context, at time.Time) (account.CappedState, er
 // reserve are checked against the book and all outstanding reservations. An
 // ambiguous broker outcome retains the reservation and original client ID.
 func (c Client) Submit(ctx context.Context, o account.BookOrder, marks map[string]string) (alpaca.PaperOrder, error) {
+	if o.AllocationID == "" || o.SleeveID == "" {
+		return alpaca.PaperOrder{}, errors.New("distributor_order_required")
+	}
+	if _, err := c.Fund(ctx, o.At); err != nil {
+		return alpaca.PaperOrder{}, err
+	}
+	// Persist loss-triggered brakes even when the following order is refused.
+	if _, err := c.append(ctx, account.BookCommand{ID: "observe-" + o.ID, Kind: "risk_observe", At: o.At, Marks: marks}); err != nil {
+		return alpaca.PaperOrder{}, err
+	}
+	return c.submit(ctx, o, marks, "portfolio_reserve")
+}
+
+// submit is shared with the low-level ledger contract tests. The only exported
+// submission entry always requires a retained distributor order and risk check.
+func (c Client) submit(ctx context.Context, o account.BookOrder, marks map[string]string, kind string) (alpaca.PaperOrder, error) {
 	order := alpaca.StockOrder{ClientOrderID: o.ID, Symbol: o.Symbol, Qty: o.Quantity, Side: o.Side, Type: "limit", TimeInForce: "day", LimitPrice: o.Limit}
 	if err := order.Validate(); err != nil {
 		return alpaca.PaperOrder{}, err
@@ -100,8 +119,25 @@ func (c Client) Submit(ctx context.Context, o account.BookOrder, marks map[strin
 	if _, err := c.Fund(ctx, o.At); err != nil {
 		return alpaca.PaperOrder{}, err
 	}
-	if _, err := c.append(ctx, account.BookCommand{ID: "reserve-" + o.ID, Kind: "reserve", At: o.At, Order: &o, Marks: marks}); err != nil {
+	if _, err := c.append(ctx, account.BookCommand{ID: "reserve-" + o.ID, Kind: kind, At: o.At, Order: &o, Marks: marks}); err != nil {
 		return alpaca.PaperOrder{}, fmt.Errorf("capped book refusal: %w", err)
+	}
+	if kind == "portfolio_reserve" {
+		s, err := c.load(ctx)
+		if err != nil {
+			return alpaca.PaperOrder{}, err
+		}
+		if err = account.CheckPortfolioSubmission(s, o, marks); err != nil {
+			// A fill can land after reservation but before POST. Persist the fresh
+			// loss observation even when that final check refuses the submission.
+			at := o.At
+			if len(s.Events) > 0 && s.Events[len(s.Events)-1].At.After(at) {
+				at = s.Events[len(s.Events)-1].At
+			}
+			h := sha256.Sum256([]byte(fmt.Sprintf("%s/%d", o.ID, s.Version)))
+			_, observeErr := c.append(ctx, account.BookCommand{ID: "observe-refusal-" + hex.EncodeToString(h[:16]), Kind: "risk_observe", At: at, Marks: marks})
+			return alpaca.PaperOrder{}, errors.Join(err, observeErr)
+		}
 	}
 	response, err := c.Broker.Submit(ctx, order)
 	if err != nil {
@@ -112,14 +148,169 @@ func (c Client) Submit(ctx context.Context, o account.BookOrder, marks map[strin
 		return response, err
 	}
 	if !matchesOrder(response, o) {
-		_, haltErr := c.append(ctx, account.BookCommand{ID: "halt-submission", Kind: "halt", At: o.At})
+		_, haltErr := c.halt(ctx, "submission", o.At, marks)
 		return response, errors.Join(errors.New("broker response differs from reserved order"), haltErr)
 	}
 	_, err = c.append(ctx, account.BookCommand{ID: "bind-" + o.ID, Kind: "bind", At: o.At, OrderID: o.ID, VenueOrderID: response.ID})
 	return response, err
 }
+
+// Rebalance retains sizing on current local equity after applying due deposits.
+// Lifecycle admissions come from stored gates; strategies provide weights only.
+// Qualified sleeves require the later forward-qualification owner (#92).
+func (c Client) Rebalance(ctx context.Context, req allocation.RebalanceRequest, marks map[string]string) (allocation.Distribution, error) {
+	req.Sleeves = slices.Clone(req.Sleeves)
+	book, bookErr := c.load(ctx)
+	if bookErr != nil {
+		return allocation.Distribution{}, bookErr
+	}
+	if out, retained, e := retainedRebalance(book, req, marks); retained {
+		return out, e
+	}
+	roster, rosterErr := account.PortfolioRoster(book)
+	if rosterErr != nil {
+		return allocation.Distribution{}, rosterErr
+	}
+	flat := map[string]bool{}
+	for _, t := range req.Targets {
+		flat[t.SleeveID] = allocation.FlatTarget(t.Decision)
+	}
+	reader, ok := c.Store.(interface {
+		StrategyGate(context.Context, string) (strategygate.Record, error)
+	})
+	if !ok {
+		return allocation.Distribution{}, errors.New("gate_registry_required")
+	}
+	for i := range req.Sleeves {
+		s := &req.Sleeves[i]
+		if old, exists := roster[s.ID]; exists && flat[s.ID] && old.StrategyID == s.StrategyID {
+			*s = old
+			continue
+		}
+		if s.Stage == "qualified" {
+			return allocation.Distribution{}, errors.New("forward_qualification_required")
+		}
+		g, e := reader.StrategyGate(ctx, s.GateID)
+		if e != nil {
+			return allocation.Distribution{}, e
+		}
+		if g.Declaration.Account != string(book.Config.Type) {
+			return allocation.Distribution{}, errors.New("gate_account_differs_from_book")
+		}
+		if g.Decision == nil || g.Decision.Stage != "incubation" || g.Decision.StrategyID != s.StrategyID {
+			return allocation.Distribution{}, errors.New("incubation_gate_required")
+		}
+		if !g.Decision.AdmitsIncubation() {
+			return allocation.Distribution{}, errors.New("gate_evidence_ineligible")
+		}
+		// The store checks freshness under the same fence as new family starts.
+		s.Minimum = g.Decision.Minimum
+		s.Stage = "incubation"
+		s.ModelDriven = false
+		if g.Decision.Status == "forward_only" {
+			s.Stage = "forward_only"
+			s.ModelDriven = true
+		}
+	}
+	if _, e := c.Fund(ctx, req.At); e != nil {
+		return allocation.Distribution{}, e
+	}
+	s, e := c.append(ctx, account.BookCommand{ID: req.ID, Kind: "rebalance", At: req.At, Rebalance: &req, Marks: marks})
+	if e != nil {
+		return allocation.Distribution{}, e
+	}
+	return rebalanceDistribution(s, req.ID)
+}
+
+// retainedRebalance recovers a response without asking research to admit it
+// again. Only authoritative admission fields are restored; the journal still
+// compares all effective request fields, marks and clocks for changed retries.
+func retainedRebalance(book account.CappedState, req allocation.RebalanceRequest, marks map[string]string) (allocation.Distribution, bool, error) {
+	for i, event := range book.Events {
+		if event.ID != req.ID {
+			continue
+		}
+		if event.Kind != "rebalance" || event.Rebalance == nil || len(req.Sleeves) != len(event.Rebalance.Sleeves) {
+			return allocation.Distribution{}, true, account.ErrBookConflict
+		}
+		prefix := book
+		prefix.Events, prefix.Version = book.Events[:i], int64(i)
+		roster, e := account.PortfolioRoster(prefix)
+		if e != nil {
+			return allocation.Distribution{}, true, e
+		}
+		flat := map[string]bool{}
+		for _, t := range req.Targets {
+			flat[t.SleeveID] = allocation.FlatTarget(t.Decision)
+		}
+		for j := range req.Sleeves {
+			s := &req.Sleeves[j]
+			if prior, exists := roster[s.ID]; exists && flat[s.ID] && prior.StrategyID == s.StrategyID {
+				*s = prior
+				continue
+			}
+			old := event.Rebalance.Sleeves[j]
+			if s.ID != old.ID || s.StrategyID != old.StrategyID || s.GateID != old.GateID || s.Stage == "qualified" {
+				return allocation.Distribution{}, true, account.ErrBookConflict
+			}
+			s.Minimum, s.Stage, s.ModelDriven = old.Minimum, old.Stage, old.ModelDriven
+		}
+		cmd := account.BookCommand{ID: req.ID, Kind: "rebalance", At: req.At, Rebalance: &req, Marks: marks}
+		if _, e = account.ApplyCappedCommand(book, cmd); e != nil {
+			return allocation.Distribution{}, true, e
+		}
+		out, e := rebalanceDistribution(book, req.ID)
+		return out, true, e
+	}
+	return allocation.Distribution{}, false, nil
+}
+
+func rebalanceDistribution(s account.CappedState, id string) (allocation.Distribution, error) {
+	for i, event := range s.Events {
+		if event.ID == id && event.Kind == "rebalance" {
+			// Exact retries return the original sizing even after later commands.
+			s.Events = s.Events[:i+1]
+			s.Version = int64(i + 1)
+			snap, e := account.SnapshotCapped(s, event.Marks, event.At)
+			if e != nil {
+				return allocation.Distribution{}, e
+			}
+			if snap.Distribution != nil {
+				return *snap.Distribution, nil
+			}
+		}
+	}
+	return allocation.Distribution{}, errors.New("distribution_missing")
+}
+
+// Control records an explicit operator action. It is separate from all strategy
+// inputs; callers must authenticate owner commands before invoking this method.
+func (c Client) Control(ctx context.Context, id string, at time.Time, control risk.Control) (account.CappedState, error) {
+	return c.append(ctx, account.BookCommand{ID: id, Kind: "risk_control", At: at, RiskControl: &control})
+}
 func matchesOrder(v alpaca.PaperOrder, o account.BookOrder) bool {
 	return v.ID != "" && v.ClientOrderID == o.ID && v.Symbol == o.Symbol && v.Side == o.Side && v.Type == "limit" && v.TimeInForce == "day" && sameDecimal(v.Qty, o.Quantity) && sameDecimal(v.LimitPrice, o.Limit)
+}
+
+// halt uses the current journal version as its identity, so a later discrepancy
+// can halt again after an explicit owner clear. Already-halted retries add none.
+func (c Client) halt(ctx context.Context, kind string, at time.Time, marks map[string]string) (account.CappedState, error) {
+	s, e := c.load(ctx)
+	if e != nil {
+		return s, e
+	}
+	if len(s.Events) > 0 && s.Events[len(s.Events)-1].At.After(at) {
+		at = s.Events[len(s.Events)-1].At
+	}
+	v, e := account.SnapshotCapped(s, marks, at)
+	if e != nil {
+		return s, e
+	}
+	if v.Halted {
+		return s, nil
+	}
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s/%d", kind, s.Version)))
+	return c.append(ctx, account.BookCommand{ID: "halt-" + kind + "-" + hex.EncodeToString(h[:16]), Kind: "halt", At: at})
 }
 
 func sameDecimal(a, b string) bool {
@@ -141,7 +332,7 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 		return account.CappedSnapshot{}, err
 	}
 	fail := func(err error) (account.CappedSnapshot, error) {
-		_, haltErr := c.append(ctx, account.BookCommand{ID: "halt-reconciliation", Kind: "halt", At: at})
+		_, haltErr := c.halt(ctx, "reconciliation", at, marks)
 		return account.CappedSnapshot{}, errors.Join(err, haltErr)
 	}
 	orders := map[string]account.BookOrder{}
@@ -151,7 +342,7 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 		if v.Kind == "reject" {
 			rejected[v.OrderID] = true
 		}
-		if v.Kind == "reserve" {
+		if v.Kind == "reserve" || v.Kind == "portfolio_reserve" {
 			orders[v.Order.ID] = *v.Order
 		}
 		if v.Kind == "bind" {
@@ -302,6 +493,26 @@ func (c Client) Sync(ctx context.Context, at time.Time, marks map[string]string)
 			s, e = c.append(ctx, account.BookCommand{ID: "release-" + id, Kind: "release", At: at, OrderID: id, VenueOrderID: v.ID})
 			if e != nil {
 				return fail(e)
+			}
+		}
+	}
+	if len(s.Events) > 0 && !s.Events[len(s.Events)-1].At.After(at) {
+		snap, err := account.SnapshotCapped(s, marks, at)
+		if err != nil {
+			return snap, err
+		}
+		if snap.Distribution != nil {
+			raw, err := json.Marshal(struct {
+				At    time.Time
+				Marks map[string]string
+			}{at, marks})
+			if err != nil {
+				return snap, err
+			}
+			h := sha256.Sum256(raw)
+			s, err = c.append(ctx, account.BookCommand{ID: "observe-sync-" + hex.EncodeToString(h[:16]), Kind: "risk_observe", At: at, Marks: marks})
+			if err != nil {
+				return snap, err
 			}
 		}
 	}

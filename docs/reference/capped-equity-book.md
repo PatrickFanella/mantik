@@ -12,8 +12,11 @@ broker cash, equity or buying-power field enters the book. A $5,000 order can
 fit Alpaca's $100,000 paper account and still be refused by the local $2,000
 book before any POST.
 
-`Submit` accepts simple day limit orders and a complete current mark set for
-all held and pending symbols. Adapter grammar is checked before reservation.
+`Rebalance` turns sleeve targets into retained fractional day-limit orders.
+`Submit` accepts only an exact order from that distribution and a complete
+current mark set for all held and pending symbols. Raw quantities cannot bypass
+the [distributor and persistent risk checks](portfolio-gates-and-risk.md).
+Adapter grammar is checked before reservation.
 The durable reserve includes maximum execution price/quantity and a total fee
 allowance. Account rules check all outstanding reservations together, using
 settled cash and this book's marked positions. Independent pending orders
@@ -51,5 +54,5 @@ sequence guards reject gaps, updates, deletes and truncation. Memory and SQL
 stores expose the same command contract. Events are bounded at 4,096 per book;
 capacity or storage errors stop publication and require retained-history review.
 The book reports cash, settled cash, marked equity, owned positions and pending
-orders. It does not distribute sleeves, implement the later hard-risk gate,
-activate strategies or establish protected real-quote positions.
+orders, its retained distribution and the persistent risk-brake view. It does
+not start incubation workers or establish protected real-quote positions.

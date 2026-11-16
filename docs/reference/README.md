@@ -132,3 +132,5 @@ Keep exploratory notes in `docs/research/` until they become stable references.
   session catch-up, correction refresh and readiness.
 - [Independent SPY comparison](spy-comparison.md): retained-input reproduction,
   declared tolerances, source discrepancies and qualification limits.
+- [Portfolio gates and risk](portfolio-gates-and-risk.md): immutable gate
+  decisions, one sleeve-sizing authority and persistent capped-book risk checks.
