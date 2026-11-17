@@ -187,6 +187,15 @@ The checker also exports every family start, daily return and outcome and
 verifies that its hash matches the decision's retained family snapshot before
 the disposable database is removed.
 
+## Minimum-capital evidence
+
+The [frozen-snapshot minimum reporter](strategy-minimum-capital.md) derives
+complete recipe baskets from reviewed current sources, sizes fractional orders
+through the distributor and checks their joint account/risk reservations. It
+reports exact cent boundaries separately from the four original failed gates.
+These conditional minima do not grant admission or establish interval-wide
+historical coverage.
+
 ## Rollback
 
 Stop the new caller and retain its gate rows and capped-book commands. Do not

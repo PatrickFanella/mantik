@@ -257,6 +257,13 @@ expressions or library recipes into the same engine. The [Kalshi notional
 simulator](docs/reference/kalshi-simulation.md) consumes recorded depth and fee
 evidence in a separate book, excluded from the portfolio's SPY measure.
 
+The [minimum-capital reporter](docs/reference/strategy-minimum-capital.md)
+derives complete fractional recipe baskets at one reviewed snapshot and proves
+their financial cent boundaries without changing failed gates. The separate
+[Kalshi paper check](docs/reference/kalshi-paper-check.md) retains a diagnostic
+notional fill and joins its official settlement to the original forecast and
+canonical calibration; its first real-source outcome is still pending.
+
 Daily stock history can be collected by the opt-in [`serve` daily-bar worker](docs/reference/daily-bars-worker.md), with missing-session catch-up and its own readiness scope. The [independent SPY comparison](docs/reference/spy-comparison.md) checks the retained history against another source; its explicit primary-close check passes at the unchanged 5 bps tolerance, with the original raw-SIP and Yahoo-only failures retained as diagnostics.
 
 The [SPY engine check](docs/reference/spy-engine-check.md) compares cash/margin

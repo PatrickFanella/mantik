@@ -38,3 +38,9 @@ position or maker executions. Accordingly these intents stay pending until
 expiry/settlement and generate no fabricated fills. The existing depth executor
 continues to model taker orders separately; this version supplies no automatic
 taker fallback. Simulation version is `kalshi-notional-depth-fees-v3`.
+
+The separate [paper settlement check](kalshi-paper-check.md) retains a public
+pre-close forecast and an explicitly operator-selected one-contract diagnostic
+taker trade, then joins official settlement to calibration. It records maker
+abstention independently and does not turn a diagnostic into a calibrated
+strategy fill or relax this policy's evidence threshold.

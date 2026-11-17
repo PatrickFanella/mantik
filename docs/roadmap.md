@@ -16,6 +16,14 @@ The work is tracked in
 [roadmap #47](https://github.com/subculture-collective/mantik/issues/47).
 
 **Implementation status, 2026-11-16, America/Chicago** (schema 127 on this branch; merge state is tracked in #47).
+
+The #51/#56 follow-up adds [snapshot-specific minimum-capital evidence](reference/strategy-minimum-capital.md)
+for the complete declared 3-ETF / 7-stock scopes, preserving the four original
+failed gate receipts and each predecessor-cent refusal. It also starts a
+[separate Kalshi notional settlement check](reference/kalshi-paper-check.md):
+one real-source pre-close forecast, modeled taker fill and canonical pending
+calibration record are retained. Official settlement remains unobserved, so
+#56 stays open. Neither diagnostic grants strategy admission or qualification.
 Wave 1 merged in [PR #118](https://github.com/subculture-collective/mantik/pull/118)
 at schema 118. Wave 4 adds [resumable stock backfills](reference/daily-backfill.md),
 the [asset-identity universe](reference/stock-universe.md), and

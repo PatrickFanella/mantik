@@ -122,6 +122,8 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Daily bar store](daily-bars.md) — raw daily bars per asset and date with published, observed and available times; idempotent writes, corrections as revisions and reads as of a clock.
 - [Alpaca paper orders](alpaca-paper.md) — durable one-submit intents, client-ID recovery, raw fills and position reconciliation against the fixed paper endpoint.
 - [Kalshi public data](kalshi-data.md) — weather markets, resolution rules and point-in-time order books without credentials.
+- [Kalshi paper settlement check](kalshi-paper-check.md) — original forecast, separate notional fill, official outcome and canonical calibration.
+- [Frozen-snapshot minimum capital](strategy-minimum-capital.md) — full fractional recipe baskets, original failed gates and account/risk cent boundaries.
 - [Subscription model calls](subscription-models.md) — bounded host-login research calls, daily budget, backoff and hash-only call records.
 - [Adjusted daily bars](adjusted-bars.md) — split and dividend adjustment applied on read with only the actions known at the clock, and a total-return series paid on dividend pay dates.
 - [Strategy interface](strategy-interface.md) — one interface for every strategy: a point-in-time view in, sleeve weights out, a content-hash identity, and an import audit that keeps the network and clock out.

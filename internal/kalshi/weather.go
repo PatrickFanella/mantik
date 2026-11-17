@@ -310,15 +310,26 @@ func weatherProbability(m weatherMarket, mean, sigma float64) (float64, error) {
 // SettleWeather records only the venue's final yes/no result, never a forecast
 // or preliminary NOAA observation substituted for official settlement.
 func (c *Client) SettleWeather(ctx context.Context, store WeatherStore, ticker string) error {
-	if c.journal == nil {
-		return errors.New("weather settlement requires a raw capture journal")
-	}
-	m, e, err := c.weatherMarket(ctx, ticker)
+	r, err := c.FetchWeatherSettlement(ctx, ticker)
 	if err != nil {
 		return err
 	}
-	if m.Status != "finalized" || (m.Result != "yes" && m.Result != "no") || m.SettlementTime.IsZero() || m.SettlementTime.Before(m.CloseTime) || m.SettlementTime.After(e.ObservedAt) {
-		return errors.New("weather market has no final binary settlement")
+	return store.RecordKalshiWeatherSettlement(ctx, r)
+}
+
+// FetchWeatherSettlement retains and validates a public final outcome without
+// writing a prediction or backdating its admission. Offline paper replays use
+// this same source contract after their original pre-close receipt is sealed.
+func (c *Client) FetchWeatherSettlement(ctx context.Context, ticker string) (storage.KalshiWeatherSettlement, error) {
+	if c.journal == nil {
+		return storage.KalshiWeatherSettlement{}, errors.New("weather settlement requires a raw capture journal")
 	}
-	return store.RecordKalshiWeatherSettlement(ctx, storage.KalshiWeatherSettlement{MarketTicker: ticker, Yes: m.Result == "yes", SettledAt: m.SettlementTime, ObservedAt: e.ObservedAt, Original: e.Original, SHA256: e.SHA256})
+	m, e, err := c.weatherMarket(ctx, ticker)
+	if err != nil {
+		return storage.KalshiWeatherSettlement{}, err
+	}
+	if m.Status != "finalized" || (m.Result != "yes" && m.Result != "no") || m.SettlementTime.IsZero() || m.SettlementTime.Before(m.CloseTime) || m.SettlementTime.After(e.ObservedAt) {
+		return storage.KalshiWeatherSettlement{}, errors.New("weather market has no final binary settlement")
+	}
+	return storage.KalshiWeatherSettlement{MarketTicker: ticker, Yes: m.Result == "yes", SettledAt: m.SettlementTime, ObservedAt: e.ObservedAt, Original: e.Original, SHA256: e.SHA256}, nil
 }
