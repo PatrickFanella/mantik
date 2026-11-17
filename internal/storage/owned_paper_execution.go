@@ -16,9 +16,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// OwnedExecutionSchema is comparison v16: v15 plus owner entry execution.
+// OwnedExecutionSchema is comparison v17: v16 with explicit per-fill economics.
 // Each record first advances every open entry book to its own clock.
-const OwnedExecutionSchema = "mantik-owned-allocation-deferral-v16"
+const OwnedExecutionSchema = "mantik-owned-allocation-deferral-v17"
+const legacyOwnedExecutionSchema = "mantik-owned-allocation-deferral-v16"
+
+func isOwnedExecutionSchema(s string) bool {
+	return s == legacyOwnedExecutionSchema || s == OwnedExecutionSchema
+}
 
 // OwnedExecutionStepSchema advances open entry books without a comparison.
 const OwnedExecutionStepSchema = "mantik-owned-execution-step-v1"
@@ -26,7 +31,7 @@ const OwnedEntryExecutionMethod = "owner-selected-quote-ongoing-entry-v1"
 const ownedExecutionAuthority = "service_owned_paper_entry_execution_only"
 
 func isOwnedGrantSchema(s string) bool {
-	return s == OwnedAllocationGrantSchema || s == OwnedExecutionSchema
+	return s == OwnedAllocationGrantSchema || isOwnedExecutionSchema(s)
 }
 
 // PaperExecutionQuoteQuery selects one registration's retained quotes that
@@ -168,7 +173,7 @@ type ownedEntryBook struct {
 // a book consumes one feed. Orders reserved by different comparisons get
 // separate books; advancedBooks shares displayed liquidity between them.
 func ownedEntryBooks(r OwnedAllocationRecord, policy allocation.PolicyRecord, strategies paperstrategy.Catalog, retained map[string]retainedPaperDecision) ([]ownedEntryBook, error) {
-	if r.Schema != OwnedExecutionSchema || r.Entry.Plan == nil {
+	if !isOwnedExecutionSchema(r.Schema) || r.Entry.Plan == nil {
 		return nil, nil
 	}
 	model := policy.Command.ExecutionModel

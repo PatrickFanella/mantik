@@ -114,7 +114,7 @@ Keep exploratory notes in `docs/research/` until they become stable references.
 - [Typed supervision calls and stdio MCP](supervision-tools.md) — fixed authenticated tools that
   retain owner validation and retry semantics without model or financial authority.
 
-- [Service-owned paper attribution](paper-attribution.md) — consistent phase
+- [Service-owned paper attribution](paper-attribution.md) — per-fill financial detail and consistent phase
   readbacks with traceable decisions, observations and allocation identities.
 
 - [Owned paper evaluation declarations](paper-evaluation-declarations.md) — immutable future windows, strategy/model pins and intended checks; no evaluation or admission result.

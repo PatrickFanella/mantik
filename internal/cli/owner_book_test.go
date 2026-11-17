@@ -68,6 +68,64 @@ func TestOwnerBookTerminalWalkthrough(t *testing.T) {
 	}
 }
 
+func TestOwnerBookFillReadbackAndCashRefusal(t *testing.T) {
+	for name, activity := range map[string]string{"punctuation": "activity:123", "maximum length": strings.Repeat("a", 128), "terminal controls": "activity:\x1b[31m\noriginal"} {
+		t.Run(name, func(t *testing.T) { ownerBookFillReadbackContract(t, activity) })
+	}
+}
+
+func ownerBookFillReadbackContract(t *testing.T, activity string) {
+	t.Helper()
+	at := time.Date(2026, 11, 16, 15, 0, 0, 0, time.UTC)
+	s, err := account.NewCappedState(account.DefaultCappedConfig("fill-view", "isolated", account.Cash, at))
+	if err != nil {
+		t.Fatal(err)
+	}
+	order := account.BookOrder{ID: "buy", Symbol: "SPY", Quantity: "0.125", Limit: "100", Fee: "0.02", Side: "buy", At: at}
+	fill := account.BookFill{ID: activity, OrderID: order.ID, VenueOrderID: "venue", Symbol: "SPY", Quantity: order.Quantity, Price: "100", Fee: "0.01", Side: "buy", SourceSHA256: strings.Repeat("a", 64), At: at.Add(time.Second)}
+	for _, c := range []account.BookCommand{
+		{ID: order.ID, Kind: "reserve", At: at, Order: &order, Marks: map[string]string{"SPY": "100"}},
+		{ID: "bind", Kind: "bind", At: at, OrderID: order.ID, VenueOrderID: "venue"},
+		{ID: fill.ID, Kind: "fill", At: at.Add(2 * time.Second), Fill: &fill, Marks: map[string]string{"SPY": "100"}},
+	} {
+		s, err = account.ApplyCappedCommand(s, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	v, err := account.ReadOwnerBook(s, at.Add(3*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := outputOwnerBook(&out, v, "terminal"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{fmt.Sprintf("fill=%q", activity), `quantity="0.125"`, `gross="12.5"`, `fee="0.01"`, `cash_delta="-12.51"`, `reconciled_cash="1987.49"`, `source_sha256="` + fill.SourceSHA256 + `"`, "economic_at=2026-11-16T15:00:01Z recorded_at=2026-11-16T15:00:02Z"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatal("terminal omitted retained economics", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "\x1b[31m") {
+		t.Fatal("raw activity ID executed terminal control bytes")
+	}
+	out.Reset()
+	if err := outputOwnerBook(&out, v, "json"); err != nil {
+		t.Fatal(err)
+	}
+	var decoded account.OwnerBookView
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil || decoded.Execution == nil || decoded.Execution.Fills[0].Fill.ID != activity {
+		t.Fatal("JSON changed original activity identity", err)
+	}
+	v.Execution.ReconciledCash = "2000"
+	for _, format := range []string{"terminal", "json"} {
+		out.Reset()
+		if err := outputOwnerBook(&out, v, format); err == nil || out.Len() != 0 {
+			t.Fatal("inconsistent cash produced successful output", format, err)
+		}
+	}
+}
+
 func TestOwnerBookCancellationNeverSendsMutation(t *testing.T) {
 	t.Setenv("MANTIK_API_TOKEN", "test-owner")
 	calls := 0

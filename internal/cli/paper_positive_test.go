@@ -543,7 +543,7 @@ func positiveEvaluationHTTP(t testing.TB, s portfolioHTTPBackend, failCommit fun
 		t.Fatal(err)
 	}
 	capital := catalog.Capital[0]
-	if catalog.Ledgers[0].Schema != allocation.CostLedgerSchema || capital.Schema != "mantik-owned-allocation-capital-v3" || capital.AvailableCashCents != 200000-99000 || len(capital.Positions) != 1 || len(catalog.Executions) != 1 {
+	if catalog.Ledgers[0].Schema != allocation.FinancialLedgerSchema || capital.Schema != "mantik-owned-allocation-capital-v3" || capital.AvailableCashCents != 200000-99000 || len(capital.Positions) != 1 || len(catalog.Executions) != 1 {
 		t.Fatal("capital after execution", capital, len(catalog.Executions))
 	}
 	for _, r := range capital.Reservations {
@@ -749,11 +749,45 @@ func positiveExecutionAttribution(t testing.TB, url, owner string, filled, proce
 		t.Fatal("attribution row", response.StatusCode)
 	}
 	e := row.Economics
-	if e.Status != "position_closed" || e.ReservedCents == nil || *e.ReservedCents != 99000 || *e.FilledCostCents != filled || *e.ClosedCostCents != filled || *e.NetProceedsCents != proceeds || *e.ReleasedCents != 0 || e.RealizedPnLCents == nil || *e.RealizedPnLCents != proceeds-filled || len(e.Effects) != 2 || e.Effects[0].Kind != "fill" || e.Effects[1].Kind != "close" || e.ExecutedQuantity != nil || e.FeesCents != nil {
+	if e.Status != "position_closed" || e.ReservedCents == nil || *e.ReservedCents != 99000 || *e.FilledCostCents != filled || *e.ClosedCostCents != filled || *e.NetProceedsCents != proceeds || *e.ReleasedCents != 0 || e.RealizedPnLCents == nil || *e.RealizedPnLCents != proceeds-filled || len(e.Effects) != 2 || e.Effects[0].Kind != "fill" || e.Effects[1].Kind != "close" || e.ExecutedQuantity == nil || *e.ExecutedQuantity != 10 || e.FeesCents == nil || *e.FeesCents != 0 {
 		t.Fatal("execution attribution", e)
 	}
 	if validateAttributionRow(row, owner) != nil {
 		t.Fatal("command rejects the closed grant's row")
+	}
+	for _, x := range e.Effects {
+		if x.Execution == nil || x.Execution.Quantity != 10 || x.Execution.FeeCents != 0 || x.Execution.OrderID != row.Decision.Command.ID || x.ValidateExecution(row.Decision.Command.ID) != nil {
+			t.Fatal("original fill details absent from native HTTP attribution", x)
+		}
+	}
+	for name, change := range map[string]func(*storage.PaperAttributionRow){
+		"summary quantity": func(r *storage.PaperAttributionRow) { *r.Economics.ExecutedQuantity++ },
+		"summary fee":      func(r *storage.PaperAttributionRow) { *r.Economics.FeesCents++ },
+		"missing fill": func(r *storage.PaperAttributionRow) {
+			r.Economics.Effects[0].Execution = nil
+			r.Economics.Effects[0].EvidenceSHA256 = ""
+		},
+		"self-rehashed fee": func(r *storage.PaperAttributionRow) {
+			f := r.Economics.Effects[0].Execution
+			f.FeeCents++
+			f.SHA256 = ""
+			f.SHA256 = workerplan.Hash(*f)
+		},
+	} {
+		raw, err := json.Marshal(row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var bad storage.PaperAttributionRow
+		if err = json.Unmarshal(raw, &bad); err != nil {
+			t.Fatal(err)
+		}
+		change(&bad)
+		bad.SHA256 = ""
+		bad.SHA256 = workerplan.Hash(bad)
+		if validateAttributionRow(bad, owner) == nil {
+			t.Fatal("self-rehashed inconsistent financial row accepted", name)
+		}
 	}
 	// The targeted row replays only the decision's records, yet it is the
 	// complete catalogue's row.
@@ -783,7 +817,7 @@ func positiveExecutionAttribution(t testing.TB, url, owner string, filled, proce
 		t.Fatal("paper-attribution", err, diag.String())
 	}
 	text := out.String()
-	for _, want := range []string{"EXECUTION paper", `ECONOMICS "position_closed"`, "realized_pnl_cents=1000", `EFFECT "close"`, `status="reserve_plan"`} {
+	for _, want := range []string{"EXECUTION paper", `ECONOMICS "position_closed"`, "realized_pnl_cents=1000", `EFFECT "close"`, `status="reserve_plan"`, "entry_quantity=10 total_entry_and_exit_fees_cents=0", "gross_cents=99000", "gross_cents=100000", "fill_sha256=", "quote_sha256="} {
 		if !strings.Contains(text, want) {
 			t.Fatal("paper-attribution output lacks", want, text)
 		}

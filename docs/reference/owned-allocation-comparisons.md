@@ -5,6 +5,16 @@ under an owner-selected funding policy. `GET /v1/allocation-comparisons` replays
 the full retained journal and returns its records and per-policy ledgers.
 Both routes use the existing bearer authentication.
 
+The compiled ongoing execution path now emits comparison v17. Newly created
+policy ledgers use [financial ledger v3](allocation-ledger.md#ledger-versions-and-fee-bearing-exits),
+retaining exact modeled fill details on entry and close effects. Existing v16
+comparisons and v1/v2 ledgers retain their original replay and wire contracts;
+execution steps continue to use their existing versioned envelope. Admission,
+funding, execution models, safety checks and protective behavior are unchanged.
+The [current attribution contract](paper-attribution.md#paper-execution) describes
+the readbacks. The deferral-only contracts below describe earlier records and
+policies without the compiled execution path.
+
 This is the first durable service binding for the allocation core. It records
 admission deferrals and expired-decision rejections. It cannot reserve cash,
 create orders, apply fills or qualify a strategy. Issue #19's acceptance remains incomplete for

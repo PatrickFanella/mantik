@@ -168,6 +168,11 @@ func ownerBookRequest(ctx context.Context, base, path string, input, output any)
 }
 
 func outputOwnerBook(out io.Writer, v account.OwnerBookView, format string) error {
+	if v.Execution != nil {
+		if err := v.Execution.Validate(v.Cash); err != nil {
+			return err
+		}
+	}
 	if format == "json" {
 		return emit(out, v)
 	}
@@ -201,6 +206,13 @@ func outputOwnerBook(out io.Writer, v account.OwnerBookView, format string) erro
 	slices.Sort(symbols)
 	for _, symbol := range symbols {
 		fmt.Fprintf(&b, "holding=%q quantity=%q\n", symbol, v.Positions[symbol])
+	}
+	if e := v.Execution; e != nil {
+		fmt.Fprintf(&b, "FILL ACCOUNTING method=%q status=%q gross_buys=%q gross_sells=%q fees=%q cash_delta=%q reconciled_cash=%q (USD; retained paper broker activities)\n", e.Method, e.Status, e.GrossBuys, e.GrossSells, e.Fees, e.CashDelta, e.ReconciledCash)
+		for _, x := range e.Fills {
+			f := x.Fill
+			fmt.Fprintf(&b, "  fill=%q order=%q venue_order=%q symbol=%q side=%q quantity=%q price=%q gross=%q fee=%q cash_delta=%q\n    economic_at=%s recorded_at=%s allocation=%q sleeve=%q strategy=%q source_sha256=%q\n", f.ID, f.OrderID, f.VenueOrderID, f.Symbol, f.Side, f.Quantity, f.Price, x.Gross, f.Fee, x.CashDelta, f.At.Format(time.RFC3339Nano), x.RecordedAt.Format(time.RFC3339Nano), x.AllocationID, x.SleeveID, x.StrategyID, f.SourceSHA256)
+		}
 	}
 	fmt.Fprintln(&b, "SLEEVES / LIFECYCLE / REFUSALS (latest finalized evidence; historical budget is not current admission)")
 	for _, s := range v.Sleeves {

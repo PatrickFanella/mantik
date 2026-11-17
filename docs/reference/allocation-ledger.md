@@ -21,6 +21,19 @@ availability and qualification credit remain false.
 
 ## Ledger versions and fee-bearing exits
 
+`NewFinancialLedger` creates `mantik-allocation-ledger-core-v3` for new execution
+policies. It retains each exact modeled fill in the entry/close effect and
+checks its content hash, order identity, quantity/price/gross/fee arithmetic,
+side, economic clock, and fee-inclusive debit or net proceeds. The execution
+owner additionally replays the original quote books and matches the derived
+effect binding; a portable fill hash is not source attestation. V3 supports the
+same funded negative-proceeds close as v2. It changes no cash or risk limits.
+
+New execution comparisons are v17. A policy's first comparison selects its
+ledger contract permanently. Existing v1/v2 ledgers do not gain inferred fill
+details when v17 records join them. Optional fields are omitted from historical
+wire shapes, and every retained receipt keeps its original bytes and hash.
+
 `NewLedger` continues to create `mantik-allocation-ledger-core-v1`. Its wire
 hashes and nonnegative close-proceeds rules are unchanged. The schema-39 owned
 allocation comparison service still uses this version and cannot reserve or

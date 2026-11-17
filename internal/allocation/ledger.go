@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"git.subcult.tv/subculture-collective/mantik/internal/paperaccount"
+	"git.subcult.tv/subculture-collective/mantik/internal/paperfill"
 	"git.subcult.tv/subculture-collective/mantik/internal/workerplan"
 )
 
@@ -16,6 +17,9 @@ const LedgerSchema = "mantik-allocation-ledger-core-v1"
 // CostLedgerSchema opts into funded negative net proceeds on position closes.
 // Legacy callers keep their existing v1 wire hashes and nonnegative contract.
 const CostLedgerSchema = "mantik-allocation-ledger-core-v2"
+
+// FinancialLedgerSchema retains the exact modeled fill behind each economic effect.
+const FinancialLedgerSchema = "mantik-allocation-ledger-core-v3"
 const MaxLedgerEntries = 1024
 
 var ErrLedgerConflict = errors.New("allocation ledger command or evidence identity conflict")
@@ -34,12 +38,13 @@ type Comparison struct {
 // Amount is entry cost, released cash, or the cost basis being closed. Proceeds
 // includes all closing costs. Unknown/resolved receipts carry no invented fill.
 type Effect struct {
-	ID            string `json:"id"`
-	SHA256        string `json:"sha256"`
-	DecisionID    string `json:"decision_id"`
-	Kind          string `json:"kind"`
-	AmountCents   int64  `json:"amount_cents"`
-	ProceedsCents int64  `json:"proceeds_cents"`
+	Execution     *paperfill.Fill `json:"execution,omitempty"`
+	ID            string          `json:"id"`
+	SHA256        string          `json:"sha256"`
+	DecisionID    string          `json:"decision_id"`
+	Kind          string          `json:"kind"`
+	AmountCents   int64           `json:"amount_cents"`
+	ProceedsCents int64           `json:"proceeds_cents"`
 }
 type LedgerCommand struct {
 	ID         string      `json:"id"`
@@ -100,6 +105,12 @@ func NewLedger(p PolicyRecord) (Ledger, error) {
 func NewCostLedger(p PolicyRecord) (Ledger, error) {
 	return newLedger(p, CostLedgerSchema)
 }
+
+// NewFinancialLedger opts new books into explicit per-fill financial evidence.
+// It neither upgrades old ledgers nor attests the input's source ownership.
+func NewFinancialLedger(p PolicyRecord) (Ledger, error) {
+	return newLedger(p, FinancialLedgerSchema)
+}
 func newLedger(p PolicyRecord, schema string) (Ledger, error) {
 	if p.Validate() != nil {
 		return Ledger{}, ErrInvalid
@@ -123,7 +134,7 @@ type ledgerState struct {
 
 func initialLedger(p PolicyRecord, schema string) ledgerState {
 	head := p.SHA256
-	if schema == CostLedgerSchema {
+	if schema != LedgerSchema {
 		// A schema-only rehash cannot reinterpret a retained v1 entry chain as v2.
 		head = workerplan.Hash(struct {
 			Schema       string `json:"schema"`
@@ -186,6 +197,12 @@ func (s *ledgerState) apply(ctx context.Context, p Policy, c LedgerCommand, at t
 		return &plan, nil
 	}
 	e := c.Effect
+	if err := e.ValidateExecution(schema); err != nil {
+		return nil, err
+	}
+	if e.Execution != nil && !e.Execution.At.Equal(at) {
+		return nil, ErrLedgerConflict
+	}
 	if !id(e.ID) || !id(e.DecisionID) || !validHash(e.SHA256) || s.effects[e.ID] || s.effectHashes[e.SHA256] {
 		return nil, ErrLedgerConflict
 	}
@@ -231,7 +248,7 @@ func (s *ledgerState) apply(ctx context.Context, p Policy, c LedgerCommand, at t
 		}
 		// Check the signed bounds first, so negating an untrusted minimum
 		// int64 cannot overflow. Held reservations never count as funding.
-		if e.ProceedsCents < 0 && (schema != CostLedgerSchema || s.snapshot.AvailableCashCents < -e.ProceedsCents) {
+		if e.ProceedsCents < 0 && (schema == LedgerSchema || s.snapshot.AvailableCashCents < -e.ProceedsCents) {
 			return nil, ErrLedgerConflict
 		}
 		r.ClosedCostCents += e.AmountCents
@@ -272,7 +289,7 @@ func walkLedger(ctx context.Context, l Ledger, visit func(int, ledgerState)) (le
 	if err := ctx.Err(); err != nil {
 		return ledgerState{}, err
 	}
-	if (l.Schema != LedgerSchema && l.Schema != CostLedgerSchema) || l.Policy.Validate() != nil || l.Entries == nil || len(l.Entries) > MaxLedgerEntries {
+	if (l.Schema != LedgerSchema && l.Schema != CostLedgerSchema && l.Schema != FinancialLedgerSchema) || l.Policy.Validate() != nil || l.Entries == nil || len(l.Entries) > MaxLedgerEntries {
 		return ledgerState{}, ErrInvalid
 	}
 	sha := l.SHA256

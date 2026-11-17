@@ -37,6 +37,34 @@ Protective workers and reduce-only exits do not need model availability or a
 terminal session. Family admission, applicable decisions and safety contracts
 remain enforced by the existing submission/storage boundaries.
 
+## Per-fill cash attribution
+
+The same authenticated `book --action show` readback includes `Execution` with
+method `retained-broker-fill-cash-v1`. It lists each original broker activity,
+owned client/venue order, symbol, side, fractional quantity, price, fee and raw
+source hash. The original fill clock and local recording clock stay separate;
+rows are displayed in economic-clock order. Allocation, sleeve and strategy
+identities come from the retained order, when that order has those identities.
+Broker activity IDs retain the journal's nonempty, at-most-128-byte contract;
+punctuation and longer IDs are preserved and escaped for terminal output.
+
+Each row shows gross quantity times price and its signed cash movement: a buy
+debits gross plus fee, while a sell credits gross less fee. Exact decimal
+arithmetic keeps up to 18 places for the product of nine-place quantity and
+price. This is USD, not integer cents or rounded share counts. The aggregate
+checks opening cash plus retained deposits plus all fill movements against
+the replayed book's exact cash. `Cash` retains its existing nine-place display;
+`ReconciledCash` preserves the complete exact amount.
+
+`Status` is `no_fills` or `fills_reconciled`. New empty books report an empty
+activity list; pending orders do not become fills or costs. The terminal checks
+per-fill and aggregate arithmetic before displaying terminal or JSON output.
+An older service may omit this section, which grants no evidence of zero costs.
+The readback leaves original journal bytes unchanged and performs no broker or
+model call. Gross sale proceeds and cash changes are not realized PnL, TWR,
+SPY excess, or qualification evidence. Option and Kalshi books keep their own
+accounting contracts.
+
 ## Confirmed actions and current readback
 
 `book --help` lists every flag. `--action show` is the default; `--format json`

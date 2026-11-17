@@ -65,7 +65,7 @@ func requireContributionTotal(t *testing.T, decision string, pages []OwnedAlloca
 		t.Fatal("assemble native contribution pages", decision, err)
 	}
 	want, references := expectedAllocationContribution(t, decision, all)
-	got := PaperEconomicAttribution{Status: total.Status, ReservedCents: total.ReservedCents, FilledCostCents: total.FilledCostCents, ClosedCostCents: total.ClosedCostCents, NetProceedsCents: total.NetProceedsCents, ReleasedCents: total.ReleasedCents, RealizedPnLCents: total.RealizedPnLCents}
+	got := PaperEconomicAttribution{Status: total.Status, ReservedCents: total.ReservedCents, FilledCostCents: total.FilledCostCents, ClosedCostCents: total.ClosedCostCents, NetProceedsCents: total.NetProceedsCents, ReleasedCents: total.ReleasedCents, RealizedPnLCents: total.RealizedPnLCents, ExecutedQuantity: total.ExecutedQuantity, FeesCents: total.FeesCents}
 	want.Effects, got.Effects = sortedEffects(want.Effects), sortedEffects(total.Effects)
 	if (want.Effects == nil) != (total.Effects == nil) || !reflect.DeepEqual(got, want) {
 		t.Fatalf("bounded contribution total differs from full replay for %s:\n got %+v\nwant %+v", decision, got, want)

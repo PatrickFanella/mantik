@@ -60,18 +60,28 @@ func runPaperAttribution(ctx context.Context, args []string, out, errOut io.Writ
 	}
 	hash := c.SHA256
 	c.SHA256 = ""
-	if (c.Schema != "mantik-owned-paper-attribution-v1" && c.Schema != "mantik-owned-paper-attribution-v2" && c.Schema != "mantik-owned-paper-attribution-v3" && c.Schema != "mantik-owned-paper-attribution-v4" && c.Schema != "mantik-owned-paper-attribution-v5") || c.ReceiverID != *receiver || !paperStrategyPin.MatchString(c.SourceSHA256) || c.Authority != "service_owned_phase_attribution_only" || c.ExecutionAvailable || c.QualificationCredit || c.Rows == nil || len(c.Rows) > storage.MaxPaperDecisions || !paperStrategyPin.MatchString(hash) || workerplan.Hash(c) != hash {
+	if (c.Schema != "mantik-owned-paper-attribution-v1" && c.Schema != "mantik-owned-paper-attribution-v2" && c.Schema != "mantik-owned-paper-attribution-v3" && c.Schema != "mantik-owned-paper-attribution-v4" && c.Schema != "mantik-owned-paper-attribution-v5" && c.Schema != "mantik-owned-paper-attribution-v6") || c.ReceiverID != *receiver || !paperStrategyPin.MatchString(c.SourceSHA256) || c.Authority != "service_owned_phase_attribution_only" || c.ExecutionAvailable || c.QualificationCredit || c.Rows == nil || len(c.Rows) > storage.MaxPaperDecisions || !paperStrategyPin.MatchString(hash) || workerplan.Hash(c) != hash {
 		return storage.ErrPaperAttributionInvalid
 	}
 	previous := ""
 	claimReviews := map[string]bool{}
 	for _, row := range c.Rows {
-		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID <= previous || c.Schema != "mantik-owned-paper-attribution-v1" && row.AdmissionReviewHistory == nil || (c.Schema == "mantik-owned-paper-attribution-v3" || c.Schema == "mantik-owned-paper-attribution-v4" || c.Schema == "mantik-owned-paper-attribution-v5") != (row.ClaimReviewHistory != nil) || c.Schema != "mantik-owned-paper-attribution-v4" && c.Schema != "mantik-owned-paper-attribution-v5" && row.Economics.Status != "owned_execution_unavailable" {
+		if c.Schema != "mantik-owned-paper-attribution-v6" {
+			if row.Economics.ExecutedQuantity != nil || row.Economics.FeesCents != nil {
+				return storage.ErrPaperAttributionInvalid
+			}
+			for _, effect := range row.Economics.Effects {
+				if effect.Execution != nil || effect.EvidenceSHA256 != "" {
+					return storage.ErrPaperAttributionInvalid
+				}
+			}
+		}
+		if validateAttributionRow(row, *receiver) != nil || row.Decision.Command.ID <= previous || c.Schema != "mantik-owned-paper-attribution-v1" && row.AdmissionReviewHistory == nil || (c.Schema == "mantik-owned-paper-attribution-v3" || c.Schema == "mantik-owned-paper-attribution-v4" || c.Schema == "mantik-owned-paper-attribution-v5" || c.Schema == "mantik-owned-paper-attribution-v6") != (row.ClaimReviewHistory != nil) || c.Schema != "mantik-owned-paper-attribution-v4" && c.Schema != "mantik-owned-paper-attribution-v5" && c.Schema != "mantik-owned-paper-attribution-v6" && row.Economics.Status != "owned_execution_unavailable" {
 			return storage.ErrPaperAttributionInvalid
 		}
 		previous = row.Decision.Command.ID
 		// A v4 or later row with a reservation reports its execution.
-		if (c.Schema == "mantik-owned-paper-attribution-v4" || c.Schema == "mantik-owned-paper-attribution-v5") && row.Economics.Status == "owned_execution_unavailable" {
+		if (c.Schema == "mantik-owned-paper-attribution-v4" || c.Schema == "mantik-owned-paper-attribution-v5" || c.Schema == "mantik-owned-paper-attribution-v6") && row.Economics.Status == "owned_execution_unavailable" {
 			for _, a := range row.Allocations {
 				if a.Status == "reserve_plan" {
 					return storage.ErrPaperAttributionInvalid
@@ -290,9 +300,6 @@ func validateAttributionReadiness(c storage.OwnedAdmissionReadiness, a storage.P
 // them, and nothing is inferred that the ledger does not retain.
 func validateAttributionEconomics(r storage.PaperAttributionRow) error {
 	e := r.Economics
-	if e.ExecutedQuantity != nil || e.FeesCents != nil {
-		return storage.ErrPaperAttributionInvalid
-	}
 	var reserved int64
 	for _, a := range r.Allocations {
 		if a.Status == "reserve_plan" {
@@ -300,7 +307,7 @@ func validateAttributionEconomics(r storage.PaperAttributionRow) error {
 		}
 	}
 	if e.Status == "owned_execution_unavailable" {
-		if e.RealizedPnLCents != nil || e.ReservedCents != nil || e.FilledCostCents != nil || e.ClosedCostCents != nil || e.NetProceedsCents != nil || e.ReleasedCents != nil || e.Effects != nil {
+		if e.ExecutedQuantity != nil || e.FeesCents != nil || e.RealizedPnLCents != nil || e.ReservedCents != nil || e.FilledCostCents != nil || e.ClosedCostCents != nil || e.NetProceedsCents != nil || e.ReleasedCents != nil || e.Effects != nil {
 			return storage.ErrPaperAttributionInvalid
 		}
 		return nil
@@ -308,13 +315,28 @@ func validateAttributionEconomics(r storage.PaperAttributionRow) error {
 	if e.ReservedCents == nil || e.FilledCostCents == nil || e.ClosedCostCents == nil || e.NetProceedsCents == nil || e.ReleasedCents == nil || e.Effects == nil || *e.ReservedCents != reserved || reserved <= 0 || len(e.Effects) > allocation.MaxLedgerEntries {
 		return storage.ErrPaperAttributionInvalid
 	}
-	var filled, closed, proceeds, released int64
+	var filled, closed, proceeds, released, quantity, fees int64
+	complete, financial := true, false
 	var previous time.Time
 	for _, x := range e.Effects {
 		if !paperaccount.ID.MatchString(x.RecordID) || x.EffectID == "" || x.At.IsZero() || x.At.Before(previous) || x.AmountCents < 0 {
 			return storage.ErrPaperAttributionInvalid
 		}
 		previous = x.At
+		if x.ValidateExecution(r.Decision.Command.ID) != nil {
+			return storage.ErrPaperAttributionInvalid
+		}
+		if x.Kind == "fill" || x.Kind == "close" {
+			financial = true
+			if x.Execution == nil {
+				complete = false
+			} else {
+				fees += x.Execution.FeeCents
+				if x.Kind == "fill" {
+					quantity += x.Execution.Quantity
+				}
+			}
+		}
 		switch x.Kind {
 		case "fill":
 			filled += x.AmountCents
@@ -329,6 +351,13 @@ func validateAttributionEconomics(r storage.PaperAttributionRow) error {
 		if x.Kind != "close" && x.ProceedsCents != 0 {
 			return storage.ErrPaperAttributionInvalid
 		}
+	}
+	if financial && complete {
+		if e.ExecutedQuantity == nil || e.FeesCents == nil || *e.ExecutedQuantity != quantity || *e.FeesCents != fees {
+			return storage.ErrPaperAttributionInvalid
+		}
+	} else if e.ExecutedQuantity != nil || e.FeesCents != nil {
+		return storage.ErrPaperAttributionInvalid
 	}
 	status := "position_closed"
 	switch {
@@ -455,9 +484,17 @@ func renderPaperAttribution(out io.Writer, receiver string, rows []storage.Paper
 			if e.RealizedPnLCents != nil {
 				realized = strconv.FormatInt(*e.RealizedPnLCents, 10)
 			}
-			fmt.Fprintf(&b, "  ECONOMICS %s reserved_cents=%d filled_cost_cents=%d closed_cost_cents=%d net_proceeds_cents=%d released_cents=%d realized_pnl_cents=%s (paper fills; fees inside cost and proceeds; quantity not retained)\n", strconv.Quote(e.Status), *e.ReservedCents, *e.FilledCostCents, *e.ClosedCostCents, *e.NetProceedsCents, *e.ReleasedCents, realized)
+			fmt.Fprintf(&b, "  ECONOMICS %s reserved_cents=%d filled_cost_cents=%d closed_cost_cents=%d net_proceeds_cents=%d released_cents=%d realized_pnl_cents=%s (paper fills; retained net cost and proceeds)\n", strconv.Quote(e.Status), *e.ReservedCents, *e.FilledCostCents, *e.ClosedCostCents, *e.NetProceedsCents, *e.ReleasedCents, realized)
+			if e.FeesCents != nil && e.ExecutedQuantity != nil {
+				fmt.Fprintf(&b, "    entry_quantity=%d total_entry_and_exit_fees_cents=%d\n", *e.ExecutedQuantity, *e.FeesCents)
+			} else {
+				fmt.Fprintln(&b, "    entry_quantity=unavailable explicit_fees=unavailable (incomplete historical fill detail)")
+			}
 			for _, x := range e.Effects {
 				fmt.Fprintf(&b, "    EFFECT %s %s at=%s amount_cents=%d proceeds_cents=%d record=%s\n", strconv.Quote(x.Kind), strconv.Quote(x.EffectID), x.At.UTC().Format(time.RFC3339Nano), x.AmountCents, x.ProceedsCents, strconv.Quote(x.RecordID))
+				if f := x.Execution; f != nil {
+					fmt.Fprintf(&b, "      FILL side=%q quantity=%d price_cents=%d gross_cents=%d fee_cents=%d fill_sha256=%q quote=%q quote_sha256=%q model_sha256=%q evidence=%q\n", f.Side, f.Quantity, f.PriceCents, f.GrossCents, f.FeeCents, f.SHA256, f.QuoteID, f.QuoteSHA256, f.ModelSHA256, f.EvidenceClass)
+				}
 			}
 			fmt.Fprintf(&b, "  BASELINES %s\n  ROW SHA256 %s\n", renderBaseline(e), r.SHA256)
 		} else {

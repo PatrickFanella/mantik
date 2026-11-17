@@ -98,6 +98,10 @@ func ApplyEntryFillBook(ctx context.Context, ledger Ledger, book paperfill.Book)
 			binding := workerplan.Hash(struct{ Method, BookRootSHA256, FillSHA256 string }{EntryFillBindingMethod, root.SHA256, fill.SHA256})
 			id := "entry-fill-" + binding
 			effect := Effect{ID: id, SHA256: binding, DecisionID: fill.OrderID, Kind: "fill", AmountCents: fill.DebitCents}
+			if ledger.Schema == FinancialLedgerSchema {
+				copy := *fill
+				effect.Execution = &copy
+			}
 			if !orders[fill.OrderID] || fill.Side != "buy" || fill.DebitCents <= 0 {
 				return fail(ErrLedgerConflict)
 			}

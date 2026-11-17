@@ -341,7 +341,7 @@ func sourceBoundDecisionReviews(t *testing.T, s sourceReviewBackend) {
 		t.Fatal(final, err)
 	}
 	attribution, err := s.PaperAttribution(ctx, eval, oe)
-	if err != nil || attribution.Schema != "mantik-owned-paper-attribution-v5" {
+	if err != nil || attribution.Schema != "mantik-owned-paper-attribution-v6" {
 		t.Fatal(attribution, err)
 	}
 	requireAttributionTargets(t, s, attribution, eval, oe)

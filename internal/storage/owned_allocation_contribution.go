@@ -115,7 +115,7 @@ type OwnedAllocationContributionStore interface {
 	OwnedAllocationContribution(context.Context, OwnedAllocationContributionQuery, PaperDecisionEvaluator, ...PaperOutcomeEvaluator) (OwnedAllocationContributionPage, error)
 }
 
-func validContributionRecords(records []OwnedAllocationContributionRecord, after, through int) (int, error) {
+func validContributionRecords(records []OwnedAllocationContributionRecord, after, through int, decision string) (int, error) {
 	for _, r := range records {
 		if r.Sequence <= after || r.Sequence > through || !paperaccount.ID.MatchString(r.RecordID) || !decisionPin.MatchString(r.RecordSHA256) || r.Effects == nil || r.Kind != "comparison" && (r.Kind != "execution" || r.Choice != nil) {
 			return 0, ErrOwnedAllocationInvalid
@@ -124,7 +124,7 @@ func validContributionRecords(records []OwnedAllocationContributionRecord, after
 			return 0, ErrOwnedAllocationInvalid
 		}
 		for _, e := range r.Effects {
-			if e.RecordID != r.RecordID || e.EffectID == "" || e.AmountCents < 0 || e.ProceedsCents < 0 || e.Kind != "fill" && e.Kind != "close" && e.Kind != "release" || e.Kind != "close" && e.ProceedsCents != 0 {
+			if e.RecordID != r.RecordID || e.EffectID == "" || e.AmountCents < 0 || e.AmountCents > paperaccount.MaxOpeningCashCents || e.ProceedsCents < -paperaccount.MaxOpeningCashCents || e.ProceedsCents > 2*paperaccount.MaxOpeningCashCents || e.Kind != "fill" && e.Kind != "close" && e.Kind != "release" || e.Kind != "close" && e.ProceedsCents != 0 || e.ValidateExecution(decision) != nil {
 				return 0, ErrOwnedAllocationInvalid
 			}
 		}
@@ -156,7 +156,7 @@ func (p OwnedAllocationContributionPage) Validate(q OwnedAllocationContributionQ
 	if p.ThroughSequence == 0 && (len(p.Records) != 0 || p.NextAfter != "" || p.CheckpointSHA256 != "") || p.ThroughSequence > 0 && !decisionPin.MatchString(p.CheckpointSHA256) {
 		return ErrOwnedAllocationInvalid
 	}
-	last, err := validContributionRecords(p.Records, start, p.ThroughSequence)
+	last, err := validContributionRecords(p.Records, start, p.ThroughSequence, q.DecisionID)
 	if err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func (p OwnedAllocationContributionPage) Validate(q OwnedAllocationContributionQ
 		if a.Records == nil || a.ThroughSequence < p.ThroughSequence || a.ThroughSequence-p.ThroughSequence > MaxOwnedAllocations || len(a.Records) > a.ThroughSequence-p.ThroughSequence {
 			return ErrOwnedAllocationInvalid
 		}
-		if _, err := validContributionRecords(a.Records, p.ThroughSequence, a.ThroughSequence); err != nil {
+		if _, err := validContributionRecords(a.Records, p.ThroughSequence, a.ThroughSequence, q.DecisionID); err != nil {
 			return err
 		}
 		sums.add(a.Records)
@@ -193,7 +193,7 @@ func allocationContributionRecord(decision string, r OwnedAllocationHistoryRecor
 	collect := func(entries []allocation.LedgerEntry) {
 		for _, e := range entries {
 			if f := e.Command.Effect; f != nil && f.DecisionID == decision {
-				out.Effects = append(out.Effects, PaperExecutionEffect{RecordID: out.RecordID, EffectID: f.ID, Kind: f.Kind, At: e.At, AmountCents: f.AmountCents, ProceedsCents: f.ProceedsCents})
+				out.Effects = append(out.Effects, executionEffect(out.RecordID, e))
 			}
 		}
 	}
@@ -339,6 +339,8 @@ func (p *Postgres) OwnedAllocationContribution(ctx context.Context, q OwnedAlloc
 // of one cut for one decision. Its accounting uses the same rule as paper
 // attribution, so both agree when read at the same journal position.
 type OwnedAllocationContributionTotal struct {
+	ExecutedQuantity    *int64                 `json:"executed_quantity,omitempty"`
+	FeesCents           *int64                 `json:"fees_cents,omitempty"`
 	Schema              string                 `json:"schema"`
 	ReceiverID          string                 `json:"receiver_id"`
 	DecisionID          string                 `json:"decision_id"`
@@ -391,6 +393,7 @@ func AssembleOwnedAllocationContribution(receiverID, decisionID string, limit in
 	take(first.Active.Records)
 	out.JournalSequence, out.ActiveRecords = first.Active.ThroughSequence, len(first.Active.Records)
 	e := paperEconomicsFromEffects(sums.ReservedCents, effects)
+	out.ExecutedQuantity, out.FeesCents = e.ExecutedQuantity, e.FeesCents
 	out.Status, out.ReservedCents, out.FilledCostCents, out.ClosedCostCents, out.NetProceedsCents, out.ReleasedCents, out.RealizedPnLCents, out.Effects = e.Status, e.ReservedCents, e.FilledCostCents, e.ClosedCostCents, e.NetProceedsCents, e.ReleasedCents, e.RealizedPnLCents, e.Effects
 	out.SHA256 = workerplan.Hash(out)
 	return out, nil

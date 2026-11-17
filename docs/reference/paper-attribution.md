@@ -2,7 +2,7 @@
 
 ## Paper execution
 
-Current service catalogues use `mantik-owned-paper-attribution-v5`. A row whose
+Current service catalogues use `mantik-owned-paper-attribution-v6`. A row whose
 decision the allocation owner reserved now carries its paper execution in
 `economics`:
 
@@ -20,9 +20,37 @@ decision the allocation owner reserved now carries its paper execution in
   `position_closed`. A decision without a reservation stays
   `owned_execution_unavailable` with every value null.
 
-Fees sit inside each fill's cost and each close's net proceeds, and the ledger
-does not retain share counts, so `fees_cents` and `executed_quantity` stay
-null. These are paper fills from retained quotes, not qualification.
+New policy ledgers begun by execution comparison v17 use
+`mantik-allocation-ledger-core-v3`. Each fill and close effect additionally retains
+its original modeled `execution`: order and quote identities, source/model/fill
+hashes, economic clock, side, quantity, price, gross amount, fee, and debit or net
+proceeds. Entry debit is gross plus fee; closing proceeds are gross less fee.
+Closing `amount_cents` is the allocated entry cost basis, not gross sale value.
+The owner replays the original quote books before accepting those details.
+
+`fees_cents` sums both entry and closing fees. `executed_quantity` sums entry
+shares only, so a round trip does not double the reported quantity. They are set
+only when every fill/close has explicit detail; a retained zero fee is distinct
+from missing evidence. Old v1/v2 policy ledgers keep their schema and hashes,
+including when newer comparisons join them, and those aggregate fields remain
+null. A reservation or release without a fill also keeps them null. Current
+terminal and interactive views validate each fill and the totals before display.
+Older v1–v5 catalogue representations remain readable under their original
+contracts. These are modeled paper fills from retained quotes, not venue fills
+or qualification.
+
+The bounded `allocation-contribution` pages retain the same per-effect details;
+their assembled total uses the same fee and entry-quantity accounting. Checkpoint
+and targeted history paths retain the original fill pins. Neither readback adds
+an order, rewrites an old receipt, or makes an admission decision.
+
+The separate capped-book `book` command reports actual retained broker activities
+with fractional quantities and exact USD gross/fee/cash deltas. It reconciles
+opening cash plus recorded deposits plus fill cash movements to current local
+cash. Its [owner readback contract](owner-book-controls.md#per-fill-cash-attribution)
+keeps original economic and application clocks and order/sleeve/source identities.
+It does not import the threshold ledger's whole-share amounts or treat a sale's
+proceeds as profit.
 
 Since v5 each row compares the decision with two alternatives in
 `economics.baseline`, in whole basis points rounded toward zero:
@@ -179,12 +207,13 @@ score from these records. A finalized abstention remains a valid decision with
 its own reason; it is not recast as a failed job. Assessment statuses such as
 `waiting_horizon`, `price_unavailable` and `not_applicable` remain visible.
 
-Forward quote deltas describe observations, not fills, realized returns or a
-passive portfolio. There is no owned execution/economic-effect issuer for this
-path yet. Accordingly each row has `economics.status: owned_execution_unavailable`
-and `baseline_status: no_capital_committed`. Executed quantity, fees
-and realized PnL are JSON `null`. They are never filled with zero from a missing
-receipt, a positive price delta, a cost ceiling or a successful workflow.
+Forward quote deltas describe observations, not fills or realized returns.
+Without a retained reservation/effect, a row has
+`economics.status: owned_execution_unavailable` and
+`baseline_status: no_capital_committed`. Executed quantity, fees and realized PnL
+are JSON `null`. They are never filled with zero from a missing receipt, a
+positive price delta, a cost ceiling or a successful workflow. Funded rows use
+the execution accounting above.
 
 ## Snapshot, bounds and failures
 
@@ -199,7 +228,7 @@ corrupt histories fail the complete read without a partial response.
 The catalogue's `source_sha256` binds the replayed decision, outcome and allocation
 catalogues and the complete admission-review catalogue, including the allocation
 ledger histories. Current v3 catalogues also bind the owner-replayed claim-review
-catalogue. The response schema is `mantik-owned-paper-attribution-v3`;
+catalogue. Historical v3 and later responses include those claim-review pins;
 every row has `admission_review_history`, including an explicit empty history.
 Review chains are scoped by decision, so a review of another decision changes
 the complete source hash without rewriting unrelated row hashes. Global review

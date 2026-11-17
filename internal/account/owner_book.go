@@ -110,6 +110,7 @@ type OwnerSleeveView struct {
 // OwnerBookView is an on-demand local-paper readback. Missing current valuation
 // evidence never turns into zero equity. It does not assert broker health or TWR.
 type OwnerBookView struct {
+	Execution                                    *BookExecutionAttribution `json:",omitempty"`
 	Config                                       CappedConfig
 	Version                                      int64
 	AsOf                                         time.Time
@@ -132,6 +133,11 @@ func ReadOwnerBook(s CappedState, at time.Time) (OwnerBookView, error) {
 	}
 	r.funds.Advance(civil(at))
 	out := OwnerBookView{Config: s.Config, Version: s.Version, AsOf: at, Cash: r.funds.Cash().FloatString(9), SettledCash: r.funds.Settled().FloatString(9), Positions: map[string]string{}, Risk: r.risk, Halted: r.halted || r.risk.Halted, Sleeves: []OwnerSleeveView{}, Deposits: []BookCommand{}}
+	execution, err := bookFillAttribution(s, r.orders, r.funds.Cash())
+	if err != nil {
+		return OwnerBookView{}, err
+	}
+	out.Execution = &execution
 	for symbol, q := range r.positions {
 		out.Positions[symbol] = q.FloatString(9)
 	}

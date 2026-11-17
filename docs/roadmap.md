@@ -17,13 +17,22 @@ The work is tracked in
 
 **Implementation status, 2026-11-16, America/Chicago** (schema 127 on this branch; merge state is tracked in #47).
 
-The #51/#56 follow-up adds [snapshot-specific minimum-capital evidence](reference/strategy-minimum-capital.md)
+The #51/#56 follow-up merged in [PR #134](https://github.com/subculture-collective/mantik/pull/134)
+as `6e9e773`; all five hosted checks passed on tree-matching head `14a258d`.
+Epic D (#51) is complete with [snapshot-specific minimum-capital evidence](reference/strategy-minimum-capital.md)
 for the complete declared 3-ETF / 7-stock scopes, preserving the four original
 failed gate receipts and each predecessor-cent refusal. It also starts a
 [separate Kalshi notional settlement check](reference/kalshi-paper-check.md):
 one real-source pre-close forecast, modeled taker fill and canonical pending
 calibration record are retained. Official settlement remains unobserved, so
 #56 stays open. Neither diagnostic grants strategy admission or qualification.
+#25's current accounting follow-up adds explicit modeled fill details for new
+financial ledgers and exact fractional broker-fill cash attribution in the
+[owner book readback](reference/owner-book-controls.md#per-fill-cash-attribution).
+Historical receipts retain their bytes and unknown details. The broader
+attribution acceptance stays open; this branch does not supply social/copy
+provider evidence, operational qualification or the owner walkthrough.
+
 Wave 1 merged in [PR #118](https://github.com/subculture-collective/mantik/pull/118)
 at schema 118. Wave 4 adds [resumable stock backfills](reference/daily-backfill.md),
 the [asset-identity universe](reference/stock-universe.md), and
@@ -179,13 +188,13 @@ the full order, waves and critical path. Its epics:
 | [A #48](https://github.com/subculture-collective/mantik/issues/48) Free point-in-time market data | 10/10 | Closed after the explicit primary-close SPY reconciliation; delisted-stock and indicative-option limits remain |
 | [B #49](https://github.com/subculture-collective/mantik/issues/49) One strategy interface and engine | 5/5 | Closed after the real-price SPY accounting check in both account types with deposits (#105) |
 | [C #50](https://github.com/subculture-collective/mantik/issues/50) Base strategy library for stocks | 6/6 | Closed under the owner-approved recipe ports and pinned reference tests |
-| [D #51](https://github.com/subculture-collective/mantik/issues/51) Trial registry and backtest gate | 4/4 | Four base decisions are recorded; strategy-specific minimum capital across each full eligible universe remains required. The one-share SPY fixture minimum does not meet that epic exit |
-| [E #52](https://github.com/subculture-collective/mantik/issues/52) Real-quote paper trading on the capped book | 5/6 on this branch | First protected real-quote positions (#107); the runner alone does not complete that exit |
-| [F #53](https://github.com/subculture-collective/mantik/issues/53) Overseer and daily brief | 2/4 merged | Daily review and health admission merged; the daily brief and authenticated owner controls are in progress, with an actual owner walkthrough still required |
-| [G #54](https://github.com/subculture-collective/mantik/issues/54) Options and multi-leg strategies | 2/5 on this branch | Alpaca multi-leg orders and strategy recipes, including real paper open/close evidence |
-| [H #55](https://github.com/subculture-collective/mantik/issues/55) Model research desk | 4/5 merged | Research desk and evolution merged; the forward-only analyst is in this follow-up |
+| [D #51](https://github.com/subculture-collective/mantik/issues/51) Trial registry and backtest gate | 4/4 | Closed after PR #134 joined the original four failed gates to full-basket fractional cent boundaries over the declared reviewed snapshot; no qualification credit |
+| [E #52](https://github.com/subculture-collective/mantik/issues/52) Real-quote paper trading on the capped book | 5/6 merged | First protected real-quote positions (#107); the runner alone does not complete that exit |
+| [F #53](https://github.com/subculture-collective/mantik/issues/53) Overseer and daily brief | 3/4 merged | Daily review, health admission and daily brief are merged; #100 still requires the actual owner walkthrough |
+| [G #54](https://github.com/subculture-collective/mantik/issues/54) Options and multi-leg strategies | 4/5 merged | Multi-leg source and recipes merged; #85 still needs actual paper open/close evidence |
+| [H #55](https://github.com/subculture-collective/mantik/issues/55) Model research desk | 5/5 merged | Closed after the forward-only analyst and retained research/evolution sessions |
 | [I #56](https://github.com/subculture-collective/mantik/issues/56) Kalshi decision engine | 3/3 | Calibrated paper trades must settle and feed calibration records; maker intents alone do not meet that exit |
-| [J #57](https://github.com/subculture-collective/mantik/issues/57) Forward qualification and promotion | 1/3 merged | Declarations merged; compiled automatic assessment is in this follow-up, and the natural forward assessment remains #108 |
+| [J #57](https://github.com/subculture-collective/mantik/issues/57) Forward qualification and promotion | 2/3 merged | Declarations and automatic assessment merged; the natural forward assessment remains #108 |
 
 After the epics, the remaining acceptance issues close in this order:
 
@@ -211,8 +220,8 @@ complete the replacement epics or their acceptance checks.
 
 ## Next steps
 
-After PR #131, 46 of 51 work issues are closed. Epics A, B, C and H meet their
-stated exits. These are the five remaining work units. This describes
+After PR #134, 47 of 51 work issues are closed. Epics A, B, C, D and H meet their
+stated exits. These are the four remaining work units. This describes
 dependencies, not pickup approval, deployment or provider access. Check #47 and each issue's
 current blockers before starting work.
 
@@ -220,7 +229,6 @@ current blockers before starting work.
 | --- | --- |
 | [G3 #85](https://github.com/subculture-collective/mantik/issues/85) Multi-leg paper orders | Source integration adds [durable open/close and safe fallback](reference/alpaca-mleg-paper.md); actual paper iron-condor open/close evidence remains outstanding. |
 | [F4 #100](https://github.com/subculture-collective/mantik/issues/100) Owner controls | Code and checkpoint-aware verification are merged; the actual human terminal walkthrough remains unperformed. |
-| [G4 #101](https://github.com/subculture-collective/mantik/issues/101) Income option recipes | Recipes, provenance and cash-book checks are merged. The owner-approved retrospective archived-price exercise now runs through a separate offline command; merge and issue closure remain tracked in #47. Naturally observed historical membership remains unestablished. |
 | [E6 #107](https://github.com/subculture-collective/mantik/issues/107) Protected paper positions | Requires eligible strategies, fresh regular-session quotes, protected execution and owned-fill reconciliation. |
 | [J3 #108](https://github.com/subculture-collective/mantik/issues/108) Natural forward assessment | Run a declared incubating base-strategy window to its actual end and record an evidence-backed promotion or rejection. |
 

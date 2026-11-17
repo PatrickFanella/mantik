@@ -291,3 +291,10 @@ books cannot mix in real receipts, and receipt-mode workers never auto-credit
 missed schedule slots. Missing
 owner authentication refuses mutations even in development. The isolated
 walkthrough is automated evidence; the owner's terminal checkpoint is outstanding.
+
+The same readback includes [per-fill cash attribution](docs/reference/owner-book-controls.md#per-fill-cash-attribution):
+original broker activities, fractional quantity, gross amount, explicit fee,
+economic/receipt clocks and cash reconciliation. The separate
+[decision attribution](docs/reference/paper-attribution.md#paper-execution) path
+retains modeled fill details for new financial ledgers, with entry-only quantity
+and both entry/exit fees. Historical missing detail stays unavailable.

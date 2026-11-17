@@ -127,6 +127,10 @@ func ApplyExitFillBooks(ctx context.Context, ledger Ledger, entries paperfill.Bo
 				binding := workerplan.Hash(struct{ Method, EntryBookSHA256, ExitBookRootSHA256, FillSHA256 string }{ExitFillBindingMethod, entries.SHA256, root.SHA256, fill.SHA256})
 				id := "exit-fill-" + binding
 				effect := Effect{ID: id, SHA256: binding, DecisionID: fill.OrderID, Kind: "close", AmountCents: amount, ProceedsCents: fill.NetProceedsCents}
+				if ledger.Schema == FinancialLedgerSchema {
+					copy := *fill
+					effect.Execution = &copy
+				}
 				stage := staged{LedgerCommand{ID: id, Effect: &effect}, *fill}
 				expected[id] = stage
 				stages = append(stages, stage)
