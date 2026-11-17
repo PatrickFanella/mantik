@@ -243,8 +243,10 @@ It grants no qualified or broker submission authority.
 The [reviewed option recipes](docs/reference/option-library.md) select and size
 covered calls, cash-secured puts and margin-only spreads, then run through that
 simulator's admission, protected fills and closing. Their retained-data adapter
-preserves acquisition clocks; the available local archive does not establish a
-2024-onward historical backtest.
+preserves acquisition clocks. A separate, offline
+[retrospective research command](docs/reference/option-retrospective.md) runs
+selected 2024-onward archived-price samples under an explicit availability
+assumption, preserving original receipts and granting no qualification credit.
 The pure [indicator adapter](docs/reference/indicators.md) provides SMA, EMA, RSI,
 Wilder ATR, Bollinger bands and rolling return volatility with maintained TA-Lib parity tests.
 

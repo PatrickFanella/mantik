@@ -52,8 +52,14 @@ The analyst cannot choose quantities, stops or orders. Qualification uses a
 separate compiled collection boundary; ordinary incubation remains ineligible
 for qualification credit. The option recipes run through the indicative
 OptionBook lifecycle with reserves and holding-time Greek checks. Their
-synthetic lifecycle tests do not satisfy #101's historical 2024-onward data
-requirement or #85's real paper open/close requirement.
+synthetic lifecycle tests do not satisfy #85's real paper open/close requirement.
+For #101, the owner approved [separate retrospective research](reference/option-retrospective.md)
+using selected 2024/2025/2026 archived prices, original acquisition clocks and
+an explicit assumed historical-availability policy. Six cash-book scenarios
+include a completed round trip for each income recipe, retained limit refusals
+and an open covered liability at one horizon. This supplies the agreed
+retrospective exercise, with no continuous-history, historical-membership,
+operational admission or qualification claim.
 
 The [multi-leg paper source integration](reference/alpaca-mleg-paper.md) for #85
 adds callable `alpaca-paper --action mleg-open` and `--action mleg-close` routes,
@@ -206,7 +212,7 @@ current blockers before starting work.
 | --- | --- |
 | [G3 #85](https://github.com/subculture-collective/mantik/issues/85) Multi-leg paper orders | Source integration adds [durable open/close and safe fallback](reference/alpaca-mleg-paper.md); actual paper iron-condor open/close evidence remains outstanding. |
 | [F4 #100](https://github.com/subculture-collective/mantik/issues/100) Owner controls | Code and checkpoint-aware verification are merged; the actual human terminal walkthrough remains unperformed. |
-| [G4 #101](https://github.com/subculture-collective/mantik/issues/101) Income option recipes | Code, provenance and cash-book checks are merged; the required 2024-onward indicative-data backtest remains unmet. |
+| [G4 #101](https://github.com/subculture-collective/mantik/issues/101) Income option recipes | Recipes, provenance and cash-book checks are merged. The owner-approved retrospective archived-price exercise now runs through a separate offline command; merge and issue closure remain tracked in #47. Naturally observed historical membership remains unestablished. |
 | [E6 #107](https://github.com/subculture-collective/mantik/issues/107) Protected paper positions | Requires eligible strategies, fresh regular-session quotes, protected execution and owned-fill reconciliation. |
 | [J3 #108](https://github.com/subculture-collective/mantik/issues/108) Natural forward assessment | Run a declared incubating base-strategy window to its actual end and record an evidence-backed promotion or rejection. |
 

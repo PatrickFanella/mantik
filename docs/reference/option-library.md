@@ -215,8 +215,13 @@ The older archive contains two 2024-02-01 option bars and 55,028 trades, acquire
 in 2026. At a 2024 decision clock the retained store returns no references or
 bars. At acquisition those contracts are already expired. This cannot support
 a naturally point-in-time 2024-onward backtest, nor establish historical chain
-membership. That part of #101 remains **unmet**, as does real retained-data
-round-trip evidence for these recipes. #102's mechanical backtest/reserve/Greek
+membership. That original naturally point-in-time requirement remains unmet.
+The owner subsequently approved a separate [retrospective research policy](option-retrospective.md)
+for #101: bounded 2024/2025/2026 archived-price scenarios, with original
+acquisition clocks retained and historical availability explicitly assumed.
+Both income recipes completed simulated cash-book round trips in that study;
+it does not turn the older archive into naturally available historical data.
+#102's mechanical backtest/reserve/Greek
 criteria are exercised with synthetic fixtures; no real-history performance
 or qualification is claimed.
 

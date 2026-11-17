@@ -10,7 +10,7 @@ help: ## Show available commands
 verify: fmt-check lint test build compose-config open-pilot-check pilot-check backtesting-contract-check recovery-contract-check release-preflight-check rehearsal-check spy-check-contract-check ## Run all checks
 
 fmt: ## Format Go files
-	@find cmd internal migrations scripts/testshard scripts/spycheck scripts/gatecheck -name '*.go' -print0 | xargs -0 -r gofmt -w
+	@find cmd internal migrations research/options scripts/testshard scripts/spycheck scripts/gatecheck -name '*.go' -print0 | xargs -0 -r gofmt -w
 
 lint: ## Run Go vet
 	go vet ./...
@@ -33,7 +33,7 @@ open-pilot-check: ## Check all issue forms and label definitions
 
 .PHONY: fmt-check
 fmt-check: ## Check formatting without changing sources
-	@set -e; unformatted=$$(find cmd internal migrations scripts/testshard scripts/spycheck scripts/gatecheck -name '*.go' -print0 | xargs -0 -r gofmt -l); \
+	@set -e; unformatted=$$(find cmd internal migrations research/options scripts/testshard scripts/spycheck scripts/gatecheck -name '*.go' -print0 | xargs -0 -r gofmt -l); \
 	if [ -n "$$unformatted" ]; then printf '%s\n' "$$unformatted"; exit 1; fi
 
 .PHONY: compose-build
